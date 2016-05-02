@@ -1,7 +1,7 @@
 package org.swisspush.redisques.handler;
 
 import io.vertx.core.AsyncResult;
-import static org.swisspush.redisques.util.RedisquesAPI.*;
+import org.swisspush.redisques.RedisQues;
 import io.vertx.core.Handler;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonObject;
@@ -21,9 +21,9 @@ public class PutLockHandler implements Handler<AsyncResult<String>> {
     @Override
     public void handle(AsyncResult<String> reply) {
         if(reply.succeeded()){
-            event.reply(new JsonObject().put(STATUS, OK));
+            event.reply(new JsonObject().put(RedisQues.STATUS, RedisQues.OK));
         } else {
-            event.reply(new JsonObject().put(STATUS, ERROR));
+            event.reply(new JsonObject().put(RedisQues.STATUS, RedisQues.ERROR));
         }
     }
 }

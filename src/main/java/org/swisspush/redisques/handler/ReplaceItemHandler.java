@@ -7,26 +7,23 @@ import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonObject;
 
 /**
- * Class GetLockHandler.
+ * Class ReplaceItemHandler.
  *
  * @author baldim
  */
-public class GetLockHandler implements Handler<AsyncResult<String>> {
+public class ReplaceItemHandler implements Handler<AsyncResult<String>> {
     private Message<JsonObject> event;
 
-    public GetLockHandler(Message<JsonObject> event) {
+    public ReplaceItemHandler(Message<JsonObject> event) {
         this.event = event;
     }
 
     @Override
     public void handle(AsyncResult<String> reply) {
-        if (reply.result() != null) {
-            event.reply(new JsonObject()
-                    .put(RedisQues.STATUS, RedisQues.OK)
-                    .put(RedisQues.VALUE, reply.result())
-            );
+        if(reply.succeeded()){
+            event.reply(new JsonObject().put(RedisQues.STATUS, RedisQues.OK));
         } else {
-            event.reply(new JsonObject().put(RedisQues.STATUS, "No such lock"));
+            event.reply(new JsonObject().put(RedisQues.STATUS, RedisQues.ERROR));
         }
     }
 }
