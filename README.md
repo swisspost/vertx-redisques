@@ -58,351 +58,266 @@ To use default values only, the _RedisquesConfiguration_ constructor without par
 JsonObject json  = new RedisquesConfiguration().asJsonObject();
 ```
 
-## RedisQues APIs
+## RedisQue APIs
 
-Redisques API for Vert.x - Eventbus
+Redisque API for Vert.x - Eventbus
 
 **Evenbus Settings:**
 
-> address = redisque
+	address = redisque
 
-### RedisquesAPI util
-For a simplyfied working with the Redisques module, see the RedisquesAPI class:
-
-> org.swisspush.redisques.util.RedisquesAPI
-
-This class provides utility methods for a simple configuration of the queue operations. See _Queue operations_ chapter below for details.
-
-### Queue operations
-The following operations are available in the Redisques module.
-
-#### enqueue
+### enqueue
 
 Request Data
 
-```
-{
-    "operation": "enqueue",
-    "payload": {
-        "queuename": <str QUEUENAME>
-    },
-    "message": {
-        "method": "POST",
-        "uri": <st REQUEST URI>,
-        "payload": null
-    }
-}
-```
+	{
+		"operation": "enqueue",
+		"queue": <str QUEUENAME>,
+		"message": {
+			"method": "POST",
+			"uri": <st REQUEST URI>,
+			"payload": null
+		}
+	}
 
 Response Data
 
-```
-{
-    "status": "ok" / "error",
-    "message": "enqueued" / <str RESULT>
-}
-```
+	{
+		"status": "ok" / "error",
+		"message": "enqueued" / <str RESULT>
+	}
 
-#### getQueues
+### check
 
 Request Data
 
-```
-{
-    "operation": "getQueues"
-}
-```
+	{
+		"operation": "check"
+	}
 
 Response Data
 
-```
-{
-    "status": "ok" / "error",
-    "value": <objArr RESULT>
-}
-```
+	{}
 
-#### getQueuesCount
+### reset
 
 Request Data
 
-```
-{
-    "operation": "getQueuesCount"
-}
-```
+	{
+		"operation": "reset"
+	}
 
 Response Data
 
-```
-{
-    "status": "ok" / "error",
-    "value": <long RESULT>
-}
-```
+	{}
 
-#### getQueueItemsCount
+### lock
 
 Request Data
-```
-{
-    "operation": "getQueueItemsCount",
-    "payload": {
-        "queuename": <str QUEUENAME>
-    }
-}
-```
+
+	{
+		"operation": "lock",
+		"queue": <str QUEUENAME>
+	}
 
 Response Data
-```
-{
-    "status": "ok" / "error",
-    "value": <long RESULT>
-}
-```
 
-#### check
+	{
+		"status": "ok" / "error"
+	}
+
+### stop
 
 Request Data
-```
-{
-    "operation": "check"
-}
-```
+
+	{
+		"operation": "stop"
+	}
 
 Response Data
-```
-{}
-```
 
-#### reset
+	{
+		"status": "ok" / "error"
+	}
+
+### getListRange
 
 Request Data
-```
-{
-    "operation": "reset"
-}
-```
+
+	{
+		"operation": "getListRange",
+		"payload": {
+			"queuename": <str QUEUENAME>,
+			"limit": <str LIMIT>
+		}
+	}
 
 Response Data
-```
-{}
-```
 
-#### stop
+	{
+		"status": "ok" / "error",
+		"value": <objArr RESULT>,
+		"info": <nbrArray with result array (value property) size and total queue item count (can be greater than limit)>
+	}
+
+### addItem
 
 Request Data
-```
-{
-    "operation": "stop"
-}
-```
+
+	{
+		"operation": "addItem",
+		"payload": {
+			"queuename": <str QUEUENAME>,
+			"buffer": <str BUFFERDATA>
+		}
+	}
 
 Response Data
-```
-{
-    "status": "ok" / "error"
-}
-```
 
-#### getQueueItems
+	{
+		"status": "ok" / "error"
+	}
+
+### getItem
 
 Request Data
-```
-{
-    "operation": "getQueueItems",
-    "payload": {
-        "queuename": <str QUEUENAME>,
-        "limit": <str LIMIT>
-    }
-}
-```
+
+	{
+		"operation": "getItem",
+		"payload": {
+			"queuename": <str QUEUENAME>,
+			"index": <int INDEX>
+		}
+	}
 
 Response Data
-```
-{
-    "status": "ok" / "error",
-    "value": <objArr RESULT>,
-    "info": <nbrArray with result array (value property) size and total queue item count (can be greater than limit)>
-}
-```
 
-#### addQueueItem
+	{
+		"status": "ok" / "error",
+		"value": <obj RESULT>
+	}
+
+### replaceItem
 
 Request Data
-```
-{
-    "operation": "addQueueItem",
-    "payload": {
-        "queuename": <str QUEUENAME>,
-        "buffer": <str BUFFERDATA>
-    }
-}
-```
+
+	{
+		"operation": "replaceItem",
+		"payload": {
+			"queuename": <str QUEUENAME>,
+			"buffer": <str BUFFERDATA>,
+			"index": <int INDEX>
+		}
+	}
 
 Response Data
-```
-{
-    "status": "ok" / "error"
-}
-```
 
-#### getQueueItem
+	{
+		"status": "ok" / "error"
+	}
+
+### deleteItem
 
 Request Data
-```
-{
-    "operation": "getQueueItem",
-    "payload": {
-        "queuename": <str QUEUENAME>,
-        "index": <int INDEX>
-    }
-}
-```
+
+	{
+		"operation": "deleteItem",
+		"payload": {
+			"queuename": <str QUEUENAME>,
+			"index": <int INDEX>
+		}
+	}
 
 Response Data
-```
-{
-    "status": "ok" / "error",
-    "value": <obj RESULT>
-}
-```
 
-#### replaceQueueItem
+	{
+		"status": "ok" / "error"
+	}
+
+### deleteAllQueueItems
 
 Request Data
-```
-{
-    "operation": "replaceQueueItem",
-    "payload": {
-        "queuename": <str QUEUENAME>,
-        "buffer": <str BUFFERDATA>,
-        "index": <int INDEX>
-    }
-}
-```
+
+	{
+		"operation": "deleteAllQueueItems",
+		"payload": {
+			"queuename": <str QUEUENAME>
+		}
+	}
 
 Response Data
-```
-{
-    "status": "ok" / "error"
-}
-```
 
-#### deleteQueueItem
+	{
+		"status": "ok" / "error"
+	}
+
+### getAllLocks
 
 Request Data
-```
-{
-    "operation": "deleteQueueItem",
-    "payload": {
-        "queuename": <str QUEUENAME>,
-        "index": <int INDEX>
-    }
-}
-```
+
+	{
+		"operation": "getAllLocks",
+		"payload": {}
+	}
 
 Response Data
-```
-{
-    "status": "ok" / "error"
-}
-```
 
-#### deleteAllQueueItems
+	{
+		"status": "ok" / "error",
+		"value": <obj RESULT>
+	}
+
+### putLock
 
 Request Data
-```
-{
-    "operation": "deleteAllQueueItems",
-    "payload": {
-        "queuename": <str QUEUENAME>
-    }
-}
-```
+
+	{
+		"operation": "putLock",
+		"payload": {
+			"queuename": <str QUEUENAME>
+		}
+	}
 
 Response Data
-```
-{
-    "status": "ok" / "error"
-}
-```
 
-#### getAllLocks
+	{
+		"status": "ok" / "error"
+	}
+
+### getLock
 
 Request Data
-```
-{
-    "operation": "getAllLocks"
-}
-```
+
+	{
+		"operation": "getLock",
+		"payload": {
+			"queuename": <str QUEUENAME>
+		}
+	}
 
 Response Data
-```
-{
-    "status": "ok" / "error",
-    "value": <obj RESULT>
-}
-```
 
-#### putLock
+	{
+		"status": "ok" / "error",
+		"value": <obj RESULT>
+	}
+
+### deleteLock
 
 Request Data
-```
-{
-    "operation": "putLock",
-    "payload": {
-        "queuename": <str QUEUENAME>,
-        "requestedBy": <str user who created the lock>
-    }
-}
-```
+
+	{
+		"operation": "deleteLock",
+		"payload": {
+			"queuename": <str QUEUENAME>
+		}
+	}
 
 Response Data
-```
-{
-    "status": "ok" / "error"
-}
-```
 
-#### getLock
-
-Request Data
-```
-{
-    "operation": "getLock",
-    "payload": {
-        "queuename": <str QUEUENAME>
-    }
-}
-```
-
-Response Data
-```
-{
-    "status": "ok" / "error",
-    "value": <obj RESULT>
-}
-```
-
-#### deleteLock
-
-Request Data
-```
-{
-    "operation": "deleteLock",
-    "payload": {
-        "queuename": <str QUEUENAME>
-    }
-}
-```
-
-Response Data
-```
-{
-    "status": "ok" / "error"
-}
-```
+	{
+		"status": "ok" / "error"
+	}
 
 ## Dependencies
 

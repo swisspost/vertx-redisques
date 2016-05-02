@@ -29,13 +29,23 @@ import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static org.swisspush.redisques.util.RedisquesAPI.*;
-
 @RunWith(VertxUnitRunner.class)
 public abstract class AbstractTestCase {
 
     public static final int NUM_QUEUES = 10;
+    public static final String OK = "ok";
+    public static final String ERROR = "error";
+    public static final String VALUE = "value";
+    public static final String INFO = "info";
+    public static final String STATUS = "status";
+    public static final String INDEX = "index";
+    public static final String BUFFER = "buffer";
+    public static final String MESSAGE = "message";
+    public static final String PAYLOAD = "payload";
+    public static final String REQUESTEDBY = "requestedBy";
     public static final String TIMESTAMP = "timestamp";
+    public static final String QUEUENAME = "queuename";
+    public static final String LIMIT = "limit";
     public static final String QUEUES_PREFIX = "redisques:queues:";
     public static final String REDISQUES_LOCKS = "redisques:locks";
 
@@ -45,6 +55,10 @@ public abstract class AbstractTestCase {
     static Vertx vertx;
     static Logger log = LoggerFactory.getLogger(AbstractTestCase.class);
     protected static Jedis jedis;
+
+    public enum Operation{
+        addItem, deleteItem, deleteLock, getAllLocks, getItem, getLock, enqueue, getListRange, deleteAllQueueItems, putLock, replaceItem
+    }
 
     protected void flushAll(){
         if(jedis != null){
@@ -146,6 +160,31 @@ public abstract class AbstractTestCase {
         flushAll();
     }
 
+    public JsonObject enqueueOperation(String queueName, String message){
+        JsonObject operation = buildOperation(Operation.enqueue);
+        operation.put(PAYLOAD, new JsonObject().put(QUEUENAME, queueName));
+        operation.put(MESSAGE, message);
+        return operation;
+    }
+
+    public JsonObject putLockOperation(String queueName, String requestedBy){
+        JsonObject operation = buildOperation(Operation.putLock);
+        operation.put(PAYLOAD, new JsonObject().put(QUEUENAME, queueName).put(REQUESTEDBY, requestedBy));
+        return operation;
+    }
+
+    public JsonObject buildOperation(Operation operation){
+        JsonObject op = new JsonObject();
+        op.put("operation", operation.name());
+        return op;
+    }
+
+    public JsonObject buildOperation(Operation operation, JsonObject payload){
+        JsonObject op = buildOperation(operation);
+        op.put(PAYLOAD, payload);
+        return op;
+    }
+
     int numMessages = 5;
     AtomicInteger finished = new AtomicInteger();
 
@@ -190,7 +229,7 @@ public abstract class AbstractTestCase {
                     message = m;
                 }
                 signature.update(message.getBytes());
-                vertx.eventBus().send("redisques", buildEnqueueOperation(queue, message), new Handler<AsyncResult<Message<JsonObject>>>() {
+                vertx.eventBus().send("redisques", enqueueOperation(queue, message), new Handler<AsyncResult<Message<JsonObject>>>() {
                     @Override
                     public void handle(AsyncResult<Message<JsonObject>> event) {
                         if(event.result().body().getString(STATUS).equals(OK)) {
@@ -203,7 +242,7 @@ public abstract class AbstractTestCase {
                 });
                 messageCount++;
             } else {
-                vertx.eventBus().send("redisques", buildEnqueueOperation(queue, "STOP"), new Handler<AsyncResult<Message<JsonObject>>>() {
+                vertx.eventBus().send("redisques", enqueueOperation(queue, "STOP"), new Handler<AsyncResult<Message<JsonObject>>>() {
                     @Override
                     public void handle(AsyncResult<Message<JsonObject>> reply) {
                         context.assertEquals(OK, reply.result().body().getString(STATUS));
