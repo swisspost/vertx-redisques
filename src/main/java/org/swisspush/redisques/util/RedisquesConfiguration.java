@@ -17,6 +17,7 @@ public class RedisquesConfiguration {
     private int refreshPeriod;
     private String redisHost;
     private int redisPort;
+    private String redisAuth;
     private String redisEncoding;
     private int checkInterval;
     private int processorTimeout;
@@ -36,6 +37,7 @@ public class RedisquesConfiguration {
     public static final String PROP_REFRESH_PERIOD = "refresh-period";
     public static final String PROP_REDIS_HOST = "redisHost";
     public static final String PROP_REDIS_PORT = "redisPort";
+    public static final String PROP_REDIS_AUTH = "redisAuth";
     public static final String PROP_REDIS_ENCODING = "redisEncoding";
     public static final String PROP_CHECK_INTERVAL = "checkInterval";
     public static final String PROP_PROCESSOR_TIMEOUT = "processorTimeout";
@@ -54,7 +56,7 @@ public class RedisquesConfiguration {
     }
 
     public RedisquesConfiguration(String address, String configurationUpdatedAddress, String redisPrefix, String processorAddress, int refreshPeriod,
-                                  String redisHost, int redisPort, String redisEncoding, int checkInterval,
+                                  String redisHost, int redisPort, String redisAuth, String redisEncoding, int checkInterval,
                                   int processorTimeout, long processorDelayMax, boolean httpRequestHandlerEnabled,
                                   String httpRequestHandlerPrefix, Integer httpRequestHandlerPort,
                                   String httpRequestHandlerUserHeader) {
@@ -65,6 +67,7 @@ public class RedisquesConfiguration {
         this.refreshPeriod = refreshPeriod;
         this.redisHost = redisHost;
         this.redisPort = redisPort;
+        this.redisAuth = redisAuth;
         this.redisEncoding = redisEncoding;
 
         Logger log = LoggerFactory.getLogger(RedisquesConfiguration.class);
@@ -97,7 +100,7 @@ public class RedisquesConfiguration {
 
     private RedisquesConfiguration(RedisquesConfigurationBuilder builder){
         this(builder.address, builder.configurationUpdatedAddress, builder.redisPrefix, builder.processorAddress, builder.refreshPeriod,
-                builder.redisHost, builder.redisPort, builder.redisEncoding, builder.checkInterval,
+                builder.redisHost, builder.redisPort, builder.redisAuth, builder.redisEncoding, builder.checkInterval,
                 builder.processorTimeout, builder.processorDelayMax, builder.httpRequestHandlerEnabled, builder.httpRequestHandlerPrefix,
                 builder.httpRequestHandlerPort, builder.httpRequestHandlerUserHeader);
     }
@@ -111,6 +114,7 @@ public class RedisquesConfiguration {
         obj.put(PROP_REFRESH_PERIOD, getRefreshPeriod());
         obj.put(PROP_REDIS_HOST, getRedisHost());
         obj.put(PROP_REDIS_PORT, getRedisPort());
+        obj.put(PROP_REDIS_AUTH, getRedisAuth());
         obj.put(PROP_REDIS_ENCODING, getRedisEncoding());
         obj.put(PROP_CHECK_INTERVAL, getCheckInterval());
         obj.put(PROP_PROCESSOR_TIMEOUT, getProcessorTimeout());
@@ -144,6 +148,9 @@ public class RedisquesConfiguration {
         }
         if(json.containsKey(PROP_REDIS_PORT)){
             builder.redisPort(json.getInteger(PROP_REDIS_PORT));
+        }
+        if(json.containsKey(PROP_REDIS_AUTH)){
+            builder.redisAuth(json.getString(PROP_REDIS_AUTH));
         }
         if(json.containsKey(PROP_REDIS_ENCODING)){
             builder.redisEncoding(json.getString(PROP_REDIS_ENCODING));
@@ -193,6 +200,10 @@ public class RedisquesConfiguration {
     }
 
     public int getRedisPort() { return redisPort; }
+
+    public String getRedisAuth() {
+        return redisAuth;
+    }
 
     public int getCheckInterval() { return checkInterval; }
 
@@ -245,6 +256,7 @@ public class RedisquesConfiguration {
         private int refreshPeriod;
         private String redisHost;
         private int redisPort;
+        private String redisAuth;
         private String redisEncoding;
         private int checkInterval;
         private int processorTimeout;
@@ -304,6 +316,11 @@ public class RedisquesConfiguration {
 
         public RedisquesConfigurationBuilder redisPort(int redisPort){
             this.redisPort = redisPort;
+            return this;
+        }
+
+        public RedisquesConfigurationBuilder redisAuth(String redisAuth){
+            this.redisAuth = redisAuth;
             return this;
         }
 

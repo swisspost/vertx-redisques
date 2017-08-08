@@ -102,6 +102,7 @@ public class RedisQues extends AbstractVerticle {
 
     private String redisHost;
     private int redisPort;
+    private String redisAuth;
     private String redisEncoding;
 
     private boolean httpRequestHandlerEnabled;
@@ -160,6 +161,7 @@ public class RedisQues extends AbstractVerticle {
 
         redisHost = modConfig.getRedisHost();
         redisPort = modConfig.getRedisPort();
+        redisAuth = modConfig.getRedisAuth();
         redisEncoding = modConfig.getRedisEncoding();
 
         httpRequestHandlerEnabled = modConfig.getHttpRequestHandlerEnabled();
@@ -170,6 +172,7 @@ public class RedisQues extends AbstractVerticle {
         this.redisClient = RedisClient.create(vertx, new RedisOptions()
                 .setHost(redisHost)
                 .setPort(redisPort)
+                .setAuth(redisAuth)
                 .setEncoding(redisEncoding));
 
         this.luaScriptManager = new LuaScriptManager(redisClient);
@@ -430,6 +433,7 @@ public class RedisQues extends AbstractVerticle {
         result.put(RedisquesConfiguration.PROP_REFRESH_PERIOD, refreshPeriod);
         result.put(RedisquesConfiguration.PROP_REDIS_HOST, redisHost);
         result.put(RedisquesConfiguration.PROP_REDIS_PORT, redisPort);
+        result.put(RedisquesConfiguration.PROP_REDIS_AUTH, redisAuth);
         result.put(RedisquesConfiguration.PROP_REDIS_ENCODING, redisEncoding);
         result.put(RedisquesConfiguration.PROP_CHECK_INTERVAL, checkInterval);
         result.put(RedisquesConfiguration.PROP_PROCESSOR_TIMEOUT, processorTimeout);
