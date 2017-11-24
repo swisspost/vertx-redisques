@@ -21,10 +21,14 @@ public class GetLockHandler implements Handler<AsyncResult<String>> {
 
     @Override
     public void handle(AsyncResult<String> reply) {
-        if (reply.result() != null) {
-            event.reply(new JsonObject().put(STATUS, OK).put(VALUE, reply.result()));
+        if (reply.succeeded()) {
+            if (reply.result() != null) {
+                event.reply(new JsonObject().put(STATUS, OK).put(VALUE, reply.result()));
+            } else {
+                event.reply(new JsonObject().put(STATUS, NO_SUCH_LOCK));
+            }
         } else {
-            event.reply(new JsonObject().put(STATUS, NO_SUCH_LOCK));
+            event.reply(new JsonObject().put(STATUS, ERROR));
         }
     }
 }

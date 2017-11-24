@@ -20,7 +20,7 @@ public class GetQueueItemHandler implements Handler<AsyncResult<String>> {
 
     @Override
     public void handle(AsyncResult<String> reply) {
-        if (reply.result() != null) {
+        if (reply.succeeded() && reply.result() != null) {
             event.reply(new JsonObject().put(STATUS, OK).put(VALUE, reply.result()));
         } else {
             event.reply(new JsonObject().put(STATUS, ERROR));

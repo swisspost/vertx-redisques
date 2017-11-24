@@ -24,14 +24,9 @@ public class GetAllLocksHandler implements Handler<AsyncResult<JsonArray>> {
 
     @Override
     public void handle(AsyncResult<JsonArray> reply) {
-        if(reply.succeeded()){
-            List<Object> list = reply.result().getList();
+        if (reply.succeeded() && reply.result() != null) {
             JsonObject result = new JsonObject();
-            JsonArray items = new JsonArray();
-            for (Object item : list.toArray()) {
-                items.add((String) item);
-            }
-            result.put("locks", items);
+            result.put("locks", reply.result());
             event.reply(new JsonObject().put(STATUS, OK).put(VALUE, result));
         } else {
             event.reply(new JsonObject().put(STATUS, ERROR));

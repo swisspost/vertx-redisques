@@ -25,13 +25,8 @@ public class GetQueuesHandler implements Handler<AsyncResult<JsonArray>> {
     @Override
     public void handle(AsyncResult<JsonArray> reply) {
         if(reply.succeeded()){
-            List<Object> list = reply.result().getList();
             JsonObject result = new JsonObject();
-            JsonArray items = new JsonArray();
-            for (Object item : list.toArray()) {
-                items.add((String) item);
-            }
-            result.put("queues", items);
+            result.put("queues", reply.result());
             event.reply(new JsonObject().put(STATUS, OK).put(VALUE, result));
         } else {
             event.reply(new JsonObject().put(STATUS, ERROR));

@@ -26,7 +26,9 @@ public class GetQueueItemsHandler implements Handler<AsyncResult<JsonArray>> {
         if(reply.succeeded()){
             JsonArray resultArray = reply.result();
             JsonArray countInfo = new JsonArray();
-            countInfo.add(resultArray.size());
+            if (resultArray != null) {
+                countInfo.add(resultArray.size());
+            }
             countInfo.add(queueItemCount);
             event.reply(new JsonObject().put(STATUS, OK).put(VALUE, resultArray).put(INFO, countInfo));
         } else {
