@@ -1,5 +1,6 @@
 package org.swisspush.redisques;
 
+import com.google.common.collect.ImmutableMap;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
@@ -14,7 +15,6 @@ import org.junit.Before;
 import org.junit.runner.RunWith;
 import redis.clients.jedis.Jedis;
 
-import java.util.HashMap;
 import java.util.Map;
 
 import static org.swisspush.redisques.util.RedisquesAPI.REQUESTED_BY;
@@ -87,8 +87,7 @@ public abstract class AbstractTestCase {
         JsonObject lockInfo = new JsonObject();
         lockInfo.put(REQUESTED_BY, "unit_test");
         lockInfo.put("timestamp", System.currentTimeMillis());
-        Map<String,String> values = new HashMap<>();
-        values.putIfAbsent(queue, lockInfo.encode());
+        Map<String,String> values = ImmutableMap.of(queue, lockInfo.encode());
         jedis.hmset(getLocksRedisKey(), values);
     }
 }

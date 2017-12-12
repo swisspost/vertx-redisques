@@ -92,7 +92,7 @@ public class RedisQuesTest extends AbstractTestCase {
         eventBusSend(buildOperation(QueueOperation.setConfiguration,
                 new JsonObject().put(PROCESSOR_DELAY_MAX, 99).put("redisHost", "anotherHost").put("redisPort", 1234)), message -> {
             context.assertEquals(ERROR, message.result().body().getString(STATUS));
-            context.assertEquals("Not supported configuration values received: [redisHost, redisPort]", message.result().body().getString(MESSAGE));
+            context.assertEquals("Not supported configuration values received: redisHost, redisPort", message.result().body().getString(MESSAGE));
             async.complete();
         });
     }

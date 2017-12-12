@@ -1,7 +1,10 @@
+/mods
 /target
 /.classpath
 /.project
 /.settings
 /build
+/.gradle
 /.idea
 /*.iml
+/vertx_classpath.txt
