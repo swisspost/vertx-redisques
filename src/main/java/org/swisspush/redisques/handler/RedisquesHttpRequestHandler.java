@@ -1,6 +1,5 @@
 package org.swisspush.redisques.handler;
 
-import com.google.common.collect.Ordering;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
@@ -612,13 +611,6 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     }
 
     private void sortResultMap(List<Map.Entry<String, Long>> input) {
-        Ordering<Map.Entry<String, Long>> byMapValues = new Ordering<Map.Entry<String, Long>>() {
-            @Override
-            public int compare(Map.Entry<String, Long> left, Map.Entry<String, Long> right) {
-                return left.getValue().compareTo(right.getValue());
-            }
-        };
-
-        input.sort(byMapValues.reverse());
+        input.sort((left, right) -> right.getValue().compareTo(left.getValue()));
     }
 }

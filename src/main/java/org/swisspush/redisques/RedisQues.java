@@ -1,8 +1,5 @@
 package org.swisspush.redisques;
 
-import com.google.common.base.Joiner;
-import com.google.common.collect.Lists;
-import com.google.common.collect.Sets;
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Future;
@@ -19,12 +16,13 @@ import io.vertx.redis.RedisOptions;
 import io.vertx.redis.op.RangeLimitOptions;
 import org.swisspush.redisques.handler.*;
 import org.swisspush.redisques.lua.LuaScriptManager;
-import org.swisspush.redisques.util.RedisquesConfiguration;
 import org.swisspush.redisques.util.RedisQuesTimer;
+import org.swisspush.redisques.util.RedisquesConfiguration;
 
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static org.swisspush.redisques.util.RedisquesAPI.*;
 
@@ -113,7 +111,7 @@ public class RedisQues extends AbstractVerticle {
     private static final int DEFAULT_MAX_QUEUEITEM_COUNT = 49;
     private static final int MAX_AGE_MILLISECONDS = 120000; // 120 seconds
 
-    private static final Set<String> ALLOWED_CONFIGURATION_VALUES = Sets.newHashSet("processorDelayMax");
+    private static final Set<String> ALLOWED_CONFIGURATION_VALUES = Stream.of("processorDelayMax").collect(Collectors.toSet());
 
     private LuaScriptManager luaScriptManager;
 
@@ -492,7 +490,7 @@ public class RedisQues extends AbstractVerticle {
                     future.fail("Value for configuration property '"+PROCESSOR_DELAY_MAX+"' is not a number");
                 }
             } else {
-                String notAllowedConfigurationValuesString = Joiner.on(", ").join(notAllowedConfigurationValues);
+                String notAllowedConfigurationValuesString = notAllowedConfigurationValues.toString();
                 future.fail("Not supported configuration values received: " + notAllowedConfigurationValuesString);
             }
         } else {
@@ -504,7 +502,7 @@ public class RedisQues extends AbstractVerticle {
 
     private List<String> findNotAllowedConfigurationValues(Set<String> configurationValues) {
         if (configurationValues == null) {
-            return Lists.newArrayList();
+            return Collections.emptyList();
         }
         return configurationValues.stream().filter(p -> !ALLOWED_CONFIGURATION_VALUES.contains(p)).collect(Collectors.toList());
     }
