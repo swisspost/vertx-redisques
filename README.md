@@ -20,7 +20,7 @@ A highly scalable redis-persistent queuing system for vert.x.
 You need Java 8 and Maven.
 ```
 cd vertx-redisques
-gradle build
+mvn clean install
 ```
 
 ## Dynamic Queues
