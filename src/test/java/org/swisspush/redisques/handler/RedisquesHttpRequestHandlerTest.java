@@ -1,8 +1,11 @@
 package org.swisspush.redisques.handler;
 
 import com.jayway.restassured.RestAssured;
+import io.vertx.core.AsyncResult;
 import io.vertx.core.DeploymentOptions;
+import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
+import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonObject;
 import io.vertx.ext.unit.Async;
 import io.vertx.ext.unit.TestContext;
@@ -17,7 +20,7 @@ import static com.jayway.restassured.RestAssured.given;
 import static com.jayway.restassured.RestAssured.when;
 import static org.hamcrest.CoreMatchers.*;
 import static org.hamcrest.collection.IsEmptyCollection.empty;
-import static org.hamcrest.number.OrderingComparison.greaterThan;
+import static org.hamcrest.number.OrderingComparison.greaterThanOrEqualTo;
 import static org.swisspush.redisques.util.RedisquesAPI.buildEnqueueOperation;
 import static org.swisspush.redisques.util.RedisquesAPI.buildPutLockOperation;
 
@@ -26,10 +29,10 @@ import static org.swisspush.redisques.util.RedisquesAPI.buildPutLockOperation;
  *
  * @author https://github.com/mcweba [Marc-Andre Weber]
  */
-// TODO: investivate why this test fails on travis (sometimes)
-@Ignore
-public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
 
+public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
+    private static String deploymentId = "";
+    private Vertx testVertx;
     private final String queueItemValid = "{\n" +
             "  \"method\": \"PUT\",\n" +
             "  \"uri\": \"/some/url/123/456\",\n" +
@@ -102,21 +105,25 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
             "  }\n" +
             "}";
 
-    private final String configurationValid = "{\"processorDelayMax\":99}";
-    private final String configurationValidZero = "{\"processorDelayMax\":0}";
-    private final String configurationNotSupportedValues = "{\"processorDelayMax\":0, \"redisHost\":\"localhost\"}";
-    private final String configurationEmpty = "{}";
+    private static final String configurationValid = "{\"processorDelayMax\":99}";
+    private static final String configurationValidZero = "{\"processorDelayMax\":0}";
+    private static final String configurationNotSupportedValues = "{\"processorDelayMax\":0, \"redisHost\":\"localhost\"}";
+    private static final String configurationEmpty = "{}";
 
     @Rule
     public Timeout rule = Timeout.seconds(15);
 
+
+    @BeforeClass
+    public static void beforeClass() {
+        RestAssured.baseURI = "http://127.0.0.1/";
+        RestAssured.port = 7070;
+    }
+
     @Before
     public void deployRedisques(TestContext context) {
         Async async = context.async();
-        vertx = Vertx.vertx();
-
-        RestAssured.baseURI = "http://localhost";
-        RestAssured.port = Integer.getInteger("http.port", 7070);
+        testVertx = Vertx.vertx();
 
         JsonObject config = RedisquesConfiguration.with()
                 .address(getRedisquesAddress())
@@ -129,17 +136,31 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
                 .asJsonObject();
 
         RedisQues redisQues = new RedisQues();
-        vertx.deployVerticle(redisQues, new DeploymentOptions().setConfig(config), context.asyncAssertSuccess(event -> {
+
+        testVertx.deployVerticle(redisQues, new DeploymentOptions().setConfig(config), context.asyncAssertSuccess(event -> {
             deploymentId = event;
             log.info("vert.x Deploy - " + redisQues.getClass().getSimpleName() + " was successful.");
             jedis = new Jedis("localhost", 6379, 5000);
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+               //do nothing
+            }
             async.complete();
         }));
+        async.awaitSuccess();
     }
 
     @After
     public void tearDown(TestContext context) {
-        vertx.close(context.asyncAssertSuccess());
+        testVertx.undeploy(deploymentId, context.asyncAssertSuccess(Void -> {
+            testVertx.close(context.asyncAssertSuccess());
+            context.async().complete();
+        }));
+    }
+
+    protected void eventBusSend(JsonObject operation, Handler<AsyncResult<Message<JsonObject>>> handler) {
+        testVertx.eventBus().send(getRedisquesAddress(), operation, handler);
     }
 
     @Test
@@ -183,8 +204,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
     }
 
     @Test
-    @Ignore
-    // TODO: investivate why this test fails on travis
+
     public void setConfiguration(TestContext context) {
         when()
                 .get("/queuing/configuration/")
@@ -202,7 +222,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
 
         // provide not supported configuration values. this should not change the value of the property
         given().body(configurationNotSupportedValues).when().post("/queuing/configuration/")
-                .then().assertThat().statusCode(400).body(containsString("Not supported configuration values received: redisHost"));
+                .then().assertThat().statusCode(400).body(containsString("Not supported configuration values received: [redisHost]"));
         when()
                 .get("/queuing/configuration/")
                 .then().assertThat()
@@ -243,6 +263,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
                 });
             });
         });
+        async.awaitSuccess();
     }
 
     @Test
@@ -275,6 +296,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
                 });
             });
         });
+        async.awaitSuccess();
     }
 
     @Test
@@ -684,6 +706,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
                 async.complete();
             });
         });
+        async.awaitSuccess();
     }
 
     @Test
@@ -711,6 +734,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
                 async.complete();
             });
         });
+        async.awaitSuccess();
     }
 
     @Test
@@ -736,6 +760,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
                 });
             });
         });
+        async.awaitSuccess();
     }
 
     @Test
@@ -769,6 +794,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
 
             async.complete();
         });
+        async.awaitSuccess();
     }
 
     @Test
@@ -792,6 +818,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
 
             async.complete();
         });
+        async.awaitSuccess();
     }
 
     @Test
@@ -822,6 +849,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
                 async.complete();
             });
         });
+        async.awaitSuccess();
     }
 
     @Test
@@ -852,6 +880,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
                 async.complete();
             });
         });
+        async.awaitSuccess();
     }
 
     @Test
@@ -888,6 +917,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
                 async.complete();
             });
         });
+        async.awaitSuccess();
     }
 
     @Test
@@ -905,7 +935,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
     public void getSingleLock(TestContext context) {
         Async async = context.async();
         flushAll();
-        long ts = System.currentTimeMillis();
+        Long ts = System.currentTimeMillis();
         String lock = "myLock_" + ts;
         String requestedBy = "someuser_" + ts;
         eventBusSend(buildPutLockOperation(lock, requestedBy), message -> {
@@ -914,10 +944,11 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
                     .statusCode(200)
                     .body(
                             "requestedBy", equalTo(requestedBy),
-                            "timestamp", greaterThan(ts)
+                            "timestamp", greaterThanOrEqualTo(ts)
                     );
             async.complete();
         });
+        async.awaitSuccess();
     }
 
     @Test
@@ -1010,6 +1041,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
 
             async.complete();
         });
+        async.awaitSuccess();
     }
 
     @Test
