@@ -16,25 +16,6 @@
             <distribution>repo</distribution>
         </license>
     </licenses>
-
-    <developers>
-        <developer>
-            <id>floriankammermann</id>
-            <name>Florian Kammermann</name>
-            <url>https://github.com/floriankammermann</url>
-        </developer>
-        <developer>
-            <id>mcweba</id>
-            <name>Marc-Andre Weber</name>
-            <url>https://github.com/mcweba</url>
-        </developer>
-        <developer>
-            <id>lbovet</id>
-            <name>Laurent Bovet</name>
-            <url>https://github.com/lbovet</url>
-        </developer>
-    </developers>
-
     <scm>
         <url>https://github.com/swisspush/vertx-redisques.git</url>
     </scm>
