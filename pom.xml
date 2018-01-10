@@ -17,6 +17,10 @@
         </license>
     </licenses>
 
+    <scm>
+        <url>https://github.com/swisspush/vertx-redisques.git</url>
+    </scm>
+
     <developers>
         <developer>
             <id>floriankammermann</id>
@@ -35,9 +39,6 @@
         </developer>
     </developers>
 
-    <scm>
-        <url>https://github.com/swisspush/vertx-redisques.git</url>
-    </scm>
     <dependencies>
         <dependency>
             <groupId>io.vertx</groupId>
