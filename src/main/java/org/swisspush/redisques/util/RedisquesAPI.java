@@ -47,6 +47,7 @@ public class RedisquesAPI {
         putLock(null),
         getLock(null),
         deleteLock(null),
+        deleteAllLocks(null),
         getQueues(null),
         getQueuesCount(null),
         getQueueItemsCount(null);
@@ -154,6 +155,10 @@ public class RedisquesAPI {
 
     public static JsonObject buildDeleteLockOperation(String queueName){
         return buildOperation(QueueOperation.deleteLock, new JsonObject().put(QUEUENAME, queueName));
+    }
+
+    public static JsonObject buildDeleteAllLocksOperation(){
+        return buildOperation(QueueOperation.deleteAllLocks);
     }
 
     public static JsonObject buildPutLockOperation(String queueName, String user){

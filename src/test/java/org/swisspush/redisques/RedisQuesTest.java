@@ -632,6 +632,39 @@ public class RedisQuesTest extends AbstractTestCase {
     }
 
     @Test
+    public void deleteAllLocks(TestContext context) {
+        Async async = context.async();
+        flushAll();
+        eventBusSend(buildGetAllLocksOperation(), message -> {
+            context.assertEquals(OK, message.result().body().getString(STATUS));
+            JsonArray locksArray = message.result().body().getJsonObject(VALUE).getJsonArray("locks");
+            context.assertNotNull(locksArray, "locks array should not be null");
+            context.assertEquals(0, locksArray.size(), "locks array should be empty");
+            eventBusSend(buildPutLockOperation("testLock", "geronimo"), message2 -> {
+                context.assertEquals(OK, message2.result().body().getString(STATUS));
+                context.assertTrue(jedis.hexists(getLocksRedisKey(), "testLock"));
+                eventBusSend(buildPutLockOperation("testLockWinnetou", "winnetou"), message3 -> {
+                    context.assertEquals(OK, message3.result().body().getString(STATUS));
+                    context.assertTrue(jedis.hexists(getLocksRedisKey(), "testLockWinnetou"));
+                    eventBusSend(buildDeleteAllLocksOperation(), message4 -> {
+                        context.assertEquals(OK, message4.result().body().getString(STATUS));
+                        context.assertEquals(2L, message4.result().body().getLong(VALUE));
+                        context.assertFalse(jedis.hexists(getLocksRedisKey(), "testLock"));
+                        context.assertFalse(jedis.hexists(getLocksRedisKey(), "testLockWinnetou"));
+                        eventBusSend(buildGetAllLocksOperation(), message5 -> {
+                            context.assertEquals(OK, message5.result().body().getString(STATUS));
+                            JsonArray locksArray1 = message5.result().body().getJsonObject(VALUE).getJsonArray("locks");
+                            context.assertNotNull(locksArray1, "locks array should not be null");
+                            context.assertEquals(0, locksArray1.size(), "locks array should be empty");
+                            async.complete();
+                        });
+                    });
+                });
+            });
+        });
+    }
+
+    @Test
     public void checkLimit(TestContext context) {
         Async async = context.async();
         flushAll();

@@ -225,7 +225,7 @@ public class RedisQues extends AbstractVerticle {
                     deleteAllQueueItems(event);
                     break;
                 case getAllLocks:
-                    redisClient.hkeys(getLocksKey(), new GetAllLocksHandler(event));
+                    getAllLocks(event);
                     break;
                 case putLock:
                     putLock(event);
@@ -235,6 +235,9 @@ public class RedisQues extends AbstractVerticle {
                     break;
                 case deleteLock:
                     deleteLock(event);
+                    break;
+                case deleteAllLocks:
+                    deleteAllLocks(event);
                     break;
                 case getQueueItemsCount:
                     redisClient.llen(getQueuesPrefix() + event.body().getJsonObject(PAYLOAD).getString(QUEUENAME), new GetQueueItemsCountHandler(event));
@@ -416,6 +419,10 @@ public class RedisQues extends AbstractVerticle {
         }
     }
 
+    private void getAllLocks(Message<JsonObject> event){
+        redisClient.hkeys(getLocksKey(), new GetAllLocksHandler(event));
+    }
+
     private void putLock(Message<JsonObject> event) {
         JsonObject lockInfo = extractLockInfo(event.body().getJsonObject(PAYLOAD).getString(REQUESTED_BY));
         if (lockInfo != null) {
@@ -433,6 +440,30 @@ public class RedisQues extends AbstractVerticle {
                 notifyConsumer(queueName);
             }
             redisClient.hdel(getLocksKey(), queueName, new DeleteLockHandler(event));
+        });
+    }
+
+    private void deleteAllLocks(Message<JsonObject> event) {
+        redisClient.hkeys(getLocksKey(), locksResult -> {
+            if(locksResult.succeeded()){
+                JsonArray locks = locksResult.result();
+                if (locks == null || locks.isEmpty()) {
+                    event.reply(new JsonObject().put(STATUS, OK).put(VALUE, 0));
+                    return;
+                }
+                redisClient.hdelMany(getLocksKey(), locks.getList(), delManyResult -> {
+                   if(delManyResult.succeeded()){
+                       log.info("Successfully deleted " + delManyResult.result() + " locks");
+                       event.reply(new JsonObject().put(STATUS, OK).put(VALUE, delManyResult.result()));
+                   } else {
+                       log.warn("failed to delete all locks. Message: " + delManyResult.cause().getMessage());
+                       event.reply(new JsonObject().put(STATUS, ERROR).put(MESSAGE, delManyResult.cause().getMessage()));
+                   }
+                });
+            } else {
+                log.warn("failed to delete all locks. Message: " + locksResult.cause().getMessage());
+                event.reply(new JsonObject().put(STATUS, ERROR).put(MESSAGE, locksResult.cause().getMessage()));
+            }
         });
     }
 

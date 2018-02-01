@@ -211,6 +211,12 @@ public class RedisquesAPITest {
     }
 
     @Test
+    public void testBuildDeleteAllLocksOperation(TestContext context) throws Exception {
+        JsonObject operation = RedisquesAPI.buildDeleteAllLocksOperation();
+        context.assertEquals(buildExpectedJsonObject("deleteAllLocks"), operation);
+    }
+
+    @Test
     public void testBuildPutLockOperation(TestContext context) throws Exception {
         JsonObject operation = RedisquesAPI.buildPutLockOperation("my_queue_name", "request_user");
         JsonObject expected = buildExpectedJsonObject("putLock", new JsonObject()

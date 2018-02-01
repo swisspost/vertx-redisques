@@ -154,6 +154,11 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         router.getWithRegex(prefix + "/locks/[^/]+").handler(this::getSingleLock);
 
         /*
+         * Delete all locks
+         */
+        router.delete(prefix + "/locks/").handler(this::deleteAllLocks);
+
+        /*
          * Delete single lock
          */
         router.deleteWithRegex(prefix + "/locks/[^/]+").handler(this::deleteSingleLock);
@@ -238,6 +243,18 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         String queue = lastPart(ctx.request().path());
         eventBus.send(redisquesAddress, buildDeleteLockOperation(queue),
                 (Handler<AsyncResult<Message<JsonObject>>>) reply -> checkReply(reply.result(), ctx.request(), StatusCode.INTERNAL_SERVER_ERROR));
+    }
+
+    private void deleteAllLocks(RoutingContext ctx){
+        eventBus.send(redisquesAddress, buildDeleteAllLocksOperation(), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
+            if (reply.succeeded() && OK.equals(reply.result().body().getString(STATUS))) {
+                JsonObject result = new JsonObject();
+                result.put("deleted", reply.result().body().getLong(VALUE));
+                jsonResponse(ctx.response(), result);
+            } else {
+                respondWith(StatusCode.INTERNAL_SERVER_ERROR, "Error deleting all locks", ctx.request());
+            }
+        });
     }
 
     private void getQueuesCount(RoutingContext ctx) {
