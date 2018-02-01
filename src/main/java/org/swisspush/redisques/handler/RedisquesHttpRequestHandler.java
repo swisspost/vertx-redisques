@@ -370,8 +370,8 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     private void listQueueItems(RoutingContext ctx) {
         final String queue = lastPart(ctx.request().path());
         String limitParam = null;
-        if (ctx.request() != null && ctx.request().params().contains("limit")) {
-            limitParam = ctx.request().params().get("limit");
+        if (ctx.request() != null && ctx.request().params().contains(LIMIT)) {
+            limitParam = ctx.request().params().get(LIMIT);
         }
         eventBus.send(redisquesAddress, buildGetQueueItemsOperation(queue, limitParam), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
             JsonObject replyBody = reply.result().body();
@@ -581,7 +581,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     }
 
     private int extractLimit(RoutingContext ctx) {
-        String limitParam = ctx.request().params().get("limit");
+        String limitParam = ctx.request().params().get(LIMIT);
         try {
             return Integer.parseInt(limitParam);
         } catch (NumberFormatException ex) {

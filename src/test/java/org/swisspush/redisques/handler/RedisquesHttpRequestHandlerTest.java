@@ -921,6 +921,29 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
     }
 
     @Test
+    public void deleteAllLocks(TestContext context) {
+        Async async = context.async();
+        flushAll();
+        eventBusSend(buildPutLockOperation("queue1", "someuser"), message -> {
+            eventBusSend(buildPutLockOperation("queue2", "someuser"), message2 -> {
+                when().delete("/queuing/locks/")
+                        .then().assertThat()
+                        .statusCode(200)
+                        .body("deleted", equalTo(2));
+
+                //delete all locks again
+                when().delete("/queuing/locks/")
+                        .then().assertThat()
+                        .statusCode(200)
+                        .body("deleted", equalTo(0));
+
+                async.complete();
+            });
+        });
+        async.awaitSuccess();
+    }
+
+    @Test
     public void getSingleLockNotExisting(TestContext context) {
         Async async = context.async();
         flushAll();
