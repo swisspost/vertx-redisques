@@ -732,6 +732,18 @@ The result will be a json object with the lock information like the example belo
 To delete a single lock use
 > DELETE /queuing/locks/queue1
 
+### Delete all locks
+To delete all existing locks use
+> DELETE /queuing/locks/
+
+The result will be a json object containing the number of deleted locks like the example below
+
+```json
+{
+  "deleted": 22
+}
+```
+
 ## Dependencies
 
 Redisques versions greater than 01.00.17 depend on Vert.x v3.2.0 and therefore require Java 8.
