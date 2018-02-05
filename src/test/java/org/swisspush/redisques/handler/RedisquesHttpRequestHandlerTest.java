@@ -23,6 +23,7 @@ import static org.hamcrest.collection.IsEmptyCollection.empty;
 import static org.hamcrest.number.OrderingComparison.greaterThanOrEqualTo;
 import static org.swisspush.redisques.util.RedisquesAPI.buildEnqueueOperation;
 import static org.swisspush.redisques.util.RedisquesAPI.buildPutLockOperation;
+import static org.hamcrest.collection.IsEmptyCollection.emptyCollectionOf;
 
 /**
  * Tests for the {@link RedisquesHttpRequestHandler} class
@@ -918,6 +919,55 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
             });
         });
         async.awaitSuccess();
+    }
+
+    @Test
+    public void getAllLocksFiltered(TestContext context) {
+        Async async = context.async();
+        flushAll();
+        eventBusSend(buildPutLockOperation("aaa", "someuser"), message -> {
+            eventBusSend(buildPutLockOperation("aab", "someuser"), message2 -> {
+                eventBusSend(buildPutLockOperation("abc", "someuser"), message3 -> {
+
+                    given().param("filter", "^a$")
+                            .when().get("/queuing/locks/")
+                            .then().assertThat()
+                            .statusCode(200)
+                            .body("locks", is(emptyCollectionOf(String.class)));
+
+                    given().param("filter", "a")
+                            .when().get("/queuing/locks/")
+                            .then().assertThat()
+                            .statusCode(200)
+                            .body("locks", hasItems("aaa", "aab", "abc"));
+
+                    given().param("filter", "ab")
+                            .when().get("/queuing/locks/")
+                            .then().assertThat()
+                            .statusCode(200)
+                            .body("locks", hasItems("aab", "abc"));
+
+                    given().param("filter", "c")
+                            .when().get("/queuing/locks/")
+                            .then().assertThat()
+                            .statusCode(200)
+                            .body("locks", hasItems("abc"));
+
+                    async.complete();
+
+                });
+            });
+        });
+        async.awaitSuccess();
+    }
+
+    @Test
+    public void getAllLocksFilteredInvalidFilterPattern(TestContext context) {
+        flushAll();
+        given().param("filter", "abc(.*")
+                .when().get("/queuing/locks/")
+                .then().assertThat()
+                .statusCode(400);
     }
 
     @Test

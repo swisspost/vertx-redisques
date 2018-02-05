@@ -428,7 +428,10 @@ Response Data
 Request Data
 ```
 {
-    "operation": "getAllLocks"
+    "operation": "getAllLocks",
+    "payload": {
+        "filter": <str regex pattern to filter locks (optional)>
+    }
 }
 ```
 
@@ -697,6 +700,9 @@ having the payload in the request body. When the request body is not a valid jso
 ### Get all locks
 To list all existing locks use
 > GET /queuing/locks/
+
+Available url parameters are:
+* _filter=<regex pattern>_: Filter the locks to return
 
 The result will be a json object with a list of all locks like the example below
 

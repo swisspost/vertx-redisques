@@ -16,11 +16,14 @@ import io.vertx.redis.RedisOptions;
 import io.vertx.redis.op.RangeLimitOptions;
 import org.swisspush.redisques.handler.*;
 import org.swisspush.redisques.lua.LuaScriptManager;
+import org.swisspush.redisques.util.MessageUtil;
 import org.swisspush.redisques.util.RedisQuesTimer;
 import org.swisspush.redisques.util.RedisquesConfiguration;
+import org.swisspush.redisques.util.Result;
 
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -420,7 +423,12 @@ public class RedisQues extends AbstractVerticle {
     }
 
     private void getAllLocks(Message<JsonObject> event){
-        redisClient.hkeys(getLocksKey(), new GetAllLocksHandler(event));
+        Result<Optional<Pattern>, String> result = MessageUtil.extractFilterPattern(event);
+        if(result.isOk()) {
+            redisClient.hkeys(getLocksKey(), new GetAllLocksHandler(event, result.getOk()));
+        } else {
+            event.reply(new JsonObject().put(STATUS, ERROR).put(ERROR_TYPE, BAD_INPUT).put(MESSAGE, result.getErr()));
+        }
     }
 
     private void putLock(Message<JsonObject> event) {

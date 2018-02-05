@@ -13,6 +13,8 @@ import org.junit.Test;
 import org.swisspush.redisques.util.RedisquesConfiguration;
 import redis.clients.jedis.Jedis;
 
+import java.util.Optional;
+
 import static org.swisspush.redisques.util.RedisquesAPI.*;
 
 /**
@@ -103,7 +105,7 @@ public class RedisQuesTest extends AbstractTestCase {
         eventBusSend(buildOperation(QueueOperation.setConfiguration,
                 new JsonObject().put(PROCESSOR_DELAY_MAX, "a_string_value")), message -> {
             context.assertEquals(ERROR, message.result().body().getString(STATUS));
-            context.assertEquals("Value for configuration property '"+PROCESSOR_DELAY_MAX+"' is not a number", message.result().body().getString(MESSAGE));
+            context.assertEquals("Value for configuration property '" + PROCESSOR_DELAY_MAX + "' is not a number", message.result().body().getString(MESSAGE));
             async.complete();
         });
     }
@@ -172,7 +174,7 @@ public class RedisQuesTest extends AbstractTestCase {
 
         eventBusSend(operation, message -> {
             context.assertEquals(ERROR, message.result().body().getString(STATUS));
-            context.assertEquals("Property '"+REQUESTED_BY+"' missing", message.result().body().getString(MESSAGE));
+            context.assertEquals("Property '" + REQUESTED_BY + "' missing", message.result().body().getString(MESSAGE));
             assertKeyCount(context, getLocksRedisKey(), 0);
             assertKeyCount(context, getQueuesRedisKeyPrefix(), 0);
             context.assertFalse(jedis.hexists(getLocksRedisKey(), "queue1"));
@@ -222,7 +224,7 @@ public class RedisQuesTest extends AbstractTestCase {
             JsonArray queuesArray = message.result().body().getJsonObject(VALUE).getJsonArray("queues");
             context.assertEquals(100, queuesArray.size());
             for (int i = 0; i < 100; i++) {
-                context.assertTrue(queuesArray.contains("queue"+i), "item queue" + i + " expected to be in result");
+                context.assertTrue(queuesArray.contains("queue" + i), "item queue" + i + " expected to be in result");
             }
             async.complete();
         });
@@ -257,7 +259,7 @@ public class RedisQuesTest extends AbstractTestCase {
         assertKeyCount(context, getQueuesRedisKeyPrefix(), 0);
         String queue = "queue_1";
         for (int i = 0; i < 100; i++) {
-            jedis.rpush(getQueuesRedisKeyPrefix() + queue, "testItem"+i);
+            jedis.rpush(getQueuesRedisKeyPrefix() + queue, "testItem" + i);
         }
         assertKeyCount(context, getQueuesRedisKeyPrefix(), 1);
         context.assertEquals(100L, jedis.llen(getQueuesRedisKeyPrefix() + queue));
@@ -516,12 +518,55 @@ public class RedisQuesTest extends AbstractTestCase {
                     JsonArray locksArray1 = message3.result().body().getJsonObject(VALUE).getJsonArray("locks");
                     context.assertNotNull(locksArray1, "locks array should not be null");
                     context.assertTrue(locksArray1.size() > 0, "locks array should not be empty");
-                    if(locksArray1.size() > 0) {
+                    if (locksArray1.size() > 0) {
                         String result = locksArray1.getString(0);
                         context.assertTrue(result.matches("testLock.*"));
                     }
                     async.complete();
                 });
+            });
+        });
+    }
+
+    @Test
+    public void getAllLocksFiltered(TestContext context) {
+        Async async = context.async();
+        flushAll();
+        eventBusSend(buildGetAllLocksOperation(), message -> {
+            context.assertEquals(OK, message.result().body().getString(STATUS));
+            JsonArray locksArray = message.result().body().getJsonObject(VALUE).getJsonArray("locks");
+            context.assertNotNull(locksArray, "locks array should not be null");
+            context.assertEquals(0, locksArray.size(), "locks array should be empty");
+            eventBusSend(buildPutLockOperation("testLock", "geronimo"), message2 -> {
+                context.assertEquals(OK, message2.result().body().getString(STATUS));
+                context.assertTrue(jedis.hexists(getLocksRedisKey(), "testLock"));
+                eventBusSend(buildPutLockOperation("abcLock", "geronimo"), message2a -> {
+                    context.assertEquals(OK, message2a.result().body().getString(STATUS));
+                    context.assertTrue(jedis.hexists(getLocksRedisKey(), "abcLock"));
+                    eventBusSend(buildGetAllLocksOperation(), message3 -> {
+                        context.assertEquals(OK, message3.result().body().getString(STATUS));
+                        JsonArray locksArray1 = message3.result().body().getJsonObject(VALUE).getJsonArray("locks");
+                        context.assertNotNull(locksArray1, "locks array should not be null");
+                        context.assertTrue(locksArray1.size() > 0, "locks array should not be empty");
+                        if (locksArray1.size() > 0) {
+                            String item0 = locksArray1.getString(0);
+                            context.assertTrue(item0.matches("testLock.*"));
+                            String item1 = locksArray1.getString(1);
+                            context.assertTrue(item1.matches("abcLock.*"));
+                        }
+                        eventBusSend(buildGetAllLocksOperation(Optional.of("abc(.*)")), message4 ->{
+                            context.assertEquals(OK, message4.result().body().getString(STATUS));
+                            JsonArray locksArray2 = message4.result().body().getJsonObject(VALUE).getJsonArray("locks");
+                            context.assertNotNull(locksArray2, "locks array should not be null");
+                            context.assertEquals(1, locksArray2.size(), "locks array should have size 1");
+                            String item0 = locksArray2.getString(0);
+                            context.assertTrue(item0.matches("abcLock.*"));
+                            async.complete();
+                        });
+
+                    });
+                });
+
             });
         });
     }
@@ -546,7 +591,7 @@ public class RedisQuesTest extends AbstractTestCase {
         context.assertFalse(jedis.hexists(getLocksRedisKey(), "queue1"));
         eventBusSend(buildOperation(QueueOperation.putLock, new JsonObject().put(QUEUENAME, "queue1")), message -> {
             context.assertEquals(ERROR, message.result().body().getString(STATUS));
-            context.assertEquals("Property '"+REQUESTED_BY+"' missing", message.result().body().getString(MESSAGE));
+            context.assertEquals("Property '" + REQUESTED_BY + "' missing", message.result().body().getString(MESSAGE));
             assertKeyCount(context, getLocksRedisKey(), 0);
             context.assertFalse(jedis.hexists(getLocksRedisKey(), "queue1"));
             async.complete();
@@ -669,7 +714,7 @@ public class RedisQuesTest extends AbstractTestCase {
         Async async = context.async();
         flushAll();
         for (int i = 0; i < 250; i++) {
-            jedis.rpush(getQueuesRedisKeyPrefix() + "testLock1", "testItem"+i);
+            jedis.rpush(getQueuesRedisKeyPrefix() + "testLock1", "testItem" + i);
         }
         eventBusSend(buildGetQueueItemsOperation("testLock1", "178"), message -> {
             context.assertEquals(OK, message.result().body().getString(STATUS));

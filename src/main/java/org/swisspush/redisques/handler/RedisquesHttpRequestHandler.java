@@ -213,11 +213,21 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     }
 
     private void getAllLocks(RoutingContext ctx) {
-        eventBus.send(redisquesAddress, buildGetAllLocksOperation(), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
+        String filter = ctx.request().params().get(FILTER);
+        eventBus.send(redisquesAddress, buildGetAllLocksOperation(Optional.ofNullable(filter)), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
             if (OK.equals(reply.result().body().getString(STATUS))) {
                 jsonResponse(ctx.response(), reply.result().body().getJsonObject(VALUE));
             } else {
-                respondWith(StatusCode.NOT_FOUND, ctx.request());
+                String errorType = reply.result().body().getString(ERROR_TYPE);
+                if(errorType != null && BAD_INPUT.equalsIgnoreCase(errorType)){
+                    if(reply.result().body().getString(MESSAGE) != null) {
+                        respondWith(StatusCode.BAD_REQUEST, reply.result().body().getString(MESSAGE), ctx.request());
+                    } else {
+                        respondWith(StatusCode.BAD_REQUEST, ctx.request());
+                    }
+                } else {
+                    respondWith(StatusCode.NOT_FOUND, ctx.request());
+                }
             }
         });
     }

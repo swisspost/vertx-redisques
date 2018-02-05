@@ -4,6 +4,8 @@ import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
 
+import java.util.Optional;
+
 /**
  * Class RedisquesAPI listing the operations and response values which are supported in Redisques.
  *
@@ -16,11 +18,14 @@ public class RedisquesAPI {
     public static final String LIMIT = "limit";
     public static final String VALUE = "value";
     public static final String ERROR = "error";
+    public static final String ERROR_TYPE = "errorType";
+    public static final String BAD_INPUT = "bad input";
     public static final String BUFFER = "buffer";
     public static final String STATUS = "status";
     public static final String MESSAGE = "message";
     public static final String PAYLOAD = "payload";
     public static final String QUEUENAME = "queuename";
+    public static final String FILTER = "filter";
     public static final String UNLOCK = "unlock";
     public static final String OPERATION = "operation";
     public static final String REQUESTED_BY = "requestedBy";
@@ -167,5 +172,13 @@ public class RedisquesAPI {
 
     public static JsonObject buildGetAllLocksOperation(){
         return buildOperation(QueueOperation.getAllLocks);
+    }
+
+    public static JsonObject buildGetAllLocksOperation(Optional<String> filterPattern){
+        if(filterPattern.isPresent()){
+            return buildOperation(QueueOperation.getAllLocks, new JsonObject().put(FILTER, filterPattern.get()));
+        } else {
+            return buildGetAllLocksOperation();
+        }
     }
 }
