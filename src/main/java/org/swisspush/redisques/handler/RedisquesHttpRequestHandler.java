@@ -24,6 +24,7 @@ import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.swisspush.redisques.util.RedisquesAPI.*;
+import static org.swisspush.redisques.util.RequestUtil.evaluateUrlParameterToBeEmptyOrTrue;
 
 /**
  * Handler class for HTTP requests providing access to Redisques over HTTP.
@@ -41,6 +42,9 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     private static final String APPLICATION_JSON = "application/json";
     private static final String CONTENT_TYPE = "content-type";
     private static final String LOCKED_PARAM = "locked";
+    private static final String UNLOCK_PARAM = "unlock";
+    private static final String COUNT_PARAM = "count";
+    private static final String EMPTY_QUEUES_PARAM = "emptyQueues";
 
     private final String redisquesAddress;
     private final String userHeader;
@@ -201,8 +205,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     }
 
     private JsonObject buildEnqueueOrLockedEnqueueOperation(String queue, String message, HttpServerRequest request) {
-        boolean lockedEnqueue = request.params().contains(LOCKED_PARAM);
-        if (lockedEnqueue) {
+        if (evaluateUrlParameterToBeEmptyOrTrue(LOCKED_PARAM, request)) {
             return buildLockedEnqueueOperation(queue, message, extractUser(request));
         } else {
             return buildEnqueueOperation(queue, message);
@@ -317,7 +320,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     }
 
     private void getMonitorInformation(RoutingContext ctx) {
-        boolean emptyQueues = ctx.request().params().contains("emptyQueues");
+        boolean emptyQueues = evaluateUrlParameterToBeEmptyOrTrue(EMPTY_QUEUES_PARAM, ctx.request());
         final JsonObject resultObject = new JsonObject();
         final JsonArray queuesArray = new JsonArray();
         eventBus.send(redisquesAddress, buildGetQueuesOperation(), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
@@ -342,7 +345,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     }
 
     private void listOrCountQueues(RoutingContext ctx) {
-        if (ctx.request().params().contains("count")) {
+        if (evaluateUrlParameterToBeEmptyOrTrue(COUNT_PARAM, ctx.request())) {
             getQueuesCount(ctx);
         } else {
             listQueues(ctx);
@@ -354,13 +357,14 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
             if (reply.succeeded() && OK.equals(reply.result().body().getString(STATUS))) {
                 jsonResponse(ctx.response(), reply.result().body().getJsonObject(VALUE));
             } else {
-                respondWith(StatusCode.INTERNAL_SERVER_ERROR, "Error gathering names of active queues", ctx.request());
+                String error = "Unable to list active queues. Cause: " + reply.result().body().getString(MESSAGE);
+                respondWith(StatusCode.INTERNAL_SERVER_ERROR, error, ctx.request());
             }
         });
     }
 
     private void listOrCountQueueItems(RoutingContext ctx) {
-        if (ctx.request().params().contains("count")) {
+        if (evaluateUrlParameterToBeEmptyOrTrue(COUNT_PARAM, ctx.request())) {
             getQueueItemsCount(ctx);
         } else {
             listQueueItems(ctx);
@@ -444,7 +448,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     }
 
     private void deleteAllQueueItems(RoutingContext ctx) {
-        boolean unlock = ctx.request().params().contains("unlock");
+        boolean unlock = evaluateUrlParameterToBeEmptyOrTrue(UNLOCK_PARAM, ctx.request());
         final String queue = lastPart(ctx.request().path());
         eventBus.send(redisquesAddress, buildDeleteAllQueueItemsOperation(queue, unlock), reply -> ctx.response().end());
     }

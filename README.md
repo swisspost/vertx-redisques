@@ -574,7 +574,7 @@ The monitor information contains the active queues and their queue items count. 
 
 Available url parameters are:
 * _limit_: The maximum amount of queues to list
-* _emptyQueues_: Also show empty queues
+* _emptyQueues=true_: Also show empty queues
 
 The result will be a json object with the monitor information like the example below
 
@@ -600,9 +600,9 @@ To enqueue a new queue use
 having the payload in the request body. When the request body is not a valid json object, a statusCode 400 with the error message _'Bad Request'_ will be returned.
 
 Available url parameters are:
-* _locked_: Lock the queue before enqueuing to prevent processing
+* _locked=true_: Lock the queue before enqueuing to prevent processing
 
-When the _locked_ url parameter is set, the configured _httpRequestHandlerUserHeader_ property will be used to define the user which requested the lock. If no header is provided, "Unknown" will be used instead.
+When the _locked=true_ url parameter is set, the configured _httpRequestHandlerUserHeader_ property will be used to define the user which requested the lock. If no header is provided, "Unknown" will be used instead.
 
 ### List or count queues
 To list the active queues use
@@ -622,7 +622,7 @@ The result will be a json object with a list of active queues like the example b
 **Attention:** The result will also contain empty queues when requested before the internal cleanup has passed. Use the monitor endpoint when non-empty queues should be listed only.
 
 To get the count of active queues only, use
-> GET /queuing/queues?count
+> GET /queuing/queues?count=true
 
 The result will be a json object with the count of active queues like the example below
 
@@ -653,7 +653,7 @@ The result will be a json object with a list of queue items like the example bel
 ```
 
 To get the count of queue items only, use
-> GET /queuing/queues/myQueue?count
+> GET /queuing/queues/myQueue?count=true
 
 The result will be a json object with the count of queue items like the example below
 
@@ -668,7 +668,7 @@ To delete all queue items of a single queue use
 > DELETE /queuing/queues/myQueue
 
 Available url parameters are:
-* _unlock_: Unlock the queue after deleting all queue items
+* _unlock=true_: Unlock the queue after deleting all queue items
 
 ### Get single queue item
 To get a single queue item use
