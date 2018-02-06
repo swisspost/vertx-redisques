@@ -26,6 +26,7 @@ public class RedisquesAPI {
     public static final String PAYLOAD = "payload";
     public static final String QUEUENAME = "queuename";
     public static final String FILTER = "filter";
+    public static final String COUNT = "count";
     public static final String UNLOCK = "unlock";
     public static final String OPERATION = "operation";
     public static final String REQUESTED_BY = "requestedBy";
@@ -146,8 +147,24 @@ public class RedisquesAPI {
         return buildOperation(QueueOperation.getQueues);
     }
 
+    public static JsonObject buildGetQueuesOperation(Optional<String> filterPattern){
+        if(filterPattern.isPresent()){
+            return buildOperation(QueueOperation.getQueues, new JsonObject().put(FILTER, filterPattern.get()));
+        } else {
+            return buildOperation(QueueOperation.getQueues);
+        }
+    }
+
     public static JsonObject buildGetQueuesCountOperation(){
         return buildOperation(QueueOperation.getQueuesCount);
+    }
+
+    public static JsonObject buildGetQueuesCountOperation(Optional<String> filterPattern){
+        if(filterPattern.isPresent()){
+            return buildOperation(QueueOperation.getQueuesCount, new JsonObject().put(FILTER, filterPattern.get()));
+        } else {
+            return buildOperation(QueueOperation.getQueuesCount);
+        }
     }
 
     public static JsonObject buildGetQueueItemsCountOperation(String queueName){

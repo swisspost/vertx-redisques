@@ -231,6 +231,60 @@ public class RedisQuesTest extends AbstractTestCase {
     }
 
     @Test
+    public void getQueuesFiltered(TestContext context) {
+        Async asyncEnqueue = context.async(20);
+        flushAll();
+        assertKeyCount(context, getQueuesRedisKeyPrefix(), 0);
+        for (int i = 0; i < 20; i++) {
+            eventBusSend(buildEnqueueOperation("queue" + i, "testItem"), message -> {
+                context.assertEquals(OK, message.result().body().getString(STATUS));
+                asyncEnqueue.countDown();
+            });
+        }
+        asyncEnqueue.awaitSuccess();
+
+        assertKeyCount(context, getQueuesRedisKeyPrefix(), 20);
+        Async async = context.async();
+        eventBusSend(buildGetQueuesOperation(Optional.of("3")), message -> {
+            context.assertEquals(OK, message.result().body().getString(STATUS));
+            JsonArray queuesArray = message.result().body().getJsonObject(VALUE).getJsonArray("queues");
+            context.assertEquals(2, queuesArray.size());
+            context.assertTrue(queuesArray.contains("queue3"), "item queue1 expected to be in result");
+            context.assertTrue(queuesArray.contains("queue13"), "item queue11 expected to be in result");
+
+            eventBusSend(buildGetQueuesOperation(Optional.of("abc")), message2 -> {
+                context.assertEquals(OK, message2.result().body().getString(STATUS));
+                JsonArray queuesArray2 = message2.result().body().getJsonObject(VALUE).getJsonArray("queues");
+                context.assertTrue(queuesArray2.isEmpty());
+                async.complete();
+            });
+        });
+    }
+
+    @Test
+    public void getQueuesFilteredInvalidPattern(TestContext context) {
+        Async asyncEnqueue = context.async(20);
+        flushAll();
+        assertKeyCount(context, getQueuesRedisKeyPrefix(), 0);
+        for (int i = 0; i < 20; i++) {
+            eventBusSend(buildEnqueueOperation("queue" + i, "testItem"), message -> {
+                context.assertEquals(OK, message.result().body().getString(STATUS));
+                asyncEnqueue.countDown();
+            });
+        }
+        asyncEnqueue.awaitSuccess();
+
+        assertKeyCount(context, getQueuesRedisKeyPrefix(), 20);
+        Async async = context.async();
+        eventBusSend(buildGetQueuesOperation(Optional.of("abc(.*")), message -> {
+            context.assertEquals(ERROR, message.result().body().getString(STATUS));
+            context.assertEquals(BAD_INPUT, message.result().body().getString(ERROR_TYPE));
+            context.assertTrue(message.result().body().getString(MESSAGE).contains("Error while compile regex pattern"));
+            async.complete();
+        });
+    }
+
+    @Test
     public void getQueuesCount(TestContext context) {
         Async asyncEnqueue = context.async(100);
         flushAll();
@@ -248,6 +302,55 @@ public class RedisQuesTest extends AbstractTestCase {
         eventBusSend(buildGetQueuesCountOperation(), message -> {
             context.assertEquals(OK, message.result().body().getString(STATUS));
             context.assertEquals(100L, message.result().body().getLong(VALUE));
+            async.complete();
+        });
+    }
+
+    @Test
+    public void getQueuesCountFiltered(TestContext context) {
+        Async asyncEnqueue = context.async(50);
+        flushAll();
+        assertKeyCount(context, getQueuesRedisKeyPrefix(), 0);
+        for (int i = 0; i < 50; i++) {
+            eventBusSend(buildEnqueueOperation("queue" + i, "testItem"), message -> {
+                context.assertEquals(OK, message.result().body().getString(STATUS));
+                asyncEnqueue.countDown();
+            });
+        }
+        asyncEnqueue.awaitSuccess();
+
+        assertKeyCount(context, getQueuesRedisKeyPrefix(), 50);
+        Async async = context.async();
+        eventBusSend(buildGetQueuesCountOperation(Optional.of("8")), message -> {
+            context.assertEquals(OK, message.result().body().getString(STATUS));
+            context.assertEquals(5L, message.result().body().getLong(VALUE));
+            eventBusSend(buildGetQueuesCountOperation(Optional.of("abc")), message2 -> {
+                context.assertEquals(OK, message2.result().body().getString(STATUS));
+                context.assertEquals(0L, message2.result().body().getLong(VALUE));
+                async.complete();
+            });
+        });
+    }
+
+    @Test
+    public void getQueuesCountFilteredInvalidPattern(TestContext context) {
+        Async asyncEnqueue = context.async(50);
+        flushAll();
+        assertKeyCount(context, getQueuesRedisKeyPrefix(), 0);
+        for (int i = 0; i < 50; i++) {
+            eventBusSend(buildEnqueueOperation("queue" + i, "testItem"), message -> {
+                context.assertEquals(OK, message.result().body().getString(STATUS));
+                asyncEnqueue.countDown();
+            });
+        }
+        asyncEnqueue.awaitSuccess();
+
+        assertKeyCount(context, getQueuesRedisKeyPrefix(), 50);
+        Async async = context.async();
+        eventBusSend(buildGetQueuesCountOperation(Optional.of("abc(.*")), message -> {
+            context.assertEquals(ERROR, message.result().body().getString(STATUS));
+            context.assertEquals(BAD_INPUT, message.result().body().getString(ERROR_TYPE));
+            context.assertTrue(message.result().body().getString(MESSAGE).contains("Error while compile regex pattern"));
             async.complete();
         });
     }

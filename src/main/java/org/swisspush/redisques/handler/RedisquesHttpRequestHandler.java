@@ -270,18 +270,6 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         });
     }
 
-    private void getQueuesCount(RoutingContext ctx) {
-        eventBus.send(redisquesAddress, buildGetQueuesCountOperation(), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
-            if (reply.succeeded() && OK.equals(reply.result().body().getString(STATUS))) {
-                JsonObject result = new JsonObject();
-                result.put("count", reply.result().body().getLong(VALUE));
-                jsonResponse(ctx.response(), result);
-            } else {
-                respondWith(StatusCode.INTERNAL_SERVER_ERROR, "Error gathering count of active queues", ctx.request());
-            }
-        });
-    }
-
     private void getQueueItemsCount(RoutingContext ctx) {
         final String queue = lastPart(ctx.request().path());
         eventBus.send(redisquesAddress, buildGetQueueItemsCountOperation(queue), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
@@ -362,13 +350,38 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         }
     }
 
+    private void getQueuesCount(RoutingContext ctx) {
+        String filter = ctx.request().params().get(FILTER);
+        eventBus.send(redisquesAddress, buildGetQueuesCountOperation(Optional.ofNullable(filter)), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
+            if (reply.succeeded() && OK.equals(reply.result().body().getString(STATUS))) {
+                JsonObject result = new JsonObject();
+                result.put("count", reply.result().body().getLong(VALUE));
+                jsonResponse(ctx.response(), result);
+            } else {
+                String error = "Error gathering count of active queues. Cause: " + reply.result().body().getString(MESSAGE);
+                String errorType = reply.result().body().getString(ERROR_TYPE);
+                if(errorType != null && BAD_INPUT.equalsIgnoreCase(errorType)){
+                    respondWith(StatusCode.BAD_REQUEST, error, ctx.request());
+                } else {
+                    respondWith(StatusCode.INTERNAL_SERVER_ERROR, "Error gathering count of active queues", ctx.request());
+                }
+            }
+        });
+    }
+
     private void listQueues(RoutingContext ctx) {
-        eventBus.send(redisquesAddress, buildGetQueuesOperation(), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
+        String filter = ctx.request().params().get(FILTER);
+        eventBus.send(redisquesAddress, buildGetQueuesOperation(Optional.ofNullable(filter)), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
             if (reply.succeeded() && OK.equals(reply.result().body().getString(STATUS))) {
                 jsonResponse(ctx.response(), reply.result().body().getJsonObject(VALUE));
             } else {
                 String error = "Unable to list active queues. Cause: " + reply.result().body().getString(MESSAGE);
-                respondWith(StatusCode.INTERNAL_SERVER_ERROR, error, ctx.request());
+                String errorType = reply.result().body().getString(ERROR_TYPE);
+                if(errorType != null && BAD_INPUT.equalsIgnoreCase(errorType)){
+                    respondWith(StatusCode.BAD_REQUEST, error, ctx.request());
+                } else {
+                    respondWith(StatusCode.INTERNAL_SERVER_ERROR, error, ctx.request());
+                }
             }
         });
     }

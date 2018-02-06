@@ -21,9 +21,8 @@ import static com.jayway.restassured.RestAssured.when;
 import static org.hamcrest.CoreMatchers.*;
 import static org.hamcrest.collection.IsEmptyCollection.empty;
 import static org.hamcrest.number.OrderingComparison.greaterThanOrEqualTo;
-import static org.swisspush.redisques.util.RedisquesAPI.buildEnqueueOperation;
-import static org.swisspush.redisques.util.RedisquesAPI.buildPutLockOperation;
 import static org.hamcrest.collection.IsEmptyCollection.emptyCollectionOf;
+import static org.swisspush.redisques.util.RedisquesAPI.*;
 
 /**
  * Tests for the {@link RedisquesHttpRequestHandler} class
@@ -145,7 +144,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
             try {
                 Thread.sleep(1000);
             } catch (InterruptedException e) {
-               //do nothing
+                //do nothing
             }
             async.complete();
         }));
@@ -280,6 +279,50 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
     }
 
     @Test
+    public void getQueuesCountFiltered(TestContext context) {
+        Async async = context.async();
+        flushAll();
+        eventBusSend(buildEnqueueOperation("aaa", "item1_1"), m1 -> {
+            eventBusSend(buildEnqueueOperation("aab", "item2_1"), m2 -> {
+                eventBusSend(buildEnqueueOperation("abc", "item3_1"), m3 -> {
+
+                    given().param(FILTER, "x").param(COUNT, true).when()
+                            .get("/queuing/queues/")
+                            .then().assertThat()
+                            .statusCode(200)
+                            .body("count", equalTo(0));
+
+                    given().param(FILTER, "a").param(COUNT, true).when()
+                            .get("/queuing/queues/")
+                            .then().assertThat()
+                            .statusCode(200)
+                            .body("count", equalTo(3));
+
+                    given().param(FILTER, "ab").param(COUNT, true).when()
+                            .get("/queuing/queues/")
+                            .then().assertThat()
+                            .statusCode(200)
+                            .body("count", equalTo(2));
+
+                    given().param(FILTER, "c").param(COUNT, true).when()
+                            .get("/queuing/queues/")
+                            .then().assertThat()
+                            .statusCode(200)
+                            .body("count", equalTo(1));
+
+                    given().param(FILTER, "c(.*").param(COUNT, true).when()
+                            .get("/queuing/queues/")
+                            .then().assertThat()
+                            .statusCode(400);
+
+                    async.complete();
+                });
+            });
+        });
+        async.awaitSuccess();
+    }
+
+    @Test
     public void listQueues(TestContext context) {
         Async async = context.async();
         flushAll();
@@ -293,6 +336,49 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
                             .body(
                                     "queues", hasItems("queue_1", "queue_2", "queue_3")
                             );
+                    async.complete();
+                });
+            });
+        });
+        async.awaitSuccess();
+    }
+
+    @Test
+    public void listQueuesFiltered(TestContext context) {
+        Async async = context.async();
+        flushAll();
+        eventBusSend(buildEnqueueOperation("aaa", "item1_1"), m1 -> {
+            eventBusSend(buildEnqueueOperation("aab", "item2_1"), m2 -> {
+                eventBusSend(buildEnqueueOperation("abc", "item3_1"), m3 -> {
+
+                    given().param(FILTER, "x").when()
+                            .get("/queuing/queues/")
+                            .then().assertThat()
+                            .statusCode(200)
+                            .body("queues", is(emptyCollectionOf(String.class)));
+
+                    given().param(FILTER, "ab").when()
+                            .get("/queuing/queues/")
+                            .then().assertThat()
+                            .statusCode(200)
+                            .body(
+                                    "queues", hasItems("aab", "abc"),
+                                    "queues", not(hasItem("aaa"))
+                            );
+
+                    given().param(FILTER, "a").when()
+                            .get("/queuing/queues/")
+                            .then().assertThat()
+                            .statusCode(200)
+                            .body(
+                                    "queues", hasItems("aaa", "aab", "abc")
+                            );
+
+                    given().param(FILTER, "a(.*").when()
+                            .get("/queuing/queues/")
+                            .then().assertThat()
+                            .statusCode(400);
+
                     async.complete();
                 });
             });

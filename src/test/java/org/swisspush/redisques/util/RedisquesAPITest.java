@@ -6,6 +6,9 @@ import io.vertx.ext.unit.junit.VertxUnitRunner;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
+import java.util.Optional;
+
+import static org.swisspush.redisques.util.RedisquesAPI.FILTER;
 import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation;
 
 /**
@@ -178,12 +181,22 @@ public class RedisquesAPITest {
     public void testBuildGetQueuesOperation(TestContext context) throws Exception {
         JsonObject operation = RedisquesAPI.buildGetQueuesOperation();
         context.assertEquals(buildExpectedJsonObject("getQueues"), operation);
+
+        operation = RedisquesAPI.buildGetQueuesOperation(Optional.of("abc"));
+        JsonObject expected = buildExpectedJsonObject("getQueues", new JsonObject()
+                .put(FILTER, "abc"));
+        context.assertEquals(expected, operation);
     }
 
     @Test
     public void testBuildGetQueuesCountOperation(TestContext context) throws Exception {
         JsonObject operation = RedisquesAPI.buildGetQueuesCountOperation();
         context.assertEquals(buildExpectedJsonObject("getQueuesCount"), operation);
+
+        operation = RedisquesAPI.buildGetQueuesCountOperation(Optional.of("abc"));
+        JsonObject expected = buildExpectedJsonObject("getQueuesCount", new JsonObject()
+                .put(FILTER, "abc"));
+        context.assertEquals(expected, operation);
     }
 
     @Test
@@ -229,6 +242,11 @@ public class RedisquesAPITest {
     public void testBuildGetAllLocksOperation(TestContext context) throws Exception {
         JsonObject operation = RedisquesAPI.buildGetAllLocksOperation();
         context.assertEquals(buildExpectedJsonObject("getAllLocks"), operation);
+
+        operation = RedisquesAPI.buildGetAllLocksOperation(Optional.of("abc"));
+        JsonObject expected = buildExpectedJsonObject("getAllLocks", new JsonObject()
+                .put(FILTER, "abc"));
+        context.assertEquals(expected, operation);
     }
 
     @Test

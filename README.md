@@ -222,7 +222,10 @@ Request Data
 
 ```
 {
-    "operation": "getQueuesCount"
+    "operation": "getQueuesCount",
+    "payload": {
+        "filter": <str regex pattern to filter queues to count (optional)>
+    }
 }
 ```
 
@@ -610,6 +613,9 @@ When the _locked=true_ url parameter is set, the configured _httpRequestHandlerU
 ### List or count queues
 To list the active queues use
 > GET /queuing/queues
+
+Available url parameters are:
+* _filter=<regex pattern>_: Filter the queues to list or count
 
 The result will be a json object with a list of active queues like the example below
 
