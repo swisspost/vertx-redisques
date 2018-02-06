@@ -9,7 +9,6 @@ import io.vertx.core.eventbus.Message;
 import io.vertx.core.http.HttpServerOptions;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
-import io.vertx.core.json.DecodeException;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
@@ -17,14 +16,14 @@ import io.vertx.core.logging.LoggerFactory;
 import io.vertx.ext.web.Router;
 import io.vertx.ext.web.RoutingContext;
 import org.swisspush.redisques.util.RedisquesConfiguration;
+import org.swisspush.redisques.util.Result;
 import org.swisspush.redisques.util.StatusCode;
 
-import java.nio.charset.Charset;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import static org.swisspush.redisques.util.HttpServerRequestUtil.*;
 import static org.swisspush.redisques.util.RedisquesAPI.*;
-import static org.swisspush.redisques.util.RequestUtil.evaluateUrlParameterToBeEmptyOrTrue;
 
 /**
  * Handler class for HTTP requests providing access to Redisques over HTTP.
@@ -44,6 +43,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     private static final String LOCKED_PARAM = "locked";
     private static final String UNLOCK_PARAM = "unlock";
     private static final String COUNT_PARAM = "count";
+    private static final String BULK_DELETE_PARAM = "bulkDelete";
     private static final String EMPTY_QUEUES_PARAM = "emptyQueues";
 
     private final String redisquesAddress;
@@ -163,6 +163,11 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         router.delete(prefix + "/locks/").handler(this::deleteAllLocks);
 
         /*
+         * Bulk create / delete locks
+         */
+        router.post(prefix + "/locks/").handler(this::bulkCreateOrDeleteLocks);
+
+        /*
          * Delete single lock
          */
         router.deleteWithRegex(prefix + "/locks/[^/]+").handler(this::deleteSingleLock);
@@ -195,7 +200,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         final String queue = part(ctx.request().path(), 1);
         ctx.request().bodyHandler(buffer -> {
             try {
-                String strBuffer = encode(buffer.toString());
+                String strBuffer = encodePayload(buffer.toString());
                 eventBus.send(redisquesAddress, buildEnqueueOrLockedEnqueueOperation(queue, strBuffer, ctx.request()),
                         (Handler<AsyncResult<Message<JsonObject>>>) reply -> checkReply(reply.result(), ctx.request(), StatusCode.BAD_REQUEST));
             } catch (Exception ex) {
@@ -268,6 +273,42 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
                 respondWith(StatusCode.INTERNAL_SERVER_ERROR, "Error deleting all locks", ctx.request());
             }
         });
+    }
+
+    private void bulkCreateOrDeleteLocks(RoutingContext ctx){
+        ctx.request().bodyHandler(buffer -> {
+            try {
+                Result<JsonArray, String> result = extractJsonArrayFromBody(LOCKS, buffer.toString());
+                if(result.isErr()){
+                    respondWith(StatusCode.BAD_REQUEST, result.getErr(), ctx.request());
+                    return;
+                }
+
+                if (evaluateUrlParameterToBeEmptyOrTrue(BULK_DELETE_PARAM, ctx.request())) {
+                    bulkDeleteLocks(ctx, result.getOk());
+                } else {
+                    bulkCreateLocks(ctx, result.getOk());
+                }
+            } catch (Exception ex) {
+                respondWith(StatusCode.BAD_REQUEST, ex.getMessage(), ctx.request());
+            }
+        });
+    }
+
+    private void bulkDeleteLocks(RoutingContext ctx, JsonArray locks){
+        eventBus.send(redisquesAddress, buildBulkDeleteLocksOperation(locks), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
+            if (reply.succeeded() && OK.equals(reply.result().body().getString(STATUS))) {
+                JsonObject result = new JsonObject();
+                result.put("deleted", reply.result().body().getLong(VALUE));
+                jsonResponse(ctx.response(), result);
+            } else {
+                respondWith(StatusCode.INTERNAL_SERVER_ERROR, "Error bulk deleting locks", ctx.request());
+            }
+        });
+    }
+
+    private void bulkCreateLocks(RoutingContext ctx, JsonArray locks){
+        respondWith(StatusCode.INSUFFICIENT_STORAGE, ctx.request());
     }
 
     private void getQueueItemsCount(RoutingContext ctx) {
@@ -422,7 +463,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         final String queue = part(ctx.request().path(), 1);
         ctx.request().bodyHandler(buffer -> {
             try {
-                String strBuffer = encode(buffer.toString());
+                String strBuffer = encodePayload(buffer.toString());
                 eventBus.send(redisquesAddress, buildAddQueueItemOperation(queue, strBuffer),
                         (Handler<AsyncResult<Message<JsonObject>>>) reply -> checkReply(reply.result(), ctx.request(), StatusCode.BAD_REQUEST));
             } catch (Exception ex) {
@@ -453,7 +494,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
             final int index = Integer.parseInt(lastPart(ctx.request().path()));
             ctx.request().bodyHandler(buffer -> {
                 try {
-                    String strBuffer = encode(buffer.toString());
+                    String strBuffer = encodePayload(buffer.toString());
                     eventBus.send(redisquesAddress, buildReplaceQueueItemOperation(queue, index, strBuffer),
                             (Handler<AsyncResult<Message<JsonObject>>>) reply -> checkReply(reply.result(), ctx.request(), StatusCode.NOT_FOUND));
                 } catch (Exception ex) {
@@ -533,78 +574,6 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
             request.response().setStatusMessage(statusCode.getStatusMessage());
             request.response().end(statusCode.getStatusMessage());
         }
-    }
-
-    /**
-     * Encode the payload from a payloadString or payloadObject.
-     *
-     * @param decoded decoded
-     * @return String
-     */
-    private String encode(String decoded) throws Exception {
-        JsonObject object = new JsonObject(decoded);
-
-        String payloadString;
-        JsonObject payloadObject = object.getJsonObject("payloadObject");
-        if (payloadObject != null) {
-            payloadString = payloadObject.encode();
-        } else {
-            payloadString = object.getString("payloadString");
-        }
-
-        if (payloadString != null) {
-            object.put(PAYLOAD, payloadString.getBytes(Charset.forName(UTF_8)));
-            object.remove("payloadString");
-            object.remove("payloadObject");
-        }
-
-        // update the content-length
-        int length = 0;
-        if (object.containsKey(PAYLOAD)) {
-            length = object.getBinary(PAYLOAD).length;
-        }
-        JsonArray newHeaders = new JsonArray();
-        for (Object headerObj : object.getJsonArray("headers")) {
-            JsonArray header = (JsonArray) headerObj;
-            String key = header.getString(0);
-            if (key.equalsIgnoreCase("content-length")) {
-                JsonArray contentLengthHeader = new JsonArray();
-                contentLengthHeader.add("Content-Length");
-                contentLengthHeader.add(Integer.toString(length));
-                newHeaders.add(contentLengthHeader);
-            } else {
-                newHeaders.add(header);
-            }
-        }
-        object.put("headers", newHeaders);
-
-        return object.toString();
-    }
-
-    /**
-     * Decode the payload if the content-type is text or json.
-     *
-     * @param encoded encoded
-     * @return String
-     */
-    private String decode(String encoded) {
-        JsonObject object = new JsonObject(encoded);
-        JsonArray headers = object.getJsonArray("headers");
-        for (Object headerObj : headers) {
-            JsonArray header = (JsonArray) headerObj;
-            String key = header.getString(0);
-            String value = header.getString(1);
-            if (key.equalsIgnoreCase(CONTENT_TYPE) && (value.contains("text/") || value.contains(APPLICATION_JSON))) {
-                try {
-                    object.put("payloadObject", new JsonObject(new String(object.getBinary(PAYLOAD), Charset.forName(UTF_8))));
-                } catch (DecodeException e) {
-                    object.put("payloadString", new String(object.getBinary(PAYLOAD), Charset.forName(UTF_8)));
-                }
-                object.remove(PAYLOAD);
-                break;
-            }
-        }
-        return object.toString();
     }
 
     private int extractLimit(RoutingContext ctx) {

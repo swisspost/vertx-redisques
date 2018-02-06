@@ -1,5 +1,6 @@
 package org.swisspush.redisques.util;
 
+import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
@@ -27,9 +28,11 @@ public class RedisquesAPI {
     public static final String QUEUENAME = "queuename";
     public static final String FILTER = "filter";
     public static final String COUNT = "count";
+    public static final String LOCKS = "locks";
     public static final String UNLOCK = "unlock";
     public static final String OPERATION = "operation";
     public static final String REQUESTED_BY = "requestedBy";
+    public static final String BULK_DELETE = "bulkDelete";
     public static final String NO_SUCH_LOCK = "No such lock";
     public static final String PROCESSOR_DELAY_MAX = "processorDelayMax";
 
@@ -54,6 +57,7 @@ public class RedisquesAPI {
         getLock(null),
         deleteLock(null),
         deleteAllLocks(null),
+        bulkDeleteLocks(null),
         getQueues(null),
         getQueuesCount(null),
         getQueueItemsCount(null);
@@ -181,6 +185,10 @@ public class RedisquesAPI {
 
     public static JsonObject buildDeleteAllLocksOperation(){
         return buildOperation(QueueOperation.deleteAllLocks);
+    }
+
+    public static JsonObject buildBulkDeleteLocksOperation(JsonArray locksToDelete){
+        return buildOperation(QueueOperation.bulkDeleteLocks, new JsonObject().put(LOCKS, locksToDelete));
     }
 
     public static JsonObject buildPutLockOperation(String queueName, String user){

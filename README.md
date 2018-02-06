@@ -505,6 +505,43 @@ Response Data
 }
 ```
 
+#### bulkDeleteLocks
+
+Request Data
+```
+{
+    "operation": "bulkDeleteLocks",
+    "payload": {
+        "locks": <JsonArray locks to delete>
+    }
+}
+```
+
+Response Data
+```
+{
+    "status": "ok" / "error",
+    "value": <Long Amount of deleted locks>
+}
+```
+
+#### deleteAllLocks
+
+Request Data
+```
+{
+    "operation": "deleteAllLocks"
+}
+```
+
+Response Data
+```
+{
+    "status": "ok" / "error",
+    "value": <Long Amount of deleted locks>
+}
+```
+
 ## RedisQues HTTP API
 RedisQues provides a HTTP API to modify queues, queue items and get information about queue counts and queue item counts.
 
@@ -743,6 +780,30 @@ The result will be a json object with the lock information like the example belo
 ### Delete single lock
 To delete a single lock use
 > DELETE /queuing/locks/queue1
+
+### Bulk delete locks
+To delete a custom subset of existing locks use
+> POST /queuing/locks?bulkDelete=true
+
+The payload must contain an array with the locks to delete.
+
+Example:
+```json
+{
+  "locks": [
+    "queue1",
+    "queue2"
+  ]
+}
+```
+
+The result will be a json object containing the number of deleted locks like the example below
+
+```json
+{
+  "deleted": 2
+}
+```
 
 ### Delete all locks
 To delete all existing locks use

@@ -163,6 +163,14 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         testVertx.eventBus().send(getRedisquesAddress(), operation, handler);
     }
 
+    private void assertLockExists(TestContext context, String lock){
+        context.assertTrue(jedis.hexists(getLocksRedisKey(), lock), "expected lock '"+lock+"' to exist");
+    }
+
+    private void assertLockDoesNotExist(TestContext context, String lock){
+        context.assertFalse(jedis.hexists(getLocksRedisKey(), lock), "expected lock '"+lock+"' to not exist");
+    }
+
     @Test
     public void testUnknownRequestUrl(TestContext context) {
         Async async = context.async();
@@ -987,7 +995,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         when().get("/queuing/locks/")
                 .then().assertThat()
                 .statusCode(200)
-                .body("locks", empty());
+                .body(LOCKS, empty());
         async.complete();
     }
 
@@ -1000,7 +1008,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
                 when().get("/queuing/locks/")
                         .then().assertThat()
                         .statusCode(200)
-                        .body("locks", hasItems("queue1", "queue2"));
+                        .body(LOCKS, hasItems("queue1", "queue2"));
                 async.complete();
             });
         });
@@ -1019,25 +1027,25 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
                             .when().get("/queuing/locks/")
                             .then().assertThat()
                             .statusCode(200)
-                            .body("locks", is(emptyCollectionOf(String.class)));
+                            .body(LOCKS, is(emptyCollectionOf(String.class)));
 
                     given().param("filter", "a")
                             .when().get("/queuing/locks/")
                             .then().assertThat()
                             .statusCode(200)
-                            .body("locks", hasItems("aaa", "aab", "abc"));
+                            .body(LOCKS, hasItems("aaa", "aab", "abc"));
 
                     given().param("filter", "ab")
                             .when().get("/queuing/locks/")
                             .then().assertThat()
                             .statusCode(200)
-                            .body("locks", hasItems("aab", "abc"));
+                            .body(LOCKS, hasItems("aab", "abc"));
 
                     given().param("filter", "c")
                             .when().get("/queuing/locks/")
                             .then().assertThat()
                             .statusCode(200)
-                            .body("locks", hasItems("abc"));
+                            .body(LOCKS, hasItems("abc"));
 
                     async.complete();
 
@@ -1054,6 +1062,92 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
                 .when().get("/queuing/locks/")
                 .then().assertThat()
                 .statusCode(400);
+    }
+
+    @Test
+    public void bulkDeleteLocks(TestContext context) {
+        Async async = context.async();
+        flushAll();
+        eventBusSend(buildPutLockOperation("queue1", "someuser"), m1 -> {
+            eventBusSend(buildPutLockOperation("queue2", "someuser"), m2-> {
+                eventBusSend(buildPutLockOperation("queue3", "someuser"), m3-> {
+                    given()
+                            .queryParam(BULK_DELETE)
+                            .body("{\"zzz\": [\"a\",\"b\",\"c\"]}")
+                            .when().post("/queuing/locks/")
+                            .then().assertThat()
+                            .statusCode(400)
+                            .body(containsString("no array called 'locks' found"));
+
+                    assertLockExists(context, "queue1");
+                    assertLockExists(context, "queue2");
+                    assertLockExists(context, "queue3");
+
+                    given()
+                            .queryParam(BULK_DELETE)
+                            .body("{\"zzz\": [\"a\",\"b\",\"c\"]")
+                            .when().post("/queuing/locks/")
+                            .then().assertThat()
+                            .statusCode(400)
+                            .body(containsString("failed to parse request payload"));
+
+                    assertLockExists(context, "queue1");
+                    assertLockExists(context, "queue2");
+                    assertLockExists(context, "queue3");
+
+                    given()
+                            .queryParam(BULK_DELETE)
+                            .body("{\"locks\": []}")
+                            .when().post("/queuing/locks/")
+                            .then().assertThat()
+                            .statusCode(200)
+                            .body("deleted", equalTo(0));
+
+                    assertLockExists(context, "queue1");
+                    assertLockExists(context, "queue2");
+                    assertLockExists(context, "queue3");
+
+                    given()
+                            .queryParam(BULK_DELETE)
+                            .body("{\"locks\": [\"queue1\",\"queue3\"]}")
+                            .when().post("/queuing/locks/")
+                            .then().assertThat()
+                            .statusCode(200)
+                            .body("deleted", equalTo(2));
+
+                    assertLockDoesNotExist(context, "queue1");
+                    assertLockExists(context, "queue2");
+                    assertLockDoesNotExist(context, "queue3");
+
+                    given()
+                            .queryParam(BULK_DELETE)
+                            .body("{\"locks\": [\"queue1\",\"queue3\"]}")
+                            .when().post("/queuing/locks/")
+                            .then().assertThat()
+                            .statusCode(200)
+                            .body("deleted", equalTo(0));
+
+                    assertLockDoesNotExist(context, "queue1");
+                    assertLockExists(context, "queue2");
+                    assertLockDoesNotExist(context, "queue3");
+
+                    given()
+                            .queryParam(BULK_DELETE)
+                            .body("{\"locks\": [\"queue2\"]}")
+                            .when().post("/queuing/locks/")
+                            .then().assertThat()
+                            .statusCode(200)
+                            .body("deleted", equalTo(1));
+
+                    assertLockDoesNotExist(context, "queue1");
+                    assertLockDoesNotExist(context, "queue2");
+                    assertLockDoesNotExist(context, "queue3");
+
+                    async.complete();
+                });
+            });
+        });
+        async.awaitSuccess();
     }
 
     @Test

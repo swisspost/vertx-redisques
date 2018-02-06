@@ -1,5 +1,6 @@
 package org.swisspush.redisques.util;
 
+import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.ext.unit.TestContext;
 import io.vertx.ext.unit.junit.VertxUnitRunner;
@@ -9,6 +10,7 @@ import org.junit.runner.RunWith;
 import java.util.Optional;
 
 import static org.swisspush.redisques.util.RedisquesAPI.FILTER;
+import static org.swisspush.redisques.util.RedisquesAPI.LOCKS;
 import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation;
 
 /**
@@ -228,6 +230,16 @@ public class RedisquesAPITest {
         JsonObject operation = RedisquesAPI.buildDeleteAllLocksOperation();
         context.assertEquals(buildExpectedJsonObject("deleteAllLocks"), operation);
     }
+
+    @Test
+    public void testBuildBulkDeleteLocksOperation(TestContext context) throws Exception {
+        JsonObject operation = RedisquesAPI.buildBulkDeleteLocksOperation(new JsonArray().add("lock_1").add("lock_2").add("lock_3"));
+
+        JsonObject expected = buildExpectedJsonObject("bulkDeleteLocks", new JsonObject()
+                .put(LOCKS, new JsonArray().add("lock_1").add("lock_2").add("lock_3")));
+        context.assertEquals(expected, operation);
+    }
+
 
     @Test
     public void testBuildPutLockOperation(TestContext context) throws Exception {

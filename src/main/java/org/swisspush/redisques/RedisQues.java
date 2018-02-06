@@ -239,6 +239,9 @@ public class RedisQues extends AbstractVerticle {
                 case deleteLock:
                     deleteLock(event);
                     break;
+                case bulkDeleteLocks:
+                    bulkDeleteLocks(event);
+                    break;
                 case deleteAllLocks:
                     deleteAllLocks(event);
                     break;
@@ -482,26 +485,39 @@ public class RedisQues extends AbstractVerticle {
         });
     }
 
+    private void bulkDeleteLocks(Message<JsonObject> event){
+        JsonArray locks = event.body().getJsonObject(PAYLOAD).getJsonArray(LOCKS);
+        if(locks != null) {
+            deleteLocks(event, locks);
+        } else {
+            event.reply(new JsonObject().put(STATUS, ERROR).put(MESSAGE, "No locks to delete provided"));
+        }
+    }
+
     private void deleteAllLocks(Message<JsonObject> event) {
         redisClient.hkeys(getLocksKey(), locksResult -> {
             if (locksResult.succeeded()) {
                 JsonArray locks = locksResult.result();
-                if (locks == null || locks.isEmpty()) {
-                    event.reply(new JsonObject().put(STATUS, OK).put(VALUE, 0));
-                    return;
-                }
-                redisClient.hdelMany(getLocksKey(), locks.getList(), delManyResult -> {
-                    if (delManyResult.succeeded()) {
-                        log.info("Successfully deleted " + delManyResult.result() + " locks");
-                        event.reply(new JsonObject().put(STATUS, OK).put(VALUE, delManyResult.result()));
-                    } else {
-                        log.warn("failed to delete all locks. Message: " + delManyResult.cause().getMessage());
-                        event.reply(new JsonObject().put(STATUS, ERROR).put(MESSAGE, delManyResult.cause().getMessage()));
-                    }
-                });
+                deleteLocks(event, locks);
             } else {
                 log.warn("failed to delete all locks. Message: " + locksResult.cause().getMessage());
                 event.reply(new JsonObject().put(STATUS, ERROR).put(MESSAGE, locksResult.cause().getMessage()));
+            }
+        });
+    }
+
+    private void deleteLocks(Message<JsonObject> event, JsonArray locks) {
+        if (locks == null || locks.isEmpty()) {
+            event.reply(new JsonObject().put(STATUS, OK).put(VALUE, 0));
+            return;
+        }
+        redisClient.hdelMany(getLocksKey(), locks.getList(), delManyResult -> {
+            if (delManyResult.succeeded()) {
+                log.info("Successfully deleted " + delManyResult.result() + " locks");
+                event.reply(new JsonObject().put(STATUS, OK).put(VALUE, delManyResult.result()));
+            } else {
+                log.warn("failed to delete locks. Message: " + delManyResult.cause().getMessage());
+                event.reply(new JsonObject().put(STATUS, ERROR).put(MESSAGE, delManyResult.cause().getMessage()));
             }
         });
     }

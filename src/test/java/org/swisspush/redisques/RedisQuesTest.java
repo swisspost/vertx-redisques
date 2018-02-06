@@ -813,6 +813,75 @@ public class RedisQuesTest extends AbstractTestCase {
     }
 
     @Test
+    public void bulkDeleteLocks(TestContext context) {
+        Async async = context.async();
+        String user = "geronimo";
+        flushAll();
+        eventBusSend(buildPutLockOperation("q1", user), p1 -> {
+            eventBusSend(buildPutLockOperation("q2", user), p2 -> {
+                eventBusSend(buildPutLockOperation("q3", user), p3 -> {
+                    context.assertTrue(jedis.hexists(getLocksRedisKey(), "q1"));
+                    context.assertTrue(jedis.hexists(getLocksRedisKey(), "q2"));
+                    context.assertTrue(jedis.hexists(getLocksRedisKey(), "q3"));
+
+                    eventBusSend(buildBulkDeleteLocksOperation(new JsonArray()), m1 -> {
+                        context.assertEquals(OK, m1.result().body().getString(STATUS));
+                        context.assertEquals(0L, m1.result().body().getLong(VALUE));
+                        context.assertTrue(jedis.hexists(getLocksRedisKey(), "q1"));
+                        context.assertTrue(jedis.hexists(getLocksRedisKey(), "q2"));
+                        context.assertTrue(jedis.hexists(getLocksRedisKey(), "q3"));
+
+                        eventBusSend(buildBulkDeleteLocksOperation(new JsonArray().add("q1").add("q3")), m2 -> {
+                            context.assertEquals(OK, m2.result().body().getString(STATUS));
+                            context.assertEquals(2L, m2.result().body().getLong(VALUE));
+                            context.assertFalse(jedis.hexists(getLocksRedisKey(), "q1"));
+                            context.assertFalse(jedis.hexists(getLocksRedisKey(), "q3"));
+                            context.assertTrue(jedis.hexists(getLocksRedisKey(), "q2"));
+
+                            //delete the same locks again
+                            eventBusSend(buildBulkDeleteLocksOperation(new JsonArray().add("q1").add("q3")), m3 -> {
+                                context.assertEquals(OK, m3.result().body().getString(STATUS));
+                                context.assertEquals(0L, m3.result().body().getLong(VALUE));
+                                context.assertFalse(jedis.hexists(getLocksRedisKey(), "q1"));
+                                context.assertFalse(jedis.hexists(getLocksRedisKey(), "q3"));
+                                context.assertTrue(jedis.hexists(getLocksRedisKey(), "q2"));
+
+                                async.complete();
+                            });
+                        });
+                    });
+                });
+            });
+        });
+    }
+
+    @Test
+    public void bulkDeleteLocksInvalidOperationSetup(TestContext context) {
+        Async async = context.async();
+        String user = "geronimo";
+        flushAll();
+        eventBusSend(buildPutLockOperation("q1", user), p1 -> {
+            eventBusSend(buildPutLockOperation("q2", user), p2 -> {
+                eventBusSend(buildPutLockOperation("q3", user), p3 -> {
+                    context.assertTrue(jedis.hexists(getLocksRedisKey(), "q1"));
+                    context.assertTrue(jedis.hexists(getLocksRedisKey(), "q2"));
+                    context.assertTrue(jedis.hexists(getLocksRedisKey(), "q3"));
+
+                    JsonObject op = buildOperation(QueueOperation.bulkDeleteLocks);
+                    op.put(PAYLOAD, new JsonObject());
+
+                    eventBusSend(op, message -> {
+                        context.assertEquals(ERROR, message.result().body().getString(STATUS));
+                        context.assertEquals("No locks to delete provided", message.result().body().getString(MESSAGE));
+                        async.complete();
+                    });
+                });
+            });
+        });
+    }
+
+
+    @Test
     public void checkLimit(TestContext context) {
         Async async = context.async();
         flushAll();
