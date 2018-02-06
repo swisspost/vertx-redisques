@@ -746,7 +746,7 @@ To delete a single lock use
 
 ### Delete all locks
 To delete all existing locks use
-> DELETE /queuing/locks/
+> DELETE /queuing/locks
 
 The result will be a json object containing the number of deleted locks like the example below
 

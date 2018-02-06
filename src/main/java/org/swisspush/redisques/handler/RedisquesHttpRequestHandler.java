@@ -145,7 +145,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         /*
          * Get all locks
          */
-        router.getWithRegex(prefix + "/locks/").handler(this::getAllLocks);
+        router.get(prefix + "/locks/").handler(this::getAllLocks);
 
         /*
          * Add lock
