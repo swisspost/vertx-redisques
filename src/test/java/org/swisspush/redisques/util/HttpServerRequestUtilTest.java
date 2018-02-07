@@ -12,7 +12,7 @@ import org.mockito.Mockito;
 
 import static org.mockito.Mockito.when;
 import static org.swisspush.redisques.util.HttpServerRequestUtil.evaluateUrlParameterToBeEmptyOrTrue;
-import static org.swisspush.redisques.util.HttpServerRequestUtil.extractJsonArrayFromBody;
+import static org.swisspush.redisques.util.HttpServerRequestUtil.extractNonEmptyJsonArrayFromBody;
 import static org.swisspush.redisques.util.RedisquesAPI.LOCKS;
 
 /**
@@ -58,26 +58,26 @@ public class HttpServerRequestUtilTest {
 
     @Test
     public void testExtractJsonArrayFromBody(TestContext context){
-        Result<JsonArray, String> result = extractJsonArrayFromBody(LOCKS, "{\"locks\": [\"lock_1\", \"lock_2\", \"lock_3\"]}");
+        Result<JsonArray, String> result = extractNonEmptyJsonArrayFromBody(LOCKS, "{\"locks\": [\"lock_1\", \"lock_2\", \"lock_3\"]}");
         context.assertTrue(result.isOk());
         context.assertEquals(new JsonArray().add("lock_1").add("lock_2").add("lock_3"), result.getOk());
 
-        result = extractJsonArrayFromBody(LOCKS, "{\"locks\": []}");
-        context.assertTrue(result.isOk());
-        context.assertTrue(result.getOk().isEmpty());
+        result = extractNonEmptyJsonArrayFromBody(LOCKS, "{\"locks\": []}");
+        context.assertTrue(result.isErr());
+        context.assertEquals("array 'locks' is not allowed to be empty", result.getErr());
 
         //invalid json
-        result = extractJsonArrayFromBody(LOCKS, "{\"locks\": []");
+        result = extractNonEmptyJsonArrayFromBody(LOCKS, "{\"locks\": []");
         context.assertTrue(result.isErr());
         context.assertEquals("failed to parse request payload", result.getErr());
 
         //not an array
-        result = extractJsonArrayFromBody(LOCKS, "{\"locks\": {}");
+        result = extractNonEmptyJsonArrayFromBody(LOCKS, "{\"locks\": {}");
         context.assertTrue(result.isErr());
         context.assertEquals("failed to parse request payload", result.getErr());
 
         //no array called locks
-        result = extractJsonArrayFromBody(LOCKS, "{\"abc\": []}");
+        result = extractNonEmptyJsonArrayFromBody(LOCKS, "{\"abc\": []}");
         context.assertTrue(result.isErr());
         context.assertEquals("no array called 'locks' found", result.getErr());
     }

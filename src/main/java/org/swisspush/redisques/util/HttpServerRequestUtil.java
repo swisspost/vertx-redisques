@@ -43,20 +43,24 @@ public class HttpServerRequestUtil {
     }
 
     /**
-     * Extracts a {@link JsonArray} from the provided request body.
+     * Extracts a {@link JsonArray} from the provided request body. The {@link JsonArray} is not allowed to
+     * be empty.
      *
      * @param property the array property to extract
      * @param requestBody the request body to extract the array from
-     * @return returns a {@link Result} having the {@link JsonArray} or an error message
+     * @return returns a {@link Result} having the non-empty {@link JsonArray} or an error message
      */
-    public static Result<JsonArray, String> extractJsonArrayFromBody(String property, String requestBody){
+    public static Result<JsonArray, String> extractNonEmptyJsonArrayFromBody(String property, String requestBody){
         try{
             JsonObject jsonObject = new JsonObject(requestBody);
             JsonArray jsonArray = jsonObject.getJsonArray(property);
-            if(jsonArray != null) {
-                return Result.ok(jsonArray);
+            if(jsonArray == null) {
+                return Result.err("no array called '"+property+"' found");
             }
-            return Result.err("no array called '"+property+"' found");
+            if(jsonArray.isEmpty()) {
+                return Result.err("array '"+property+"' is not allowed to be empty");
+            }
+            return Result.ok(jsonArray);
         } catch (Exception ex){
             return Result.err("failed to parse request payload");
         }

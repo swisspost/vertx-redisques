@@ -466,6 +466,26 @@ Response Data
 }
 ```
 
+#### bulkPutLocks
+
+Request Data
+```
+{
+    "operation": "bulkPutLocks",
+    "payload": {
+        "locks": <JsonArray locks to add>,
+        "requestedBy": <str user who created the locks>
+    }
+}
+```
+
+Response Data
+```
+{
+    "status": "ok" / "error"
+}
+```
+
 #### getLock
 
 Request Data
@@ -763,6 +783,22 @@ To add a lock use
 > PUT /queuing/locks/myQueue
 
 having an empty json object {} in the body. The configured _httpRequestHandlerUserHeader_ property will be used to define the user which requested the lock. If no header is provided, "Unknown" will be used instead.
+
+### Bulk add locks
+To add multiple locks use
+> POST /queuing/locks
+
+The payload must contain an array with the locks to add.
+
+Example:
+```json
+{
+  "locks": [
+    "queue1",
+    "queue2"
+  ]
+}
+```
 
 ### Get single lock
 To get a single lock use

@@ -165,7 +165,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         /*
          * Bulk create / delete locks
          */
-        router.post(prefix + "/locks/").handler(this::bulkCreateOrDeleteLocks);
+        router.post(prefix + "/locks/").handler(this::bulkPutOrDeleteLocks);
 
         /*
          * Delete single lock
@@ -275,10 +275,10 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         });
     }
 
-    private void bulkCreateOrDeleteLocks(RoutingContext ctx){
+    private void bulkPutOrDeleteLocks(RoutingContext ctx){
         ctx.request().bodyHandler(buffer -> {
             try {
-                Result<JsonArray, String> result = extractJsonArrayFromBody(LOCKS, buffer.toString());
+                Result<JsonArray, String> result = extractNonEmptyJsonArrayFromBody(LOCKS, buffer.toString());
                 if(result.isErr()){
                     respondWith(StatusCode.BAD_REQUEST, result.getErr(), ctx.request());
                     return;
@@ -287,7 +287,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
                 if (evaluateUrlParameterToBeEmptyOrTrue(BULK_DELETE_PARAM, ctx.request())) {
                     bulkDeleteLocks(ctx, result.getOk());
                 } else {
-                    bulkCreateLocks(ctx, result.getOk());
+                    bulkPutLocks(ctx, result.getOk());
                 }
             } catch (Exception ex) {
                 respondWith(StatusCode.BAD_REQUEST, ex.getMessage(), ctx.request());
@@ -307,8 +307,9 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         });
     }
 
-    private void bulkCreateLocks(RoutingContext ctx, JsonArray locks){
-        respondWith(StatusCode.INSUFFICIENT_STORAGE, ctx.request());
+    private void bulkPutLocks(RoutingContext ctx, JsonArray locks){
+        eventBus.send(redisquesAddress, buildBulkPutLocksOperation(locks, extractUser(ctx.request())),
+                (Handler<AsyncResult<Message<JsonObject>>>) reply -> checkReply(reply.result(), ctx.request(), StatusCode.INTERNAL_SERVER_ERROR));
     }
 
     private void getQueueItemsCount(RoutingContext ctx) {

@@ -1196,8 +1196,8 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
                     .then().assertThat()
                     .statusCode(200)
                     .body(
-                            "requestedBy", equalTo(requestedBy),
-                            "timestamp", greaterThanOrEqualTo(ts)
+                            REQUESTED_BY, equalTo(requestedBy),
+                            TIMESTAMP, greaterThanOrEqualTo(ts)
                     );
             async.complete();
         });
@@ -1266,6 +1266,122 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
 
         async.complete();
     }
+
+    @Test
+    public void bulkPutLocks(TestContext context) {
+        Async async = context.async();
+        flushAll();
+
+        // check no locks exist yet
+        when().get("/queuing/locks/")
+                .then().assertThat()
+                .statusCode(200)
+                .body(LOCKS, empty());
+
+        given()
+                .body("{\"zzz\": [\"queue1\",\"queue2\",\"queue3\"]}")
+                .when().post("/queuing/locks/")
+                .then().assertThat()
+                .statusCode(400)
+                .body(containsString("no array called 'locks' found"));
+
+        assertLockDoesNotExist(context, "queue1");
+        assertLockDoesNotExist(context, "queue2");
+        assertLockDoesNotExist(context, "queue3");
+
+        given()
+                .body("{\"zzz\": [\"queue1\",\"queue2\",\"queue3\"]")
+                .when().post("/queuing/locks/")
+                .then().assertThat()
+                .statusCode(400)
+                .body(containsString("failed to parse request payload"));
+
+        assertLockDoesNotExist(context, "queue1");
+        assertLockDoesNotExist(context, "queue2");
+        assertLockDoesNotExist(context, "queue3");
+
+        given()
+                .body("{\"locks\": []}")
+                .when().post("/queuing/locks/")
+                .then().assertThat()
+                .statusCode(400)
+                .body(containsString("array 'locks' is not allowed to be empty"));
+
+        Long ts = System.currentTimeMillis();
+
+        given()
+                .body("{\"locks\": [\"queue1\",\"queue2\",\"queue3\"]}")
+                .when().post("/queuing/locks/")
+                .then().assertThat()
+                .statusCode(200);
+
+        assertLockExists(context, "queue1");
+        assertLockExists(context, "queue2");
+        assertLockExists(context, "queue3");
+
+        when().get("/queuing/locks/")
+                .then().assertThat()
+                .statusCode(200)
+                .body(LOCKS, hasItems("queue1", "queue2", "queue3"));
+
+        when().get("/queuing/locks/queue1")
+                .then().assertThat()
+                .statusCode(200)
+                .body(
+                        REQUESTED_BY, equalTo("Unknown"),
+                        TIMESTAMP, greaterThanOrEqualTo(ts)
+                );
+
+        Long ts2 = System.currentTimeMillis();
+
+        given().header("x-rp-usr", "geronimo")
+                .body("{\"locks\": [\"queue4\",\"queue5\",\"queue6\"]}")
+                .when().post("/queuing/locks/")
+                .then().assertThat()
+                .statusCode(200);
+
+        assertLockExists(context, "queue1");
+        assertLockExists(context, "queue2");
+        assertLockExists(context, "queue3");
+        assertLockExists(context, "queue4");
+        assertLockExists(context, "queue5");
+        assertLockExists(context, "queue6");
+
+        when().get("/queuing/locks/")
+                .then().assertThat()
+                .statusCode(200)
+                .body(LOCKS, hasItems("queue1", "queue2", "queue3", "queue4", "queue5", "queue6"));
+
+        when().get("/queuing/locks/queue5")
+                .then().assertThat()
+                .statusCode(200)
+                .body(
+                        REQUESTED_BY, equalTo("geronimo"),
+                        TIMESTAMP, greaterThanOrEqualTo(ts2)
+                );
+
+        Long ts3 = System.currentTimeMillis();
+
+        // overwrite existing lock
+        given().header("x-rp-usr", "winnetou")
+                .body("{\"locks\": [\"queue5\"]}")
+                .when().post("/queuing/locks/")
+                .then().assertThat()
+                .statusCode(200);
+
+        when().get("/queuing/locks/queue5")
+                .then().assertThat()
+                .statusCode(200)
+                .body(
+                        REQUESTED_BY, equalTo("winnetou"),
+                        TIMESTAMP, greaterThanOrEqualTo(ts3)
+                );
+
+        async.complete();
+
+        async.awaitSuccess();
+    }
+
 
     @Test
     public void deleteSingleLockNotExisting(TestContext context) {

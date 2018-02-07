@@ -233,6 +233,9 @@ public class RedisQues extends AbstractVerticle {
                 case putLock:
                     putLock(event);
                     break;
+                case bulkPutLocks:
+                    bulkPutLocks(event);
+                    break;
                 case getLock:
                     redisClient.hget(getLocksKey(), event.body().getJsonObject(PAYLOAD).getString(QUEUENAME), new GetLockHandler(event));
                     break;
@@ -468,11 +471,37 @@ public class RedisQues extends AbstractVerticle {
     private void putLock(Message<JsonObject> event) {
         JsonObject lockInfo = extractLockInfo(event.body().getJsonObject(PAYLOAD).getString(REQUESTED_BY));
         if (lockInfo != null) {
-            redisClient.hmset(getLocksKey(), new JsonObject().put(event.body().getJsonObject(PAYLOAD).getString(QUEUENAME), lockInfo.encode()),
-                    new PutLockHandler(event));
+            JsonArray lockNames = new JsonArray().add(event.body().getJsonObject(PAYLOAD).getString(QUEUENAME));
+            redisClient.hmset(getLocksKey(), buildLocksItems(lockNames, lockInfo), new PutLockHandler(event));
         } else {
             event.reply(new JsonObject().put(STATUS, ERROR).put(MESSAGE, "Property '" + REQUESTED_BY + "' missing"));
         }
+    }
+
+    private void bulkPutLocks(Message<JsonObject> event) {
+        JsonArray locks = event.body().getJsonObject(PAYLOAD).getJsonArray(LOCKS);
+        if (locks == null || locks.isEmpty()) {
+            event.reply(new JsonObject().put(STATUS, ERROR).put(MESSAGE, "No locks to put provided"));
+            return;
+        }
+
+        JsonObject lockInfo = extractLockInfo(event.body().getJsonObject(PAYLOAD).getString(REQUESTED_BY));
+        if (lockInfo == null) {
+            event.reply(new JsonObject().put(STATUS, ERROR).put(MESSAGE, "Property '" + REQUESTED_BY + "' missing"));
+            return;
+        }
+
+        redisClient.hmset(getLocksKey(), buildLocksItems(locks, lockInfo), new PutLockHandler(event));
+    }
+
+    private JsonObject buildLocksItems(JsonArray lockNames, JsonObject lockInfo) {
+        JsonObject obj = new JsonObject();
+        String lockInfoStr = lockInfo.encode();
+        for (int i = 0; i < lockNames.size(); i++) {
+            String lock = lockNames.getString(i);
+            obj.put(lock, lockInfoStr);
+        }
+        return obj;
     }
 
     private void deleteLock(Message<JsonObject> event) {
@@ -485,9 +514,9 @@ public class RedisQues extends AbstractVerticle {
         });
     }
 
-    private void bulkDeleteLocks(Message<JsonObject> event){
+    private void bulkDeleteLocks(Message<JsonObject> event) {
         JsonArray locks = event.body().getJsonObject(PAYLOAD).getJsonArray(LOCKS);
-        if(locks != null) {
+        if (locks != null) {
             deleteLocks(event, locks);
         } else {
             event.reply(new JsonObject().put(STATUS, ERROR).put(MESSAGE, "No locks to delete provided"));

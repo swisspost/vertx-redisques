@@ -251,6 +251,16 @@ public class RedisquesAPITest {
     }
 
     @Test
+    public void testBuildBulkPutLocksOperation(TestContext context) throws Exception {
+        JsonObject operation = RedisquesAPI.buildBulkPutLocksOperation(new JsonArray().add("lock_1").add("lock_2").add("lock_3"), "request_user");
+
+        JsonObject expected = buildExpectedJsonObject("bulkPutLocks", new JsonObject()
+                .put(LOCKS, new JsonArray().add("lock_1").add("lock_2").add("lock_3"))
+                .put(REQUESTED_BY, "request_user"));
+        context.assertEquals(expected, operation);
+    }
+
+    @Test
     public void testBuildGetAllLocksOperation(TestContext context) throws Exception {
         JsonObject operation = RedisquesAPI.buildGetAllLocksOperation();
         context.assertEquals(buildExpectedJsonObject("getAllLocks"), operation);

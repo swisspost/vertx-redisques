@@ -32,6 +32,7 @@ public class RedisquesAPI {
     public static final String UNLOCK = "unlock";
     public static final String OPERATION = "operation";
     public static final String REQUESTED_BY = "requestedBy";
+    public static final String TIMESTAMP = "timestamp";
     public static final String BULK_DELETE = "bulkDelete";
     public static final String NO_SUCH_LOCK = "No such lock";
     public static final String PROCESSOR_DELAY_MAX = "processorDelayMax";
@@ -54,6 +55,7 @@ public class RedisquesAPI {
         deleteAllQueueItems(null),
         getAllLocks(null),
         putLock(null),
+        bulkPutLocks(null),
         getLock(null),
         deleteLock(null),
         deleteAllLocks(null),
@@ -193,6 +195,10 @@ public class RedisquesAPI {
 
     public static JsonObject buildPutLockOperation(String queueName, String user){
         return buildOperation(QueueOperation.putLock, new JsonObject().put(QUEUENAME, queueName).put(REQUESTED_BY, user));
+    }
+
+    public static JsonObject buildBulkPutLocksOperation(JsonArray locksToPut, String user){
+        return buildOperation(QueueOperation.bulkPutLocks, new JsonObject().put(LOCKS, locksToPut).put(REQUESTED_BY, user));
     }
 
     public static JsonObject buildGetAllLocksOperation(){
