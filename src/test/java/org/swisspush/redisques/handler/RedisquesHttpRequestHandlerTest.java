@@ -1100,8 +1100,8 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
                             .body("{\"locks\": []}")
                             .when().post("/queuing/locks/")
                             .then().assertThat()
-                            .statusCode(200)
-                            .body("deleted", equalTo(0));
+                            .statusCode(400)
+                            .body(containsString("array 'locks' is not allowed to be empty"));
 
                     assertLockExists(context, "queue1");
                     assertLockExists(context, "queue2");
