@@ -222,7 +222,10 @@ Request Data
 
 ```
 {
-    "operation": "getQueuesCount"
+    "operation": "getQueuesCount",
+    "payload": {
+        "filter": <str regex pattern to filter queues to count (optional)>
+    }
 }
 ```
 
@@ -423,12 +426,35 @@ Response Data
 }
 ```
 
+#### bulkDeleteQueues
+
+Request Data
+```
+{
+    "operation": "bulkDeleteQueues",
+    "payload": {
+        "queues": <JsonArray queues to delete>
+    }
+}
+```
+
+Response Data
+```
+{
+    "status": "ok" / "error",
+    "value": <Long Amount of deleted queues>
+}
+```
+
 #### getAllLocks
 
 Request Data
 ```
 {
-    "operation": "getAllLocks"
+    "operation": "getAllLocks",
+    "payload": {
+        "filter": <str regex pattern to filter locks (optional)>
+    }
 }
 ```
 
@@ -449,6 +475,26 @@ Request Data
     "payload": {
         "queuename": <str QUEUENAME>,
         "requestedBy": <str user who created the lock>
+    }
+}
+```
+
+Response Data
+```
+{
+    "status": "ok" / "error"
+}
+```
+
+#### bulkPutLocks
+
+Request Data
+```
+{
+    "operation": "bulkPutLocks",
+    "payload": {
+        "locks": <JsonArray locks to add>,
+        "requestedBy": <str user who created the locks>
     }
 }
 ```
@@ -496,6 +542,43 @@ Response Data
 ```
 {
     "status": "ok" / "error"
+}
+```
+
+#### bulkDeleteLocks
+
+Request Data
+```
+{
+    "operation": "bulkDeleteLocks",
+    "payload": {
+        "locks": <JsonArray locks to delete>
+    }
+}
+```
+
+Response Data
+```
+{
+    "status": "ok" / "error",
+    "value": <Long Amount of deleted locks>
+}
+```
+
+#### deleteAllLocks
+
+Request Data
+```
+{
+    "operation": "deleteAllLocks"
+}
+```
+
+Response Data
+```
+{
+    "status": "ok" / "error",
+    "value": <Long Amount of deleted locks>
 }
 ```
 
@@ -574,7 +657,7 @@ The monitor information contains the active queues and their queue items count. 
 
 Available url parameters are:
 * _limit_: The maximum amount of queues to list
-* _emptyQueues_: Also show empty queues
+* _emptyQueues=true_: Also show empty queues
 
 The result will be a json object with the monitor information like the example below
 
@@ -600,13 +683,16 @@ To enqueue a new queue use
 having the payload in the request body. When the request body is not a valid json object, a statusCode 400 with the error message _'Bad Request'_ will be returned.
 
 Available url parameters are:
-* _locked_: Lock the queue before enqueuing to prevent processing
+* _locked=true_: Lock the queue before enqueuing to prevent processing
 
-When the _locked_ url parameter is set, the configured _httpRequestHandlerUserHeader_ property will be used to define the user which requested the lock. If no header is provided, "Unknown" will be used instead.
+When the _locked=true_ url parameter is set, the configured _httpRequestHandlerUserHeader_ property will be used to define the user which requested the lock. If no header is provided, "Unknown" will be used instead.
 
 ### List or count queues
 To list the active queues use
 > GET /queuing/queues
+
+Available url parameters are:
+* _filter=<regex pattern>_: Filter the queues to list or count
 
 The result will be a json object with a list of active queues like the example below
 
@@ -622,7 +708,7 @@ The result will be a json object with a list of active queues like the example b
 **Attention:** The result will also contain empty queues when requested before the internal cleanup has passed. Use the monitor endpoint when non-empty queues should be listed only.
 
 To get the count of active queues only, use
-> GET /queuing/queues?count
+> GET /queuing/queues?count=true
 
 The result will be a json object with the count of active queues like the example below
 
@@ -653,7 +739,7 @@ The result will be a json object with a list of queue items like the example bel
 ```
 
 To get the count of queue items only, use
-> GET /queuing/queues/myQueue?count
+> GET /queuing/queues/myQueue?count=true
 
 The result will be a json object with the count of queue items like the example below
 
@@ -668,7 +754,31 @@ To delete all queue items of a single queue use
 > DELETE /queuing/queues/myQueue
 
 Available url parameters are:
-* _unlock_: Unlock the queue after deleting all queue items
+* _unlock=true_: Unlock the queue after deleting all queue items
+
+### Bulk delete queues
+To delete a custom subset of existing queues use
+> POST /queuing/queues?bulkDelete=true
+
+The payload must contain an array with the queues to delete.
+
+Example:
+```json
+{
+  "queues": [
+    "queue1",
+    "queue2"
+  ]
+}
+```
+
+The result will be a json object containing the number of deleted queues like the example below
+
+```json
+{
+  "deleted": 2
+}
+```
 
 ### Get single queue item
 To get a single queue item use
@@ -698,6 +808,9 @@ having the payload in the request body. When the request body is not a valid jso
 To list all existing locks use
 > GET /queuing/locks/
 
+Available url parameters are:
+* _filter=<regex pattern>_: Filter the locks to return
+
 The result will be a json object with a list of all locks like the example below
 
 ```json
@@ -715,6 +828,22 @@ To add a lock use
 
 having an empty json object {} in the body. The configured _httpRequestHandlerUserHeader_ property will be used to define the user which requested the lock. If no header is provided, "Unknown" will be used instead.
 
+### Bulk add locks
+To add multiple locks use
+> POST /queuing/locks
+
+The payload must contain an array with the locks to add.
+
+Example:
+```json
+{
+  "locks": [
+    "queue1",
+    "queue2"
+  ]
+}
+```
+
 ### Get single lock
 To get a single lock use
 > GET /queuing/locks/queue1
@@ -731,6 +860,42 @@ The result will be a json object with the lock information like the example belo
 ### Delete single lock
 To delete a single lock use
 > DELETE /queuing/locks/queue1
+
+### Bulk delete locks
+To delete a custom subset of existing locks use
+> POST /queuing/locks?bulkDelete=true
+
+The payload must contain an array with the locks to delete.
+
+Example:
+```json
+{
+  "locks": [
+    "queue1",
+    "queue2"
+  ]
+}
+```
+
+The result will be a json object containing the number of deleted locks like the example below
+
+```json
+{
+  "deleted": 2
+}
+```
+
+### Delete all locks
+To delete all existing locks use
+> DELETE /queuing/locks
+
+The result will be a json object containing the number of deleted locks like the example below
+
+```json
+{
+  "deleted": 22
+}
+```
 
 ## Dependencies
 

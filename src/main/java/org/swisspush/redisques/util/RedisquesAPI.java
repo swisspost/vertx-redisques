@@ -1,8 +1,11 @@
 package org.swisspush.redisques.util;
 
+import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
+
+import java.util.Optional;
 
 /**
  * Class RedisquesAPI listing the operations and response values which are supported in Redisques.
@@ -16,14 +19,22 @@ public class RedisquesAPI {
     public static final String LIMIT = "limit";
     public static final String VALUE = "value";
     public static final String ERROR = "error";
+    public static final String ERROR_TYPE = "errorType";
+    public static final String BAD_INPUT = "bad input";
     public static final String BUFFER = "buffer";
     public static final String STATUS = "status";
     public static final String MESSAGE = "message";
     public static final String PAYLOAD = "payload";
     public static final String QUEUENAME = "queuename";
+    public static final String FILTER = "filter";
+    public static final String COUNT = "count";
+    public static final String LOCKS = "locks";
+    public static final String QUEUES = "queues";
     public static final String UNLOCK = "unlock";
     public static final String OPERATION = "operation";
     public static final String REQUESTED_BY = "requestedBy";
+    public static final String TIMESTAMP = "timestamp";
+    public static final String BULK_DELETE = "bulkDelete";
     public static final String NO_SUCH_LOCK = "No such lock";
     public static final String PROCESSOR_DELAY_MAX = "processorDelayMax";
 
@@ -43,10 +54,14 @@ public class RedisquesAPI {
         getQueueItem("getItem"),
         replaceQueueItem("replaceItem"),
         deleteAllQueueItems(null),
+        bulkDeleteQueues(null),
         getAllLocks(null),
         putLock(null),
+        bulkPutLocks(null),
         getLock(null),
         deleteLock(null),
+        deleteAllLocks(null),
+        bulkDeleteLocks(null),
         getQueues(null),
         getQueuesCount(null),
         getQueueItemsCount(null);
@@ -136,12 +151,32 @@ public class RedisquesAPI {
         return buildOperation(QueueOperation.deleteAllQueueItems, new JsonObject().put(QUEUENAME, queueName).put(UNLOCK, unlock));
     }
 
+    public static JsonObject buildBulkDeleteQueuesOperation(JsonArray queuesToDelete){
+        return buildOperation(QueueOperation.bulkDeleteQueues, new JsonObject().put(QUEUES, queuesToDelete));
+    }
+
     public static JsonObject buildGetQueuesOperation(){
         return buildOperation(QueueOperation.getQueues);
     }
 
+    public static JsonObject buildGetQueuesOperation(Optional<String> filterPattern){
+        if(filterPattern.isPresent()){
+            return buildOperation(QueueOperation.getQueues, new JsonObject().put(FILTER, filterPattern.get()));
+        } else {
+            return buildOperation(QueueOperation.getQueues);
+        }
+    }
+
     public static JsonObject buildGetQueuesCountOperation(){
         return buildOperation(QueueOperation.getQueuesCount);
+    }
+
+    public static JsonObject buildGetQueuesCountOperation(Optional<String> filterPattern){
+        if(filterPattern.isPresent()){
+            return buildOperation(QueueOperation.getQueuesCount, new JsonObject().put(FILTER, filterPattern.get()));
+        } else {
+            return buildOperation(QueueOperation.getQueuesCount);
+        }
     }
 
     public static JsonObject buildGetQueueItemsCountOperation(String queueName){
@@ -156,11 +191,31 @@ public class RedisquesAPI {
         return buildOperation(QueueOperation.deleteLock, new JsonObject().put(QUEUENAME, queueName));
     }
 
+    public static JsonObject buildDeleteAllLocksOperation(){
+        return buildOperation(QueueOperation.deleteAllLocks);
+    }
+
+    public static JsonObject buildBulkDeleteLocksOperation(JsonArray locksToDelete){
+        return buildOperation(QueueOperation.bulkDeleteLocks, new JsonObject().put(LOCKS, locksToDelete));
+    }
+
     public static JsonObject buildPutLockOperation(String queueName, String user){
         return buildOperation(QueueOperation.putLock, new JsonObject().put(QUEUENAME, queueName).put(REQUESTED_BY, user));
     }
 
+    public static JsonObject buildBulkPutLocksOperation(JsonArray locksToPut, String user){
+        return buildOperation(QueueOperation.bulkPutLocks, new JsonObject().put(LOCKS, locksToPut).put(REQUESTED_BY, user));
+    }
+
     public static JsonObject buildGetAllLocksOperation(){
         return buildOperation(QueueOperation.getAllLocks);
+    }
+
+    public static JsonObject buildGetAllLocksOperation(Optional<String> filterPattern){
+        if(filterPattern.isPresent()){
+            return buildOperation(QueueOperation.getAllLocks, new JsonObject().put(FILTER, filterPattern.get()));
+        } else {
+            return buildGetAllLocksOperation();
+        }
     }
 }
