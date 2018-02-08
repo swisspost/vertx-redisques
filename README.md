@@ -426,6 +426,26 @@ Response Data
 }
 ```
 
+#### bulkDeleteQueues
+
+Request Data
+```
+{
+    "operation": "bulkDeleteQueues",
+    "payload": {
+        "queues": <JsonArray queues to delete>
+    }
+}
+```
+
+Response Data
+```
+{
+    "status": "ok" / "error",
+    "value": <Long Amount of deleted queues>
+}
+```
+
 #### getAllLocks
 
 Request Data
@@ -735,6 +755,30 @@ To delete all queue items of a single queue use
 
 Available url parameters are:
 * _unlock=true_: Unlock the queue after deleting all queue items
+
+### Bulk delete queues
+To delete a custom subset of existing queues use
+> POST /queuing/queues?bulkDelete=true
+
+The payload must contain an array with the queues to delete.
+
+Example:
+```json
+{
+  "queues": [
+    "queue1",
+    "queue2"
+  ]
+}
+```
+
+The result will be a json object containing the number of deleted queues like the example below
+
+```json
+{
+  "deleted": 2
+}
+```
 
 ### Get single queue item
 To get a single queue item use

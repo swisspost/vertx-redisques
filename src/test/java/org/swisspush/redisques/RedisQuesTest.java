@@ -476,6 +476,61 @@ public class RedisQuesTest extends AbstractTestCase {
     }
 
     @Test
+    public void bulkDeleteQueues(TestContext context) {
+        Async async = context.async();
+        flushAll();
+
+        eventBusSend(buildEnqueueOperation("q1", "q1_message"), e1 -> {
+            eventBusSend(buildEnqueueOperation("q1", "q1_message"), e2 -> {
+                eventBusSend(buildEnqueueOperation("q2", "q2_message"), e3 -> {
+                    eventBusSend(buildEnqueueOperation("q3", "q3_message"), e4 -> {
+
+                        assertQueuesCount(context, 3);
+                        assertQueueItemsCount(context, "q1", 2);
+                        assertQueueItemsCount(context, "q2", 1);
+                        assertQueueItemsCount(context, "q3", 1);
+
+                        eventBusSend(buildBulkDeleteQueuesOperation(new JsonArray()), m1 -> {
+                            context.assertEquals(OK, m1.result().body().getString(STATUS));
+                            context.assertEquals(0L, m1.result().body().getLong(VALUE));
+
+                            assertQueuesCount(context, 3);
+                            assertQueueItemsCount(context, "q1", 2);
+                            assertQueueItemsCount(context, "q2", 1);
+                            assertQueueItemsCount(context, "q3", 1);
+
+                            eventBusSend(buildBulkDeleteQueuesOperation(new JsonArray().add("q1").add("q3")), m2 -> {
+                                context.assertEquals(OK, m2.result().body().getString(STATUS));
+                                context.assertEquals(2L, m2.result().body().getLong(VALUE));
+
+                                assertQueuesCount(context, 1);
+                                assertQueueItemsCount(context, "q1", 0);
+                                assertQueueItemsCount(context, "q2", 1);
+                                assertQueueItemsCount(context, "q3", 0);
+
+                                // invalid operation setup
+                                JsonObject operation = buildOperation(QueueOperation.bulkDeleteQueues, new JsonObject().put("abc", 123));
+                                eventBusSend(operation, m3 -> {
+                                    context.assertEquals(ERROR, m3.result().body().getString(STATUS));
+                                    context.assertEquals("No queues to delete provided", m3.result().body().getString(MESSAGE));
+
+                                    // not string values
+                                    eventBusSend(buildBulkDeleteQueuesOperation(new JsonArray().add(111).add(222)), m4 -> {
+                                        context.assertEquals(ERROR, m4.result().body().getString(STATUS));
+                                        context.assertEquals("Queues must be string values", m4.result().body().getString(MESSAGE));
+                                        async.complete();
+                                    });
+                                });
+                            });
+                        });
+                    });
+                });
+            });
+        });
+    }
+
+
+    @Test
     public void addQueueItem(TestContext context) {
         Async async = context.async();
         flushAll();

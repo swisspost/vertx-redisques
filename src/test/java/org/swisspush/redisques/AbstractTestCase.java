@@ -83,6 +83,22 @@ public abstract class AbstractTestCase {
         vertx.eventBus().send(getRedisquesAddress(), operation, handler);
     }
 
+    protected void assertQueueItemsCount(TestContext context, String queue, int count){
+        context.assertEquals((long)count, jedis.llen(getQueuesRedisKeyPrefix() + queue));
+    }
+
+    protected void assertQueuesCount(TestContext context, int count){
+        assertKeyCount(context, getQueuesRedisKeyPrefix(), count);
+    }
+
+    protected void assertLockExists(TestContext context, String lock){
+        context.assertTrue(jedis.hexists(getLocksRedisKey(), lock), "expected lock '"+lock+"' to exist");
+    }
+
+    protected void assertLockDoesNotExist(TestContext context, String lock){
+        context.assertFalse(jedis.hexists(getLocksRedisKey(), lock), "expected lock '"+lock+"' to not exist");
+    }
+
     protected void lockQueue(String queue){
         JsonObject lockInfo = new JsonObject();
         lockInfo.put(REQUESTED_BY, "unit_test");

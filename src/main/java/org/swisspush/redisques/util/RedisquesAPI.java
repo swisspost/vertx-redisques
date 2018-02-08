@@ -29,6 +29,7 @@ public class RedisquesAPI {
     public static final String FILTER = "filter";
     public static final String COUNT = "count";
     public static final String LOCKS = "locks";
+    public static final String QUEUES = "queues";
     public static final String UNLOCK = "unlock";
     public static final String OPERATION = "operation";
     public static final String REQUESTED_BY = "requestedBy";
@@ -53,6 +54,7 @@ public class RedisquesAPI {
         getQueueItem("getItem"),
         replaceQueueItem("replaceItem"),
         deleteAllQueueItems(null),
+        bulkDeleteQueues(null),
         getAllLocks(null),
         putLock(null),
         bulkPutLocks(null),
@@ -147,6 +149,10 @@ public class RedisquesAPI {
 
     public static JsonObject buildDeleteAllQueueItemsOperation(String queueName, boolean unlock){
         return buildOperation(QueueOperation.deleteAllQueueItems, new JsonObject().put(QUEUENAME, queueName).put(UNLOCK, unlock));
+    }
+
+    public static JsonObject buildBulkDeleteQueuesOperation(JsonArray queuesToDelete){
+        return buildOperation(QueueOperation.bulkDeleteQueues, new JsonObject().put(QUEUES, queuesToDelete));
     }
 
     public static JsonObject buildGetQueuesOperation(){

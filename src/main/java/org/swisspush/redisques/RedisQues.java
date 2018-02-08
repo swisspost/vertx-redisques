@@ -227,6 +227,8 @@ public class RedisQues extends AbstractVerticle {
                 case deleteAllQueueItems:
                     deleteAllQueueItems(event);
                     break;
+                case bulkDeleteQueues:
+                    bulkDeleteQueues(event);
                 case getAllLocks:
                     getAllLocks(event);
                     break;
@@ -442,18 +444,63 @@ public class RedisQues extends AbstractVerticle {
         JsonObject payload = event.body().getJsonObject(PAYLOAD);
         boolean unlock = payload.getBoolean(UNLOCK, false);
         String queue = payload.getString(QUEUENAME);
-        redisClient.del(getQueuesPrefix() + queue, deleteReply -> {
+        redisClient.del(buildQueueKey(queue), deleteReply -> {
             if (unlock) {
-                redisClient.hdel(getLocksKey(), queue, unlockReply -> replyDeleteAllQueueItems(event, deleteReply));
+                redisClient.hdel(getLocksKey(), queue, unlockReply -> replyResultGreaterThanZero(event, deleteReply));
             } else {
-                replyDeleteAllQueueItems(event, deleteReply);
+                replyResultGreaterThanZero(event, deleteReply);
             }
         });
     }
 
-    private void replyDeleteAllQueueItems(Message<JsonObject> event, AsyncResult<Long> deleteReply) {
-        if (deleteReply.succeeded() && deleteReply.result() != null && deleteReply.result() > 0) {
-            event.reply(new JsonObject().put(STATUS, OK));
+    private String buildQueueKey(String queue){
+        return getQueuesPrefix() + queue;
+    }
+
+    private List<String> buildQueueKeys(JsonArray queues) throws Exception{
+        if(queues == null){
+            return null;
+        }
+        List<String> queueKeys = new ArrayList<>();
+        for (int i = 0; i < queues.size(); i++) {
+            String queue = queues.getString(i);
+            queueKeys.add(buildQueueKey(queue));
+        }
+        return queueKeys;
+    }
+
+    private void bulkDeleteQueues(Message<JsonObject> event){
+        JsonArray queues = event.body().getJsonObject(PAYLOAD).getJsonArray(QUEUES);
+        if (queues == null) {
+            event.reply(new JsonObject().put(STATUS, ERROR).put(MESSAGE, "No queues to delete provided"));
+            return;
+        }
+
+        if(queues.isEmpty()){
+            event.reply(new JsonObject().put(STATUS, OK).put(VALUE, 0));
+            return;
+        }
+
+        List<String> queueKeys;
+        try {
+            queueKeys = buildQueueKeys(queues);
+        } catch (Exception e) {
+            event.reply(new JsonObject().put(STATUS, ERROR).put(ERROR_TYPE, BAD_INPUT).put(MESSAGE, "Queues must be string values"));
+            return;
+        }
+
+        redisClient.delMany(queueKeys, delManyReply -> {
+            if(delManyReply.succeeded()){
+                event.reply(new JsonObject().put(STATUS, OK).put(VALUE, delManyReply.result()));
+            } else {
+                event.reply(new JsonObject().put(STATUS, ERROR));
+            }
+        });
+    }
+
+    private void replyResultGreaterThanZero(Message<JsonObject> event, AsyncResult<Long> reply) {
+        if (reply.succeeded() && reply.result() != null && reply.result() > 0) {
+            event.reply(new JsonObject().put(STATUS, OK).put(VALUE, reply.result()));
         } else {
             event.reply(new JsonObject().put(STATUS, ERROR));
         }

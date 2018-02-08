@@ -9,9 +9,7 @@ import org.junit.runner.RunWith;
 
 import java.util.Optional;
 
-import static org.swisspush.redisques.util.RedisquesAPI.FILTER;
-import static org.swisspush.redisques.util.RedisquesAPI.LOCKS;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation;
+import static org.swisspush.redisques.util.RedisquesAPI.*;
 
 /**
  * Tests for {@link RedisquesAPI} class.
@@ -165,17 +163,25 @@ public class RedisquesAPITest {
     public void testBuildDeleteAllQueueItemsOperation(TestContext context) throws Exception {
         JsonObject operation = RedisquesAPI.buildDeleteAllQueueItemsOperation("my_queue_name");
         JsonObject expected = buildExpectedJsonObject("deleteAllQueueItems", new JsonObject()
-                .put(QUEUENAME, "my_queue_name").put("unlock", false));
+                .put(QUEUENAME, "my_queue_name").put(UNLOCK, false));
         context.assertEquals(expected, operation);
 
         operation = RedisquesAPI.buildDeleteAllQueueItemsOperation("my_queue_name", false);
         expected = buildExpectedJsonObject("deleteAllQueueItems", new JsonObject()
-                .put(QUEUENAME, "my_queue_name").put("unlock", false));
+                .put(QUEUENAME, "my_queue_name").put(UNLOCK, false));
         context.assertEquals(expected, operation);
 
         operation = RedisquesAPI.buildDeleteAllQueueItemsOperation("my_queue_name", true);
         expected = buildExpectedJsonObject("deleteAllQueueItems", new JsonObject()
-                .put(QUEUENAME, "my_queue_name").put("unlock", true));
+                .put(QUEUENAME, "my_queue_name").put(UNLOCK, true));
+        context.assertEquals(expected, operation);
+    }
+
+    @Test
+    public void testBuildBulkDeleteQueuesOperation(TestContext context) throws Exception {
+        JsonObject operation = RedisquesAPI.buildBulkDeleteQueuesOperation(new JsonArray().add("q_1").add("q_2"));
+        JsonObject expected = buildExpectedJsonObject("bulkDeleteQueues", new JsonObject()
+                .put(QUEUES, new JsonArray().add("q_1").add("q_2")));
         context.assertEquals(expected, operation);
     }
 

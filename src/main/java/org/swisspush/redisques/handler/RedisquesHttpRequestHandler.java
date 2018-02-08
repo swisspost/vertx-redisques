@@ -32,7 +32,7 @@ import static org.swisspush.redisques.util.RedisquesAPI.*;
  */
 public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
 
-    private static final String UTF_8 = "UTF-8";
+
     private static Logger log = LoggerFactory.getLogger(RedisquesHttpRequestHandler.class);
 
     private Router router;
@@ -45,6 +45,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     private static final String COUNT_PARAM = "count";
     private static final String BULK_DELETE_PARAM = "bulkDelete";
     private static final String EMPTY_QUEUES_PARAM = "emptyQueues";
+    private static final String DELETED = "deleted";
 
     private final String redisquesAddress;
     private final String userHeader;
@@ -121,6 +122,11 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
          * Delete all queue items
          */
         router.deleteWithRegex(prefix + "/queues/[^/]+").handler(this::deleteAllQueueItems);
+
+        /*
+         * Bulk delete queues
+         */
+        router.post(prefix + "/queues/").handler(this::bulkDeleteQueues);
 
         /*
          * Get single queue item
@@ -267,7 +273,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         eventBus.send(redisquesAddress, buildDeleteAllLocksOperation(), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
             if (reply.succeeded() && OK.equals(reply.result().body().getString(STATUS))) {
                 JsonObject result = new JsonObject();
-                result.put("deleted", reply.result().body().getLong(VALUE));
+                result.put(DELETED, reply.result().body().getLong(VALUE));
                 jsonResponse(ctx.response(), result);
             } else {
                 respondWith(StatusCode.INTERNAL_SERVER_ERROR, "Error deleting all locks", ctx.request());
@@ -299,7 +305,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         eventBus.send(redisquesAddress, buildBulkDeleteLocksOperation(locks), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
             if (reply.succeeded() && OK.equals(reply.result().body().getString(STATUS))) {
                 JsonObject result = new JsonObject();
-                result.put("deleted", reply.result().body().getLong(VALUE));
+                result.put(DELETED, reply.result().body().getLong(VALUE));
                 jsonResponse(ctx.response(), result);
             } else {
                 respondWith(StatusCode.INTERNAL_SERVER_ERROR, "Error bulk deleting locks", ctx.request());
@@ -516,6 +522,43 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         boolean unlock = evaluateUrlParameterToBeEmptyOrTrue(UNLOCK_PARAM, ctx.request());
         final String queue = lastPart(ctx.request().path());
         eventBus.send(redisquesAddress, buildDeleteAllQueueItemsOperation(queue, unlock), reply -> ctx.response().end());
+    }
+
+    private void bulkDeleteQueues(RoutingContext ctx){
+        if (evaluateUrlParameterToBeEmptyOrTrue(BULK_DELETE_PARAM, ctx.request())) {
+            ctx.request().bodyHandler(buffer -> {
+                try {
+                    Result<JsonArray, String> result = extractNonEmptyJsonArrayFromBody(QUEUES, buffer.toString());
+                    if(result.isErr()){
+                        respondWith(StatusCode.BAD_REQUEST, result.getErr(), ctx.request());
+                        return;
+                    }
+                    eventBus.send(redisquesAddress, buildBulkDeleteQueuesOperation(result.getOk()), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
+                        if (reply.succeeded() && OK.equals(reply.result().body().getString(STATUS))) {
+                            JsonObject resultObj = new JsonObject();
+                            resultObj.put(DELETED, reply.result().body().getLong(VALUE));
+                            jsonResponse(ctx.response(), resultObj);
+                        } else {
+                            String errorType = reply.result().body().getString(ERROR_TYPE);
+                            if(errorType != null && BAD_INPUT.equalsIgnoreCase(errorType)){
+                                if(reply.result().body().getString(MESSAGE) != null) {
+                                    respondWith(StatusCode.BAD_REQUEST, reply.result().body().getString(MESSAGE), ctx.request());
+                                } else {
+                                    respondWith(StatusCode.BAD_REQUEST, ctx.request());
+                                }
+                            } else {
+                                respondWith(StatusCode.INTERNAL_SERVER_ERROR, "Error bulk deleting queues", ctx.request());
+                            }
+                        }
+                    });
+
+                } catch (Exception ex) {
+                    respondWith(StatusCode.BAD_REQUEST, ex.getMessage(), ctx.request());
+                }
+            });
+        } else {
+            respondWith(StatusCode.BAD_REQUEST, "Unsupported operation. Add '" + BULK_DELETE_PARAM + "' parameter for bulk deleting queues", ctx.request());
+        }
     }
 
     private void respondWith(StatusCode statusCode, String responseMessage, HttpServerRequest request) {

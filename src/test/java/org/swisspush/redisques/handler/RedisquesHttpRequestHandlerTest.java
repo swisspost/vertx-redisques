@@ -163,14 +163,6 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         testVertx.eventBus().send(getRedisquesAddress(), operation, handler);
     }
 
-    private void assertLockExists(TestContext context, String lock){
-        context.assertTrue(jedis.hexists(getLocksRedisKey(), lock), "expected lock '"+lock+"' to exist");
-    }
-
-    private void assertLockDoesNotExist(TestContext context, String lock){
-        context.assertFalse(jedis.hexists(getLocksRedisKey(), lock), "expected lock '"+lock+"' to not exist");
-    }
-
     @Test
     public void testUnknownRequestUrl(TestContext context) {
         Async async = context.async();
@@ -987,6 +979,103 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
                 .statusCode(200);
         async.complete();
     }
+
+    @Test
+    public void bulkDeleteQueues(TestContext context) {
+        Async async = context.async();
+        flushAll();
+
+        eventBusSend(buildEnqueueOperation("q1", "q1_message"), e1 -> {
+            eventBusSend(buildEnqueueOperation("q1", "q1_message"), e2 -> {
+                eventBusSend(buildEnqueueOperation("q2", "q2_message"), e3 -> {
+                    eventBusSend(buildEnqueueOperation("q3", "q3_message"), e4 -> {
+                        given()
+                                .queryParam(BULK_DELETE)
+                                .body("{\"zzz\": [\"a\",\"b\",\"c\"]}")
+                                .when().post("/queuing/queues/")
+                                .then().assertThat()
+                                .statusCode(400)
+                                .body(containsString("no array called 'queues' found"));
+
+                        assertQueuesCount(context, 3);
+                        assertQueueItemsCount(context, "q1", 2);
+                        assertQueueItemsCount(context, "q2", 1);
+                        assertQueueItemsCount(context, "q3", 1);
+
+                        given()
+                                .queryParam(BULK_DELETE)
+                                .body("{\"zzz\": [\"a\",\"b\",\"c\"]")
+                                .when().post("/queuing/queues/")
+                                .then().assertThat()
+                                .statusCode(400)
+                                .body(containsString("failed to parse request payload"));
+
+                        assertQueuesCount(context, 3);
+                        assertQueueItemsCount(context, "q1", 2);
+                        assertQueueItemsCount(context, "q2", 1);
+                        assertQueueItemsCount(context, "q3", 1);
+
+                        given()
+                                .queryParam(BULK_DELETE)
+                                .body("{\"queues\": []}")
+                                .when().post("/queuing/queues/")
+                                .then().assertThat()
+                                .statusCode(400)
+                                .body(containsString("array 'queues' is not allowed to be empty"));
+
+                        assertQueuesCount(context, 3);
+                        assertQueueItemsCount(context, "q1", 2);
+                        assertQueueItemsCount(context, "q2", 1);
+                        assertQueueItemsCount(context, "q3", 1);
+
+                        given()
+                                .queryParam(BULK_DELETE)
+                                .body("{\"queues\": [\"q1\",\"q3\"]}")
+                                .when().post("/queuing/queues/")
+                                .then().assertThat()
+                                .statusCode(200)
+                                .body("deleted", equalTo(2));
+
+                        assertQueuesCount(context, 1);
+                        assertQueueItemsCount(context, "q1", 0);
+                        assertQueueItemsCount(context, "q2", 1);
+                        assertQueueItemsCount(context, "q3", 0);
+
+                        given()
+                                .queryParam(BULK_DELETE)
+                                .body("{\"queues\": [\"q1\",\"q3\"]}")
+                                .when().post("/queuing/queues/")
+                                .then().assertThat()
+                                .statusCode(200)
+                                .body("deleted", equalTo(0));
+
+                        assertQueuesCount(context, 1);
+                        assertQueueItemsCount(context, "q1", 0);
+                        assertQueueItemsCount(context, "q2", 1);
+                        assertQueueItemsCount(context, "q3", 0);
+
+                        given()
+                                .queryParam(BULK_DELETE)
+                                .body("{\"queues\": [1111]}")
+                                .when().post("/queuing/queues/")
+                                .then().assertThat()
+                                .statusCode(400)
+                                .body(containsString("Queues must be string values"));
+
+                        assertQueuesCount(context, 1);
+                        assertQueueItemsCount(context, "q1", 0);
+                        assertQueueItemsCount(context, "q2", 1);
+                        assertQueueItemsCount(context, "q3", 0);
+
+                        async.complete();
+                    });
+                });
+            });
+        });
+
+        async.awaitSuccess();
+    }
+
 
     @Test
     public void getAllLocksWhenNoLocksPresent(TestContext context) {
