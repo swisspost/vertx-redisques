@@ -91,6 +91,10 @@ public abstract class AbstractTestCase {
         assertKeyCount(context, getQueuesRedisKeyPrefix(), count);
     }
 
+    protected void assertLocksCount(TestContext context, int count){
+        context.assertEquals((long)count, jedis.hlen(getLocksRedisKey()));
+    }
+
     protected void assertLockExists(TestContext context, String lock){
         context.assertTrue(jedis.hexists(getLocksRedisKey(), lock), "expected lock '"+lock+"' to exist");
     }

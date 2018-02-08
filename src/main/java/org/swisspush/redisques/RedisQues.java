@@ -457,7 +457,7 @@ public class RedisQues extends AbstractVerticle {
         return getQueuesPrefix() + queue;
     }
 
-    private List<String> buildQueueKeys(JsonArray queues) throws Exception {
+    private List<String> buildQueueKeys(JsonArray queues) {
         if(queues == null){
             return null;
         }
@@ -481,15 +481,12 @@ public class RedisQues extends AbstractVerticle {
             return;
         }
 
-        List<String> queueKeys;
-        try {
-            queueKeys = buildQueueKeys(queues);
-        } catch (Exception e) {
+        if(!jsonArrayContainsStringsOnly(queues)){
             event.reply(new JsonObject().put(STATUS, ERROR).put(ERROR_TYPE, BAD_INPUT).put(MESSAGE, "Queues must be string values"));
             return;
         }
 
-        redisClient.delMany(queueKeys, delManyReply -> {
+        redisClient.delMany(buildQueueKeys(queues), delManyReply -> {
             if(delManyReply.succeeded()){
                 event.reply(new JsonObject().put(STATUS, OK).put(VALUE, delManyReply.result()));
             } else {
@@ -519,16 +516,11 @@ public class RedisQues extends AbstractVerticle {
         JsonObject lockInfo = extractLockInfo(event.body().getJsonObject(PAYLOAD).getString(REQUESTED_BY));
         if (lockInfo != null) {
             JsonArray lockNames = new JsonArray().add(event.body().getJsonObject(PAYLOAD).getString(QUEUENAME));
-
-            JsonObject lockItems;
-            try {
-                lockItems = buildLocksItems(lockNames, lockInfo);
-            } catch (Exception e) {
+            if(!jsonArrayContainsStringsOnly(lockNames)){
                 event.reply(new JsonObject().put(STATUS, ERROR).put(ERROR_TYPE, BAD_INPUT).put(MESSAGE, "Lock must be a string value"));
                 return;
             }
-
-            redisClient.hmset(getLocksKey(), lockItems, new PutLockHandler(event));
+            redisClient.hmset(getLocksKey(), buildLocksItems(lockNames, lockInfo), new PutLockHandler(event));
         } else {
             event.reply(new JsonObject().put(STATUS, ERROR).put(MESSAGE, "Property '" + REQUESTED_BY + "' missing"));
         }
@@ -547,18 +539,15 @@ public class RedisQues extends AbstractVerticle {
             return;
         }
 
-        JsonObject locksItems;
-        try {
-            locksItems = buildLocksItems(locks, lockInfo);
-        } catch (Exception e) {
+        if(!jsonArrayContainsStringsOnly(locks)){
             event.reply(new JsonObject().put(STATUS, ERROR).put(ERROR_TYPE, BAD_INPUT).put(MESSAGE, "Locks must be string values"));
             return;
         }
 
-        redisClient.hmset(getLocksKey(), locksItems, new PutLockHandler(event));
+        redisClient.hmset(getLocksKey(), buildLocksItems(locks, lockInfo), new PutLockHandler(event));
     }
 
-    private JsonObject buildLocksItems(JsonArray lockNames, JsonObject lockInfo) throws Exception {
+    private JsonObject buildLocksItems(JsonArray lockNames, JsonObject lockInfo) {
         JsonObject obj = new JsonObject();
         String lockInfoStr = lockInfo.encode();
         for (int i = 0; i < lockNames.size(); i++) {
@@ -604,6 +593,12 @@ public class RedisQues extends AbstractVerticle {
             event.reply(new JsonObject().put(STATUS, OK).put(VALUE, 0));
             return;
         }
+
+        if(!jsonArrayContainsStringsOnly(locks)){
+            event.reply(new JsonObject().put(STATUS, ERROR).put(ERROR_TYPE, BAD_INPUT).put(MESSAGE, "Locks must be string values"));
+            return;
+        }
+
         redisClient.hdelMany(getLocksKey(), locks.getList(), delManyResult -> {
             if (delManyResult.succeeded()) {
                 log.info("Successfully deleted " + delManyResult.result() + " locks");
@@ -613,6 +608,17 @@ public class RedisQues extends AbstractVerticle {
                 event.reply(new JsonObject().put(STATUS, ERROR).put(MESSAGE, delManyResult.cause().getMessage()));
             }
         });
+    }
+
+    private boolean jsonArrayContainsStringsOnly(JsonArray array){
+        try {
+            for (int i = 0; i < array.size(); i++) {
+                array.getString(i);
+            }
+            return true;
+        } catch(Exception ex){
+            return false;
+        }
     }
 
     private void getConfiguration(Message<JsonObject> event) {

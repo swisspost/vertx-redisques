@@ -15,6 +15,7 @@ import redis.clients.jedis.Jedis;
 
 import java.util.Optional;
 
+import static java.util.Optional.of;
 import static org.swisspush.redisques.util.RedisquesAPI.*;
 
 /**
@@ -153,7 +154,7 @@ public class RedisQuesTest extends AbstractTestCase {
         eventBusSend(buildLockedEnqueueOperation("queueEnqueue", "helloEnqueue", "someuser"), message -> {
             context.assertEquals(OK, message.result().body().getString(STATUS));
             context.assertEquals("helloEnqueue", jedis.lindex(getQueuesRedisKeyPrefix() + "queueEnqueue", 0));
-            context.assertTrue(jedis.hexists(getLocksRedisKey(), "queueEnqueue"));
+            assertLockExists(context, "queueEnqueue");
             assertLockContent(context, "queueEnqueue", "someuser");
             assertKeyCount(context, getQueuesRedisKeyPrefix(), 1);
             assertKeyCount(context, getLocksRedisKey(), 1);
@@ -167,7 +168,7 @@ public class RedisQuesTest extends AbstractTestCase {
         flushAll();
         assertKeyCount(context, getLocksRedisKey(), 0);
         assertKeyCount(context, getQueuesRedisKeyPrefix(), 0);
-        context.assertFalse(jedis.hexists(getLocksRedisKey(), "queue1"));
+        assertLockDoesNotExist(context, "queue1");
 
         JsonObject operation = buildOperation(QueueOperation.lockedEnqueue, new JsonObject().put(QUEUENAME, "queue1"));
         operation.put(MESSAGE, "helloEnqueue");
@@ -177,7 +178,7 @@ public class RedisQuesTest extends AbstractTestCase {
             context.assertEquals("Property '" + REQUESTED_BY + "' missing", message.result().body().getString(MESSAGE));
             assertKeyCount(context, getLocksRedisKey(), 0);
             assertKeyCount(context, getQueuesRedisKeyPrefix(), 0);
-            context.assertFalse(jedis.hexists(getLocksRedisKey(), "queue1"));
+            assertLockDoesNotExist(context, "queue1");
             async.complete();
         });
     }
@@ -417,14 +418,14 @@ public class RedisQuesTest extends AbstractTestCase {
         final String queue = "queue1";
 
         eventBusSend(buildPutLockOperation(queue, "geronimo"), event -> {
-            context.assertTrue(jedis.hexists(getLocksRedisKey(), queue));
+            assertLockExists(context, queue);
             eventBusSend(buildEnqueueOperation(queue, "some_val"), message -> {
                 context.assertEquals(OK, message.result().body().getString(STATUS));
                 assertKeyCount(context, getQueuesRedisKeyPrefix(), 1);
                 eventBusSend(buildDeleteAllQueueItemsOperation(queue), message1 -> {
                     context.assertEquals(OK, message1.result().body().getString(STATUS));
                     assertKeyCount(context, getQueuesRedisKeyPrefix(), 0);
-                    context.assertTrue(jedis.hexists(getLocksRedisKey(), queue)); // check that lock still exists
+                    assertLockExists(context, queue); // check that lock still exists
                     async.complete();
                 });
             });
@@ -439,14 +440,14 @@ public class RedisQuesTest extends AbstractTestCase {
         final String queue = "queue1";
 
         eventBusSend(buildPutLockOperation(queue, "geronimo"), event -> {
-            context.assertTrue(jedis.hexists(getLocksRedisKey(), queue));
+            assertLockExists(context, queue);
             eventBusSend(buildEnqueueOperation(queue, "some_val"), message -> {
                 context.assertEquals(OK, message.result().body().getString(STATUS));
                 assertKeyCount(context, getQueuesRedisKeyPrefix(), 1);
                 eventBusSend(buildDeleteAllQueueItemsOperation(queue, false), message1 -> {
                     context.assertEquals(OK, message1.result().body().getString(STATUS));
                     assertKeyCount(context, getQueuesRedisKeyPrefix(), 0);
-                    context.assertTrue(jedis.hexists(getLocksRedisKey(), queue)); // check that lock still exists
+                    assertLockExists(context, queue); // check that lock still exists
                     async.complete();
                 });
             });
@@ -461,14 +462,14 @@ public class RedisQuesTest extends AbstractTestCase {
         final String queue = "queue1";
 
         eventBusSend(buildPutLockOperation(queue, "geronimo"), event -> {
-            context.assertTrue(jedis.hexists(getLocksRedisKey(), queue));
+            assertLockExists(context, queue);
             eventBusSend(buildEnqueueOperation(queue, "some_val"), message -> {
                 context.assertEquals(OK, message.result().body().getString(STATUS));
                 assertKeyCount(context, getQueuesRedisKeyPrefix(), 1);
                 eventBusSend(buildDeleteAllQueueItemsOperation(queue, true), message1 -> {
                     context.assertEquals(OK, message1.result().body().getString(STATUS));
                     assertKeyCount(context, getQueuesRedisKeyPrefix(), 0);
-                    context.assertFalse(jedis.hexists(getLocksRedisKey(), queue)); // check that lock doesn't exist anymore
+                    assertLockDoesNotExist(context, queue); // check that lock doesn't exist anymore
                     async.complete();
                 });
             });
@@ -670,7 +671,7 @@ public class RedisQuesTest extends AbstractTestCase {
             context.assertEquals(0, locksArray.size(), "locks array should be empty");
             eventBusSend(buildPutLockOperation("testLock", "geronimo"), message2 -> {
                 context.assertEquals(OK, message2.result().body().getString(STATUS));
-                context.assertTrue(jedis.hexists(getLocksRedisKey(), "testLock"));
+                assertLockExists(context, "testLock");
                 eventBusSend(buildGetAllLocksOperation(), message3 -> {
                     context.assertEquals(OK, message3.result().body().getString(STATUS));
                     JsonArray locksArray1 = message3.result().body().getJsonObject(VALUE).getJsonArray("locks");
@@ -697,10 +698,10 @@ public class RedisQuesTest extends AbstractTestCase {
             context.assertEquals(0, locksArray.size(), "locks array should be empty");
             eventBusSend(buildPutLockOperation("testLock", "geronimo"), message2 -> {
                 context.assertEquals(OK, message2.result().body().getString(STATUS));
-                context.assertTrue(jedis.hexists(getLocksRedisKey(), "testLock"));
+                assertLockExists(context, "testLock");
                 eventBusSend(buildPutLockOperation("abcLock", "geronimo"), message2a -> {
                     context.assertEquals(OK, message2a.result().body().getString(STATUS));
-                    context.assertTrue(jedis.hexists(getLocksRedisKey(), "abcLock"));
+                    assertLockExists(context, "abcLock");
                     eventBusSend(buildGetAllLocksOperation(), message3 -> {
                         context.assertEquals(OK, message3.result().body().getString(STATUS));
                         JsonArray locksArray1 = message3.result().body().getJsonObject(VALUE).getJsonArray("locks");
@@ -712,7 +713,7 @@ public class RedisQuesTest extends AbstractTestCase {
                             String item1 = locksArray1.getString(1);
                             context.assertTrue(item1.matches("abcLock.*"));
                         }
-                        eventBusSend(buildGetAllLocksOperation(Optional.of("abc(.*)")), message4 ->{
+                        eventBusSend(buildGetAllLocksOperation(of("abc(.*)")), message4 -> {
                             context.assertEquals(OK, message4.result().body().getString(STATUS));
                             JsonArray locksArray2 = message4.result().body().getJsonObject(VALUE).getJsonArray("locks");
                             context.assertNotNull(locksArray2, "locks array should not be null");
@@ -735,7 +736,7 @@ public class RedisQuesTest extends AbstractTestCase {
         flushAll();
         eventBusSend(buildPutLockOperation("queue1", "someuser"), message -> {
             context.assertEquals(OK, message.result().body().getString(STATUS));
-            context.assertTrue(jedis.hexists(getLocksRedisKey(), "queue1"));
+            assertLockExists(context, "queue1");
             assertLockContent(context, "queue1", "someuser");
             async.complete();
         });
@@ -746,15 +747,59 @@ public class RedisQuesTest extends AbstractTestCase {
         Async async = context.async();
         flushAll();
         assertKeyCount(context, getLocksRedisKey(), 0);
-        context.assertFalse(jedis.hexists(getLocksRedisKey(), "queue1"));
+        assertLockDoesNotExist(context, "queue1");
         eventBusSend(buildOperation(QueueOperation.putLock, new JsonObject().put(QUEUENAME, "queue1")), message -> {
             context.assertEquals(ERROR, message.result().body().getString(STATUS));
             context.assertEquals("Property '" + REQUESTED_BY + "' missing", message.result().body().getString(MESSAGE));
             assertKeyCount(context, getLocksRedisKey(), 0);
-            context.assertFalse(jedis.hexists(getLocksRedisKey(), "queue1"));
+            assertLockDoesNotExist(context, "queue1");
             async.complete();
         });
     }
+
+    @Test
+    public void bulkPutLocks(TestContext context) {
+        Async async = context.async();
+        String user = "geronimo";
+        flushAll();
+
+        eventBusSend(buildBulkPutLocksOperation(new JsonArray(), user), m1 -> {
+            context.assertEquals(ERROR, m1.result().body().getString(STATUS));
+            context.assertEquals("No locks to put provided", m1.result().body().getString(MESSAGE));
+            assertLocksCount(context, 0);
+
+            eventBusSend(buildBulkPutLocksOperation(new JsonArray().add("q1").add(12345), user), m2 -> {
+                context.assertEquals(ERROR, m2.result().body().getString(STATUS));
+                context.assertEquals("Locks must be string values", m2.result().body().getString(MESSAGE));
+                context.assertEquals(BAD_INPUT, m2.result().body().getString(ERROR_TYPE));
+                assertLocksCount(context, 0);
+
+                eventBusSend(buildBulkPutLocksOperation(new JsonArray().add("q1").add("q2").add("q3"), user), m3 -> {
+                    context.assertEquals(OK, m3.result().body().getString(STATUS));
+                    assertLocksCount(context, 3);
+                    assertLockExists(context, "q1");
+                    assertLockExists(context, "q2");
+                    assertLockExists(context, "q3");
+
+                    // invalid operation
+                    JsonObject operation = buildOperation(QueueOperation.bulkPutLocks, new JsonObject().put("abc", 123));
+                    eventBusSend(operation, m4 -> {
+                        context.assertEquals(ERROR, m4.result().body().getString(STATUS));
+                        context.assertEquals("No locks to put provided", m4.result().body().getString(MESSAGE));
+
+                        assertLocksCount(context, 3);
+                        assertLockExists(context, "q1");
+                        assertLockExists(context, "q2");
+                        assertLockExists(context, "q3");
+
+                        async.complete();
+                    });
+
+                });
+            });
+        });
+    }
+
 
     @Test
     public void getLock(TestContext context) {
@@ -763,11 +808,11 @@ public class RedisQuesTest extends AbstractTestCase {
         assertKeyCount(context, getLocksRedisKey(), 0);
         eventBusSend(buildPutLockOperation("testLock1", "geronimo"), message -> {
             context.assertEquals(OK, message.result().body().getString(STATUS));
-            context.assertTrue(jedis.hexists(getLocksRedisKey(), "testLock1"));
+            assertLockExists(context, "testLock1");
             assertKeyCount(context, getLocksRedisKey(), 1);
             eventBusSend(buildGetLockOperation("testLock1"), message1 -> {
                 context.assertEquals(OK, message1.result().body().getString(STATUS));
-                context.assertTrue(jedis.hexists(getLocksRedisKey(), "testLock1"));
+                assertLockExists(context, "testLock1");
                 assertLockContent(context, "testLock1", "geronimo");
                 async.complete();
             });
@@ -782,7 +827,7 @@ public class RedisQuesTest extends AbstractTestCase {
         eventBusSend(buildGetLockOperation("notExistingLock"), message -> {
             context.assertEquals(NO_SUCH_LOCK, message.result().body().getString(STATUS));
             assertKeyCount(context, getLocksRedisKey(), 0);
-            context.assertFalse(jedis.hexists(getLocksRedisKey(), "notExistingLock"));
+            assertLockDoesNotExist(context, "notExistingLock");
             async.complete();
         });
     }
@@ -800,7 +845,7 @@ public class RedisQuesTest extends AbstractTestCase {
         eventBusSend(op, message -> {
             context.assertEquals(NO_SUCH_LOCK, message.result().body().getString(STATUS));
             assertKeyCount(context, getLocksRedisKey(), 0);
-            context.assertFalse(jedis.hexists(getLocksRedisKey(), "notExistingLock"));
+            assertLockDoesNotExist(context, "notExistingLock");
             async.complete();
         });
     }
@@ -811,7 +856,7 @@ public class RedisQuesTest extends AbstractTestCase {
         flushAll();
         eventBusSend(buildDeleteLockOperation("testLock1"), message -> {
             context.assertEquals(OK, message.result().body().getString(STATUS));
-            context.assertFalse(jedis.hexists(getLocksRedisKey(), "testLock1"));
+            assertLockDoesNotExist(context, "testLock1");
             async.complete();
         });
     }
@@ -823,11 +868,11 @@ public class RedisQuesTest extends AbstractTestCase {
         assertKeyCount(context, getLocksRedisKey(), 0);
         eventBusSend(buildPutLockOperation("testLock1", "someuser"), message -> {
             context.assertEquals(OK, message.result().body().getString(STATUS));
-            context.assertTrue(jedis.hexists(getLocksRedisKey(), "testLock1"));
+            assertLockExists(context, "testLock1");
             assertKeyCount(context, getLocksRedisKey(), 1);
             eventBusSend(buildDeleteLockOperation("testLock1"), message1 -> {
                 context.assertEquals(OK, message1.result().body().getString(STATUS));
-                context.assertFalse(jedis.hexists(getLocksRedisKey(), "testLock1"));
+                assertLockDoesNotExist(context, "testLock1");
                 assertKeyCount(context, getLocksRedisKey(), 0);
                 async.complete();
             });
@@ -845,15 +890,15 @@ public class RedisQuesTest extends AbstractTestCase {
             context.assertEquals(0, locksArray.size(), "locks array should be empty");
             eventBusSend(buildPutLockOperation("testLock", "geronimo"), message2 -> {
                 context.assertEquals(OK, message2.result().body().getString(STATUS));
-                context.assertTrue(jedis.hexists(getLocksRedisKey(), "testLock"));
+                assertLockExists(context, "testLock");
                 eventBusSend(buildPutLockOperation("testLockWinnetou", "winnetou"), message3 -> {
                     context.assertEquals(OK, message3.result().body().getString(STATUS));
-                    context.assertTrue(jedis.hexists(getLocksRedisKey(), "testLockWinnetou"));
+                    assertLockExists(context, "testLockWinnetou");
                     eventBusSend(buildDeleteAllLocksOperation(), message4 -> {
                         context.assertEquals(OK, message4.result().body().getString(STATUS));
                         context.assertEquals(2L, message4.result().body().getLong(VALUE));
-                        context.assertFalse(jedis.hexists(getLocksRedisKey(), "testLock"));
-                        context.assertFalse(jedis.hexists(getLocksRedisKey(), "testLockWinnetou"));
+                        assertLockDoesNotExist(context, "testLock");
+                        assertLockDoesNotExist(context, "testLockWinnetou");
                         eventBusSend(buildGetAllLocksOperation(), message5 -> {
                             context.assertEquals(OK, message5.result().body().getString(STATUS));
                             JsonArray locksArray1 = message5.result().body().getJsonObject(VALUE).getJsonArray("locks");
@@ -875,33 +920,42 @@ public class RedisQuesTest extends AbstractTestCase {
         eventBusSend(buildPutLockOperation("q1", user), p1 -> {
             eventBusSend(buildPutLockOperation("q2", user), p2 -> {
                 eventBusSend(buildPutLockOperation("q3", user), p3 -> {
-                    context.assertTrue(jedis.hexists(getLocksRedisKey(), "q1"));
-                    context.assertTrue(jedis.hexists(getLocksRedisKey(), "q2"));
-                    context.assertTrue(jedis.hexists(getLocksRedisKey(), "q3"));
+                    assertLockExists(context, "q1");
+                    assertLockExists(context, "q2");
+                    assertLockExists(context, "q3");
 
                     eventBusSend(buildBulkDeleteLocksOperation(new JsonArray()), m1 -> {
                         context.assertEquals(OK, m1.result().body().getString(STATUS));
                         context.assertEquals(0L, m1.result().body().getLong(VALUE));
-                        context.assertTrue(jedis.hexists(getLocksRedisKey(), "q1"));
-                        context.assertTrue(jedis.hexists(getLocksRedisKey(), "q2"));
-                        context.assertTrue(jedis.hexists(getLocksRedisKey(), "q3"));
+                        assertLockExists(context, "q1");
+                        assertLockExists(context, "q2");
+                        assertLockExists(context, "q3");
 
                         eventBusSend(buildBulkDeleteLocksOperation(new JsonArray().add("q1").add("q3")), m2 -> {
                             context.assertEquals(OK, m2.result().body().getString(STATUS));
                             context.assertEquals(2L, m2.result().body().getLong(VALUE));
-                            context.assertFalse(jedis.hexists(getLocksRedisKey(), "q1"));
-                            context.assertFalse(jedis.hexists(getLocksRedisKey(), "q3"));
-                            context.assertTrue(jedis.hexists(getLocksRedisKey(), "q2"));
+                            assertLockDoesNotExist(context, "q1");
+                            assertLockDoesNotExist(context, "q3");
+                            assertLockExists(context, "q2");
 
                             //delete the same locks again
                             eventBusSend(buildBulkDeleteLocksOperation(new JsonArray().add("q1").add("q3")), m3 -> {
                                 context.assertEquals(OK, m3.result().body().getString(STATUS));
                                 context.assertEquals(0L, m3.result().body().getLong(VALUE));
-                                context.assertFalse(jedis.hexists(getLocksRedisKey(), "q1"));
-                                context.assertFalse(jedis.hexists(getLocksRedisKey(), "q3"));
-                                context.assertTrue(jedis.hexists(getLocksRedisKey(), "q2"));
+                                assertLockDoesNotExist(context, "q1");
+                                assertLockDoesNotExist(context, "q3");
+                                assertLockExists(context, "q2");
 
-                                async.complete();
+                                eventBusSend(buildBulkDeleteLocksOperation(new JsonArray().add(123).add("q2")), m4 -> {
+                                    context.assertEquals(ERROR, m4.result().body().getString(STATUS));
+                                    context.assertEquals(BAD_INPUT, m4.result().body().getString(ERROR_TYPE));
+                                    context.assertEquals("Locks must be string values", m4.result().body().getString(MESSAGE));
+                                    assertLockDoesNotExist(context, "q1");
+                                    assertLockDoesNotExist(context, "q3");
+                                    assertLockExists(context, "q2");
+
+                                    async.complete();
+                                });
                             });
                         });
                     });
@@ -918,9 +972,9 @@ public class RedisQuesTest extends AbstractTestCase {
         eventBusSend(buildPutLockOperation("q1", user), p1 -> {
             eventBusSend(buildPutLockOperation("q2", user), p2 -> {
                 eventBusSend(buildPutLockOperation("q3", user), p3 -> {
-                    context.assertTrue(jedis.hexists(getLocksRedisKey(), "q1"));
-                    context.assertTrue(jedis.hexists(getLocksRedisKey(), "q2"));
-                    context.assertTrue(jedis.hexists(getLocksRedisKey(), "q3"));
+                    assertLockExists(context, "q1");
+                    assertLockExists(context, "q2");
+                    assertLockExists(context, "q3");
 
                     JsonObject op = buildOperation(QueueOperation.bulkDeleteLocks);
                     op.put(PAYLOAD, new JsonObject());

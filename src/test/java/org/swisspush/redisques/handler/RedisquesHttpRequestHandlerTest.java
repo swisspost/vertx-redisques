@@ -18,6 +18,7 @@ import redis.clients.jedis.Jedis;
 
 import static com.jayway.restassured.RestAssured.given;
 import static com.jayway.restassured.RestAssured.when;
+import static java.lang.System.currentTimeMillis;
 import static org.hamcrest.CoreMatchers.*;
 import static org.hamcrest.collection.IsEmptyCollection.empty;
 import static org.hamcrest.number.OrderingComparison.greaterThanOrEqualTo;
@@ -390,7 +391,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
     public void enqueueValidBody(TestContext context) {
         Async async = context.async();
         flushAll();
-        String queueName = "queue_" + System.currentTimeMillis();
+        String queueName = "queue_" + currentTimeMillis();
         assertKeyCount(context, getQueuesRedisKeyPrefix(), 0);
         assertKeyCount(context, getQueuesRedisKeyPrefix() + queueName, 0);
 
@@ -402,7 +403,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         assertKeyCount(context, getQueuesRedisKeyPrefix(), 1);
         context.assertEquals(2L, jedis.llen(getQueuesRedisKeyPrefix() + queueName));
 
-        context.assertFalse(jedis.hexists(getLocksRedisKey(), queueName));
+        assertLockDoesNotExist(context, queueName);
 
         async.complete();
     }
@@ -411,7 +412,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
     public void enqueueInvalidBody(TestContext context) {
         Async async = context.async();
         flushAll();
-        String queueName = "queue_" + System.currentTimeMillis();
+        String queueName = "queue_" + currentTimeMillis();
         assertKeyCount(context, getQueuesRedisKeyPrefix(), 0);
         assertKeyCount(context, getQueuesRedisKeyPrefix() + queueName, 0);
 
@@ -419,7 +420,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         assertKeyCount(context, getQueuesRedisKeyPrefix(), 0);
         context.assertEquals(0L, jedis.llen(getQueuesRedisKeyPrefix() + queueName));
 
-        context.assertFalse(jedis.hexists(getLocksRedisKey(), queueName));
+        assertLockDoesNotExist(context, queueName);
 
         async.complete();
     }
@@ -428,15 +429,15 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
     public void lockedEnqueueValidBody(TestContext context) {
         Async async = context.async();
         flushAll();
-        String queueName = "queue_" + System.currentTimeMillis();
+        String queueName = "queue_" + currentTimeMillis();
         assertKeyCount(context, getQueuesRedisKeyPrefix(), 0);
         assertKeyCount(context, getQueuesRedisKeyPrefix() + queueName, 0);
-        context.assertFalse(jedis.hexists(getLocksRedisKey(), queueName));
+        assertLockDoesNotExist(context, queueName);
 
         given().body(queueItemValid).when().put("/queuing/enqueue/" + queueName + "/?locked").then().assertThat().statusCode(200);
         assertKeyCount(context, getQueuesRedisKeyPrefix(), 1);
         context.assertEquals(1L, jedis.llen(getQueuesRedisKeyPrefix() + queueName));
-        context.assertTrue(jedis.hexists(getLocksRedisKey(), queueName));
+        assertLockExists(context, queueName);
         assertLockContent(context, queueName, "Unknown");
 
         given().body(queueItemValid).when().put("/queuing/enqueue/" + queueName + "/?locked").then().assertThat().statusCode(200);
@@ -450,12 +451,12 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
     public void lockedEnqueueValidBodyRequestedByHeader(TestContext context) {
         Async async = context.async();
         flushAll();
-        long ts = System.currentTimeMillis();
+        long ts = currentTimeMillis();
         String queueName = "queue_" + ts;
         String requestedBy = "user_" + ts;
         assertKeyCount(context, getQueuesRedisKeyPrefix(), 0);
         assertKeyCount(context, getQueuesRedisKeyPrefix() + queueName, 0);
-        context.assertFalse(jedis.hexists(getLocksRedisKey(), queueName));
+        assertLockDoesNotExist(context, queueName);
 
         given()
                 .header("x-rp-usr", requestedBy)
@@ -466,7 +467,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
 
         assertKeyCount(context, getQueuesRedisKeyPrefix(), 1);
         context.assertEquals(1L, jedis.llen(getQueuesRedisKeyPrefix() + queueName));
-        context.assertTrue(jedis.hexists(getLocksRedisKey(), queueName));
+        assertLockExists(context, queueName);
         assertLockContent(context, queueName, requestedBy);
 
         async.complete();
@@ -476,16 +477,16 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
     public void lockedEnqueueInvalidBody(TestContext context) {
         Async async = context.async();
         flushAll();
-        String queueName = "queue_" + System.currentTimeMillis();
+        String queueName = "queue_" + currentTimeMillis();
         assertKeyCount(context, getQueuesRedisKeyPrefix(), 0);
         assertKeyCount(context, getQueuesRedisKeyPrefix() + queueName, 0);
-        context.assertFalse(jedis.hexists(getLocksRedisKey(), queueName));
+        assertLockDoesNotExist(context, queueName);
 
         given().body(queueItemInvalid).when().put("/queuing/enqueue/" + queueName + "/?locked").then().assertThat().statusCode(400);
         assertKeyCount(context, getQueuesRedisKeyPrefix(), 0);
         context.assertEquals(0L, jedis.llen(getQueuesRedisKeyPrefix() + queueName));
 
-        context.assertFalse(jedis.hexists(getLocksRedisKey(), queueName));
+        assertLockDoesNotExist(context, queueName);
 
         async.complete();
     }
@@ -914,7 +915,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         flushAll();
 
         eventBusSend(buildPutLockOperation("queueEnqueue", "someuser"), putLockMessage -> {
-            context.assertTrue(jedis.hexists(getLocksRedisKey(), "queueEnqueue"));
+            assertLockExists(context, "queueEnqueue");
 
             eventBusSend(buildEnqueueOperation("queueEnqueue", "helloEnqueue"), message -> {
                 assertKeyCount(context, getQueuesRedisKeyPrefix(), 1);
@@ -924,14 +925,14 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
                         .then().assertThat()
                         .statusCode(200);
                 assertKeyCount(context, getQueuesRedisKeyPrefix(), 0);
-                context.assertTrue(jedis.hexists(getLocksRedisKey(), "queueEnqueue"));
+                assertLockExists(context, "queueEnqueue");
 
                 // delete all queue items again
                 when().delete("/queuing/queues/queueEnqueue")
                         .then().assertThat()
                         .statusCode(200);
                 assertKeyCount(context, getQueuesRedisKeyPrefix(), 0);
-                context.assertTrue(jedis.hexists(getLocksRedisKey(), "queueEnqueue"));
+                assertLockExists(context, "queueEnqueue");
 
                 async.complete();
             });
@@ -945,7 +946,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         flushAll();
 
         eventBusSend(buildPutLockOperation("queueEnqueue", "someuser"), putLockMessage -> {
-            context.assertTrue(jedis.hexists(getLocksRedisKey(), "queueEnqueue"));
+            assertLockExists(context, "queueEnqueue");
 
             eventBusSend(buildEnqueueOperation("queueEnqueue", "helloEnqueue"), message -> {
                 assertKeyCount(context, getQueuesRedisKeyPrefix(), 1);
@@ -955,14 +956,14 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
                         .then().assertThat()
                         .statusCode(200);
                 assertKeyCount(context, getQueuesRedisKeyPrefix(), 0);
-                context.assertFalse(jedis.hexists(getLocksRedisKey(), "queueEnqueue"));
+                assertLockDoesNotExist(context, "queueEnqueue");
 
                 // delete all queue items again
                 when().delete("/queuing/queues/queueEnqueue")
                         .then().assertThat()
                         .statusCode(200);
                 assertKeyCount(context, getQueuesRedisKeyPrefix(), 0);
-                context.assertFalse(jedis.hexists(getLocksRedisKey(), "queueEnqueue"));
+                assertLockDoesNotExist(context, "queueEnqueue");
 
                 async.complete();
             });
@@ -989,6 +990,19 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
             eventBusSend(buildEnqueueOperation("q1", "q1_message"), e2 -> {
                 eventBusSend(buildEnqueueOperation("q2", "q2_message"), e3 -> {
                     eventBusSend(buildEnqueueOperation("q3", "q3_message"), e4 -> {
+                        given()
+                                .queryParam(BULK_DELETE)
+                                .body("{\"queues\": [\"a\",\"b\", 123456]}")
+                                .when().post("/queuing/queues/")
+                                .then().assertThat()
+                                .statusCode(400)
+                                .body(containsString("Queues must be string values"));
+
+                        assertQueuesCount(context, 3);
+                        assertQueueItemsCount(context, "q1", 2);
+                        assertQueueItemsCount(context, "q2", 1);
+                        assertQueueItemsCount(context, "q3", 1);
+
                         given()
                                 .queryParam(BULK_DELETE)
                                 .body("{\"zzz\": [\"a\",\"b\",\"c\"]}")
@@ -1162,6 +1176,18 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
                 eventBusSend(buildPutLockOperation("queue3", "someuser"), m3-> {
                     given()
                             .queryParam(BULK_DELETE)
+                            .body("{\"locks\": [\"a\",\"b\",123456]}")
+                            .when().post("/queuing/locks/")
+                            .then().assertThat()
+                            .statusCode(400)
+                            .body(containsString("Locks must be string values"));
+
+                    assertLockExists(context, "queue1");
+                    assertLockExists(context, "queue2");
+                    assertLockExists(context, "queue3");
+
+                    given()
+                            .queryParam(BULK_DELETE)
                             .body("{\"zzz\": [\"a\",\"b\",\"c\"]}")
                             .when().post("/queuing/locks/")
                             .then().assertThat()
@@ -1297,11 +1323,11 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
     public void addLock(TestContext context) {
         Async async = context.async();
         flushAll();
-        long ts = System.currentTimeMillis();
+        long ts = currentTimeMillis();
         String lock = "myLock_" + ts;
         String requestedBy = "someuser_" + ts;
 
-        context.assertFalse(jedis.hexists(getLocksRedisKey(), lock));
+        assertLockDoesNotExist(context, lock);
 
         given()
                 .header("x-rp-usr", requestedBy)
@@ -1309,7 +1335,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
                 .when()
                 .put("/queuing/locks/" + lock).then().assertThat().statusCode(200);
 
-        context.assertTrue(jedis.hexists(getLocksRedisKey(), lock));
+        assertLockExists(context, lock);
         assertLockContent(context, lock, requestedBy);
 
         async.complete();
@@ -1319,11 +1345,11 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
     public void addLockWrongUserHeader(TestContext context) {
         Async async = context.async();
         flushAll();
-        long ts = System.currentTimeMillis();
+        long ts = currentTimeMillis();
         String lock = "myLock_" + ts;
         String requestedBy = "someuser_" + ts;
 
-        context.assertFalse(jedis.hexists(getLocksRedisKey(), lock));
+        assertLockDoesNotExist(context, lock);
 
         given()
                 .header("wrong-user-header", requestedBy)
@@ -1331,7 +1357,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
                 .when()
                 .put("/queuing/locks/" + lock).then().assertThat().statusCode(200);
 
-        context.assertTrue(jedis.hexists(getLocksRedisKey(), lock));
+        assertLockExists(context, lock);
         assertLockContent(context, lock, "Unknown");
 
         async.complete();
@@ -1341,16 +1367,16 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
     public void addLockNoUserHeader(TestContext context) {
         Async async = context.async();
         flushAll();
-        String lock = "myLock_" + System.currentTimeMillis();
+        String lock = "myLock_" + currentTimeMillis();
 
-        context.assertFalse(jedis.hexists(getLocksRedisKey(), lock));
+        assertLockDoesNotExist(context, lock);
 
         given()
                 .body("{}")
                 .when()
                 .put("/queuing/locks/" + lock).then().assertThat().statusCode(200);
 
-        context.assertTrue(jedis.hexists(getLocksRedisKey(), lock));
+        assertLockExists(context, lock);
         assertLockContent(context, lock, "Unknown");
 
         async.complete();
@@ -1366,6 +1392,17 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
                 .then().assertThat()
                 .statusCode(200)
                 .body(LOCKS, empty());
+
+        given()
+                .body("{\"locks\": [\"queue1\",\"queue2\",\"queue3\", 123456]}")
+                .when().post("/queuing/locks/")
+                .then().assertThat()
+                .statusCode(400)
+                .body(containsString("Locks must be string values"));
+
+        assertLockDoesNotExist(context, "queue1");
+        assertLockDoesNotExist(context, "queue2");
+        assertLockDoesNotExist(context, "queue3");
 
         given()
                 .body("{\"zzz\": [\"queue1\",\"queue2\",\"queue3\"]}")
@@ -1489,13 +1526,13 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         String requestedBy = "someuser_" + ts;
         eventBusSend(buildPutLockOperation(lock, requestedBy), message -> {
 
-            context.assertTrue(jedis.hexists(getLocksRedisKey(), lock));
+            assertLockExists(context, lock);
 
             when().delete("/queuing/locks/" + lock)
                     .then().assertThat()
                     .statusCode(200);
 
-            context.assertFalse(jedis.hexists(getLocksRedisKey(), lock));
+            assertLockDoesNotExist(context, lock);
 
             async.complete();
         });

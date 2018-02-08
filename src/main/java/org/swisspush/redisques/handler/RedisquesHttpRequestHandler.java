@@ -308,7 +308,12 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
                 result.put(DELETED, reply.result().body().getLong(VALUE));
                 jsonResponse(ctx.response(), result);
             } else {
-                respondWith(StatusCode.INTERNAL_SERVER_ERROR, "Error bulk deleting locks", ctx.request());
+                String errorType = reply.result().body().getString(ERROR_TYPE);
+                if (errorType != null && BAD_INPUT.equalsIgnoreCase(errorType)) {
+                    respondWith(StatusCode.BAD_REQUEST, reply.result().body().getString(MESSAGE), ctx.request());
+                } else {
+                    respondWith(StatusCode.INTERNAL_SERVER_ERROR, "Error bulk deleting locks", ctx.request());
+                }
             }
         });
     }
