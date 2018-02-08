@@ -457,7 +457,7 @@ public class RedisQues extends AbstractVerticle {
         return getQueuesPrefix() + queue;
     }
 
-    private List<String> buildQueueKeys(JsonArray queues) throws Exception{
+    private List<String> buildQueueKeys(JsonArray queues) throws Exception {
         if(queues == null){
             return null;
         }
@@ -519,7 +519,16 @@ public class RedisQues extends AbstractVerticle {
         JsonObject lockInfo = extractLockInfo(event.body().getJsonObject(PAYLOAD).getString(REQUESTED_BY));
         if (lockInfo != null) {
             JsonArray lockNames = new JsonArray().add(event.body().getJsonObject(PAYLOAD).getString(QUEUENAME));
-            redisClient.hmset(getLocksKey(), buildLocksItems(lockNames, lockInfo), new PutLockHandler(event));
+
+            JsonObject lockItems;
+            try {
+                lockItems = buildLocksItems(lockNames, lockInfo);
+            } catch (Exception e) {
+                event.reply(new JsonObject().put(STATUS, ERROR).put(ERROR_TYPE, BAD_INPUT).put(MESSAGE, "Lock must be a string value"));
+                return;
+            }
+
+            redisClient.hmset(getLocksKey(), lockItems, new PutLockHandler(event));
         } else {
             event.reply(new JsonObject().put(STATUS, ERROR).put(MESSAGE, "Property '" + REQUESTED_BY + "' missing"));
         }
@@ -538,10 +547,18 @@ public class RedisQues extends AbstractVerticle {
             return;
         }
 
-        redisClient.hmset(getLocksKey(), buildLocksItems(locks, lockInfo), new PutLockHandler(event));
+        JsonObject locksItems;
+        try {
+            locksItems = buildLocksItems(locks, lockInfo);
+        } catch (Exception e) {
+            event.reply(new JsonObject().put(STATUS, ERROR).put(ERROR_TYPE, BAD_INPUT).put(MESSAGE, "Locks must be string values"));
+            return;
+        }
+
+        redisClient.hmset(getLocksKey(), locksItems, new PutLockHandler(event));
     }
 
-    private JsonObject buildLocksItems(JsonArray lockNames, JsonObject lockInfo) {
+    private JsonObject buildLocksItems(JsonArray lockNames, JsonObject lockInfo) throws Exception {
         JsonObject obj = new JsonObject();
         String lockInfoStr = lockInfo.encode();
         for (int i = 0; i < lockNames.size(); i++) {

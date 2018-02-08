@@ -230,8 +230,8 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
                 jsonResponse(ctx.response(), reply.result().body().getJsonObject(VALUE));
             } else {
                 String errorType = reply.result().body().getString(ERROR_TYPE);
-                if(errorType != null && BAD_INPUT.equalsIgnoreCase(errorType)){
-                    if(reply.result().body().getString(MESSAGE) != null) {
+                if (errorType != null && BAD_INPUT.equalsIgnoreCase(errorType)) {
+                    if (reply.result().body().getString(MESSAGE) != null) {
                         respondWith(StatusCode.BAD_REQUEST, reply.result().body().getString(MESSAGE), ctx.request());
                     } else {
                         respondWith(StatusCode.BAD_REQUEST, ctx.request());
@@ -269,7 +269,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
                 (Handler<AsyncResult<Message<JsonObject>>>) reply -> checkReply(reply.result(), ctx.request(), StatusCode.INTERNAL_SERVER_ERROR));
     }
 
-    private void deleteAllLocks(RoutingContext ctx){
+    private void deleteAllLocks(RoutingContext ctx) {
         eventBus.send(redisquesAddress, buildDeleteAllLocksOperation(), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
             if (reply.succeeded() && OK.equals(reply.result().body().getString(STATUS))) {
                 JsonObject result = new JsonObject();
@@ -281,11 +281,11 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         });
     }
 
-    private void bulkPutOrDeleteLocks(RoutingContext ctx){
+    private void bulkPutOrDeleteLocks(RoutingContext ctx) {
         ctx.request().bodyHandler(buffer -> {
             try {
                 Result<JsonArray, String> result = extractNonEmptyJsonArrayFromBody(LOCKS, buffer.toString());
-                if(result.isErr()){
+                if (result.isErr()) {
                     respondWith(StatusCode.BAD_REQUEST, result.getErr(), ctx.request());
                     return;
                 }
@@ -301,7 +301,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         });
     }
 
-    private void bulkDeleteLocks(RoutingContext ctx, JsonArray locks){
+    private void bulkDeleteLocks(RoutingContext ctx, JsonArray locks) {
         eventBus.send(redisquesAddress, buildBulkDeleteLocksOperation(locks), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
             if (reply.succeeded() && OK.equals(reply.result().body().getString(STATUS))) {
                 JsonObject result = new JsonObject();
@@ -313,9 +313,20 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         });
     }
 
-    private void bulkPutLocks(RoutingContext ctx, JsonArray locks){
+    private void bulkPutLocks(RoutingContext ctx, JsonArray locks) {
         eventBus.send(redisquesAddress, buildBulkPutLocksOperation(locks, extractUser(ctx.request())),
-                (Handler<AsyncResult<Message<JsonObject>>>) reply -> checkReply(reply.result(), ctx.request(), StatusCode.INTERNAL_SERVER_ERROR));
+                (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
+                    if (reply.succeeded() && OK.equals(reply.result().body().getString(STATUS))) {
+                        respondWith(StatusCode.OK, ctx.request());
+                    } else {
+                        String errorType = reply.result().body().getString(ERROR_TYPE);
+                        if (errorType != null && BAD_INPUT.equalsIgnoreCase(errorType)) {
+                            respondWith(StatusCode.BAD_REQUEST, reply.result().body().getString(MESSAGE), ctx.request());
+                        } else {
+                            respondWith(StatusCode.INTERNAL_SERVER_ERROR, ctx.request());
+                        }
+                    }
+                });
     }
 
     private void getQueueItemsCount(RoutingContext ctx) {
@@ -408,7 +419,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
             } else {
                 String error = "Error gathering count of active queues. Cause: " + reply.result().body().getString(MESSAGE);
                 String errorType = reply.result().body().getString(ERROR_TYPE);
-                if(errorType != null && BAD_INPUT.equalsIgnoreCase(errorType)){
+                if (errorType != null && BAD_INPUT.equalsIgnoreCase(errorType)) {
                     respondWith(StatusCode.BAD_REQUEST, error, ctx.request());
                 } else {
                     respondWith(StatusCode.INTERNAL_SERVER_ERROR, "Error gathering count of active queues", ctx.request());
@@ -425,7 +436,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
             } else {
                 String error = "Unable to list active queues. Cause: " + reply.result().body().getString(MESSAGE);
                 String errorType = reply.result().body().getString(ERROR_TYPE);
-                if(errorType != null && BAD_INPUT.equalsIgnoreCase(errorType)){
+                if (errorType != null && BAD_INPUT.equalsIgnoreCase(errorType)) {
                     respondWith(StatusCode.BAD_REQUEST, error, ctx.request());
                 } else {
                     respondWith(StatusCode.INTERNAL_SERVER_ERROR, error, ctx.request());
@@ -524,12 +535,12 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         eventBus.send(redisquesAddress, buildDeleteAllQueueItemsOperation(queue, unlock), reply -> ctx.response().end());
     }
 
-    private void bulkDeleteQueues(RoutingContext ctx){
+    private void bulkDeleteQueues(RoutingContext ctx) {
         if (evaluateUrlParameterToBeEmptyOrTrue(BULK_DELETE_PARAM, ctx.request())) {
             ctx.request().bodyHandler(buffer -> {
                 try {
                     Result<JsonArray, String> result = extractNonEmptyJsonArrayFromBody(QUEUES, buffer.toString());
-                    if(result.isErr()){
+                    if (result.isErr()) {
                         respondWith(StatusCode.BAD_REQUEST, result.getErr(), ctx.request());
                         return;
                     }
@@ -540,8 +551,8 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
                             jsonResponse(ctx.response(), resultObj);
                         } else {
                             String errorType = reply.result().body().getString(ERROR_TYPE);
-                            if(errorType != null && BAD_INPUT.equalsIgnoreCase(errorType)){
-                                if(reply.result().body().getString(MESSAGE) != null) {
+                            if (errorType != null && BAD_INPUT.equalsIgnoreCase(errorType)) {
+                                if (reply.result().body().getString(MESSAGE) != null) {
                                     respondWith(StatusCode.BAD_REQUEST, reply.result().body().getString(MESSAGE), ctx.request());
                                 } else {
                                     respondWith(StatusCode.BAD_REQUEST, ctx.request());
