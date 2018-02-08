@@ -1,12 +1,15 @@
 package org.swisspush.redisques.util;
 
+import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.ext.unit.TestContext;
 import io.vertx.ext.unit.junit.VertxUnitRunner;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation;
+import java.util.Optional;
+
+import static org.swisspush.redisques.util.RedisquesAPI.*;
 
 /**
  * Tests for {@link RedisquesAPI} class.
@@ -160,17 +163,25 @@ public class RedisquesAPITest {
     public void testBuildDeleteAllQueueItemsOperation(TestContext context) throws Exception {
         JsonObject operation = RedisquesAPI.buildDeleteAllQueueItemsOperation("my_queue_name");
         JsonObject expected = buildExpectedJsonObject("deleteAllQueueItems", new JsonObject()
-                .put(QUEUENAME, "my_queue_name").put("unlock", false));
+                .put(QUEUENAME, "my_queue_name").put(UNLOCK, false));
         context.assertEquals(expected, operation);
 
         operation = RedisquesAPI.buildDeleteAllQueueItemsOperation("my_queue_name", false);
         expected = buildExpectedJsonObject("deleteAllQueueItems", new JsonObject()
-                .put(QUEUENAME, "my_queue_name").put("unlock", false));
+                .put(QUEUENAME, "my_queue_name").put(UNLOCK, false));
         context.assertEquals(expected, operation);
 
         operation = RedisquesAPI.buildDeleteAllQueueItemsOperation("my_queue_name", true);
         expected = buildExpectedJsonObject("deleteAllQueueItems", new JsonObject()
-                .put(QUEUENAME, "my_queue_name").put("unlock", true));
+                .put(QUEUENAME, "my_queue_name").put(UNLOCK, true));
+        context.assertEquals(expected, operation);
+    }
+
+    @Test
+    public void testBuildBulkDeleteQueuesOperation(TestContext context) throws Exception {
+        JsonObject operation = RedisquesAPI.buildBulkDeleteQueuesOperation(new JsonArray().add("q_1").add("q_2"));
+        JsonObject expected = buildExpectedJsonObject("bulkDeleteQueues", new JsonObject()
+                .put(QUEUES, new JsonArray().add("q_1").add("q_2")));
         context.assertEquals(expected, operation);
     }
 
@@ -178,12 +189,22 @@ public class RedisquesAPITest {
     public void testBuildGetQueuesOperation(TestContext context) throws Exception {
         JsonObject operation = RedisquesAPI.buildGetQueuesOperation();
         context.assertEquals(buildExpectedJsonObject("getQueues"), operation);
+
+        operation = RedisquesAPI.buildGetQueuesOperation(Optional.of("abc"));
+        JsonObject expected = buildExpectedJsonObject("getQueues", new JsonObject()
+                .put(FILTER, "abc"));
+        context.assertEquals(expected, operation);
     }
 
     @Test
     public void testBuildGetQueuesCountOperation(TestContext context) throws Exception {
         JsonObject operation = RedisquesAPI.buildGetQueuesCountOperation();
         context.assertEquals(buildExpectedJsonObject("getQueuesCount"), operation);
+
+        operation = RedisquesAPI.buildGetQueuesCountOperation(Optional.of("abc"));
+        JsonObject expected = buildExpectedJsonObject("getQueuesCount", new JsonObject()
+                .put(FILTER, "abc"));
+        context.assertEquals(expected, operation);
     }
 
     @Test
@@ -211,6 +232,22 @@ public class RedisquesAPITest {
     }
 
     @Test
+    public void testBuildDeleteAllLocksOperation(TestContext context) throws Exception {
+        JsonObject operation = RedisquesAPI.buildDeleteAllLocksOperation();
+        context.assertEquals(buildExpectedJsonObject("deleteAllLocks"), operation);
+    }
+
+    @Test
+    public void testBuildBulkDeleteLocksOperation(TestContext context) throws Exception {
+        JsonObject operation = RedisquesAPI.buildBulkDeleteLocksOperation(new JsonArray().add("lock_1").add("lock_2").add("lock_3"));
+
+        JsonObject expected = buildExpectedJsonObject("bulkDeleteLocks", new JsonObject()
+                .put(LOCKS, new JsonArray().add("lock_1").add("lock_2").add("lock_3")));
+        context.assertEquals(expected, operation);
+    }
+
+
+    @Test
     public void testBuildPutLockOperation(TestContext context) throws Exception {
         JsonObject operation = RedisquesAPI.buildPutLockOperation("my_queue_name", "request_user");
         JsonObject expected = buildExpectedJsonObject("putLock", new JsonObject()
@@ -220,9 +257,24 @@ public class RedisquesAPITest {
     }
 
     @Test
+    public void testBuildBulkPutLocksOperation(TestContext context) throws Exception {
+        JsonObject operation = RedisquesAPI.buildBulkPutLocksOperation(new JsonArray().add("lock_1").add("lock_2").add("lock_3"), "request_user");
+
+        JsonObject expected = buildExpectedJsonObject("bulkPutLocks", new JsonObject()
+                .put(LOCKS, new JsonArray().add("lock_1").add("lock_2").add("lock_3"))
+                .put(REQUESTED_BY, "request_user"));
+        context.assertEquals(expected, operation);
+    }
+
+    @Test
     public void testBuildGetAllLocksOperation(TestContext context) throws Exception {
         JsonObject operation = RedisquesAPI.buildGetAllLocksOperation();
         context.assertEquals(buildExpectedJsonObject("getAllLocks"), operation);
+
+        operation = RedisquesAPI.buildGetAllLocksOperation(Optional.of("abc"));
+        JsonObject expected = buildExpectedJsonObject("getAllLocks", new JsonObject()
+                .put(FILTER, "abc"));
+        context.assertEquals(expected, operation);
     }
 
     @Test
