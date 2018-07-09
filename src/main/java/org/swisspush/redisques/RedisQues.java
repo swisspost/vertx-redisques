@@ -16,11 +16,14 @@ import io.vertx.redis.RedisOptions;
 import io.vertx.redis.op.RangeLimitOptions;
 import org.swisspush.redisques.handler.*;
 import org.swisspush.redisques.lua.LuaScriptManager;
+import org.swisspush.redisques.util.MessageUtil;
 import org.swisspush.redisques.util.RedisQuesTimer;
 import org.swisspush.redisques.util.RedisquesConfiguration;
+import org.swisspush.redisques.util.Result;
 
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -224,11 +227,16 @@ public class RedisQues extends AbstractVerticle {
                 case deleteAllQueueItems:
                     deleteAllQueueItems(event);
                     break;
+                case bulkDeleteQueues:
+                    bulkDeleteQueues(event);
                 case getAllLocks:
-                    redisClient.hkeys(getLocksKey(), new GetAllLocksHandler(event));
+                    getAllLocks(event);
                     break;
                 case putLock:
                     putLock(event);
+                    break;
+                case bulkPutLocks:
+                    bulkPutLocks(event);
                     break;
                 case getLock:
                     redisClient.hget(getLocksKey(), event.body().getJsonObject(PAYLOAD).getString(QUEUENAME), new GetLockHandler(event));
@@ -236,14 +244,20 @@ public class RedisQues extends AbstractVerticle {
                 case deleteLock:
                     deleteLock(event);
                     break;
+                case bulkDeleteLocks:
+                    bulkDeleteLocks(event);
+                    break;
+                case deleteAllLocks:
+                    deleteAllLocks(event);
+                    break;
                 case getQueueItemsCount:
                     redisClient.llen(getQueuesPrefix() + event.body().getJsonObject(PAYLOAD).getString(QUEUENAME), new GetQueueItemsCountHandler(event));
                     break;
                 case getQueuesCount:
-                    redisClient.zcount(getQueuesKey(), getMaxAgeTimestamp(), Double.MAX_VALUE, new GetQueuesCountHandler(event));
+                    getQueuesCount(event);
                     break;
                 case getQueues:
-                    redisClient.zrangebyscore(getQueuesKey(), String.valueOf(getMaxAgeTimestamp()), "+inf", RangeLimitOptions.NONE, new GetQueuesHandler(event));
+                    getQueues(event, false);
                     break;
                 case check:
                     checkQueues();
@@ -359,12 +373,43 @@ public class RedisQues extends AbstractVerticle {
         int maxQueueItemCountIndex = getMaxQueueItemCountIndex(event.body().getJsonObject(PAYLOAD).getString(LIMIT));
         redisClient.llen(keyListRange, countReply -> {
             Long queueItemCount = countReply.result();
-            if (countReply.succeeded() && queueItemCount!= null) {
+            if (countReply.succeeded() && queueItemCount != null) {
                 redisClient.lrange(keyListRange, 0, maxQueueItemCountIndex, new GetQueueItemsHandler(event, queueItemCount));
             } else {
                 log.warn("RedisQues getQueueItems failed", countReply.cause());
             }
         });
+    }
+
+    private void getQueues(Message<JsonObject> event, boolean countOnly) {
+        Result<Optional<Pattern>, String> result = MessageUtil.extractFilterPattern(event);
+        getQueues(event, countOnly, result);
+    }
+
+    private void getQueues(Message<JsonObject> event, boolean countOnly, Result<Optional<Pattern>, String> filterPatternResult) {
+        if (filterPatternResult.isErr()) {
+            event.reply(new JsonObject().put(STATUS, ERROR).put(ERROR_TYPE, BAD_INPUT).put(MESSAGE, filterPatternResult.getErr()));
+        } else {
+            redisClient.zrangebyscore(getQueuesKey(), String.valueOf(getMaxAgeTimestamp()), "+inf",
+                    RangeLimitOptions.NONE, new GetQueuesHandler(event, filterPatternResult.getOk(), countOnly));
+        }
+    }
+
+    private void getQueuesCount(Message<JsonObject> event) {
+        Result<Optional<Pattern>, String> result = MessageUtil.extractFilterPattern(event);
+        if (result.isErr()) {
+            event.reply(new JsonObject().put(STATUS, ERROR).put(ERROR_TYPE, BAD_INPUT).put(MESSAGE, result.getErr()));
+            return;
+        }
+
+        /*
+         * to filter values we have to use "getQueues" operation
+         */
+        if (result.getOk().isPresent()) {
+            getQueues(event, true, result);
+        } else {
+            redisClient.zcount(getQueuesKey(), getMaxAgeTimestamp(), Double.MAX_VALUE, new GetQueuesCountHandler(event));
+        }
     }
 
     private void getQueueItem(Message<JsonObject> event) {
@@ -399,31 +444,117 @@ public class RedisQues extends AbstractVerticle {
         JsonObject payload = event.body().getJsonObject(PAYLOAD);
         boolean unlock = payload.getBoolean(UNLOCK, false);
         String queue = payload.getString(QUEUENAME);
-        redisClient.del(getQueuesPrefix() + queue, deleteReply -> {
+        redisClient.del(buildQueueKey(queue), deleteReply -> {
             if (unlock) {
-                redisClient.hdel(getLocksKey(), queue, unlockReply -> replyDeleteAllQueueItems(event, deleteReply));
+                redisClient.hdel(getLocksKey(), queue, unlockReply -> replyResultGreaterThanZero(event, deleteReply));
             } else {
-                replyDeleteAllQueueItems(event, deleteReply);
+                replyResultGreaterThanZero(event, deleteReply);
             }
         });
     }
 
-    private void replyDeleteAllQueueItems(Message<JsonObject> event, AsyncResult<Long> deleteReply) {
-        if (deleteReply.succeeded() && deleteReply.result() != null && deleteReply.result() > 0) {
-            event.reply(new JsonObject().put(STATUS, OK));
+    private String buildQueueKey(String queue){
+        return getQueuesPrefix() + queue;
+    }
+
+    private List<String> buildQueueKeys(JsonArray queues) {
+        if(queues == null){
+            return null;
+        }
+        List<String> queueKeys = new ArrayList<>();
+        for (int i = 0; i < queues.size(); i++) {
+            String queue = queues.getString(i);
+            queueKeys.add(buildQueueKey(queue));
+        }
+        return queueKeys;
+    }
+
+    private void bulkDeleteQueues(Message<JsonObject> event){
+        JsonArray queues = event.body().getJsonObject(PAYLOAD).getJsonArray(QUEUES);
+        if (queues == null) {
+            event.reply(new JsonObject().put(STATUS, ERROR).put(MESSAGE, "No queues to delete provided"));
+            return;
+        }
+
+        if(queues.isEmpty()){
+            event.reply(new JsonObject().put(STATUS, OK).put(VALUE, 0));
+            return;
+        }
+
+        if(!jsonArrayContainsStringsOnly(queues)){
+            event.reply(new JsonObject().put(STATUS, ERROR).put(ERROR_TYPE, BAD_INPUT).put(MESSAGE, "Queues must be string values"));
+            return;
+        }
+
+        redisClient.delMany(buildQueueKeys(queues), delManyReply -> {
+            if(delManyReply.succeeded()){
+                event.reply(new JsonObject().put(STATUS, OK).put(VALUE, delManyReply.result()));
+            } else {
+                event.reply(new JsonObject().put(STATUS, ERROR));
+            }
+        });
+    }
+
+    private void replyResultGreaterThanZero(Message<JsonObject> event, AsyncResult<Long> reply) {
+        if (reply.succeeded() && reply.result() != null && reply.result() > 0) {
+            event.reply(new JsonObject().put(STATUS, OK).put(VALUE, reply.result()));
         } else {
             event.reply(new JsonObject().put(STATUS, ERROR));
+        }
+    }
+
+    private void getAllLocks(Message<JsonObject> event) {
+        Result<Optional<Pattern>, String> result = MessageUtil.extractFilterPattern(event);
+        if (result.isOk()) {
+            redisClient.hkeys(getLocksKey(), new GetAllLocksHandler(event, result.getOk()));
+        } else {
+            event.reply(new JsonObject().put(STATUS, ERROR).put(ERROR_TYPE, BAD_INPUT).put(MESSAGE, result.getErr()));
         }
     }
 
     private void putLock(Message<JsonObject> event) {
         JsonObject lockInfo = extractLockInfo(event.body().getJsonObject(PAYLOAD).getString(REQUESTED_BY));
         if (lockInfo != null) {
-            redisClient.hmset(getLocksKey(), new JsonObject().put(event.body().getJsonObject(PAYLOAD).getString(QUEUENAME), lockInfo.encode()),
-                    new PutLockHandler(event));
+            JsonArray lockNames = new JsonArray().add(event.body().getJsonObject(PAYLOAD).getString(QUEUENAME));
+            if(!jsonArrayContainsStringsOnly(lockNames)){
+                event.reply(new JsonObject().put(STATUS, ERROR).put(ERROR_TYPE, BAD_INPUT).put(MESSAGE, "Lock must be a string value"));
+                return;
+            }
+            redisClient.hmset(getLocksKey(), buildLocksItems(lockNames, lockInfo), new PutLockHandler(event));
         } else {
             event.reply(new JsonObject().put(STATUS, ERROR).put(MESSAGE, "Property '" + REQUESTED_BY + "' missing"));
         }
+    }
+
+    private void bulkPutLocks(Message<JsonObject> event) {
+        JsonArray locks = event.body().getJsonObject(PAYLOAD).getJsonArray(LOCKS);
+        if (locks == null || locks.isEmpty()) {
+            event.reply(new JsonObject().put(STATUS, ERROR).put(MESSAGE, "No locks to put provided"));
+            return;
+        }
+
+        JsonObject lockInfo = extractLockInfo(event.body().getJsonObject(PAYLOAD).getString(REQUESTED_BY));
+        if (lockInfo == null) {
+            event.reply(new JsonObject().put(STATUS, ERROR).put(MESSAGE, "Property '" + REQUESTED_BY + "' missing"));
+            return;
+        }
+
+        if(!jsonArrayContainsStringsOnly(locks)){
+            event.reply(new JsonObject().put(STATUS, ERROR).put(ERROR_TYPE, BAD_INPUT).put(MESSAGE, "Locks must be string values"));
+            return;
+        }
+
+        redisClient.hmset(getLocksKey(), buildLocksItems(locks, lockInfo), new PutLockHandler(event));
+    }
+
+    private JsonObject buildLocksItems(JsonArray lockNames, JsonObject lockInfo) {
+        JsonObject obj = new JsonObject();
+        String lockInfoStr = lockInfo.encode();
+        for (int i = 0; i < lockNames.size(); i++) {
+            String lock = lockNames.getString(i);
+            obj.put(lock, lockInfoStr);
+        }
+        return obj;
     }
 
     private void deleteLock(Message<JsonObject> event) {
@@ -434,6 +565,60 @@ public class RedisQues extends AbstractVerticle {
             }
             redisClient.hdel(getLocksKey(), queueName, new DeleteLockHandler(event));
         });
+    }
+
+    private void bulkDeleteLocks(Message<JsonObject> event) {
+        JsonArray locks = event.body().getJsonObject(PAYLOAD).getJsonArray(LOCKS);
+        if (locks != null) {
+            deleteLocks(event, locks);
+        } else {
+            event.reply(new JsonObject().put(STATUS, ERROR).put(MESSAGE, "No locks to delete provided"));
+        }
+    }
+
+    private void deleteAllLocks(Message<JsonObject> event) {
+        redisClient.hkeys(getLocksKey(), locksResult -> {
+            if (locksResult.succeeded()) {
+                JsonArray locks = locksResult.result();
+                deleteLocks(event, locks);
+            } else {
+                log.warn("failed to delete all locks. Message: " + locksResult.cause().getMessage());
+                event.reply(new JsonObject().put(STATUS, ERROR).put(MESSAGE, locksResult.cause().getMessage()));
+            }
+        });
+    }
+
+    private void deleteLocks(Message<JsonObject> event, JsonArray locks) {
+        if (locks == null || locks.isEmpty()) {
+            event.reply(new JsonObject().put(STATUS, OK).put(VALUE, 0));
+            return;
+        }
+
+        if(!jsonArrayContainsStringsOnly(locks)){
+            event.reply(new JsonObject().put(STATUS, ERROR).put(ERROR_TYPE, BAD_INPUT).put(MESSAGE, "Locks must be string values"));
+            return;
+        }
+
+        redisClient.hdelMany(getLocksKey(), locks.getList(), delManyResult -> {
+            if (delManyResult.succeeded()) {
+                log.info("Successfully deleted " + delManyResult.result() + " locks");
+                event.reply(new JsonObject().put(STATUS, OK).put(VALUE, delManyResult.result()));
+            } else {
+                log.warn("failed to delete locks. Message: " + delManyResult.cause().getMessage());
+                event.reply(new JsonObject().put(STATUS, ERROR).put(MESSAGE, delManyResult.cause().getMessage()));
+            }
+        });
+    }
+
+    private boolean jsonArrayContainsStringsOnly(JsonArray array){
+        try {
+            for (int i = 0; i < array.size(); i++) {
+                array.getString(i);
+            }
+            return true;
+        } catch(Exception ex){
+            return false;
+        }
     }
 
     private void getConfiguration(Message<JsonObject> event) {
@@ -459,8 +644,8 @@ public class RedisQues extends AbstractVerticle {
     private void setConfiguration(Message<JsonObject> event) {
         JsonObject configurationValues = event.body().getJsonObject(PAYLOAD);
         setConfigurationValues(configurationValues, true).setHandler(setConfigurationValuesEvent -> {
-            if(setConfigurationValuesEvent.succeeded()){
-                log.debug("About to publish the configuration updates to event bus address '"+configurationUpdatedAddress+"'");
+            if (setConfigurationValuesEvent.succeeded()) {
+                log.debug("About to publish the configuration updates to event bus address '" + configurationUpdatedAddress + "'");
                 vertx.eventBus().publish(configurationUpdatedAddress, configurationValues);
                 event.reply(setConfigurationValuesEvent.result());
             } else {
@@ -469,25 +654,25 @@ public class RedisQues extends AbstractVerticle {
         });
     }
 
-    private Future<JsonObject> setConfigurationValues(JsonObject configurationValues, boolean validateOnly){
+    private Future<JsonObject> setConfigurationValues(JsonObject configurationValues, boolean validateOnly) {
         Future<JsonObject> future = Future.future();
 
         if (configurationValues != null) {
             List<String> notAllowedConfigurationValues = findNotAllowedConfigurationValues(configurationValues.fieldNames());
-            if(notAllowedConfigurationValues.isEmpty()){
+            if (notAllowedConfigurationValues.isEmpty()) {
                 try {
                     Long processorDelayMaxValue = configurationValues.getLong(PROCESSOR_DELAY_MAX);
-                    if(processorDelayMaxValue == null){
-                        future.fail("Value for configuration property '"+PROCESSOR_DELAY_MAX+"' is missing");
+                    if (processorDelayMaxValue == null) {
+                        future.fail("Value for configuration property '" + PROCESSOR_DELAY_MAX + "' is missing");
                         return future;
                     }
-                    if(!validateOnly) {
+                    if (!validateOnly) {
                         this.processorDelayMax = processorDelayMaxValue;
                         log.info("Updated configuration value of property '" + PROCESSOR_DELAY_MAX + "' to " + processorDelayMaxValue);
                     }
                     future.complete(new JsonObject().put(STATUS, OK));
-                } catch(ClassCastException ex){
-                    future.fail("Value for configuration property '"+PROCESSOR_DELAY_MAX+"' is not a number");
+                } catch (ClassCastException ex) {
+                    future.fail("Value for configuration property '" + PROCESSOR_DELAY_MAX + "' is not a number");
                 }
             } else {
                 String notAllowedConfigurationValuesString = notAllowedConfigurationValues.toString();
@@ -756,7 +941,7 @@ public class RedisQues extends AbstractVerticle {
     }
 
     private void processMessageWithTimeout(final String queue, final String payload, final Handler<SendResult> handler) {
-        if(processorDelayMax > 0){
+        if (processorDelayMax > 0) {
             log.info("About to process message for queue " + queue + " with a maximum delay of " + processorDelayMax + "ms");
         }
         timer.executeDelayedMax(processorDelayMax).setHandler(delayed -> {
