@@ -14,6 +14,7 @@ import io.vertx.core.logging.LoggerFactory;
 import io.vertx.redis.RedisClient;
 import io.vertx.redis.RedisOptions;
 import io.vertx.redis.op.RangeLimitOptions;
+import io.vertx.redis.op.SetOptions;
 import org.swisspush.redisques.handler.*;
 import org.swisspush.redisques.lua.LuaScriptManager;
 import org.swisspush.redisques.util.MessageUtil;
@@ -124,13 +125,14 @@ public class RedisQues extends AbstractVerticle {
         final String queue = event.body();
         log.debug("RedisQues Got registration request for queue " + queue + " from consumer: " + uid);
         // Try to register for this queue
-        redisClient.setnx(getConsumersPrefix() + queue, uid, event1 -> {
+        SetOptions setOptions = new SetOptions().setNX(true).setEX(2 * refreshPeriod);
+        redisClient.setWithOptions(getConsumersPrefix() + queue, uid, setOptions, event1 -> {
             if (event1.succeeded()) {
-                Long value = event1.result();
+                String value = event1.result();
                 if (log.isTraceEnabled()) {
                     log.trace("RedisQues setxn result: " + value + " for queue: " + queue);
                 }
-                if (value != null && value.longValue() == 1L) {
+                if ("OK".equals(value)) {
                     // I am now the registered consumer for this queue.
                     log.debug("RedisQues Now registered for queue " + queue);
                     myQueues.put(queue, QueueState.READY);
