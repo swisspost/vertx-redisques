@@ -92,7 +92,8 @@ public class RedisQues extends AbstractVerticle {
 
     // Consumers periodically refresh their subscription while they are
     // consuming.
-    private int refreshPeriod = 10;
+    private int refreshPeriod;
+    private int consumerLockTime;
 
     private int checkInterval;
 
@@ -125,7 +126,7 @@ public class RedisQues extends AbstractVerticle {
         final String queue = event.body();
         log.debug("RedisQues Got registration request for queue " + queue + " from consumer: " + uid);
         // Try to register for this queue
-        SetOptions setOptions = new SetOptions().setNX(true).setEX(2 * refreshPeriod);
+        SetOptions setOptions = new SetOptions().setNX(true).setEX(consumerLockTime);
         redisClient.setWithOptions(getConsumersPrefix() + queue, uid, setOptions, event1 -> {
             if (event1.succeeded()) {
                 String value = event1.result();
@@ -161,6 +162,7 @@ public class RedisQues extends AbstractVerticle {
         redisPrefix = modConfig.getRedisPrefix();
         processorAddress = modConfig.getProcessorAddress();
         refreshPeriod = modConfig.getRefreshPeriod();
+        consumerLockTime = 2 * refreshPeriod; // lock is kept twice as long as its refresh interval -> never expires as long as the consumer ('we') are alive
         checkInterval = modConfig.getCheckInterval();
         processorTimeout = modConfig.getProcessorTimeout();
         processorDelayMax = modConfig.getProcessorDelayMax();
@@ -1017,15 +1019,15 @@ public class RedisQues extends AbstractVerticle {
     }
 
     private void refreshRegistration(String queue, Handler<AsyncResult<Long>> handler) {
-        log.debug("RedisQues Refreshing registration of queue " + queue + ", expire at " + (2 * refreshPeriod));
+        log.debug("RedisQues Refreshing registration of queue " + queue + ", expire in " + consumerLockTime + " s");
         String key = getConsumersPrefix() + queue;
         if (log.isTraceEnabled()) {
             log.trace("RedisQues refresh registration: " + key);
         }
         if (handler != null) {
-            redisClient.expire(key, 2 * refreshPeriod, handler);
+            redisClient.expire(key, consumerLockTime, handler);
         } else {
-            redisClient.expire(key, 2 * refreshPeriod, event -> {
+            redisClient.expire(key, consumerLockTime, event -> {
             });
         }
     }
