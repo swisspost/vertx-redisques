@@ -284,6 +284,7 @@ public class RedisquesConfiguration {
             this.redisPrefix = "redisques:";
             this.processorAddress = "redisques-processor";
             this.refreshPeriod = 10;
+            this.maxSlowDown = 60;
             this.redisHost = "localhost";
             this.redisPort = 6379;
             this.redisEncoding = "UTF-8";

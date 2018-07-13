@@ -988,20 +988,12 @@ public class RedisQues extends AbstractVerticle {
         });
     }
 
-    private void rescheduleSendMessageAfterFailure(final String queue, int rescheduleRefreshPeriod) {
+    private void rescheduleSendMessageAfterFailure(final String queue, int refreshPeriod) {
         if (log.isTraceEnabled()) {
             log.trace("RedsQues reschedule after failure for queue: " + queue);
         }
         
-        int period;
-        if (rescheduleRefreshPeriod > 0) {
-            period = rescheduleRefreshPeriod;
-        } else {
-            log.info("The reschedule refresh period is " + rescheduleRefreshPeriod + " which is not greater than zeo, so let use the default refresh period " + refreshPeriod);
-            period = refreshPeriod;
-        }
-        
-        vertx.setTimer(period * 1000, timerId -> {
+        vertx.setTimer(refreshPeriod * 1000, timerId -> {
             log.info("RedisQues re-notify the consumer of queue '" + queue + "' at " + new Date(System.currentTimeMillis()));
             notifyConsumer(queue);
 
