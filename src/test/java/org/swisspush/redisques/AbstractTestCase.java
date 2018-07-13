@@ -49,6 +49,8 @@ public abstract class AbstractTestCase {
     protected String getQueuesRedisKeyPrefix(){ return getRedisPrefix() + "queues:"; }
 
     protected String getConsumersRedisKeyPrefix(){ return  getRedisPrefix() + "consumers:"; }
+    
+    protected String getQueueFailureCountKey(String queueName) { return getQueuesRedisKeyPrefix() + queueName + ":failureCount"; }
 
     protected void assertKeyCount(TestContext context, int keyCount){
         assertKeyCount(context, "", keyCount);
