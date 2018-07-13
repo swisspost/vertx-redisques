@@ -463,7 +463,7 @@ public class RedisQues extends AbstractVerticle {
         return getQueuesPrefix() + queue + ":failureCount";
     }
 
-    private void getQueueFailureCount(String queue, Handler<AsyncResult<Integer>> handler) {
+    void getQueueFailureCount(String queue, Handler<AsyncResult<Integer>> handler) {
         redisClient.get(getQueueFailureCountKey(queue), asyncResult -> {
             String failureCount = asyncResult.result();
             if (failureCount != null) {
@@ -1001,7 +1001,7 @@ public class RedisQues extends AbstractVerticle {
         });
     }
 
-    private void processMessageWithTimeout(final String queue, final String payload, final Handler<SendResult> handler) {
+    void processMessageWithTimeout(final String queue, final String payload, final Handler<SendResult> handler) {
         if (processorDelayMax > 0) {
             log.info("About to process message for queue " + queue + " with a maximum delay of " + processorDelayMax + "ms");
         }
@@ -1033,19 +1033,19 @@ public class RedisQues extends AbstractVerticle {
                     success = Boolean.FALSE;
                 }
                 
+                // update the queue failure count
+                Handler<AsyncResult<Void>> queueFailureCountHandler = asyncResult -> handler.handle(new SendResult(success, timeoutId));
                 if (success) {
-                    resetQueueFailureCount(queue, null);
+                    resetQueueFailureCount(queue, queueFailureCountHandler);
                 } else {
-                    increaseQueueFailureCount(queue, null);
+                    increaseQueueFailureCount(queue, queueFailureCountHandler);
                 }
-                
-                handler.handle(new SendResult(success, timeoutId));
             });
             updateTimestamp(queue, null);
         });
     }
 
-    private class SendResult {
+    class SendResult {
         public final Boolean success;
         public final Long timeoutId;
 

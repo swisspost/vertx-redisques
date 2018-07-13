@@ -1056,7 +1056,7 @@ public class RedisQuesTest extends AbstractTestCase {
     }
 
     @Test
-    public void getQueueRescheduleRefreshPeriod(TestContext context) {
+    public void getQueueRescheduleRefreshPeriodWhileFailureCountIncreased(TestContext context) {
         final String queue = "queue1";
 
         Async async = context.async();
@@ -1133,6 +1133,26 @@ public class RedisQuesTest extends AbstractTestCase {
                             });
                         });
                     });
+                });
+            });
+        });
+    }
+
+    @Test
+    public void getQueueFailureCountWhenProcessMessageWithTimeoutFail(TestContext context) {
+        final String queue = "queue1";
+        String payload = "";
+
+        Async async = context.async();
+        flushAll();
+        
+        redisQues.resetQueueFailureCount(queue, asyncResult1 -> {
+            redisQues.processMessageWithTimeout(queue, payload, sendResult -> {
+                context.assertTrue(!sendResult.success, "The sending is not fail.");
+
+                redisQues.getQueueFailureCount(queue, asyncResult2 -> {
+                    context.assertEquals(1, asyncResult2.result(), "The failure count is wrong.");
+                    async.complete();
                 });
             });
         });
