@@ -25,6 +25,8 @@ import static org.swisspush.redisques.util.RedisquesAPI.*;
  */
 public class RedisQuesTest extends AbstractTestCase {
 
+    private RedisQues redisQues;
+    
     @Rule
     public Timeout rule = Timeout.seconds(5);
 
@@ -36,10 +38,11 @@ public class RedisQuesTest extends AbstractTestCase {
                 .processorAddress(PROCESSOR_ADDRESS)
                 .redisEncoding("ISO-8859-1")
                 .refreshPeriod(2)
+                .maxSlowDown(52)
                 .build()
                 .asJsonObject();
 
-        RedisQues redisQues = new RedisQues();
+        redisQues = new RedisQues();
         vertx.deployVerticle(redisQues, new DeploymentOptions().setConfig(config), context.asyncAssertSuccess(event -> {
             deploymentId = event;
             log.info("vert.x Deploy - " + redisQues.getClass().getSimpleName() + " was successful.");
@@ -1008,18 +1011,18 @@ public class RedisQuesTest extends AbstractTestCase {
     
     @Test
     public void readQueueFailWhileQueueStateIsConsuming(TestContext context) {
-        final String queueName = "queue1";
+        final String queue = "queue1";
         
         Async async = context.async();
         flushAll();
 
-        jedis.set(getQueueFailureCountKey(queueName), "0");
+        jedis.set(getQueueFailureCountKey(queue), "0");
         
-        eventBusSend(buildGetQueueItemsOperation(queueName, null), message -> {
+        eventBusSend(buildGetQueueItemsOperation(queue, null), message -> {
             context.assertEquals(OK, message.result().body().getString(STATUS));
             context.assertEquals(0, message.result().body().getJsonArray(VALUE).size());
 
-            eventBusSend(buildEnqueueOperation(queueName, "a_queue_item"), message1 -> {
+            eventBusSend(buildEnqueueOperation(queue, "a_queue_item"), message1 -> {
                 context.assertEquals(OK, message1.result().body().getString(STATUS));
 
                 //FIXME: need to wait for delay
@@ -1029,11 +1032,11 @@ public class RedisQuesTest extends AbstractTestCase {
                     e.printStackTrace();
                 }
                 
-                String failureCount1 = jedis.get(getQueueFailureCountKey(queueName));
+                String failureCount1 = jedis.get(getQueueFailureCountKey(queue));
                 context.assertEquals("1", failureCount1, "The failure count is wrong.");
 
                 // The queue state is still CONSUMING
-                eventBusSend(buildEnqueueOperation(queueName, "a_queue_item"), message2 -> {
+                eventBusSend(buildEnqueueOperation(queue, "a_queue_item"), message2 -> {
                     context.assertEquals(OK, message2.result().body().getString(STATUS));
 
                     //FIXME: need to wait for delay
@@ -1043,7 +1046,7 @@ public class RedisQuesTest extends AbstractTestCase {
                         e.printStackTrace();
                     }
 
-                    String failureCount2 = jedis.get(getQueueFailureCountKey(queueName));
+                    String failureCount2 = jedis.get(getQueueFailureCountKey(queue));
                     context.assertEquals("1", failureCount2, "The failure count is wrong.");
 
                     async.complete();
@@ -1052,4 +1055,86 @@ public class RedisQuesTest extends AbstractTestCase {
         });
     }
 
+    @Test
+    public void getQueueRescheduleRefreshPeriod(TestContext context) {
+        final String queue = "queue1";
+
+        Async async = context.async();
+        flushAll();
+        
+        redisQues.resetQueueFailureCount(queue, asyncResult1 -> {
+            redisQues.getQueueRescheduleRefreshPeriod(queue, asyncResult2 -> {
+                context.assertEquals(2, asyncResult2.result(), "The reschedule refresh period is wrong when failure count is 0.");
+
+                redisQues.increaseQueueFailureCount(queue, asyncResult3 -> {
+                    redisQues.getQueueRescheduleRefreshPeriod(queue, asyncResult4 -> {
+                        context.assertEquals(7, asyncResult4.result(), "The reschedule refresh period is wrong when failure count is 1.");
+
+                        redisQues.increaseQueueFailureCount(queue, asyncResult5 -> {
+                            redisQues.getQueueRescheduleRefreshPeriod(queue, asyncResult6 -> {
+                                context.assertEquals(12, asyncResult6.result(), "The reschedule refresh period is wrong when failure count is 2.");
+
+                                redisQues.increaseQueueFailureCount(queue, asyncResult7 -> {
+                                    redisQues.getQueueRescheduleRefreshPeriod(queue, asyncResult8 -> {
+                                        context.assertEquals(17, asyncResult8.result(), "The reschedule refresh period is wrong when failure count is 3.");
+
+                                        redisQues.increaseQueueFailureCount(queue, asyncResult9 -> {
+                                            redisQues.getQueueRescheduleRefreshPeriod(queue, asyncResult10 -> {
+                                                context.assertEquals(22, asyncResult10.result(), "The reschedule refresh period is wrong when failure count is 4.");
+
+                                                redisQues.increaseQueueFailureCount(queue, asyncResult11 -> {
+                                                    redisQues.getQueueRescheduleRefreshPeriod(queue, asyncResult12 -> {
+                                                        context.assertEquals(27, asyncResult12.result(), "The reschedule refresh period is wrong when failure count is 5.");
+
+                                                        redisQues.increaseQueueFailureCount(queue, asyncResult13 -> {
+                                                            redisQues.getQueueRescheduleRefreshPeriod(queue, asyncResult14 -> {
+                                                                context.assertEquals(32, asyncResult14.result(), "The reschedule refresh period is wrong when failure count is 6.");
+
+                                                                redisQues.increaseQueueFailureCount(queue, asyncResult15 -> {
+                                                                    redisQues.getQueueRescheduleRefreshPeriod(queue, asyncResult16 -> {
+                                                                        context.assertEquals(37, asyncResult16.result(), "The reschedule refresh period is wrong when failure count is 7.");
+
+                                                                        redisQues.increaseQueueFailureCount(queue, asyncResult17 -> {
+                                                                            redisQues.getQueueRescheduleRefreshPeriod(queue, asyncResult18 -> {
+                                                                                context.assertEquals(42, asyncResult18.result(), "The reschedule refresh period is wrong when failure count is 8.");
+
+                                                                                redisQues.increaseQueueFailureCount(queue, asyncResult19 -> {
+                                                                                    redisQues.getQueueRescheduleRefreshPeriod(queue, asyncResult20 -> {
+                                                                                        context.assertEquals(47, asyncResult20.result(), "The reschedule refresh period is wrong when failure count is 9.");
+
+                                                                                        redisQues.increaseQueueFailureCount(queue, asyncResult21 -> {
+                                                                                            redisQues.getQueueRescheduleRefreshPeriod(queue, asyncResult22 -> {
+                                                                                                context.assertEquals(52, asyncResult22.result(), "The reschedule refresh period is wrong when failure count is 10.");
+
+                                                                                                // already reach the max slow down
+                                                                                                redisQues.increaseQueueFailureCount(queue, asyncResult23 -> {
+                                                                                                    redisQues.getQueueRescheduleRefreshPeriod(queue, asyncResult24 -> {
+                                                                                                        context.assertEquals(52, asyncResult24.result(), "The reschedule refresh period is wrong when failure count is 11.");
+
+                                                                                                        async.complete();
+                                                                                                    });
+                                                                                                });
+                                                                                            });
+                                                                                        });
+                                                                                    });
+                                                                                });
+                                                                            });
+                                                                        });
+                                                                    });
+                                                                });
+                                                            });
+                                                        });
+                                                    });
+                                                });
+                                            });
+                                        });
+                                    });
+                                });
+                            });
+                        });
+                    });
+                });
+            });
+        });
+    }
 }

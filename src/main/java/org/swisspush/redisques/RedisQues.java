@@ -93,6 +93,7 @@ public class RedisQues extends AbstractVerticle {
     // Consumers periodically refresh their subscription while they are
     // consuming.
     private int refreshPeriod;
+    private int maxSlowDown;
     private int consumerLockTime;
 
     private int checkInterval;
@@ -162,6 +163,7 @@ public class RedisQues extends AbstractVerticle {
         redisPrefix = modConfig.getRedisPrefix();
         processorAddress = modConfig.getProcessorAddress();
         refreshPeriod = modConfig.getRefreshPeriod();
+        maxSlowDown = modConfig.getMaxSlowDown();
         consumerLockTime = 2 * refreshPeriod; // lock is kept twice as long as its refresh interval -> never expires as long as the consumer ('we') are alive
         checkInterval = modConfig.getCheckInterval();
         processorTimeout = modConfig.getProcessorTimeout();
@@ -479,11 +481,23 @@ public class RedisQues extends AbstractVerticle {
         });
     }
     
-    private void resetQueueFailureCount(String queue, Handler<AsyncResult<Void>> handler) {
+    void getQueueRescheduleRefreshPeriod(String queue, Handler<AsyncResult<Integer>> handler) {
+        getQueueFailureCount(queue, failureCountAsyncResult -> {
+            int failureCount = failureCountAsyncResult.result();
+
+            int rescheduleRefreshPeriod;
+            int slowDown = refreshPeriod + (failureCount * 5);
+            rescheduleRefreshPeriod = slowDown <= maxSlowDown ? slowDown : maxSlowDown;
+
+            handler.handle(Future.succeededFuture(rescheduleRefreshPeriod));
+        });
+    }
+    
+    void resetQueueFailureCount(String queue, Handler<AsyncResult<Void>> handler) {
         redisClient.set(getQueueFailureCountKey(queue), String.valueOf(0), handler);
     }
 
-    private void increaseQueueFailureCount(String queue, Handler<AsyncResult<Void>> handler) {
+    void increaseQueueFailureCount(String queue, Handler<AsyncResult<Void>> handler) {
         getQueueFailureCount(queue, asyncResult -> {
             redisClient.set(getQueueFailureCountKey(queue), String.valueOf(asyncResult.result() + 1), handler);
         });
@@ -953,14 +967,8 @@ public class RedisQues extends AbstractVerticle {
                                 log.debug("RedisQues Processing failed for queue " + queue);
                                 
                                 // reschedule
-                                getQueueFailureCount(queue, failureCountAsyncResult -> {
-                                    int failureCount = failureCountAsyncResult.result();
-
-                                    int rescheduleRefreshPeriod;
-                                    final int maxSlowDown = 60;
-                                    int slowDown = refreshPeriod + (failureCount * 5);
-                                    rescheduleRefreshPeriod = slowDown <= maxSlowDown ? slowDown : maxSlowDown;
-                                    
+                                getQueueRescheduleRefreshPeriod(queue, rescheduleRefreshPeriodAsyncResult -> {
+                                    int rescheduleRefreshPeriod = rescheduleRefreshPeriodAsyncResult.result();
                                     log.info("RedisQues will re-send the message to queue '" + queue + "' in " + rescheduleRefreshPeriod + " seconds");
                                     vertx.cancelTimer(sendResult.timeoutId);
                                     rescheduleSendMessageAfterFailure(queue, rescheduleRefreshPeriod);
