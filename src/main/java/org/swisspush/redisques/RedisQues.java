@@ -457,6 +457,38 @@ public class RedisQues extends AbstractVerticle {
         });
     }
 
+    private String getQueueFailureCountKey(String queue) {
+        return getQueuesPrefix() + queue + ":failureCount";
+    }
+
+    private void getQueueFailureCount(String queue, Handler<AsyncResult<Integer>> handler) {
+        redisClient.get(getQueueFailureCountKey(queue), asyncResult -> {
+            String failureCount = asyncResult.result();
+            if (failureCount != null) {
+                try {
+                    handler.handle(Future.succeededFuture(Integer.parseInt(failureCount)));
+                    return;
+                } catch (NumberFormatException e) {
+                    log.warn("Could not parse failure count '" + failureCount + "'.", e);
+                    handler.handle(Future.failedFuture(e));
+                    return;
+                }
+            } else {
+                handler.handle(Future.succeededFuture(0));
+            }
+        });
+    }
+    
+    private void resetQueueFailureCount(String queue, Handler<AsyncResult<Void>> handler) {
+        redisClient.set(getQueueFailureCountKey(queue), String.valueOf(0), handler);
+    }
+
+    private void increaseQueueFailureCount(String queue, Handler<AsyncResult<Void>> handler) {
+        getQueueFailureCount(queue, asyncResult -> {
+            redisClient.set(getQueueFailureCountKey(queue), String.valueOf(asyncResult.result() + 1), handler);
+        });
+    }
+
     private String buildQueueKey(String queue){
         return getQueuesPrefix() + queue;
     }
@@ -919,9 +951,20 @@ public class RedisQues extends AbstractVerticle {
                             } else {
                                 // Failed. Message will be kept in queue and retried later
                                 log.debug("RedisQues Processing failed for queue " + queue);
-                                myQueues.put(queue, QueueState.READY);
-                                vertx.cancelTimer(sendResult.timeoutId);
-                                rescheduleSendMessageAfterFailure(queue);
+                                
+                                // reschedule
+                                getQueueFailureCount(queue, failureCountAsyncResult -> {
+                                    int failureCount = failureCountAsyncResult.result();
+
+                                    int rescheduleRefreshPeriod;
+                                    final int maxSlowDown = 60;
+                                    int slowDown = refreshPeriod + (failureCount * 5);
+                                    rescheduleRefreshPeriod = slowDown <= maxSlowDown ? slowDown : maxSlowDown;
+                                    
+                                    log.info("RedisQues will re-send the message to queue '" + queue + "' in " + rescheduleRefreshPeriod + " seconds");
+                                    vertx.cancelTimer(sendResult.timeoutId);
+                                    rescheduleSendMessageAfterFailure(queue, rescheduleRefreshPeriod);
+                                });
                             }
                         });
                     } else {
@@ -937,11 +980,17 @@ public class RedisQues extends AbstractVerticle {
         });
     }
 
-    private void rescheduleSendMessageAfterFailure(final String queue) {
+    private void rescheduleSendMessageAfterFailure(final String queue, int refreshPeriod) {
         if (log.isTraceEnabled()) {
             log.trace("RedsQues reschedule after failure for queue: " + queue);
         }
-        vertx.setTimer(refreshPeriod * 1000, timerId -> notifyConsumer(queue));
+        vertx.setTimer(refreshPeriod * 1000, timerId -> {
+            log.info("RedisQues re-notify the consumer of queue '" + queue + "' at " + new Date(System.currentTimeMillis()));
+            notifyConsumer(queue);
+
+            // reset the queue state to be consumed by {@link RedisQues#consume(String)}
+            myQueues.put(queue, QueueState.READY);
+        });
     }
 
     private void processMessageWithTimeout(final String queue, final String payload, final Handler<SendResult> handler) {
@@ -975,6 +1024,13 @@ public class RedisQues extends AbstractVerticle {
                 } else {
                     success = Boolean.FALSE;
                 }
+                
+                if (success) {
+                    resetQueueFailureCount(queue, null);
+                } else {
+                    increaseQueueFailureCount(queue, null);
+                }
+                
                 handler.handle(new SendResult(success, timeoutId));
             });
             updateTimestamp(queue, null);
