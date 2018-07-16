@@ -459,25 +459,29 @@ public class RedisQues extends AbstractVerticle {
         });
     }
 
-    private String getQueueFailureCountKey(String queue) {
-        return getQueuesPrefix() + queue + ":failureCount";
-    }
-
     void getQueueFailureCount(String queue, Handler<AsyncResult<Integer>> handler) {
-        redisClient.get(getQueueFailureCountKey(queue), asyncResult -> {
-            String failureCount = asyncResult.result();
-            if (failureCount != null) {
-                try {
-                    handler.handle(Future.succeededFuture(Integer.parseInt(failureCount)));
-                    return;
-                } catch (NumberFormatException e) {
-                    log.warn("Could not parse failure count '" + failureCount + "'.", e);
-                    handler.handle(Future.failedFuture(e));
-                    return;
-                }
+        redisClient.get(getQueuesPrefix() + queue, queueAsyncResult -> {
+            String jsonString = queueAsyncResult.result();
+            if (jsonString != null) {
+                JsonObject jsonObject = new JsonObject(jsonString);
+                handler.handle(Future.succeededFuture(jsonObject.getInteger("failureCount")));
             } else {
                 handler.handle(Future.succeededFuture(0));
             }
+        });
+    }
+    
+    void setQueueFailureCount(String queue, int failureCount, Handler<AsyncResult<Void>> handler) {
+        redisClient.get(getQueuesPrefix() + queue, queueAsyncResult -> {
+            String jsonString = queueAsyncResult.result();
+            JsonObject jsonObject;
+            if (jsonString != null) {
+                jsonObject = new JsonObject(jsonString);
+            } else {
+                jsonObject = new JsonObject();
+            }
+            jsonObject.put("failureCount", failureCount);
+            redisClient.set(getQueuesPrefix() + queue, jsonObject.toString(), handler);
         });
     }
     
@@ -494,12 +498,12 @@ public class RedisQues extends AbstractVerticle {
     }
     
     void resetQueueFailureCount(String queue, Handler<AsyncResult<Void>> handler) {
-        redisClient.set(getQueueFailureCountKey(queue), String.valueOf(0), handler);
+        setQueueFailureCount(queue, 0, handler);
     }
 
     void increaseQueueFailureCount(String queue, Handler<AsyncResult<Void>> handler) {
         getQueueFailureCount(queue, asyncResult -> {
-            redisClient.set(getQueueFailureCountKey(queue), String.valueOf(asyncResult.result() + 1), handler);
+            setQueueFailureCount(queue, asyncResult.result() + 1, handler);
         });
     }
 

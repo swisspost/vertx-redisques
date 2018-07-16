@@ -1016,28 +1016,13 @@ public class RedisQuesTest extends AbstractTestCase {
         Async async = context.async();
         flushAll();
 
-        jedis.set(getQueueFailureCountKey(queue), "0");
-        
-        eventBusSend(buildGetQueueItemsOperation(queue, null), message -> {
-            context.assertEquals(OK, message.result().body().getString(STATUS));
-            context.assertEquals(0, message.result().body().getJsonArray(VALUE).size());
+        redisQues.setQueueFailureCount(queue, 0, asyncResult1 -> {
+            eventBusSend(buildGetQueueItemsOperation(queue, null), message -> {
+                context.assertEquals(OK, message.result().body().getString(STATUS));
+                context.assertEquals(0, message.result().body().getJsonArray(VALUE).size());
 
-            eventBusSend(buildEnqueueOperation(queue, "a_queue_item"), message1 -> {
-                context.assertEquals(OK, message1.result().body().getString(STATUS));
-
-                //FIXME: need to wait for delay
-                try {
-                    Thread.sleep(500);
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-                
-                String failureCount1 = jedis.get(getQueueFailureCountKey(queue));
-                context.assertEquals("1", failureCount1, "The failure count is wrong.");
-
-                // The queue state is still CONSUMING
-                eventBusSend(buildEnqueueOperation(queue, "a_queue_item"), message2 -> {
-                    context.assertEquals(OK, message2.result().body().getString(STATUS));
+                eventBusSend(buildEnqueueOperation(queue, "a_queue_item"), message1 -> {
+                    context.assertEquals(OK, message1.result().body().getString(STATUS));
 
                     //FIXME: need to wait for delay
                     try {
@@ -1046,10 +1031,29 @@ public class RedisQuesTest extends AbstractTestCase {
                         e.printStackTrace();
                     }
 
-                    String failureCount2 = jedis.get(getQueueFailureCountKey(queue));
-                    context.assertEquals("1", failureCount2, "The failure count is wrong.");
+                    redisQues.getQueueFailureCount(queue, asyncResult2 -> {
+                        int failureCount1 = asyncResult2.result();
+                        context.assertEquals(1, failureCount1, "The failure count is wrong.");
 
-                    async.complete();
+                        // The queue state is still CONSUMING
+                        eventBusSend(buildEnqueueOperation(queue, "a_queue_item"), message2 -> {
+                            context.assertEquals(OK, message2.result().body().getString(STATUS));
+
+                            //FIXME: need to wait for delay
+                            try {
+                                Thread.sleep(500);
+                            } catch (InterruptedException e) {
+                                e.printStackTrace();
+                            }
+
+                            redisQues.getQueueFailureCount(queue, asyncResult3 -> {
+                                int failureCount2 = asyncResult3.result();
+                                context.assertEquals(1, failureCount2, "The failure count is wrong.");
+
+                                async.complete();
+                            });
+                        });
+                    });
                 });
             });
         });
