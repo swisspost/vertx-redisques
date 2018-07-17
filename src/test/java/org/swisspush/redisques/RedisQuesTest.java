@@ -8,6 +8,7 @@ import io.vertx.ext.unit.Async;
 import io.vertx.ext.unit.TestContext;
 import io.vertx.ext.unit.junit.Timeout;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
 import org.swisspush.redisques.util.RedisquesConfiguration;
@@ -1008,57 +1009,6 @@ public class RedisQuesTest extends AbstractTestCase {
             async.complete();
         });
     }
-    
-    //FIXME:
-//    @Test
-//    public void readQueueFailWhileQueueStateIsConsuming(TestContext context) {
-//        final String queue = "queue1";
-//        
-//        Async async = context.async();
-//        flushAll();
-//
-//        redisQues.setQueueProcessMessageFailureCount(queue, 0, asyncResult1 -> {
-//            eventBusSend(buildGetQueueItemsOperation(queue, null), message -> {
-//                context.assertEquals(OK, message.result().body().getString(STATUS));
-//                context.assertEquals(0, message.result().body().getJsonArray(VALUE).size());
-//
-//                eventBusSend(buildEnqueueOperation(queue, "a_queue_item"), message1 -> {
-//                    context.assertEquals(OK, message1.result().body().getString(STATUS));
-//
-//                    //FIXME: need to wait for delay
-//                    try {
-//                        Thread.sleep(500);
-//                    } catch (InterruptedException e) {
-//                        e.printStackTrace();
-//                    }
-//
-//                    redisQues.getQueueProcessMessageFailureCount(queue, asyncResult2 -> {
-//                        int failureCount1 = asyncResult2.result();
-//                        context.assertEquals(1, failureCount1, "The failure count is wrong.");
-//
-//                        // The queue state is still CONSUMING
-//                        eventBusSend(buildEnqueueOperation(queue, "a_queue_item"), message2 -> {
-//                            context.assertEquals(OK, message2.result().body().getString(STATUS));
-//
-//                            //FIXME: need to wait for delay
-//                            try {
-//                                Thread.sleep(500);
-//                            } catch (InterruptedException e) {
-//                                e.printStackTrace();
-//                            }
-//
-//                            redisQues.getQueueProcessMessageFailureCount(queue, asyncResult3 -> {
-//                                int failureCount2 = asyncResult3.result();
-//                                context.assertEquals(1, failureCount2, "The failure count is wrong.");
-//
-//                                async.complete();
-//                            });
-//                        });
-//                    });
-//                });
-//            });
-//        });
-//    }
 
     @Test
     public void getQueueRescheduleRefreshPeriodWhileFailureCountIncreased(TestContext context) {
@@ -1153,7 +1103,7 @@ public class RedisQuesTest extends AbstractTestCase {
         
         redisQues.resetQueueProcessMessageFailureCount(queue, asyncResult1 -> {
             redisQues.processMessageWithTimeout(queue, payload, sendResult -> {
-                context.assertTrue(!sendResult.success, "The sending is not fail.");
+                context.assertTrue(!sendResult.success, "The processed message is not success.");
 
                 redisQues.getQueueProcessMessageFailureCount(queue, asyncResult2 -> {
                     context.assertEquals(1, asyncResult2.result(), "The failure count is wrong.");
@@ -1163,7 +1113,9 @@ public class RedisQuesTest extends AbstractTestCase {
         });
     }
 
+    //FIXME: Cannot mock the event bus to send successfully
     @Test
+    @Ignore
     public void getQueueFailureCountWhenProcessMessageWithTimeoutSuccess(TestContext context) {
         final String queue = "queue1";
         String payload = "{}";
@@ -1180,17 +1132,13 @@ public class RedisQuesTest extends AbstractTestCase {
                         context.assertEquals(1, asyncResult4.result(), "The failure count is wrong");
 
                         redisQues.processMessageWithTimeout(queue, payload, sendResult5 -> {
-                            //FIXME: Cannot mock the event buss to send successfully
-                            /*
+                            
                             context.assertTrue(sendResult5.success, "The sending is not success");
 
                             redisQues.getQueueProcessMessageFailureCount(queue, asyncResult6 -> {
                                 context.assertEquals(0, asyncResult6.result(), "The failure count is wrong");
                                 async.complete();
                             });
-                            */
-                            
-                            async.complete();
                         });
                     });
                 });
