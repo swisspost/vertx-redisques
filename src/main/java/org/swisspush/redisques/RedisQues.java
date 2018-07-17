@@ -84,6 +84,10 @@ public class RedisQues extends AbstractVerticle {
     private String getQueueCheckLastexecKey() {
         return redisPrefix + "check:lastexec";
     }
+    
+    private String getQueueProcessMessageFailureCountPrefix() {
+        return redisPrefix + "process:message:failure:count:";
+    }
 
     // Address of message processors
     private String processorAddress = "redisques-processor";
@@ -459,37 +463,25 @@ public class RedisQues extends AbstractVerticle {
         });
     }
 
-    void getQueueFailureCount(String queue, Handler<AsyncResult<Integer>> handler) {
-        redisClient.get(getQueuesPrefix() + queue, queueAsyncResult -> {
-            String jsonString = queueAsyncResult.result();
-            if (jsonString != null) {
-                JsonObject jsonObject = new JsonObject(jsonString);
-                handler.handle(Future.succeededFuture(jsonObject.getInteger("failureCount")));
+    void getQueueProcessMessageFailureCount(String queue, Handler<AsyncResult<Integer>> handler) {
+        redisClient.get(getQueueProcessMessageFailureCountPrefix() + queue, failureCountResult -> {
+            int failureCount;
+            if (failureCountResult.result() != null) {
+                failureCount = Integer.parseInt(failureCountResult.result());
             } else {
-                handler.handle(Future.succeededFuture(0));
+                failureCount = 0;
             }
+            
+            handler.handle(Future.succeededFuture(failureCount));
         });
     }
     
-    void setQueueFailureCount(String queue, int failureCount, Handler<AsyncResult<Void>> handler) {
-        redisClient.get(getQueuesPrefix() + queue, queueAsyncResult -> {
-            String jsonString = queueAsyncResult.result();
-            JsonObject jsonObject;
-            if (jsonString != null) {
-                jsonObject = new JsonObject(jsonString);
-            } else {
-                jsonObject = new JsonObject();
-            }
-            jsonObject.put("failureCount", failureCount);
-
-            //FIXME: this cause the tests fail and hang
-//            redisClient.set(getQueuesPrefix() + queue, jsonObject.toString(), handler);
-            handler.handle(Future.succeededFuture());
-        });
+    void setQueueProcessMessageFailureCount(String queue, int failureCount, Handler<AsyncResult<Void>> handler) {
+        redisClient.set(getQueueProcessMessageFailureCountPrefix() + queue, String.valueOf(failureCount), handler);
     }
     
     void getQueueRescheduleRefreshPeriod(String queue, Handler<AsyncResult<Integer>> handler) {
-        getQueueFailureCount(queue, failureCountAsyncResult -> {
+        getQueueProcessMessageFailureCount(queue, failureCountAsyncResult -> {
             int failureCount = failureCountAsyncResult.result();
 
             int rescheduleRefreshPeriod;
@@ -500,13 +492,13 @@ public class RedisQues extends AbstractVerticle {
         });
     }
     
-    void resetQueueFailureCount(String queue, Handler<AsyncResult<Void>> handler) {
-        setQueueFailureCount(queue, 0, handler);
+    void resetQueueProcessMessageFailureCount(String queue, Handler<AsyncResult<Void>> handler) {
+        setQueueProcessMessageFailureCount(queue, 0, handler);
     }
 
-    void increaseQueueFailureCount(String queue, Handler<AsyncResult<Void>> handler) {
-        getQueueFailureCount(queue, asyncResult -> {
-            setQueueFailureCount(queue, asyncResult.result() + 1, handler);
+    void increaseQueueProcessMessageFailureCount(String queue, Handler<AsyncResult<Void>> handler) {
+        getQueueProcessMessageFailureCount(queue, asyncResult -> {
+            setQueueProcessMessageFailureCount(queue, asyncResult.result() + 1, handler);
         });
     }
 
@@ -1044,9 +1036,9 @@ public class RedisQues extends AbstractVerticle {
                 // update the queue failure count
                 Handler<AsyncResult<Void>> queueFailureCountHandler = asyncResult -> handler.handle(new SendResult(success, timeoutId));
                 if (success) {
-                    resetQueueFailureCount(queue, queueFailureCountHandler);
+                    resetQueueProcessMessageFailureCount(queue, queueFailureCountHandler);
                 } else {
-                    increaseQueueFailureCount(queue, queueFailureCountHandler);
+                    increaseQueueProcessMessageFailureCount(queue, queueFailureCountHandler);
                 }
             });
             updateTimestamp(queue, null);
