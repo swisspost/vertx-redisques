@@ -1039,7 +1039,7 @@ public class RedisQues extends AbstractVerticle {
         });
     }
 
-    class SendResult {
+    private class SendResult {
         public final Boolean success;
         public final Long timeoutId;
 
