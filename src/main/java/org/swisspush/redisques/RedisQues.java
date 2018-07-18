@@ -476,16 +476,12 @@ public class RedisQues extends AbstractVerticle {
         });
     }
     
-    void setQueueProcessMessageFailureCount(String queue, int failureCount, Handler<AsyncResult<Void>> handler) {
-        redisClient.set(getQueueProcessMessageFailureCountPrefix() + queue, String.valueOf(failureCount), handler);
-    }
-    
-    void updateQueueProcessMessageFailureCount(String queue, boolean isSendMessageSuccess, Handler<AsyncResult<Void>> handler) {
-        if (isSendMessageSuccess) {
-            setQueueProcessMessageFailureCount(queue, 0, handler);
+    void updateQueueProcessMessageFailureCount(String queue, boolean isProcessMessageSuccessful, Handler<AsyncResult<Void>> handler) {
+        if (isProcessMessageSuccessful) {
+            redisClient.set(getQueueProcessMessageFailureCountPrefix() + queue, "0", handler);
         } else {
             getQueueProcessMessageFailureCount(queue, asyncResult -> {
-                setQueueProcessMessageFailureCount(queue, asyncResult.result() + 1, handler);
+                redisClient.set(getQueueProcessMessageFailureCountPrefix() + queue, String.valueOf(asyncResult.result() + 1), handler);
             });
         }
     }
@@ -501,6 +497,7 @@ public class RedisQues extends AbstractVerticle {
             handler.handle(Future.succeededFuture(rescheduleRefreshPeriod));
         });
     }
+    
     private String buildQueueKey(String queue){
         return getQueuesPrefix() + queue;
     }

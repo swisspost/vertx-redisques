@@ -1106,7 +1106,7 @@ public class RedisQuesTest extends AbstractTestCase {
     }
 
     @Test
-    public void getQueueFailureCountWhenProcessMessageFail(TestContext context) {
+    public void getQueueFailureCountAfterProcessMessageFail(TestContext context) {
         final String queue = "queue1";
 
         Async async = context.async();
@@ -1129,7 +1129,7 @@ public class RedisQuesTest extends AbstractTestCase {
     }
 
     @Test
-    public void getQueueFailureCountWhenProcessMessageSuccess(TestContext context) {
+    public void getQueueFailureCountAfterProcessMessageSuccess(TestContext context) {
         final String queue = "queue1";
 
         Async async = context.async();
