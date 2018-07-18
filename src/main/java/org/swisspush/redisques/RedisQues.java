@@ -480,6 +480,16 @@ public class RedisQues extends AbstractVerticle {
         redisClient.set(getQueueProcessMessageFailureCountPrefix() + queue, String.valueOf(failureCount), handler);
     }
     
+    void updateQueueProcessMessageFailureCount(String queue, boolean isSendMessageSuccess, Handler<AsyncResult<Void>> handler) {
+        if (isSendMessageSuccess) {
+            setQueueProcessMessageFailureCount(queue, 0, handler);
+        } else {
+            getQueueProcessMessageFailureCount(queue, asyncResult -> {
+                setQueueProcessMessageFailureCount(queue, asyncResult.result() + 1, handler);
+            });
+        }
+    }
+    
     void getQueueRescheduleRefreshPeriod(String queue, Handler<AsyncResult<Integer>> handler) {
         getQueueProcessMessageFailureCount(queue, failureCountAsyncResult -> {
             int failureCount = failureCountAsyncResult.result();
@@ -491,17 +501,6 @@ public class RedisQues extends AbstractVerticle {
             handler.handle(Future.succeededFuture(rescheduleRefreshPeriod));
         });
     }
-    
-    void resetQueueProcessMessageFailureCount(String queue, Handler<AsyncResult<Void>> handler) {
-        setQueueProcessMessageFailureCount(queue, 0, handler);
-    }
-
-    void increaseQueueProcessMessageFailureCount(String queue, Handler<AsyncResult<Void>> handler) {
-        getQueueProcessMessageFailureCount(queue, asyncResult -> {
-            setQueueProcessMessageFailureCount(queue, asyncResult.result() + 1, handler);
-        });
-    }
-
     private String buildQueueKey(String queue){
         return getQueuesPrefix() + queue;
     }
@@ -1001,7 +1000,7 @@ public class RedisQues extends AbstractVerticle {
         });
     }
 
-    void processMessageWithTimeout(final String queue, final String payload, final Handler<SendResult> handler) {
+    private void processMessageWithTimeout(final String queue, final String payload, final Handler<SendResult> handler) {
         if (processorDelayMax > 0) {
             log.info("About to process message for queue " + queue + " with a maximum delay of " + processorDelayMax + "ms");
         }
@@ -1034,12 +1033,7 @@ public class RedisQues extends AbstractVerticle {
                 }
                 
                 // update the queue failure count
-                Handler<AsyncResult<Void>> queueFailureCountHandler = asyncResult -> handler.handle(new SendResult(success, timeoutId));
-                if (success) {
-                    resetQueueProcessMessageFailureCount(queue, queueFailureCountHandler);
-                } else {
-                    increaseQueueProcessMessageFailureCount(queue, queueFailureCountHandler);
-                }
+                updateQueueProcessMessageFailureCount(queue, success, asyncResult -> handler.handle(new SendResult(success, timeoutId)));
             });
             updateTimestamp(queue, null);
         });
