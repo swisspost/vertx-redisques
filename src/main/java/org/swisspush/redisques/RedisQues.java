@@ -463,7 +463,7 @@ public class RedisQues extends AbstractVerticle {
         });
     }
 
-    void getQueueProcessMessageFailureCount(String queue, Handler<AsyncResult<Integer>> handler) {
+    private void getQueueProcessMessageFailureCount(String queue, Handler<AsyncResult<Integer>> handler) {
         redisClient.get(getQueueProcessMessageFailureCountPrefix() + queue, failureCountResult -> {
             int failureCount;
             if (failureCountResult.result() != null) {
@@ -1030,7 +1030,9 @@ public class RedisQues extends AbstractVerticle {
                 }
                 
                 // update the queue failure count
-                updateQueueProcessMessageFailureCount(queue, success, asyncResult -> handler.handle(new SendResult(success, timeoutId)));
+                updateQueueProcessMessageFailureCount(queue, success, asyncResult -> 
+                        // send the result
+                        handler.handle(new SendResult(success, timeoutId)));
             });
             updateTimestamp(queue, null);
         });
