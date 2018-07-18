@@ -1019,7 +1019,7 @@ public class RedisQuesTest extends AbstractTestCase {
         // send message success (reset the failure count)
         redisQues.updateQueueProcessMessageFailureCount(queue, true, asyncResult1 -> {
 
-            // get the reschedule refresh period when there is no failure yet
+            // get the reschedule refresh period to reschedule for the first time
             redisQues.getQueueRescheduleRefreshPeriod(queue, asyncResult2 -> {
                 context.assertEquals(2, asyncResult2.result(), "The reschedule refresh period is wrong when failure count is 0.");
 
@@ -1117,7 +1117,7 @@ public class RedisQuesTest extends AbstractTestCase {
         // send message success (reset the failure count)
         redisQues.updateQueueProcessMessageFailureCount(queue, true, asyncResult1 -> {
 
-            // get the reschedule refresh period when there is no failure yet
+            // get the reschedule refresh period to reschedule for the first time
             redisQues.getQueueRescheduleRefreshPeriod(queue, asyncResult2 -> {
                 context.assertEquals(2, asyncResult2.result(), "The reschedule refresh period is wrong");
                 
@@ -1141,8 +1141,8 @@ public class RedisQuesTest extends AbstractTestCase {
 
         // send message success (reset the failure count)
         redisQues.updateQueueProcessMessageFailureCount(queue, true, asyncResult1 -> {
-            
-            // get the reschedule refresh period when there is no failure yet
+
+            // get the reschedule refresh period to reschedule for the first time
             redisQues.getQueueRescheduleRefreshPeriod(queue, asyncResult2 -> {
                 context.assertEquals(2, asyncResult2.result(), "The reschedule refresh period is wrong");
                 
