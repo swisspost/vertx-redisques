@@ -964,7 +964,7 @@ public class RedisQues extends AbstractVerticle {
                                 // reschedule
                                 getQueueRescheduleRefreshPeriod(queue, rescheduleRefreshPeriodAsyncResult -> {
                                     int rescheduleRefreshPeriod = rescheduleRefreshPeriodAsyncResult.result();
-                                    log.info("RedisQues will re-send the message to queue '" + queue + "' in " + rescheduleRefreshPeriod + " seconds");
+                                    log.warn("RedisQues will re-send the message to queue '" + queue + "' in " + rescheduleRefreshPeriod + " seconds");
                                     vertx.cancelTimer(sendResult.timeoutId);
                                     rescheduleSendMessageAfterFailure(queue, rescheduleRefreshPeriod);
                                 });
