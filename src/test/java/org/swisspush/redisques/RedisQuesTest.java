@@ -1021,66 +1021,73 @@ public class RedisQuesTest extends AbstractTestCase {
 
             // get the reschedule refresh period to reschedule for the first time
             redisQues.getQueueRescheduleRefreshPeriod(queue, asyncResult2 -> {
-                context.assertEquals(2, asyncResult2.result(), "The reschedule refresh period is wrong when failure count is 0.");
+                context.assertEquals(0, asyncResult2.result(), "The reschedule refresh period is wrong when failure count is 0.");
 
                 // send message fail
                 redisQues.updateQueueProcessMessageFailureCount(queue, false, asyncResult3 -> {
                     redisQues.getQueueRescheduleRefreshPeriod(queue, asyncResult4 -> {
-                        context.assertEquals(7, asyncResult4.result(), "The reschedule refresh period is wrong when failure count is 1.");
+                        context.assertEquals(2, asyncResult4.result(), "The reschedule refresh period is wrong when failure count is 1.");
 
                         // send message fail
                         redisQues.updateQueueProcessMessageFailureCount(queue, false, asyncResult5 -> {
                             redisQues.getQueueRescheduleRefreshPeriod(queue, asyncResult6 -> {
-                                context.assertEquals(12, asyncResult6.result(), "The reschedule refresh period is wrong when failure count is 2.");
+                                context.assertEquals(7, asyncResult6.result(), "The reschedule refresh period is wrong when failure count is 2.");
 
                                 // send message fail
                                 redisQues.updateQueueProcessMessageFailureCount(queue, false, asyncResult7 -> {
                                     redisQues.getQueueRescheduleRefreshPeriod(queue, asyncResult8 -> {
-                                        context.assertEquals(17, asyncResult8.result(), "The reschedule refresh period is wrong when failure count is 3.");
+                                        context.assertEquals(12, asyncResult8.result(), "The reschedule refresh period is wrong when failure count is 3.");
 
                                         // send message fail
                                         redisQues.updateQueueProcessMessageFailureCount(queue, false, asyncResult9 -> {
                                             redisQues.getQueueRescheduleRefreshPeriod(queue, asyncResult10 -> {
-                                                context.assertEquals(22, asyncResult10.result(), "The reschedule refresh period is wrong when failure count is 4.");
+                                                context.assertEquals(17, asyncResult10.result(), "The reschedule refresh period is wrong when failure count is 4.");
 
                                                 // send message fail
                                                 redisQues.updateQueueProcessMessageFailureCount(queue, false, asyncResult11 -> {
                                                     redisQues.getQueueRescheduleRefreshPeriod(queue, asyncResult12 -> {
-                                                        context.assertEquals(27, asyncResult12.result(), "The reschedule refresh period is wrong when failure count is 5.");
+                                                        context.assertEquals(22, asyncResult12.result(), "The reschedule refresh period is wrong when failure count is 5.");
 
                                                         // send message fail
                                                         redisQues.updateQueueProcessMessageFailureCount(queue, false, asyncResult13 -> {
                                                             redisQues.getQueueRescheduleRefreshPeriod(queue, asyncResult14 -> {
-                                                                context.assertEquals(32, asyncResult14.result(), "The reschedule refresh period is wrong when failure count is 6.");
+                                                                context.assertEquals(27, asyncResult14.result(), "The reschedule refresh period is wrong when failure count is 6.");
 
                                                                 // send message fail
                                                                 redisQues.updateQueueProcessMessageFailureCount(queue, false, asyncResult15 -> {
                                                                     redisQues.getQueueRescheduleRefreshPeriod(queue, asyncResult16 -> {
-                                                                        context.assertEquals(37, asyncResult16.result(), "The reschedule refresh period is wrong when failure count is 7.");
+                                                                        context.assertEquals(32, asyncResult16.result(), "The reschedule refresh period is wrong when failure count is 7.");
 
                                                                         // send message fail
                                                                         redisQues.updateQueueProcessMessageFailureCount(queue, false, asyncResult17 -> {
                                                                             redisQues.getQueueRescheduleRefreshPeriod(queue, asyncResult18 -> {
-                                                                                context.assertEquals(42, asyncResult18.result(), "The reschedule refresh period is wrong when failure count is 8.");
+                                                                                context.assertEquals(37, asyncResult18.result(), "The reschedule refresh period is wrong when failure count is 8.");
 
                                                                                 // send message fail
                                                                                 redisQues.updateQueueProcessMessageFailureCount(queue, false, asyncResult19 -> {
                                                                                     redisQues.getQueueRescheduleRefreshPeriod(queue, asyncResult20 -> {
-                                                                                        context.assertEquals(47, asyncResult20.result(), "The reschedule refresh period is wrong when failure count is 9.");
+                                                                                        context.assertEquals(42, asyncResult20.result(), "The reschedule refresh period is wrong when failure count is 9.");
 
                                                                                         // send message fail
                                                                                         redisQues.updateQueueProcessMessageFailureCount(queue, false, asyncResult21 -> {
                                                                                             redisQues.getQueueRescheduleRefreshPeriod(queue, asyncResult22 -> {
-                                                                                                context.assertEquals(52, asyncResult22.result(), "The reschedule refresh period is wrong when failure count is 10.");
-
-                                                                                                // already reach the max slow down
+                                                                                                context.assertEquals(47, asyncResult22.result(), "The reschedule refresh period is wrong when failure count is 10.");
                                                                                                 
                                                                                                 // send message fail
                                                                                                 redisQues.updateQueueProcessMessageFailureCount(queue, false, asyncResult23 -> {
                                                                                                     redisQues.getQueueRescheduleRefreshPeriod(queue, asyncResult24 -> {
                                                                                                         context.assertEquals(52, asyncResult24.result(), "The reschedule refresh period is wrong when failure count is 11.");
 
-                                                                                                        async.complete();
+                                                                                                        // already reach the max slow down
+                                                                                                        
+                                                                                                        // send message fail
+                                                                                                        redisQues.updateQueueProcessMessageFailureCount(queue, false, asyncResult25 -> {
+                                                                                                            redisQues.getQueueRescheduleRefreshPeriod(queue, asyncResult26 -> {
+                                                                                                                context.assertEquals(52, asyncResult26.result(), "The reschedule refresh period is wrong when failure count is 12.");
+
+                                                                                                                async.complete();
+                                                                                                            });
+                                                                                                        });
                                                                                                     });
                                                                                                 });
                                                                                             });
@@ -1119,13 +1126,20 @@ public class RedisQuesTest extends AbstractTestCase {
 
             // get the reschedule refresh period to reschedule for the first time
             redisQues.getQueueRescheduleRefreshPeriod(queue, asyncResult2 -> {
-                context.assertEquals(2, asyncResult2.result(), "The reschedule refresh period is wrong");
+                context.assertEquals(0, asyncResult2.result(), "The reschedule refresh period is wrong");
                 
                 // send message fail
                 redisQues.updateQueueProcessMessageFailureCount(queue, false, asyncResult3 -> {
                     redisQues.getQueueRescheduleRefreshPeriod(queue, asyncResult4 -> {
-                        context.assertEquals(7, asyncResult4.result(), "The reschedule refresh period is wrong");
-                        async.complete();
+                        context.assertEquals(2, asyncResult4.result(), "The reschedule refresh period is wrong");
+
+                        // send message fail
+                        redisQues.updateQueueProcessMessageFailureCount(queue, false, asyncResult5 -> {
+                            redisQues.getQueueRescheduleRefreshPeriod(queue, asyncResult6 -> {
+                                context.assertEquals(7, asyncResult6.result(), "The reschedule refresh period is wrong");
+                                async.complete();
+                            });
+                        });
                     });
                 });
             });
@@ -1144,17 +1158,17 @@ public class RedisQuesTest extends AbstractTestCase {
 
             // get the reschedule refresh period to reschedule for the first time
             redisQues.getQueueRescheduleRefreshPeriod(queue, asyncResult2 -> {
-                context.assertEquals(2, asyncResult2.result(), "The reschedule refresh period is wrong");
+                context.assertEquals(0, asyncResult2.result(), "The reschedule refresh period is wrong");
                 
                 // send message fail
                 redisQues.updateQueueProcessMessageFailureCount(queue, false, asyncResult3 -> {
                     redisQues.getQueueRescheduleRefreshPeriod(queue, asyncResult4 -> {
-                        context.assertEquals(7, asyncResult4.result(), "The reschedule refresh period is wrong");
+                        context.assertEquals(2, asyncResult4.result(), "The reschedule refresh period is wrong");
 
                         // send message success
                         redisQues.updateQueueProcessMessageFailureCount(queue, true, asyncResult5 -> {
                             redisQues.getQueueRescheduleRefreshPeriod(queue, asyncResult6 -> {
-                                context.assertEquals(2, asyncResult6.result(), "The reschedule refresh period is wrong");
+                                context.assertEquals(0, asyncResult6.result(), "The reschedule refresh period is wrong");
                                 async.complete();
                             });
                         });

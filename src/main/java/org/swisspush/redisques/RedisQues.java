@@ -491,9 +491,14 @@ public class RedisQues extends AbstractVerticle {
     void getQueueRescheduleRefreshPeriod(String queue, Handler<AsyncResult<Integer>> handler) {
         getQueueProcessMessageFailureCount(queue, failureCountAsyncResult -> {
             int failureCount = failureCountAsyncResult.result();
+            
+            if (failureCount == 0) {
+                handler.handle(Future.succeededFuture(0));
+                return;
+            }
 
             int rescheduleRefreshPeriod;
-            int slowDown = refreshPeriod + (failureCount * slowDownExtension);
+            int slowDown = refreshPeriod + ((failureCount - 1) * slowDownExtension);
             rescheduleRefreshPeriod = slowDown <= maxSlowDown ? slowDown : maxSlowDown;
 
             handler.handle(Future.succeededFuture(rescheduleRefreshPeriod));
