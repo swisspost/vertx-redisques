@@ -15,6 +15,7 @@ public class RedisquesConfiguration {
     private String redisPrefix;
     private String processorAddress;
     private int refreshPeriod;
+    private int slowDownExtension;
     private int maxSlowDown;
     private String redisHost;
     private int redisPort;
@@ -36,6 +37,7 @@ public class RedisquesConfiguration {
     public static final String PROP_REDIS_PREFIX = "redis-prefix";
     public static final String PROP_PROCESSOR_ADDRESS = "processor-address";
     public static final String PROP_REFRESH_PERIOD = "refresh-period";
+    public static final String PROP_SLOW_DOWN_EXTENSION = "slow-down-extension";
     public static final String PROP_MAX_SLOW_DOWN = "max-slow-down";
     public static final String PROP_REDIS_HOST = "redisHost";
     public static final String PROP_REDIS_PORT = "redisPort";
@@ -58,7 +60,7 @@ public class RedisquesConfiguration {
     }
 
     public RedisquesConfiguration(String address, String configurationUpdatedAddress, String redisPrefix, String processorAddress, int refreshPeriod,
-                                  int maxSlowDown, String redisHost, int redisPort, String redisAuth, String redisEncoding, int checkInterval,
+                                  int slowDownExtension, int maxSlowDown, String redisHost, int redisPort, String redisAuth, String redisEncoding, int checkInterval,
                                   int processorTimeout, long processorDelayMax, boolean httpRequestHandlerEnabled,
                                   String httpRequestHandlerPrefix, Integer httpRequestHandlerPort,
                                   String httpRequestHandlerUserHeader) {
@@ -67,6 +69,7 @@ public class RedisquesConfiguration {
         this.redisPrefix = redisPrefix;
         this.processorAddress = processorAddress;
         this.refreshPeriod = refreshPeriod;
+        this.slowDownExtension = slowDownExtension;
         this.maxSlowDown = maxSlowDown;
         this.redisHost = redisHost;
         this.redisPort = redisPort;
@@ -103,7 +106,7 @@ public class RedisquesConfiguration {
 
     private RedisquesConfiguration(RedisquesConfigurationBuilder builder){
         this(builder.address, builder.configurationUpdatedAddress, builder.redisPrefix, builder.processorAddress, builder.refreshPeriod,
-                builder.maxSlowDown, builder.redisHost, builder.redisPort, builder.redisAuth, builder.redisEncoding, builder.checkInterval,
+                builder.slowDownExtension, builder.maxSlowDown, builder.redisHost, builder.redisPort, builder.redisAuth, builder.redisEncoding, builder.checkInterval,
                 builder.processorTimeout, builder.processorDelayMax, builder.httpRequestHandlerEnabled, builder.httpRequestHandlerPrefix,
                 builder.httpRequestHandlerPort, builder.httpRequestHandlerUserHeader);
     }
@@ -115,6 +118,7 @@ public class RedisquesConfiguration {
         obj.put(PROP_REDIS_PREFIX, getRedisPrefix());
         obj.put(PROP_PROCESSOR_ADDRESS, getProcessorAddress());
         obj.put(PROP_REFRESH_PERIOD, getRefreshPeriod());
+        obj.put(PROP_SLOW_DOWN_EXTENSION, getSlowDownExtension());
         obj.put(PROP_MAX_SLOW_DOWN, getMaxSlowDown());
         obj.put(PROP_REDIS_HOST, getRedisHost());
         obj.put(PROP_REDIS_PORT, getRedisPort());
@@ -202,6 +206,10 @@ public class RedisquesConfiguration {
         return refreshPeriod;
     }
 
+    public int getSlowDownExtension() {
+        return slowDownExtension;
+    }
+
     public int getMaxSlowDown() {
         return maxSlowDown;
     }
@@ -265,6 +273,7 @@ public class RedisquesConfiguration {
         private String redisPrefix;
         private String processorAddress;
         private int refreshPeriod;
+        private int slowDownExtension;
         private int maxSlowDown;
         private String redisHost;
         private int redisPort;
@@ -284,6 +293,7 @@ public class RedisquesConfiguration {
             this.redisPrefix = "redisques:";
             this.processorAddress = "redisques-processor";
             this.refreshPeriod = 10;
+            this.slowDownExtension = 5;
             this.maxSlowDown = 60;
             this.redisHost = "localhost";
             this.redisPort = 6379;

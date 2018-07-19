@@ -97,6 +97,7 @@ public class RedisQues extends AbstractVerticle {
     // Consumers periodically refresh their subscription while they are
     // consuming.
     private int refreshPeriod;
+    private int slowDownExtension;
     private int maxSlowDown;
     private int consumerLockTime;
 
@@ -167,6 +168,7 @@ public class RedisQues extends AbstractVerticle {
         redisPrefix = modConfig.getRedisPrefix();
         processorAddress = modConfig.getProcessorAddress();
         refreshPeriod = modConfig.getRefreshPeriod();
+        slowDownExtension = modConfig.getSlowDownExtension();
         maxSlowDown = modConfig.getMaxSlowDown();
         consumerLockTime = 2 * refreshPeriod; // lock is kept twice as long as its refresh interval -> never expires as long as the consumer ('we') are alive
         checkInterval = modConfig.getCheckInterval();
@@ -491,7 +493,7 @@ public class RedisQues extends AbstractVerticle {
             int failureCount = failureCountAsyncResult.result();
 
             int rescheduleRefreshPeriod;
-            int slowDown = refreshPeriod + (failureCount * 5);
+            int slowDown = refreshPeriod + (failureCount * slowDownExtension);
             rescheduleRefreshPeriod = slowDown <= maxSlowDown ? slowDown : maxSlowDown;
 
             handler.handle(Future.succeededFuture(rescheduleRefreshPeriod));
@@ -989,7 +991,7 @@ public class RedisQues extends AbstractVerticle {
         }
         
         vertx.setTimer(refreshPeriod * 1000, timerId -> {
-            log.info("RedisQues re-notify the consumer of queue '" + queue + "' at " + new Date(System.currentTimeMillis()));
+            log.warn("RedisQues re-notify the consumer of queue '" + queue + "' at " + new Date(System.currentTimeMillis()));
             notifyConsumer(queue);
 
             // reset the queue state to be consumed by {@link RedisQues#consume(String)}

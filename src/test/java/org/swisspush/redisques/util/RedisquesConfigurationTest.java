@@ -24,6 +24,8 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getRedisPrefix(), "redisques:");
         testContext.assertEquals(config.getProcessorAddress(), "redisques-processor");
         testContext.assertEquals(config.getRefreshPeriod(), 10);
+        testContext.assertEquals(config.getSlowDownExtension(), 5);
+        testContext.assertEquals(config.getMaxSlowDown(), 60);
         testContext.assertEquals(config.getRedisHost(), "localhost");
         testContext.assertEquals(config.getRedisPort(), 6379);
         testContext.assertEquals(config.getRedisEncoding(), "UTF-8");
@@ -56,6 +58,8 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getRedisPrefix(), "redisques:");
         testContext.assertEquals(config.getProcessorAddress(), "redisques-processor");
         testContext.assertEquals(config.getRefreshPeriod(), 10);
+        testContext.assertEquals(config.getSlowDownExtension(), 5);
+        testContext.assertEquals(config.getMaxSlowDown(), 60);
         testContext.assertEquals(config.getRedisEncoding(), "UTF-8");
 
         // overridden values
@@ -141,6 +145,8 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getRedisPrefix(), "redisques:");
         testContext.assertEquals(config.getProcessorAddress(), "redisques-processor");
         testContext.assertEquals(config.getRefreshPeriod(), 10);
+        testContext.assertEquals(config.getSlowDownExtension(), 5);
+        testContext.assertEquals(config.getMaxSlowDown(), 60);
         testContext.assertEquals(config.getRedisHost(), "localhost");
         testContext.assertEquals(config.getRedisPort(), 6379);
         testContext.assertEquals(config.getRedisEncoding(), "UTF-8");
@@ -179,6 +185,8 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getRedisPrefix(), "new_redis-prefix");
         testContext.assertEquals(config.getProcessorAddress(), "new_processor-address");
         testContext.assertEquals(config.getRefreshPeriod(), 99);
+        testContext.assertEquals(config.getSlowDownExtension(), 5);
+        testContext.assertEquals(config.getMaxSlowDown(), 60);
         testContext.assertEquals(config.getRedisHost(), "newredishost");
         testContext.assertEquals(config.getRedisPort(), 4321);
         testContext.assertEquals(config.getRedisEncoding(), "new_encoding");
