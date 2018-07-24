@@ -151,6 +151,9 @@ public class RedisquesConfiguration {
         if(json.containsKey(PROP_REFRESH_PERIOD)){
             builder.refreshPeriod(json.getInteger(PROP_REFRESH_PERIOD));
         }
+        if(json.containsKey(PROP_SLOW_DOWN_EXTENSION)){
+            builder.slowDownExtension(json.getInteger(PROP_SLOW_DOWN_EXTENSION));
+        }
         if(json.containsKey(PROP_MAX_SLOW_DOWN)){
             builder.maxSlowDown(json.getInteger(PROP_MAX_SLOW_DOWN));
         }
@@ -329,6 +332,11 @@ public class RedisquesConfiguration {
 
         public RedisquesConfigurationBuilder refreshPeriod(int refreshPeriod){
             this.refreshPeriod = refreshPeriod;
+            return this;
+        }
+        
+        public RedisquesConfigurationBuilder slowDownExtension(int slowDownExtension) {
+            this.slowDownExtension = slowDownExtension;
             return this;
         }
         

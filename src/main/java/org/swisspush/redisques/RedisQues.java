@@ -44,6 +44,8 @@ public class RedisQues extends AbstractVerticle {
 
     // The queues this verticle is listening to
     private Map<String, QueueState> myQueues = new HashMap<>();
+    
+    private Map<String, Integer> myQueueFailureCounts = new HashMap<>();
 
     private Logger log = LoggerFactory.getLogger(RedisQues.class);
 
@@ -83,10 +85,6 @@ public class RedisQues extends AbstractVerticle {
 
     private String getQueueCheckLastexecKey() {
         return redisPrefix + "check:lastexec";
-    }
-    
-    private String getQueueProcessMessageFailureCountPrefix() {
-        return redisPrefix + "process:message:failure:count:";
     }
 
     // Address of message processors
@@ -465,44 +463,34 @@ public class RedisQues extends AbstractVerticle {
         });
     }
 
-    private void getQueueProcessMessageFailureCount(String queue, Handler<AsyncResult<Integer>> handler) {
-        redisClient.get(getQueueProcessMessageFailureCountPrefix() + queue, failureCountResult -> {
-            int failureCount;
-            if (failureCountResult.result() != null) {
-                failureCount = Integer.parseInt(failureCountResult.result());
-            } else {
-                failureCount = 0;
-            }
-            
-            handler.handle(Future.succeededFuture(failureCount));
-        });
-    }
-    
-    void updateQueueProcessMessageFailureCount(String queue, boolean isProcessMessageSuccessful, Handler<AsyncResult<Void>> handler) {
+    void updateQueueProcessMessageFailureCount(String queue, boolean isProcessMessageSuccessful) {
         if (isProcessMessageSuccessful) {
-            redisClient.set(getQueueProcessMessageFailureCountPrefix() + queue, "0", handler);
+            myQueueFailureCounts.remove(queue);
         } else {
-            getQueueProcessMessageFailureCount(queue, asyncResult -> {
-                redisClient.set(getQueueProcessMessageFailureCountPrefix() + queue, String.valueOf(asyncResult.result() + 1), handler);
-            });
+            Integer currentFailureCount = myQueueFailureCounts.get(queue);
+
+            // calculate the new failure count
+            int newFailureCount;
+            if (currentFailureCount == null || currentFailureCount == 0)
+                newFailureCount = 1;
+            else
+                newFailureCount = currentFailureCount + 1;
+            
+            myQueueFailureCounts.put(queue, newFailureCount);
         }
     }
     
-    void getQueueRescheduleRefreshPeriod(String queue, Handler<AsyncResult<Integer>> handler) {
-        getQueueProcessMessageFailureCount(queue, failureCountAsyncResult -> {
-            int failureCount = failureCountAsyncResult.result();
-            
-            if (failureCount == 0) {
-                handler.handle(Future.succeededFuture(0));
-                return;
-            }
-
-            int rescheduleRefreshPeriod;
-            int slowDown = refreshPeriod + ((failureCount - 1) * slowDownExtension);
-            rescheduleRefreshPeriod = slowDown <= maxSlowDown ? slowDown : maxSlowDown;
-
-            handler.handle(Future.succeededFuture(rescheduleRefreshPeriod));
-        });
+    private int calculateWaitTime(int failureCount) {
+        if (failureCount == 0) return 0;
+        
+        int slowDown = refreshPeriod + ((failureCount - 1) * slowDownExtension);
+        return slowDown <= maxSlowDown ? slowDown : maxSlowDown; 
+    }
+    
+    int getQueueRescheduleRefreshPeriod(String queue) {
+        Integer failureCount = myQueueFailureCounts.get(queue);
+        failureCount = failureCount != null ? failureCount : 0;
+        return calculateWaitTime(failureCount);
     }
     
     private String buildQueueKey(String queue){
@@ -969,12 +957,10 @@ public class RedisQues extends AbstractVerticle {
                                 log.debug("RedisQues Processing failed for queue " + queue);
                                 
                                 // reschedule
-                                getQueueRescheduleRefreshPeriod(queue, rescheduleRefreshPeriodAsyncResult -> {
-                                    int rescheduleRefreshPeriod = rescheduleRefreshPeriodAsyncResult.result();
-                                    log.warn("RedisQues will re-send the message to queue '" + queue + "' in " + rescheduleRefreshPeriod + " seconds");
-                                    vertx.cancelTimer(sendResult.timeoutId);
-                                    rescheduleSendMessageAfterFailure(queue, rescheduleRefreshPeriod);
-                                });
+                                int rescheduleRefreshPeriod = getQueueRescheduleRefreshPeriod(queue);
+                                log.debug("RedisQues will re-send the message to queue '" + queue + "' in " + rescheduleRefreshPeriod + " seconds");
+                                vertx.cancelTimer(sendResult.timeoutId);
+                                rescheduleSendMessageAfterFailure(queue, rescheduleRefreshPeriod);
                             }
                         });
                     } else {
@@ -996,7 +982,7 @@ public class RedisQues extends AbstractVerticle {
         }
         
         vertx.setTimer(refreshPeriod * 1000, timerId -> {
-            log.warn("RedisQues re-notify the consumer of queue '" + queue + "' at " + new Date(System.currentTimeMillis()));
+            log.debug("RedisQues re-notify the consumer of queue '" + queue + "' at " + new Date(System.currentTimeMillis()));
             notifyConsumer(queue);
 
             // reset the queue state to be consumed by {@link RedisQues#consume(String)}
@@ -1037,9 +1023,9 @@ public class RedisQues extends AbstractVerticle {
                 }
                 
                 // update the queue failure count
-                updateQueueProcessMessageFailureCount(queue, success, asyncResult -> 
-                        // send the result
-                        handler.handle(new SendResult(success, timeoutId)));
+                updateQueueProcessMessageFailureCount(queue, success);
+
+                handler.handle(new SendResult(success, timeoutId));
             });
             updateTimestamp(queue, null);
         });
