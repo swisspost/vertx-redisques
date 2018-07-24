@@ -45,7 +45,7 @@ public class RedisQues extends AbstractVerticle {
     // The queues this verticle is listening to
     private Map<String, QueueState> myQueues = new HashMap<>();
     
-    private Map<String, Integer> myQueueFailureCounts = new HashMap<>();
+    private Map<String, AtomicInteger> myQueueFailureCounts = new HashMap<>();
 
     private Logger log = LoggerFactory.getLogger(RedisQues.class);
 
@@ -467,16 +467,13 @@ public class RedisQues extends AbstractVerticle {
         if (isProcessMessageSuccessful) {
             myQueueFailureCounts.remove(queue);
         } else {
-            Integer currentFailureCount = myQueueFailureCounts.get(queue);
-
-            // calculate the new failure count
-            int newFailureCount;
-            if (currentFailureCount == null || currentFailureCount == 0)
-                newFailureCount = 1;
-            else
-                newFailureCount = currentFailureCount + 1;
-            
-            myQueueFailureCounts.put(queue, newFailureCount);
+            AtomicInteger failureCount = myQueueFailureCounts.get(queue);
+            if (failureCount == null) {
+                failureCount = new AtomicInteger(1);
+                myQueueFailureCounts.put(queue, failureCount);
+            } else {
+                failureCount.incrementAndGet();
+            }
         }
     }
     
@@ -488,9 +485,8 @@ public class RedisQues extends AbstractVerticle {
     }
     
     int getQueueRescheduleRefreshPeriod(String queue) {
-        Integer failureCount = myQueueFailureCounts.get(queue);
-        failureCount = failureCount != null ? failureCount : 0;
-        return calculateWaitTime(failureCount);
+        AtomicInteger failureCount = myQueueFailureCounts.get(queue);
+        return calculateWaitTime(failureCount != null ? failureCount.get() : 0);
     }
     
     private String buildQueueKey(String queue){
