@@ -337,7 +337,7 @@ public class RedisQues extends AbstractVerticle {
                 event.reply(reply);
             } else {
                 String message = "RedisQues QUEUE_ERROR: Error while enqueueing message into queue " + event.body().getJsonObject(PAYLOAD).getString(QUEUENAME);
-                log.error(message);
+                log.error(message, event2.cause());
                 reply.put(STATUS, ERROR);
                 reply.put(MESSAGE, message);
                 event.reply(reply);
