@@ -1015,7 +1015,7 @@ public class RedisQuesTest extends AbstractTestCase {
     }
 
     @Test
-    public void getQueueRescheduleRefreshPeriodWhileFailureCountIncreasedUntilExceedMaxSlowDown(TestContext context) {
+    public void getQueueRescheduleRefreshPeriodWhileFailureCountIncreasedUntilExceedMaxRetryInterval(TestContext context) {
         final String queue = "queue1";
         
         // send message success (reset the failure count)
