@@ -92,8 +92,6 @@ public class RedisQues extends AbstractVerticle {
     // Consumers periodically refresh their subscription while they are
     // consuming.
     private int refreshPeriod;
-    private int slowDownExtension;
-    private int maxSlowDown;
     private int consumerLockTime;
 
     private int checkInterval;
