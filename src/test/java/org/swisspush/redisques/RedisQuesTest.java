@@ -10,9 +10,11 @@ import io.vertx.ext.unit.junit.Timeout;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
+import org.swisspush.redisques.util.QueueConfiguration;
 import org.swisspush.redisques.util.RedisquesConfiguration;
 import redis.clients.jedis.Jedis;
 
+import java.util.Arrays;
 import java.util.Optional;
 
 import static java.util.Optional.of;
@@ -38,8 +40,10 @@ public class RedisQuesTest extends AbstractTestCase {
                 .processorAddress(PROCESSOR_ADDRESS)
                 .redisEncoding("ISO-8859-1")
                 .refreshPeriod(2)
-                .slowDownExtension(5)
-                .maxSlowDown(52)
+                .queueConfigurations(Arrays.asList(QueueConfiguration.with()
+                        .pattern("queue.*")
+                        .retryIntervals(Arrays.asList(2, 7, 12, 17, 22, 27, 32, 37, 42, 47, 52))
+                        .build()))
                 .build()
                 .asJsonObject();
 
@@ -1064,7 +1068,7 @@ public class RedisQuesTest extends AbstractTestCase {
         redisQues.updateQueueProcessMessageFailureCount(queue, false);
         context.assertEquals(52, redisQues.getQueueRescheduleRefreshPeriod(queue), "The reschedule refresh period is wrong when failure count is 11.");
 
-        // already reach the max slow down
+        // already reach the max retry interval
 
         // send message fail
         redisQues.updateQueueProcessMessageFailureCount(queue, false);
@@ -1107,5 +1111,25 @@ public class RedisQuesTest extends AbstractTestCase {
         // send message success
         redisQues.updateQueueProcessMessageFailureCount(queue, true);
         context.assertEquals(0, redisQues.getQueueRescheduleRefreshPeriod(queue), "The reschedule refresh period is wrong");
+    }
+    
+    @Test
+    public void getRescheduleRefreshPeriodOfUnknownQueue(TestContext context) {
+        final String queue = "unknownqueue";
+
+        // send message success (reset the failure count)
+        redisQues.updateQueueProcessMessageFailureCount(queue, true);
+
+        // get the reschedule refresh period to reschedule for the first time
+        context.assertEquals(0, redisQues.getQueueRescheduleRefreshPeriod(queue), "The reschedule refresh period is wrong");
+
+        // send message fail
+        redisQues.updateQueueProcessMessageFailureCount(queue, false);
+        context.assertEquals(2, redisQues.getQueueRescheduleRefreshPeriod(queue), "The reschedule refresh period is wrong");
+
+        // send message fail
+        redisQues.updateQueueProcessMessageFailureCount(queue, false);
+        // still use the default refresh period
+        context.assertEquals(2, redisQues.getQueueRescheduleRefreshPeriod(queue), "The reschedule refresh period is wrong");
     }
 }

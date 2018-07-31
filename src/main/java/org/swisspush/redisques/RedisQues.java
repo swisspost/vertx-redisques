@@ -17,10 +17,7 @@ import io.vertx.redis.op.RangeLimitOptions;
 import io.vertx.redis.op.SetOptions;
 import org.swisspush.redisques.handler.*;
 import org.swisspush.redisques.lua.LuaScriptManager;
-import org.swisspush.redisques.util.MessageUtil;
-import org.swisspush.redisques.util.RedisQuesTimer;
-import org.swisspush.redisques.util.RedisquesConfiguration;
-import org.swisspush.redisques.util.Result;
+import org.swisspush.redisques.util.*;
 
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -116,6 +113,7 @@ public class RedisQues extends AbstractVerticle {
     private String httpRequestHandlerPrefix;
     private int httpRequestHandlerPort;
     private String httpRequestHandlerUserHeader;
+    private List<QueueConfiguration> queueConfigurations;
 
     private static final int DEFAULT_MAX_QUEUEITEM_COUNT = 49;
     private static final int MAX_AGE_MILLISECONDS = 120000; // 120 seconds
@@ -166,8 +164,6 @@ public class RedisQues extends AbstractVerticle {
         redisPrefix = modConfig.getRedisPrefix();
         processorAddress = modConfig.getProcessorAddress();
         refreshPeriod = modConfig.getRefreshPeriod();
-        slowDownExtension = modConfig.getSlowDownExtension();
-        maxSlowDown = modConfig.getMaxSlowDown();
         consumerLockTime = 2 * refreshPeriod; // lock is kept twice as long as its refresh interval -> never expires as long as the consumer ('we') are alive
         checkInterval = modConfig.getCheckInterval();
         processorTimeout = modConfig.getProcessorTimeout();
@@ -183,6 +179,7 @@ public class RedisQues extends AbstractVerticle {
         httpRequestHandlerPrefix = modConfig.getHttpRequestHandlerPrefix();
         httpRequestHandlerPort = modConfig.getHttpRequestHandlerPort();
         httpRequestHandlerUserHeader = modConfig.getHttpRequestHandlerUserHeader();
+        queueConfigurations = modConfig.getQueueConfigurations();
 
         this.redisClient = RedisClient.create(vertx, new RedisOptions()
                 .setHost(redisHost)
@@ -477,16 +474,21 @@ public class RedisQues extends AbstractVerticle {
         }
     }
     
-    private int calculateWaitTime(int failureCount) {
-        if (failureCount == 0) return 0;
-        
-        int slowDown = refreshPeriod + ((failureCount - 1) * slowDownExtension);
-        return slowDown <= maxSlowDown ? slowDown : maxSlowDown; 
-    }
-    
     int getQueueRescheduleRefreshPeriod(String queue) {
-        AtomicInteger failureCount = myQueueFailureCounts.get(queue);
-        return calculateWaitTime(failureCount != null ? failureCount.get() : 0);
+        AtomicInteger atomicFailureCount = myQueueFailureCounts.get(queue);
+        int failureCount = atomicFailureCount != null ? atomicFailureCount.get() : 0;
+        
+        if (failureCount == 0) return 0;
+
+        for (QueueConfiguration queueConfiguration : queueConfigurations) {
+            if (queue.matches(queueConfiguration.getPattern())) {
+                List<Integer> retryIntervals = queueConfiguration.getRetryIntervals();
+                int retryIntervalIndex = failureCount <= retryIntervals.size() ? failureCount - 1 : retryIntervals.size() - 1;
+                return retryIntervals.get(retryIntervalIndex);
+            }
+        }
+        
+        return refreshPeriod;
     }
     
     private String buildQueueKey(String queue){

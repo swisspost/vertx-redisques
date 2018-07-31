@@ -1,8 +1,13 @@
 package org.swisspush.redisques.util;
 
+import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
+
+import java.util.Arrays;
+import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * Utility class to configure the Redisques module.
@@ -15,8 +20,6 @@ public class RedisquesConfiguration {
     private String redisPrefix;
     private String processorAddress;
     private int refreshPeriod;
-    private int slowDownExtension;
-    private int maxSlowDown;
     private String redisHost;
     private int redisPort;
     private String redisAuth;
@@ -28,6 +31,7 @@ public class RedisquesConfiguration {
     private String httpRequestHandlerPrefix;
     private Integer httpRequestHandlerPort;
     private String httpRequestHandlerUserHeader;
+    private List<QueueConfiguration> queueConfigurations;
 
     private static final int DEFAULT_CHECK_INTERVAL = 60; // 60s
     private static final long DEFAULT_PROCESSOR_DELAY_MAX = 0;
@@ -37,8 +41,6 @@ public class RedisquesConfiguration {
     public static final String PROP_REDIS_PREFIX = "redis-prefix";
     public static final String PROP_PROCESSOR_ADDRESS = "processor-address";
     public static final String PROP_REFRESH_PERIOD = "refresh-period";
-    public static final String PROP_SLOW_DOWN_EXTENSION = "slow-down-extension";
-    public static final String PROP_MAX_SLOW_DOWN = "max-slow-down";
     public static final String PROP_REDIS_HOST = "redisHost";
     public static final String PROP_REDIS_PORT = "redisPort";
     public static final String PROP_REDIS_AUTH = "redisAuth";
@@ -50,6 +52,7 @@ public class RedisquesConfiguration {
     public static final String PROP_HTTP_REQUEST_HANDLER_PREFIX = "httpRequestHandlerPrefix";
     public static final String PROP_HTTP_REQUEST_HANDLER_PORT = "httpRequestHandlerPort";
     public static final String PROP_HTTP_REQUEST_HANDLER_USER_HEADER = "httpRequestHandlerUserHeader";
+    public static final String PROP_QUEUE_CONFIGURATIONS = "queueConfigurations";
 
     /**
      * Constructor with default values. Use the {@link RedisquesConfigurationBuilder} class
@@ -60,17 +63,15 @@ public class RedisquesConfiguration {
     }
 
     public RedisquesConfiguration(String address, String configurationUpdatedAddress, String redisPrefix, String processorAddress, int refreshPeriod,
-                                  int slowDownExtension, int maxSlowDown, String redisHost, int redisPort, String redisAuth, String redisEncoding, int checkInterval,
+                                  String redisHost, int redisPort, String redisAuth, String redisEncoding, int checkInterval,
                                   int processorTimeout, long processorDelayMax, boolean httpRequestHandlerEnabled,
                                   String httpRequestHandlerPrefix, Integer httpRequestHandlerPort,
-                                  String httpRequestHandlerUserHeader) {
+                                  String httpRequestHandlerUserHeader, List<QueueConfiguration> queueConfigurations) {
         this.address = address;
         this.configurationUpdatedAddress = configurationUpdatedAddress;
         this.redisPrefix = redisPrefix;
         this.processorAddress = processorAddress;
         this.refreshPeriod = refreshPeriod;
-        this.slowDownExtension = slowDownExtension;
-        this.maxSlowDown = maxSlowDown;
         this.redisHost = redisHost;
         this.redisPort = redisPort;
         this.redisAuth = redisAuth;
@@ -98,6 +99,7 @@ public class RedisquesConfiguration {
         this.httpRequestHandlerPrefix = httpRequestHandlerPrefix;
         this.httpRequestHandlerPort = httpRequestHandlerPort;
         this.httpRequestHandlerUserHeader = httpRequestHandlerUserHeader;
+        this.queueConfigurations = queueConfigurations;
     }
 
     public static RedisquesConfigurationBuilder with(){
@@ -106,9 +108,9 @@ public class RedisquesConfiguration {
 
     private RedisquesConfiguration(RedisquesConfigurationBuilder builder){
         this(builder.address, builder.configurationUpdatedAddress, builder.redisPrefix, builder.processorAddress, builder.refreshPeriod,
-                builder.slowDownExtension, builder.maxSlowDown, builder.redisHost, builder.redisPort, builder.redisAuth, builder.redisEncoding, builder.checkInterval,
+                builder.redisHost, builder.redisPort, builder.redisAuth, builder.redisEncoding, builder.checkInterval,
                 builder.processorTimeout, builder.processorDelayMax, builder.httpRequestHandlerEnabled, builder.httpRequestHandlerPrefix,
-                builder.httpRequestHandlerPort, builder.httpRequestHandlerUserHeader);
+                builder.httpRequestHandlerPort, builder.httpRequestHandlerUserHeader, builder.queueConfigurations);
     }
 
     public JsonObject asJsonObject(){
@@ -118,8 +120,6 @@ public class RedisquesConfiguration {
         obj.put(PROP_REDIS_PREFIX, getRedisPrefix());
         obj.put(PROP_PROCESSOR_ADDRESS, getProcessorAddress());
         obj.put(PROP_REFRESH_PERIOD, getRefreshPeriod());
-        obj.put(PROP_SLOW_DOWN_EXTENSION, getSlowDownExtension());
-        obj.put(PROP_MAX_SLOW_DOWN, getMaxSlowDown());
         obj.put(PROP_REDIS_HOST, getRedisHost());
         obj.put(PROP_REDIS_PORT, getRedisPort());
         obj.put(PROP_REDIS_AUTH, getRedisAuth());
@@ -131,6 +131,8 @@ public class RedisquesConfiguration {
         obj.put(PROP_HTTP_REQUEST_HANDLER_PREFIX, getHttpRequestHandlerPrefix());
         obj.put(PROP_HTTP_REQUEST_HANDLER_PORT, getHttpRequestHandlerPort());
         obj.put(PROP_HTTP_REQUEST_HANDLER_USER_HEADER, getHttpRequestHandlerUserHeader());
+        obj.put(PROP_QUEUE_CONFIGURATIONS, new JsonArray(getQueueConfigurations().stream().map(QueueConfiguration::asJsonObject).collect(Collectors.toList())));
+            
         return obj;
     }
 
@@ -150,12 +152,6 @@ public class RedisquesConfiguration {
         }
         if(json.containsKey(PROP_REFRESH_PERIOD)){
             builder.refreshPeriod(json.getInteger(PROP_REFRESH_PERIOD));
-        }
-        if(json.containsKey(PROP_SLOW_DOWN_EXTENSION)){
-            builder.slowDownExtension(json.getInteger(PROP_SLOW_DOWN_EXTENSION));
-        }
-        if(json.containsKey(PROP_MAX_SLOW_DOWN)){
-            builder.maxSlowDown(json.getInteger(PROP_MAX_SLOW_DOWN));
         }
         if(json.containsKey(PROP_REDIS_HOST)){
             builder.redisHost(json.getString(PROP_REDIS_HOST));
@@ -190,6 +186,12 @@ public class RedisquesConfiguration {
         if(json.containsKey(PROP_HTTP_REQUEST_HANDLER_USER_HEADER)){
             builder.httpRequestHandlerUserHeader(json.getString(PROP_HTTP_REQUEST_HANDLER_USER_HEADER));
         }
+        if(json.containsKey(PROP_QUEUE_CONFIGURATIONS)){
+            builder.queueConfigurations((List<QueueConfiguration>) json.getJsonArray(PROP_QUEUE_CONFIGURATIONS)
+                    .getList().stream()
+                    .map(jsonObject -> QueueConfiguration.fromJsonObject((JsonObject)jsonObject))
+                    .collect(Collectors.toList()));
+        }
         return builder.build();
     }
 
@@ -207,14 +209,6 @@ public class RedisquesConfiguration {
 
     public int getRefreshPeriod() {
         return refreshPeriod;
-    }
-
-    public int getSlowDownExtension() {
-        return slowDownExtension;
-    }
-
-    public int getMaxSlowDown() {
-        return maxSlowDown;
     }
 
     public String getRedisHost() {
@@ -240,6 +234,8 @@ public class RedisquesConfiguration {
     public Integer getHttpRequestHandlerPort() { return httpRequestHandlerPort; }
 
     public String getHttpRequestHandlerUserHeader() { return httpRequestHandlerUserHeader; }
+    
+    public List<QueueConfiguration> getQueueConfigurations() { return queueConfigurations; }
 
     /**
      * Gets the value for the vertx periodic timer.
@@ -276,8 +272,6 @@ public class RedisquesConfiguration {
         private String redisPrefix;
         private String processorAddress;
         private int refreshPeriod;
-        private int slowDownExtension;
-        private int maxSlowDown;
         private String redisHost;
         private int redisPort;
         private String redisAuth;
@@ -289,6 +283,7 @@ public class RedisquesConfiguration {
         private String httpRequestHandlerPrefix;
         private Integer httpRequestHandlerPort;
         private String httpRequestHandlerUserHeader;
+        private List<QueueConfiguration> queueConfigurations;
 
         public RedisquesConfigurationBuilder(){
             this.address = "redisques";
@@ -296,8 +291,6 @@ public class RedisquesConfiguration {
             this.redisPrefix = "redisques:";
             this.processorAddress = "redisques-processor";
             this.refreshPeriod = 10;
-            this.slowDownExtension = 5;
-            this.maxSlowDown = 60;
             this.redisHost = "localhost";
             this.redisPort = 6379;
             this.redisEncoding = "UTF-8";
@@ -308,6 +301,11 @@ public class RedisquesConfiguration {
             this.httpRequestHandlerPrefix = "/queuing";
             this.httpRequestHandlerPort = 7070;
             this.httpRequestHandlerUserHeader = "x-rp-usr";
+            this.queueConfigurations = Arrays.asList(
+                    QueueConfiguration.with()
+                            .pattern(".*")
+                            .retryIntervals(Arrays.asList(5, 10, 45, 120))
+                            .build());
         }
 
         public RedisquesConfigurationBuilder address(String address){
@@ -332,16 +330,6 @@ public class RedisquesConfiguration {
 
         public RedisquesConfigurationBuilder refreshPeriod(int refreshPeriod){
             this.refreshPeriod = refreshPeriod;
-            return this;
-        }
-        
-        public RedisquesConfigurationBuilder slowDownExtension(int slowDownExtension) {
-            this.slowDownExtension = slowDownExtension;
-            return this;
-        }
-        
-        public RedisquesConfigurationBuilder maxSlowDown(int maxSlowDown) {
-            this.maxSlowDown = maxSlowDown;
             return this;
         }
 
@@ -397,6 +385,11 @@ public class RedisquesConfiguration {
 
         public RedisquesConfigurationBuilder httpRequestHandlerUserHeader(String httpRequestHandlerUserHeader){
             this.httpRequestHandlerUserHeader = httpRequestHandlerUserHeader;
+            return this;
+        }
+
+        public RedisquesConfigurationBuilder queueConfigurations(List<QueueConfiguration> queueConfigurations){
+            this.queueConfigurations = queueConfigurations;
             return this;
         }
 
