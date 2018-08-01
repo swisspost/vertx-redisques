@@ -457,32 +457,30 @@ public class RedisQues extends AbstractVerticle {
             }
         });
     }
-
-    void updateQueueProcessMessageFailureCount(String queue, boolean isProcessMessageSuccessful) {
-        if (isProcessMessageSuccessful) {
-            myQueueFailureCounts.remove(queue);
-        } else {
-            AtomicInteger failureCount = myQueueFailureCounts.get(queue);
-            if (failureCount == null) {
-                failureCount = new AtomicInteger(1);
-                myQueueFailureCounts.put(queue, failureCount);
-            } else {
-                failureCount.incrementAndGet();
-            }
-        }
-    }
     
-    int getQueueRescheduleRefreshPeriod(String queue) {
-        AtomicInteger atomicFailureCount = myQueueFailureCounts.get(queue);
-        int failureCount = atomicFailureCount != null ? atomicFailureCount.get() : 0;
-        
-        if (failureCount == 0) return 0;
-
-        for (QueueConfiguration queueConfiguration : queueConfigurations) {
-            if (queue.matches(queueConfiguration.getPattern())) {
-                List<Integer> retryIntervals = queueConfiguration.getRetryIntervals();
-                int retryIntervalIndex = failureCount <= retryIntervals.size() ? failureCount - 1 : retryIntervals.size() - 1;
-                return retryIntervals.get(retryIntervalIndex);
+    int updateQueueFailureCountAndGetRescheduleRefreshPeriod(String queue, boolean sendSuccess) {
+        if (sendSuccess) {
+            myQueueFailureCounts.remove(queue);
+            return 0;
+        } else {
+            // update the failure count
+            int failureCount;
+            AtomicInteger atomicFailureCount = myQueueFailureCounts.get(queue);
+            if (atomicFailureCount == null) {
+                failureCount = 1;
+                atomicFailureCount = new AtomicInteger(failureCount);
+                myQueueFailureCounts.put(queue, atomicFailureCount);
+            } else {
+                failureCount = atomicFailureCount.incrementAndGet();
+            }
+            
+            // find a retry interval from the queue configurations
+            for (QueueConfiguration queueConfiguration : queueConfigurations) {
+                if (queue.matches(queueConfiguration.getPattern())) {
+                    List<Integer> retryIntervals = queueConfiguration.getRetryIntervals();
+                    int retryIntervalIndex = failureCount <= retryIntervals.size() ? failureCount - 1 : retryIntervals.size() - 1;
+                    return retryIntervals.get(retryIntervalIndex);
+                }
             }
         }
         
@@ -917,6 +915,10 @@ public class RedisQues extends AbstractVerticle {
                     }
                     if (answer.result() != null) {
                         processMessageWithTimeout(queue, answer.result(), sendResult -> {
+                            
+                            // update the queue failure count and get reschedule refresh period
+                            int rescheduleRefreshPeriod = updateQueueFailureCountAndGetRescheduleRefreshPeriod(queue, sendResult.success);
+
                             if (sendResult.success) {
                                 // Remove the processed message from the
                                 // queue
@@ -953,7 +955,6 @@ public class RedisQues extends AbstractVerticle {
                                 log.debug("RedisQues Processing failed for queue " + queue);
                                 
                                 // reschedule
-                                int rescheduleRefreshPeriod = getQueueRescheduleRefreshPeriod(queue);
                                 log.debug("RedisQues will re-send the message to queue '" + queue + "' in " + rescheduleRefreshPeriod + " seconds");
                                 vertx.cancelTimer(sendResult.timeoutId);
                                 rescheduleSendMessageAfterFailure(queue, rescheduleRefreshPeriod);
@@ -1017,10 +1018,6 @@ public class RedisQues extends AbstractVerticle {
                 } else {
                     success = Boolean.FALSE;
                 }
-                
-                // update the queue failure count
-                updateQueueProcessMessageFailureCount(queue, success);
-
                 handler.handle(new SendResult(success, timeoutId));
             });
             updateTimestamp(queue, null);
