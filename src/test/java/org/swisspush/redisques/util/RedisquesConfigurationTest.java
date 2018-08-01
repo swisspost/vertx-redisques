@@ -38,12 +38,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getHttpRequestHandlerPrefix(), "/queuing");
         testContext.assertEquals(config.getHttpRequestHandlerPort(), 7070);
         testContext.assertEquals(config.getHttpRequestHandlerUserHeader(), "x-rp-usr");
-        
-        // queue configurations
-        testContext.assertEquals(config.getQueueConfigurations().size(), 1);
-        QueueConfiguration defaultQueueConfiguration = config.getQueueConfigurations().get(0);
-        testContext.assertEquals(defaultQueueConfiguration.getPattern(), ".*");
-        testContext.assertEquals(defaultQueueConfiguration.getRetryIntervals(), Arrays.asList(5, 10, 45, 120));
+        testContext.assertEquals(config.getQueueConfigurations().size(), 0);
     }
 
     @Test
@@ -113,14 +108,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(json.getString(PROP_HTTP_REQUEST_HANDLER_PREFIX), "/queuing");
         testContext.assertEquals(json.getInteger(PROP_HTTP_REQUEST_HANDLER_PORT), 7070);
         testContext.assertEquals(json.getString(PROP_HTTP_REQUEST_HANDLER_USER_HEADER), "x-rp-usr");
-        
-        // queue configurations
-        JsonArray queueConfigurationsJsonArray = json.getJsonArray(PROP_QUEUE_CONFIGURATIONS);
-        List<JsonObject> queueConfigurationJsonObjects = queueConfigurationsJsonArray.getList();
-        testContext.assertEquals(queueConfigurationJsonObjects.size(), 1);
-        JsonObject queueConfigurationJsonObject = queueConfigurationJsonObjects.get(0);
-        testContext.assertEquals(queueConfigurationJsonObject.getString(QueueConfiguration.PROP_PATTERN), ".*");
-        testContext.assertEquals(queueConfigurationJsonObject.getJsonArray(QueueConfiguration.PROP_RETRY_INTERVALS).getList(), Arrays.asList(5, 10, 45, 120));
+        testContext.assertEquals(json.getJsonArray(PROP_QUEUE_CONFIGURATIONS).getList().size(), 0);
     }
 
     @Test
@@ -192,12 +180,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getHttpRequestHandlerPrefix(), "/queuing");
         testContext.assertEquals(config.getHttpRequestHandlerPort(), 7070);
         testContext.assertEquals(config.getHttpRequestHandlerUserHeader(), "x-rp-usr");
-        
-        // queue configurations
-        testContext.assertEquals(config.getQueueConfigurations().size(), 1);
-        QueueConfiguration defaultQueueConfiguration = config.getQueueConfigurations().get(0);
-        testContext.assertEquals(defaultQueueConfiguration.getPattern(), ".*");
-        testContext.assertEquals(defaultQueueConfiguration.getRetryIntervals(), Arrays.asList(5, 10, 45, 120));
+        testContext.assertEquals(config.getQueueConfigurations().size(), 0);
     }
 
     @Test
