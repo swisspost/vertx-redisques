@@ -5,7 +5,7 @@ import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
 
-import java.util.Arrays;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -301,11 +301,7 @@ public class RedisquesConfiguration {
             this.httpRequestHandlerPrefix = "/queuing";
             this.httpRequestHandlerPort = 7070;
             this.httpRequestHandlerUserHeader = "x-rp-usr";
-            this.queueConfigurations = Arrays.asList(
-                    QueueConfiguration.with()
-                            .pattern(".*")
-                            .retryIntervals(Arrays.asList(5, 10, 45, 120))
-                            .build());
+            this.queueConfigurations = new LinkedList<>();
         }
 
         public RedisquesConfigurationBuilder address(String address){
