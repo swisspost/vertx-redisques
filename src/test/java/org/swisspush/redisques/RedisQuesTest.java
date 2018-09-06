@@ -1019,45 +1019,45 @@ public class RedisQuesTest extends AbstractTestCase {
         final String queue = "queue1";
 
         // send message success (reset the failure count)
-        context.assertEquals(0, redisQues.updateQueueFailureCountAndGetRescheduleRefreshPeriod(queue, true), "The reschedule refresh period is wrong when failure count is 0.");
+        context.assertEquals(0, redisQues.updateQueueFailureCountAndGetRetryInterval(queue, true), "The retry interval is wrong when failure count is 0.");
         
         // send message fail
-        context.assertEquals(2, redisQues.updateQueueFailureCountAndGetRescheduleRefreshPeriod(queue, false), "The reschedule refresh period is wrong when failure count is 1.");
+        context.assertEquals(2, redisQues.updateQueueFailureCountAndGetRetryInterval(queue, false), "The retry interval is wrong when failure count is 1.");
         
         // send message fail
-        context.assertEquals(7, redisQues.updateQueueFailureCountAndGetRescheduleRefreshPeriod(queue, false), "The reschedule refresh period is wrong when failure count is 2.");
+        context.assertEquals(7, redisQues.updateQueueFailureCountAndGetRetryInterval(queue, false), "The retry interval is wrong when failure count is 2.");
         
         // send message fail
-        context.assertEquals(12, redisQues.updateQueueFailureCountAndGetRescheduleRefreshPeriod(queue, false), "The reschedule refresh period is wrong when failure count is 3.");
+        context.assertEquals(12, redisQues.updateQueueFailureCountAndGetRetryInterval(queue, false), "The retry interval is wrong when failure count is 3.");
         
         // send message fail
-        context.assertEquals(17, redisQues.updateQueueFailureCountAndGetRescheduleRefreshPeriod(queue, false), "The reschedule refresh period is wrong when failure count is 4.");
+        context.assertEquals(17, redisQues.updateQueueFailureCountAndGetRetryInterval(queue, false), "The retry interval is wrong when failure count is 4.");
         
         // send message fail
-        context.assertEquals(22, redisQues.updateQueueFailureCountAndGetRescheduleRefreshPeriod(queue, false), "The reschedule refresh period is wrong when failure count is 5.");
+        context.assertEquals(22, redisQues.updateQueueFailureCountAndGetRetryInterval(queue, false), "The retry interval is wrong when failure count is 5.");
         
         // send message fail
-        context.assertEquals(27, redisQues.updateQueueFailureCountAndGetRescheduleRefreshPeriod(queue, false), "The reschedule refresh period is wrong when failure count is 6.");
+        context.assertEquals(27, redisQues.updateQueueFailureCountAndGetRetryInterval(queue, false), "The retry interval is wrong when failure count is 6.");
         
         // send message fail
-        context.assertEquals(32, redisQues.updateQueueFailureCountAndGetRescheduleRefreshPeriod(queue, false), "The reschedule refresh period is wrong when failure count is 7.");
+        context.assertEquals(32, redisQues.updateQueueFailureCountAndGetRetryInterval(queue, false), "The retry interval is wrong when failure count is 7.");
         
         // send message fail
-        context.assertEquals(37, redisQues.updateQueueFailureCountAndGetRescheduleRefreshPeriod(queue, false), "The reschedule refresh period is wrong when failure count is 8.");
+        context.assertEquals(37, redisQues.updateQueueFailureCountAndGetRetryInterval(queue, false), "The retry interval is wrong when failure count is 8.");
         
         // send message fail
-        context.assertEquals(42, redisQues.updateQueueFailureCountAndGetRescheduleRefreshPeriod(queue, false), "The reschedule refresh period is wrong when failure count is 9.");
+        context.assertEquals(42, redisQues.updateQueueFailureCountAndGetRetryInterval(queue, false), "The retry interval is wrong when failure count is 9.");
         
         // send message fail
-        context.assertEquals(47, redisQues.updateQueueFailureCountAndGetRescheduleRefreshPeriod(queue, false), "The reschedule refresh period is wrong when failure count is 10.");
+        context.assertEquals(47, redisQues.updateQueueFailureCountAndGetRetryInterval(queue, false), "The retry interval is wrong when failure count is 10.");
         
         // send message fail
-        context.assertEquals(52, redisQues.updateQueueFailureCountAndGetRescheduleRefreshPeriod(queue, false), "The reschedule refresh period is wrong when failure count is 11.");
+        context.assertEquals(52, redisQues.updateQueueFailureCountAndGetRetryInterval(queue, false), "The retry interval is wrong when failure count is 11.");
 
         // already reach the max retry interval
 
         // send message fail
-        context.assertEquals(52, redisQues.updateQueueFailureCountAndGetRescheduleRefreshPeriod(queue, false), "The reschedule refresh period is wrong when failure count is 12.");
+        context.assertEquals(52, redisQues.updateQueueFailureCountAndGetRetryInterval(queue, false), "The retry interval is wrong when failure count is 12.");
     }
 
     @Test
@@ -1065,13 +1065,13 @@ public class RedisQuesTest extends AbstractTestCase {
         final String queue = "queue1";
 
         // send message success (reset the failure count)
-        context.assertEquals(0, redisQues.updateQueueFailureCountAndGetRescheduleRefreshPeriod(queue, true), "The reschedule refresh period is wrong");
+        context.assertEquals(0, redisQues.updateQueueFailureCountAndGetRetryInterval(queue, true), "The retry interval is wrong");
 
         // send message fail
-        context.assertEquals(2, redisQues.updateQueueFailureCountAndGetRescheduleRefreshPeriod(queue, false), "The reschedule refresh period is wrong");
+        context.assertEquals(2, redisQues.updateQueueFailureCountAndGetRetryInterval(queue, false), "The retry interval is wrong");
         
         // send message fail
-        context.assertEquals(7, redisQues.updateQueueFailureCountAndGetRescheduleRefreshPeriod(queue, false), "The reschedule refresh period is wrong");
+        context.assertEquals(7, redisQues.updateQueueFailureCountAndGetRetryInterval(queue, false), "The retry interval is wrong");
     }
 
     @Test
@@ -1079,13 +1079,13 @@ public class RedisQuesTest extends AbstractTestCase {
         final String queue = "queue1";
         
         // send message success (reset the failure count)
-        context.assertEquals(0, redisQues.updateQueueFailureCountAndGetRescheduleRefreshPeriod(queue, true), "The reschedule refresh period is wrong");
+        context.assertEquals(0, redisQues.updateQueueFailureCountAndGetRetryInterval(queue, true), "The retry interval is wrong");
         
         // send message fail
-        context.assertEquals(2, redisQues.updateQueueFailureCountAndGetRescheduleRefreshPeriod(queue, false), "The reschedule refresh period is wrong");
+        context.assertEquals(2, redisQues.updateQueueFailureCountAndGetRetryInterval(queue, false), "The retry interval is wrong");
 
         // send message success
-        context.assertEquals(0, redisQues.updateQueueFailureCountAndGetRescheduleRefreshPeriod(queue, true), "The reschedule refresh period is wrong");
+        context.assertEquals(0, redisQues.updateQueueFailureCountAndGetRetryInterval(queue, true), "The retry interval is wrong");
     }
     
     @Test
@@ -1093,13 +1093,13 @@ public class RedisQuesTest extends AbstractTestCase {
         final String queue = "unknownqueue";
 
         // send message success (reset the failure count)
-        context.assertEquals(0, redisQues.updateQueueFailureCountAndGetRescheduleRefreshPeriod(queue, true), "The reschedule refresh period is wrong");
+        context.assertEquals(0, redisQues.updateQueueFailureCountAndGetRetryInterval(queue, true), "The retry interval is wrong");
 
         // send message fail
-        context.assertEquals(2, redisQues.updateQueueFailureCountAndGetRescheduleRefreshPeriod(queue, false), "The reschedule refresh period is wrong");
+        context.assertEquals(2, redisQues.updateQueueFailureCountAndGetRetryInterval(queue, false), "The retry interval is wrong");
 
         // send message fail
         // still use the default refresh period
-        context.assertEquals(2, redisQues.updateQueueFailureCountAndGetRescheduleRefreshPeriod(queue, false), "The reschedule refresh period is wrong");
+        context.assertEquals(2, redisQues.updateQueueFailureCountAndGetRetryInterval(queue, false), "The retry interval is wrong");
     }
 }

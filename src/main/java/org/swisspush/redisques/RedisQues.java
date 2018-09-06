@@ -458,7 +458,7 @@ public class RedisQues extends AbstractVerticle {
         });
     }
     
-    int updateQueueFailureCountAndGetRescheduleRefreshPeriod(String queue, boolean sendSuccess) {
+    int updateQueueFailureCountAndGetRetryInterval(String queue, boolean sendSuccess) {
         if (sendSuccess) {
             myQueueFailureCounts.remove(queue);
             return 0;
@@ -916,8 +916,8 @@ public class RedisQues extends AbstractVerticle {
                     if (answer.result() != null) {
                         processMessageWithTimeout(queue, answer.result(), sendResult -> {
                             
-                            // update the queue failure count and get reschedule refresh period
-                            int rescheduleRefreshPeriod = updateQueueFailureCountAndGetRescheduleRefreshPeriod(queue, sendResult.success);
+                            // update the queue failure count and get a retry interval
+                            int retryInterval = updateQueueFailureCountAndGetRetryInterval(queue, sendResult.success);
 
                             if (sendResult.success) {
                                 // Remove the processed message from the
@@ -955,9 +955,9 @@ public class RedisQues extends AbstractVerticle {
                                 log.debug("RedisQues Processing failed for queue " + queue);
                                 
                                 // reschedule
-                                log.debug("RedisQues will re-send the message to queue '" + queue + "' in " + rescheduleRefreshPeriod + " seconds");
+                                log.debug("RedisQues will re-send the message to queue '" + queue + "' in " + retryInterval + " seconds");
                                 vertx.cancelTimer(sendResult.timeoutId);
-                                rescheduleSendMessageAfterFailure(queue, rescheduleRefreshPeriod);
+                                rescheduleSendMessageAfterFailure(queue, retryInterval);
                             }
                         });
                     } else {
@@ -973,12 +973,12 @@ public class RedisQues extends AbstractVerticle {
         });
     }
 
-    private void rescheduleSendMessageAfterFailure(final String queue, int refreshPeriod) {
+    private void rescheduleSendMessageAfterFailure(final String queue, int retryInterval) {
         if (log.isTraceEnabled()) {
             log.trace("RedsQues reschedule after failure for queue: " + queue);
         }
         
-        vertx.setTimer(refreshPeriod * 1000, timerId -> {
+        vertx.setTimer(retryInterval * 1000, timerId -> {
             log.debug("RedisQues re-notify the consumer of queue '" + queue + "' at " + new Date(System.currentTimeMillis()));
             notifyConsumer(queue);
 
