@@ -13,6 +13,11 @@ public class QueueConfiguration {
     
     private List<Integer> retryIntervals;
 
+    @SuppressWarnings("unused")
+    public QueueConfiguration() {
+        // required to be deserialized by io.vertx.core.json.JsonObject.mapTo(type)
+    }
+
     public String getPattern() {
         return pattern;
     }
