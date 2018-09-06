@@ -1,8 +1,13 @@
 package org.swisspush.redisques.util;
 
+import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
+
+import java.util.LinkedList;
+import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * Utility class to configure the Redisques module.
@@ -26,6 +31,7 @@ public class RedisquesConfiguration {
     private String httpRequestHandlerPrefix;
     private Integer httpRequestHandlerPort;
     private String httpRequestHandlerUserHeader;
+    private List<QueueConfiguration> queueConfigurations;
 
     private static final int DEFAULT_CHECK_INTERVAL = 60; // 60s
     private static final long DEFAULT_PROCESSOR_DELAY_MAX = 0;
@@ -46,6 +52,7 @@ public class RedisquesConfiguration {
     public static final String PROP_HTTP_REQUEST_HANDLER_PREFIX = "httpRequestHandlerPrefix";
     public static final String PROP_HTTP_REQUEST_HANDLER_PORT = "httpRequestHandlerPort";
     public static final String PROP_HTTP_REQUEST_HANDLER_USER_HEADER = "httpRequestHandlerUserHeader";
+    public static final String PROP_QUEUE_CONFIGURATIONS = "queueConfigurations";
 
     /**
      * Constructor with default values. Use the {@link RedisquesConfigurationBuilder} class
@@ -59,7 +66,7 @@ public class RedisquesConfiguration {
                                   String redisHost, int redisPort, String redisAuth, String redisEncoding, int checkInterval,
                                   int processorTimeout, long processorDelayMax, boolean httpRequestHandlerEnabled,
                                   String httpRequestHandlerPrefix, Integer httpRequestHandlerPort,
-                                  String httpRequestHandlerUserHeader) {
+                                  String httpRequestHandlerUserHeader, List<QueueConfiguration> queueConfigurations) {
         this.address = address;
         this.configurationUpdatedAddress = configurationUpdatedAddress;
         this.redisPrefix = redisPrefix;
@@ -92,6 +99,7 @@ public class RedisquesConfiguration {
         this.httpRequestHandlerPrefix = httpRequestHandlerPrefix;
         this.httpRequestHandlerPort = httpRequestHandlerPort;
         this.httpRequestHandlerUserHeader = httpRequestHandlerUserHeader;
+        this.queueConfigurations = queueConfigurations;
     }
 
     public static RedisquesConfigurationBuilder with(){
@@ -102,7 +110,7 @@ public class RedisquesConfiguration {
         this(builder.address, builder.configurationUpdatedAddress, builder.redisPrefix, builder.processorAddress, builder.refreshPeriod,
                 builder.redisHost, builder.redisPort, builder.redisAuth, builder.redisEncoding, builder.checkInterval,
                 builder.processorTimeout, builder.processorDelayMax, builder.httpRequestHandlerEnabled, builder.httpRequestHandlerPrefix,
-                builder.httpRequestHandlerPort, builder.httpRequestHandlerUserHeader);
+                builder.httpRequestHandlerPort, builder.httpRequestHandlerUserHeader, builder.queueConfigurations);
     }
 
     public JsonObject asJsonObject(){
@@ -123,6 +131,8 @@ public class RedisquesConfiguration {
         obj.put(PROP_HTTP_REQUEST_HANDLER_PREFIX, getHttpRequestHandlerPrefix());
         obj.put(PROP_HTTP_REQUEST_HANDLER_PORT, getHttpRequestHandlerPort());
         obj.put(PROP_HTTP_REQUEST_HANDLER_USER_HEADER, getHttpRequestHandlerUserHeader());
+        obj.put(PROP_QUEUE_CONFIGURATIONS, new JsonArray(getQueueConfigurations().stream().map(QueueConfiguration::asJsonObject).collect(Collectors.toList())));
+            
         return obj;
     }
 
@@ -176,6 +186,12 @@ public class RedisquesConfiguration {
         if(json.containsKey(PROP_HTTP_REQUEST_HANDLER_USER_HEADER)){
             builder.httpRequestHandlerUserHeader(json.getString(PROP_HTTP_REQUEST_HANDLER_USER_HEADER));
         }
+        if(json.containsKey(PROP_QUEUE_CONFIGURATIONS)){
+            builder.queueConfigurations((List<QueueConfiguration>) json.getJsonArray(PROP_QUEUE_CONFIGURATIONS)
+                    .getList().stream()
+                    .map(jsonObject -> QueueConfiguration.fromJsonObject((JsonObject)jsonObject))
+                    .collect(Collectors.toList()));
+        }
         return builder.build();
     }
 
@@ -218,6 +234,8 @@ public class RedisquesConfiguration {
     public Integer getHttpRequestHandlerPort() { return httpRequestHandlerPort; }
 
     public String getHttpRequestHandlerUserHeader() { return httpRequestHandlerUserHeader; }
+    
+    public List<QueueConfiguration> getQueueConfigurations() { return queueConfigurations; }
 
     /**
      * Gets the value for the vertx periodic timer.
@@ -265,6 +283,7 @@ public class RedisquesConfiguration {
         private String httpRequestHandlerPrefix;
         private Integer httpRequestHandlerPort;
         private String httpRequestHandlerUserHeader;
+        private List<QueueConfiguration> queueConfigurations;
 
         public RedisquesConfigurationBuilder(){
             this.address = "redisques";
@@ -282,6 +301,7 @@ public class RedisquesConfiguration {
             this.httpRequestHandlerPrefix = "/queuing";
             this.httpRequestHandlerPort = 7070;
             this.httpRequestHandlerUserHeader = "x-rp-usr";
+            this.queueConfigurations = new LinkedList<>();
         }
 
         public RedisquesConfigurationBuilder address(String address){
@@ -361,6 +381,11 @@ public class RedisquesConfiguration {
 
         public RedisquesConfigurationBuilder httpRequestHandlerUserHeader(String httpRequestHandlerUserHeader){
             this.httpRequestHandlerUserHeader = httpRequestHandlerUserHeader;
+            return this;
+        }
+
+        public RedisquesConfigurationBuilder queueConfigurations(List<QueueConfiguration> queueConfigurations){
+            this.queueConfigurations = queueConfigurations;
             return this;
         }
 

@@ -17,10 +17,7 @@ import io.vertx.redis.op.RangeLimitOptions;
 import io.vertx.redis.op.SetOptions;
 import org.swisspush.redisques.handler.*;
 import org.swisspush.redisques.lua.LuaScriptManager;
-import org.swisspush.redisques.util.MessageUtil;
-import org.swisspush.redisques.util.RedisQuesTimer;
-import org.swisspush.redisques.util.RedisquesConfiguration;
-import org.swisspush.redisques.util.Result;
+import org.swisspush.redisques.util.*;
 
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -44,6 +41,8 @@ public class RedisQues extends AbstractVerticle {
 
     // The queues this verticle is listening to
     private Map<String, QueueState> myQueues = new HashMap<>();
+    
+    private Map<String, AtomicInteger> myQueueFailureCounts = new HashMap<>();
 
     private Logger log = LoggerFactory.getLogger(RedisQues.class);
 
@@ -112,6 +111,7 @@ public class RedisQues extends AbstractVerticle {
     private String httpRequestHandlerPrefix;
     private int httpRequestHandlerPort;
     private String httpRequestHandlerUserHeader;
+    private List<QueueConfiguration> queueConfigurations;
 
     private static final int DEFAULT_MAX_QUEUEITEM_COUNT = 49;
     private static final int MAX_AGE_MILLISECONDS = 120000; // 120 seconds
@@ -177,6 +177,7 @@ public class RedisQues extends AbstractVerticle {
         httpRequestHandlerPrefix = modConfig.getHttpRequestHandlerPrefix();
         httpRequestHandlerPort = modConfig.getHttpRequestHandlerPort();
         httpRequestHandlerUserHeader = modConfig.getHttpRequestHandlerUserHeader();
+        queueConfigurations = modConfig.getQueueConfigurations();
 
         this.redisClient = RedisClient.create(vertx, new RedisOptions()
                 .setHost(redisHost)
@@ -456,7 +457,36 @@ public class RedisQues extends AbstractVerticle {
             }
         });
     }
-
+    
+    int updateQueueFailureCountAndGetRetryInterval(String queue, boolean sendSuccess) {
+        if (sendSuccess) {
+            myQueueFailureCounts.remove(queue);
+            return 0;
+        } else {
+            // update the failure count
+            int failureCount;
+            AtomicInteger atomicFailureCount = myQueueFailureCounts.get(queue);
+            if (atomicFailureCount == null) {
+                failureCount = 1;
+                atomicFailureCount = new AtomicInteger(failureCount);
+                myQueueFailureCounts.put(queue, atomicFailureCount);
+            } else {
+                failureCount = atomicFailureCount.incrementAndGet();
+            }
+            
+            // find a retry interval from the queue configurations
+            for (QueueConfiguration queueConfiguration : queueConfigurations) {
+                if (queue.matches(queueConfiguration.getPattern())) {
+                    List<Integer> retryIntervals = queueConfiguration.getRetryIntervals();
+                    int retryIntervalIndex = failureCount <= retryIntervals.size() ? failureCount - 1 : retryIntervals.size() - 1;
+                    return retryIntervals.get(retryIntervalIndex);
+                }
+            }
+        }
+        
+        return refreshPeriod;
+    }
+    
     private String buildQueueKey(String queue){
         return getQueuesPrefix() + queue;
     }
@@ -885,6 +915,10 @@ public class RedisQues extends AbstractVerticle {
                     }
                     if (answer.result() != null) {
                         processMessageWithTimeout(queue, answer.result(), sendResult -> {
+                            
+                            // update the queue failure count and get a retry interval
+                            int retryInterval = updateQueueFailureCountAndGetRetryInterval(queue, sendResult.success);
+
                             if (sendResult.success) {
                                 // Remove the processed message from the
                                 // queue
@@ -919,9 +953,11 @@ public class RedisQues extends AbstractVerticle {
                             } else {
                                 // Failed. Message will be kept in queue and retried later
                                 log.debug("RedisQues Processing failed for queue " + queue);
-                                myQueues.put(queue, QueueState.READY);
+                                
+                                // reschedule
+                                log.debug("RedisQues will re-send the message to queue '" + queue + "' in " + retryInterval + " seconds");
                                 vertx.cancelTimer(sendResult.timeoutId);
-                                rescheduleSendMessageAfterFailure(queue);
+                                rescheduleSendMessageAfterFailure(queue, retryInterval);
                             }
                         });
                     } else {
@@ -937,11 +973,18 @@ public class RedisQues extends AbstractVerticle {
         });
     }
 
-    private void rescheduleSendMessageAfterFailure(final String queue) {
+    private void rescheduleSendMessageAfterFailure(final String queue, int retryInterval) {
         if (log.isTraceEnabled()) {
             log.trace("RedsQues reschedule after failure for queue: " + queue);
         }
-        vertx.setTimer(refreshPeriod * 1000, timerId -> notifyConsumer(queue));
+        
+        vertx.setTimer(retryInterval * 1000, timerId -> {
+            log.debug("RedisQues re-notify the consumer of queue '" + queue + "' at " + new Date(System.currentTimeMillis()));
+            notifyConsumer(queue);
+
+            // reset the queue state to be consumed by {@link RedisQues#consume(String)}
+            myQueues.put(queue, QueueState.READY);
+        });
     }
 
     private void processMessageWithTimeout(final String queue, final String payload, final Handler<SendResult> handler) {

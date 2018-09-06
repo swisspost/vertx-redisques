@@ -1,10 +1,14 @@
 package org.swisspush.redisques.util;
 
+import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.ext.unit.TestContext;
 import io.vertx.ext.unit.junit.VertxUnitRunner;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+
+import java.util.Arrays;
+import java.util.List;
 
 import static org.swisspush.redisques.util.RedisquesConfiguration.*;
 
@@ -34,10 +38,12 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getHttpRequestHandlerPrefix(), "/queuing");
         testContext.assertEquals(config.getHttpRequestHandlerPort(), 7070);
         testContext.assertEquals(config.getHttpRequestHandlerUserHeader(), "x-rp-usr");
+        testContext.assertEquals(config.getQueueConfigurations().size(), 0);
     }
 
     @Test
     public void testOverrideConfiguration(TestContext testContext){
+        
         RedisquesConfiguration config = with()
                 .address("new_address")
                 .configurationUpdatedAddress("config_updated")
@@ -50,6 +56,10 @@ public class RedisquesConfigurationTest {
                 .httpRequestHandlerPrefix("/queuing/test")
                 .httpRequestHandlerPort(7171)
                 .httpRequestHandlerUserHeader("x-custom-user-header")
+                .queueConfigurations(Arrays.asList(QueueConfiguration.with()
+                        .pattern("vehicle-.*")
+                        .retryIntervals(Arrays.asList(10, 20, 30, 60))
+                        .build()))
                 .build();
 
         // default values
@@ -70,6 +80,12 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getHttpRequestHandlerPrefix(), "/queuing/test");
         testContext.assertEquals(config.getHttpRequestHandlerPort(), 7171);
         testContext.assertEquals(config.getHttpRequestHandlerUserHeader(), "x-custom-user-header");
+
+        // queue configurations
+        testContext.assertEquals(config.getQueueConfigurations().size(), 1);
+        QueueConfiguration queueConfiguration = config.getQueueConfigurations().get(0);
+        testContext.assertEquals(queueConfiguration.getPattern(), "vehicle-.*");
+        testContext.assertEquals(queueConfiguration.getRetryIntervals(), Arrays.asList(10, 20, 30, 60));
     }
 
     @Test
@@ -92,6 +108,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(json.getString(PROP_HTTP_REQUEST_HANDLER_PREFIX), "/queuing");
         testContext.assertEquals(json.getInteger(PROP_HTTP_REQUEST_HANDLER_PORT), 7070);
         testContext.assertEquals(json.getString(PROP_HTTP_REQUEST_HANDLER_USER_HEADER), "x-rp-usr");
+        testContext.assertEquals(json.getJsonArray(PROP_QUEUE_CONFIGURATIONS).getList().size(), 0);
     }
 
     @Test
@@ -107,6 +124,10 @@ public class RedisquesConfigurationTest {
                 .processorDelayMax(50)
                 .httpRequestHandlerPort(7171)
                 .httpRequestHandlerUserHeader("x-custom-user-header")
+                .queueConfigurations(Arrays.asList(QueueConfiguration.with()
+                        .pattern("vehicle-.*")
+                        .retryIntervals(Arrays.asList(10, 20, 30, 60))
+                        .build()))
                 .build();
 
         JsonObject json = config.asJsonObject();
@@ -129,6 +150,14 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(json.getInteger(PROP_PROCESSOR_DELAY_MAX), 50);
         testContext.assertEquals(json.getInteger(PROP_HTTP_REQUEST_HANDLER_PORT), 7171);
         testContext.assertEquals(json.getString(PROP_HTTP_REQUEST_HANDLER_USER_HEADER), "x-custom-user-header");
+
+        // queue configurations
+        JsonArray queueConfigurationsJsonArray = json.getJsonArray(PROP_QUEUE_CONFIGURATIONS);
+        List<JsonObject> queueConfigurationJsonObjects = queueConfigurationsJsonArray.getList();
+        testContext.assertEquals(queueConfigurationJsonObjects.size(), 1);
+        JsonObject queueConfigurationJsonObject = queueConfigurationJsonObjects.get(0);
+        testContext.assertEquals(queueConfigurationJsonObject.getString(QueueConfiguration.PROP_PATTERN), "vehicle-.*");
+        testContext.assertEquals(queueConfigurationJsonObject.getJsonArray(QueueConfiguration.PROP_RETRY_INTERVALS).getList(), Arrays.asList(10, 20, 30, 60));
     }
 
     @Test
@@ -151,6 +180,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getHttpRequestHandlerPrefix(), "/queuing");
         testContext.assertEquals(config.getHttpRequestHandlerPort(), 7070);
         testContext.assertEquals(config.getHttpRequestHandlerUserHeader(), "x-rp-usr");
+        testContext.assertEquals(config.getQueueConfigurations().size(), 0);
     }
 
     @Test
@@ -172,6 +202,10 @@ public class RedisquesConfigurationTest {
         json.put(PROP_HTTP_REQUEST_HANDLER_PREFIX, "/queuing/test123");
         json.put(PROP_HTTP_REQUEST_HANDLER_PORT, 7171);
         json.put(PROP_HTTP_REQUEST_HANDLER_USER_HEADER, "x-custom-user-header");
+        json.put(PROP_QUEUE_CONFIGURATIONS, new JsonArray(Arrays.asList(QueueConfiguration.with()
+                .pattern("vehicle-.*")
+                .retryIntervals(Arrays.asList(10, 20, 30, 60))
+                .build().asJsonObject())));
 
         RedisquesConfiguration config = fromJsonObject(json);
         testContext.assertEquals(config.getAddress(), "new_address");
@@ -189,6 +223,12 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getHttpRequestHandlerPort(), 7171);
         testContext.assertEquals(config.getHttpRequestHandlerPrefix(), "/queuing/test123");
         testContext.assertEquals(config.getHttpRequestHandlerUserHeader(), "x-custom-user-header");
+
+        // queue configurations
+        testContext.assertEquals(config.getQueueConfigurations().size(), 1);
+        QueueConfiguration queueConfiguration = config.getQueueConfigurations().get(0);
+        testContext.assertEquals(queueConfiguration.getPattern(), "vehicle-.*");
+        testContext.assertEquals(queueConfiguration.getRetryIntervals(), Arrays.asList(10, 20, 30, 60));
     }
 
     @Test
