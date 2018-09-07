@@ -195,7 +195,7 @@ public class RedisQues extends AbstractVerticle {
         });
 
         // Handles operations
-        eb.localConsumer(address, (Handler<Message<JsonObject>>) event -> {
+        eb.consumer(address, (Handler<Message<JsonObject>>) event -> {
             String operation = event.body().getString(OPERATION);
             if (log.isTraceEnabled()) {
                 log.trace("RedisQues got operation:" + operation);
