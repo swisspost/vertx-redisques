@@ -10,9 +10,11 @@ import io.vertx.ext.unit.junit.Timeout;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
+import org.swisspush.redisques.util.QueueConfiguration;
 import org.swisspush.redisques.util.RedisquesConfiguration;
 import redis.clients.jedis.Jedis;
 
+import java.util.Arrays;
 import java.util.Optional;
 
 import static java.util.Optional.of;
@@ -25,6 +27,8 @@ import static org.swisspush.redisques.util.RedisquesAPI.*;
  */
 public class RedisQuesTest extends AbstractTestCase {
 
+    private RedisQues redisQues;
+    
     @Rule
     public Timeout rule = Timeout.seconds(5);
 
@@ -36,10 +40,14 @@ public class RedisQuesTest extends AbstractTestCase {
                 .processorAddress(PROCESSOR_ADDRESS)
                 .redisEncoding("ISO-8859-1")
                 .refreshPeriod(2)
+                .queueConfigurations(Arrays.asList(QueueConfiguration.with()
+                        .pattern("queue.*")
+                        .retryIntervals(Arrays.asList(2, 7, 12, 17, 22, 27, 32, 37, 42, 47, 52))
+                        .build()))
                 .build()
                 .asJsonObject();
 
-        RedisQues redisQues = new RedisQues();
+        redisQues = new RedisQues();
         vertx.deployVerticle(redisQues, new DeploymentOptions().setConfig(config), context.asyncAssertSuccess(event -> {
             deploymentId = event;
             log.info("vert.x Deploy - " + redisQues.getClass().getSimpleName() + " was successful.");
@@ -1006,4 +1014,92 @@ public class RedisQuesTest extends AbstractTestCase {
         });
     }
 
+    @Test
+    public void getQueueRescheduleRefreshPeriodWhileFailureCountIncreasedUntilExceedMaxRetryInterval(TestContext context) {
+        final String queue = "queue1";
+
+        // send message success (reset the failure count)
+        context.assertEquals(0, redisQues.updateQueueFailureCountAndGetRetryInterval(queue, true), "The retry interval is wrong when failure count is 0.");
+        
+        // send message fail
+        context.assertEquals(2, redisQues.updateQueueFailureCountAndGetRetryInterval(queue, false), "The retry interval is wrong when failure count is 1.");
+        
+        // send message fail
+        context.assertEquals(7, redisQues.updateQueueFailureCountAndGetRetryInterval(queue, false), "The retry interval is wrong when failure count is 2.");
+        
+        // send message fail
+        context.assertEquals(12, redisQues.updateQueueFailureCountAndGetRetryInterval(queue, false), "The retry interval is wrong when failure count is 3.");
+        
+        // send message fail
+        context.assertEquals(17, redisQues.updateQueueFailureCountAndGetRetryInterval(queue, false), "The retry interval is wrong when failure count is 4.");
+        
+        // send message fail
+        context.assertEquals(22, redisQues.updateQueueFailureCountAndGetRetryInterval(queue, false), "The retry interval is wrong when failure count is 5.");
+        
+        // send message fail
+        context.assertEquals(27, redisQues.updateQueueFailureCountAndGetRetryInterval(queue, false), "The retry interval is wrong when failure count is 6.");
+        
+        // send message fail
+        context.assertEquals(32, redisQues.updateQueueFailureCountAndGetRetryInterval(queue, false), "The retry interval is wrong when failure count is 7.");
+        
+        // send message fail
+        context.assertEquals(37, redisQues.updateQueueFailureCountAndGetRetryInterval(queue, false), "The retry interval is wrong when failure count is 8.");
+        
+        // send message fail
+        context.assertEquals(42, redisQues.updateQueueFailureCountAndGetRetryInterval(queue, false), "The retry interval is wrong when failure count is 9.");
+        
+        // send message fail
+        context.assertEquals(47, redisQues.updateQueueFailureCountAndGetRetryInterval(queue, false), "The retry interval is wrong when failure count is 10.");
+        
+        // send message fail
+        context.assertEquals(52, redisQues.updateQueueFailureCountAndGetRetryInterval(queue, false), "The retry interval is wrong when failure count is 11.");
+
+        // already reach the max retry interval
+
+        // send message fail
+        context.assertEquals(52, redisQues.updateQueueFailureCountAndGetRetryInterval(queue, false), "The retry interval is wrong when failure count is 12.");
+    }
+
+    @Test
+    public void getQueueRescheduleRefreshPeriodAfterProcessMessageFail(TestContext context) {
+        final String queue = "queue1";
+
+        // send message success (reset the failure count)
+        context.assertEquals(0, redisQues.updateQueueFailureCountAndGetRetryInterval(queue, true), "The retry interval is wrong");
+
+        // send message fail
+        context.assertEquals(2, redisQues.updateQueueFailureCountAndGetRetryInterval(queue, false), "The retry interval is wrong");
+        
+        // send message fail
+        context.assertEquals(7, redisQues.updateQueueFailureCountAndGetRetryInterval(queue, false), "The retry interval is wrong");
+    }
+
+    @Test
+    public void getQueueRescheduleRefreshPeriodAfterProcessMessageSuccess(TestContext context) {
+        final String queue = "queue1";
+        
+        // send message success (reset the failure count)
+        context.assertEquals(0, redisQues.updateQueueFailureCountAndGetRetryInterval(queue, true), "The retry interval is wrong");
+        
+        // send message fail
+        context.assertEquals(2, redisQues.updateQueueFailureCountAndGetRetryInterval(queue, false), "The retry interval is wrong");
+
+        // send message success
+        context.assertEquals(0, redisQues.updateQueueFailureCountAndGetRetryInterval(queue, true), "The retry interval is wrong");
+    }
+    
+    @Test
+    public void getRescheduleRefreshPeriodOfUnknownQueue(TestContext context) {
+        final String queue = "unknownqueue";
+
+        // send message success (reset the failure count)
+        context.assertEquals(0, redisQues.updateQueueFailureCountAndGetRetryInterval(queue, true), "The retry interval is wrong");
+
+        // send message fail
+        context.assertEquals(2, redisQues.updateQueueFailureCountAndGetRetryInterval(queue, false), "The retry interval is wrong");
+
+        // send message fail
+        // still use the default refresh period
+        context.assertEquals(2, redisQues.updateQueueFailureCountAndGetRetryInterval(queue, false), "The retry interval is wrong");
+    }
 }
