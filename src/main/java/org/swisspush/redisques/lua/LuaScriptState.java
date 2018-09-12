@@ -93,8 +93,8 @@ public class LuaScriptState {
             } else {
                 log.info("load lua script for script type: " + luaScriptType);
                 redisClient.scriptLoad(script, stringAsyncResult -> {
-                    if( stringAsyncResult.failed() ){
-                        log.error( "Received failed message for loadLuaScript." , stringAsyncResult.cause() );
+                    if (stringAsyncResult.failed()) {
+                        log.error("Received failed message for loadLuaScript.", stringAsyncResult.cause());
                         return; // "https://softwareengineering.stackexchange.com/a/190535"
                     }
                     String newSha = stringAsyncResult.result();
