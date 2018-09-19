@@ -196,7 +196,8 @@ public class RedisQues extends AbstractVerticle {
 
         // Handles operations
         eb.consumer(address, (Handler<Message<JsonObject>>) event -> {
-            String operation = event.body().getString(OPERATION);
+            final JsonObject body = event.body();
+            String operation = body.getString(OPERATION);
             if (log.isTraceEnabled()) {
                 log.trace("RedisQues got operation:" + operation);
             }
@@ -244,7 +245,7 @@ public class RedisQues extends AbstractVerticle {
                     bulkPutLocks(event);
                     break;
                 case getLock:
-                    redisClient.hget(getLocksKey(), event.body().getJsonObject(PAYLOAD).getString(QUEUENAME), new GetLockHandler(event));
+                    redisClient.hget(getLocksKey(), body.getJsonObject(PAYLOAD).getString(QUEUENAME), new GetLockHandler(event));
                     break;
                 case deleteLock:
                     deleteLock(event);
@@ -256,7 +257,7 @@ public class RedisQues extends AbstractVerticle {
                     deleteAllLocks(event);
                     break;
                 case getQueueItemsCount:
-                    redisClient.llen(getQueuesPrefix() + event.body().getJsonObject(PAYLOAD).getString(QUEUENAME), new GetQueueItemsCountHandler(event));
+                    redisClient.llen(getQueuesPrefix() + body.getJsonObject(PAYLOAD).getString(QUEUENAME), new GetQueueItemsCountHandler(event));
                     break;
                 case getQueuesCount:
                     getQueuesCount(event);
@@ -457,7 +458,7 @@ public class RedisQues extends AbstractVerticle {
             }
         });
     }
-    
+
     int updateQueueFailureCountAndGetRetryInterval(String queue, boolean sendSuccess) {
         if (sendSuccess) {
             myQueueFailureCounts.remove(queue);
