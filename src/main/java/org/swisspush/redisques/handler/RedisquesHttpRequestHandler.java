@@ -226,13 +226,14 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     private void getAllLocks(RoutingContext ctx) {
         String filter = ctx.request().params().get(FILTER);
         eventBus.send(redisquesAddress, buildGetAllLocksOperation(Optional.ofNullable(filter)), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
-            if (OK.equals(reply.result().body().getString(STATUS))) {
-                jsonResponse(ctx.response(), reply.result().body().getJsonObject(VALUE));
+            final JsonObject body = reply.result().body();
+            if (OK.equals(body.getString(STATUS))) {
+                jsonResponse(ctx.response(), body.getJsonObject(VALUE));
             } else {
-                String errorType = reply.result().body().getString(ERROR_TYPE);
+                String errorType = body.getString(ERROR_TYPE);
                 if (errorType != null && BAD_INPUT.equalsIgnoreCase(errorType)) {
-                    if (reply.result().body().getString(MESSAGE) != null) {
-                        respondWith(StatusCode.BAD_REQUEST, reply.result().body().getString(MESSAGE), ctx.request());
+                    if (body.getString(MESSAGE) != null) {
+                        respondWith(StatusCode.BAD_REQUEST, body.getString(MESSAGE), ctx.request());
                     } else {
                         respondWith(StatusCode.BAD_REQUEST, ctx.request());
                     }
@@ -252,13 +253,14 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     private void getSingleLock(RoutingContext ctx) {
         String queue = lastPart(ctx.request().path());
         eventBus.send(redisquesAddress, buildGetLockOperation(queue), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
+            final HttpServerResponse response = ctx.response();
             if (OK.equals(reply.result().body().getString(STATUS))) {
-                ctx.response().putHeader(CONTENT_TYPE, APPLICATION_JSON);
-                ctx.response().end(reply.result().body().getString(VALUE));
+                response.putHeader(CONTENT_TYPE, APPLICATION_JSON);
+                response.end(reply.result().body().getString(VALUE));
             } else {
-                ctx.response().setStatusCode(StatusCode.NOT_FOUND.getStatusCode());
-                ctx.response().setStatusMessage(StatusCode.NOT_FOUND.getStatusMessage());
-                ctx.response().end(NO_SUCH_LOCK);
+                response.setStatusCode(StatusCode.NOT_FOUND.getStatusCode());
+                response.setStatusMessage(StatusCode.NOT_FOUND.getStatusMessage());
+                response.end(NO_SUCH_LOCK);
             }
         });
     }
@@ -465,9 +467,9 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
             limitParam = ctx.request().params().get(LIMIT);
         }
         eventBus.send(redisquesAddress, buildGetQueueItemsOperation(queue, limitParam), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
-            JsonObject replyBody = reply.result().body();
+            final JsonObject replyBody = reply.result().body();
             if (OK.equals(replyBody.getString(STATUS))) {
-                List<Object> list = reply.result().body().getJsonArray(VALUE).getList();
+                List<Object> list = replyBody.getJsonArray(VALUE).getList();
                 JsonArray items = new JsonArray();
                 for (Object item : list.toArray()) {
                     items.add((String) item);
@@ -476,7 +478,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
                 jsonResponse(ctx.response(), result);
             } else {
                 ctx.response().setStatusCode(StatusCode.NOT_FOUND.getStatusCode());
-                ctx.response().end(reply.result().body().getString(MESSAGE));
+                ctx.response().end(replyBody.getString(MESSAGE));
                 log.warn("Error in routerMatcher.getWithRegEx. Command = '" + (replyBody.getString("command") == null ? "<null>" : replyBody.getString("command")) + "'.");
             }
         });
@@ -499,89 +501,96 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         final String queue = lastPart(ctx.request().path().substring(0, ctx.request().path().length() - 2));
         final int index = Integer.parseInt(lastPart(ctx.request().path()));
         eventBus.send(redisquesAddress, buildGetQueueItemOperation(queue, index), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
-            JsonObject replyBody = reply.result().body();
+            final JsonObject replyBody = reply.result().body();
+            final HttpServerResponse response = ctx.response();
             if (OK.equals(replyBody.getString(STATUS))) {
-                ctx.response().putHeader(CONTENT_TYPE, APPLICATION_JSON);
-                ctx.response().end(decode(reply.result().body().getString(VALUE)));
+                response.putHeader(CONTENT_TYPE, APPLICATION_JSON);
+                response.end(decode(replyBody.getString(VALUE)));
             } else {
-                ctx.response().setStatusCode(StatusCode.NOT_FOUND.getStatusCode());
-                ctx.response().setStatusMessage(StatusCode.NOT_FOUND.getStatusMessage());
-                ctx.response().end("Not Found");
+                response.setStatusCode(StatusCode.NOT_FOUND.getStatusCode());
+                response.setStatusMessage(StatusCode.NOT_FOUND.getStatusMessage());
+                response.end("Not Found");
             }
         });
     }
 
     private void replaceSingleQueueItem(RoutingContext ctx) {
-        final String queue = part(ctx.request().path(), 2);
-        checkLocked(queue, ctx.request(), aVoid -> {
-            final int index = Integer.parseInt(lastPart(ctx.request().path()));
-            ctx.request().bodyHandler(buffer -> {
+        final HttpServerRequest request = ctx.request();
+        final String queue = part(request.path(), 2);
+        checkLocked(queue, request, event -> {
+            final int index = Integer.parseInt(lastPart(request.path()));
+            request.bodyHandler(buffer -> {
                 try {
                     String strBuffer = encodePayload(buffer.toString());
                     eventBus.send(redisquesAddress, buildReplaceQueueItemOperation(queue, index, strBuffer),
-                            (Handler<AsyncResult<Message<JsonObject>>>) reply -> checkReply(reply.result(), ctx.request(), StatusCode.NOT_FOUND));
+                            (Handler<AsyncResult<Message<JsonObject>>>) reply -> checkReply(reply.result(), request, StatusCode.NOT_FOUND));
                 } catch (Exception ex) {
-                    respondWith(StatusCode.BAD_REQUEST, ex.getMessage(), ctx.request());
+                    respondWith(StatusCode.BAD_REQUEST, ex.getMessage(), request);
                 }
             });
         });
     }
 
     private void deleteQueueItem(RoutingContext ctx) {
-        final String queue = part(ctx.request().path(), 2);
-        final int index = Integer.parseInt(lastPart(ctx.request().path()));
-        checkLocked(queue, ctx.request(), aVoid -> eventBus.send(redisquesAddress, buildDeleteQueueItemOperation(queue, index),
-                (Handler<AsyncResult<Message<JsonObject>>>) reply -> checkReply(reply.result(), ctx.request(), StatusCode.NOT_FOUND)));
+        final HttpServerRequest request = ctx.request();
+        final String queue = part(request.path(), 2);
+        final int index = Integer.parseInt(lastPart(request.path()));
+        checkLocked(queue, request, event -> eventBus.send(redisquesAddress, buildDeleteQueueItemOperation(queue, index),
+                (Handler<AsyncResult<Message<JsonObject>>>) reply -> checkReply(reply.result(), request, StatusCode.NOT_FOUND)));
     }
 
     private void deleteAllQueueItems(RoutingContext ctx) {
-        boolean unlock = evaluateUrlParameterToBeEmptyOrTrue(UNLOCK_PARAM, ctx.request());
-        final String queue = lastPart(ctx.request().path());
+        final HttpServerRequest request = ctx.request();
+        boolean unlock = evaluateUrlParameterToBeEmptyOrTrue(UNLOCK_PARAM, request);
+        final String queue = lastPart(request.path());
         eventBus.send(redisquesAddress, buildDeleteAllQueueItemsOperation(queue, unlock), reply -> ctx.response().end());
     }
 
     private void bulkDeleteQueues(RoutingContext ctx) {
-        if (evaluateUrlParameterToBeEmptyOrTrue(BULK_DELETE_PARAM, ctx.request())) {
-            ctx.request().bodyHandler(buffer -> {
+        final HttpServerRequest request = ctx.request();
+        if (evaluateUrlParameterToBeEmptyOrTrue(BULK_DELETE_PARAM, request)) {
+            request.bodyHandler(buffer -> {
                 try {
                     Result<JsonArray, String> result = extractNonEmptyJsonArrayFromBody(QUEUES, buffer.toString());
                     if (result.isErr()) {
-                        respondWith(StatusCode.BAD_REQUEST, result.getErr(), ctx.request());
+                        respondWith(StatusCode.BAD_REQUEST, result.getErr(), request);
                         return;
                     }
                     eventBus.send(redisquesAddress, buildBulkDeleteQueuesOperation(result.getOk()), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
-                        if (reply.succeeded() && OK.equals(reply.result().body().getString(STATUS))) {
+                        final JsonObject body = reply.result().body();
+                        if (reply.succeeded() && OK.equals(body.getString(STATUS))) {
                             JsonObject resultObj = new JsonObject();
-                            resultObj.put(DELETED, reply.result().body().getLong(VALUE));
+                            resultObj.put(DELETED, body.getLong(VALUE));
                             jsonResponse(ctx.response(), resultObj);
                         } else {
-                            String errorType = reply.result().body().getString(ERROR_TYPE);
+                            String errorType = body.getString(ERROR_TYPE);
                             if (errorType != null && BAD_INPUT.equalsIgnoreCase(errorType)) {
-                                if (reply.result().body().getString(MESSAGE) != null) {
-                                    respondWith(StatusCode.BAD_REQUEST, reply.result().body().getString(MESSAGE), ctx.request());
+                                if (body.getString(MESSAGE) != null) {
+                                    respondWith(StatusCode.BAD_REQUEST, body.getString(MESSAGE), request);
                                 } else {
-                                    respondWith(StatusCode.BAD_REQUEST, ctx.request());
+                                    respondWith(StatusCode.BAD_REQUEST, request);
                                 }
                             } else {
-                                respondWith(StatusCode.INTERNAL_SERVER_ERROR, "Error bulk deleting queues", ctx.request());
+                                respondWith(StatusCode.INTERNAL_SERVER_ERROR, "Error bulk deleting queues", request);
                             }
                         }
                     });
 
                 } catch (Exception ex) {
-                    respondWith(StatusCode.BAD_REQUEST, ex.getMessage(), ctx.request());
+                    respondWith(StatusCode.BAD_REQUEST, ex.getMessage(), request);
                 }
             });
         } else {
-            respondWith(StatusCode.BAD_REQUEST, "Unsupported operation. Add '" + BULK_DELETE_PARAM + "' parameter for bulk deleting queues", ctx.request());
+            respondWith(StatusCode.BAD_REQUEST, "Unsupported operation. Add '" + BULK_DELETE_PARAM + "' parameter for bulk deleting queues", request);
         }
     }
 
     private void respondWith(StatusCode statusCode, String responseMessage, HttpServerRequest request) {
+        final HttpServerResponse response = request.response();
         log.info("Responding with status code " + statusCode + " and message: " + responseMessage);
-        request.response().setStatusCode(statusCode.getStatusCode());
-        request.response().setStatusMessage(statusCode.getStatusMessage());
-        request.response().end(responseMessage);
+        response.setStatusCode(statusCode.getStatusCode());
+        response.setStatusMessage(statusCode.getStatusMessage());
+        response.end(responseMessage);
     }
 
     private void respondWith(StatusCode statusCode, HttpServerRequest request) {
@@ -611,28 +620,29 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         return user;
     }
 
-    private void checkLocked(String queue, final HttpServerRequest request, final Handler<Void> handler) {
+    private void checkLocked(String queue, final HttpServerRequest request, final Handler<AsyncResult<Boolean>> handler) {
         request.pause();
         eventBus.send(redisquesAddress, buildGetLockOperation(queue), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
+            request.resume();
             if (NO_SUCH_LOCK.equals(reply.result().body().getString(STATUS))) {
-                request.resume();
-                request.response().setStatusCode(StatusCode.CONFLICT.getStatusCode());
-                request.response().setStatusMessage("Queue must be locked to perform this operation");
-                request.response().end("Queue must be locked to perform this operation");
+                final HttpServerResponse response = request.response();
+                response.setStatusCode(StatusCode.CONFLICT.getStatusCode());
+                response.setStatusMessage("Queue must be locked to perform this operation");
+                response.end("Queue must be locked to perform this operation");
             } else {
                 handler.handle(null);
-                request.resume();
             }
         });
     }
 
     private void checkReply(Message<JsonObject> reply, HttpServerRequest request, StatusCode statusCode) {
+        final HttpServerResponse response = request.response();
         if (OK.equals(reply.body().getString(STATUS))) {
-            request.response().end();
+            response.end();
         } else {
-            request.response().setStatusCode(statusCode.getStatusCode());
-            request.response().setStatusMessage(statusCode.getStatusMessage());
-            request.response().end(statusCode.getStatusMessage());
+            response.setStatusCode(statusCode.getStatusCode());
+            response.setStatusMessage(statusCode.getStatusMessage());
+            response.end(statusCode.getStatusMessage());
         }
     }
 
