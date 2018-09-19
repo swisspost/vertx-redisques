@@ -234,17 +234,17 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     private void getAllLocks(RoutingContext ctx) {
         String filter = ctx.request().params().get(FILTER);
         eventBus.send(redisquesAddress, buildGetAllLocksOperation(Optional.ofNullable(filter)), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
+            final JsonObject body = reply.result().body();
             if (reply.failed()) {
                 log.error("Received failed message for getAllLocksOperation.", reply.cause());
                 respondWith(StatusCode.INTERNAL_SERVER_ERROR, ctx.request());
-            } else if (OK.equals(reply.result().body().getString(STATUS))) {
-                jsonResponse(ctx.response(), reply.result().body().getJsonObject(VALUE));
+            } else if (OK.equals(body.getString(STATUS))) {
+                jsonResponse(ctx.response(), body.getJsonObject(VALUE));
             } else {
-                final JsonObject body = reply.result().body();
                 String errorType = body.getString(ERROR_TYPE);
                 if (BAD_INPUT.equalsIgnoreCase(errorType)) {
                     if (body.getString(MESSAGE) != null) {
-                        respondWith(StatusCode.BAD_REQUEST, reply.result().body().getString(MESSAGE), ctx.request());
+                        respondWith(StatusCode.BAD_REQUEST, body.getString(MESSAGE), ctx.request());
                     } else {
                         respondWith(StatusCode.BAD_REQUEST, ctx.request());
                     }
@@ -271,16 +271,17 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     private void getSingleLock(RoutingContext ctx) {
         String queue = lastPart(ctx.request().path());
         eventBus.send(redisquesAddress, buildGetLockOperation(queue), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
+            final HttpServerResponse response = ctx.response();
             if (reply.failed()) {
                 log.error("Received failed message for getSingleLockOperation.", reply.cause());
                 respondWith(StatusCode.INTERNAL_SERVER_ERROR, ctx.request());
             } else if (OK.equals(reply.result().body().getString(STATUS))) {
-                ctx.response().putHeader(CONTENT_TYPE, APPLICATION_JSON);
-                ctx.response().end(reply.result().body().getString(VALUE));
+                response.putHeader(CONTENT_TYPE, APPLICATION_JSON);
+                response.end(reply.result().body().getString(VALUE));
             } else {
-                ctx.response().setStatusCode(StatusCode.NOT_FOUND.getStatusCode());
-                ctx.response().setStatusMessage(StatusCode.NOT_FOUND.getStatusMessage());
-                ctx.response().end(NO_SUCH_LOCK);
+                response.setStatusCode(StatusCode.NOT_FOUND.getStatusCode());
+                response.setStatusMessage(StatusCode.NOT_FOUND.getStatusMessage());
+                response.end(NO_SUCH_LOCK);
             }
         });
     }

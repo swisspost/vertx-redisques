@@ -500,7 +500,7 @@ public class RedisQues extends AbstractVerticle {
     }
 
     private void replyWithStatusError(Message<?> event) {
-        event.reply("{\"status\":\"error\"}");
+        event.reply( new JsonObject().put("status","error") );
     }
 
     int updateQueueFailureCountAndGetRetryInterval(String queue, boolean sendSuccess) {
