@@ -609,8 +609,9 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
                             if (reply.failed()) {
                                 log.error("Received failed message for deleteQueueItemOperation.", reply.cause());
                                 respondWith(StatusCode.INTERNAL_SERVER_ERROR, request);
+                            }else{
+                                checkReply(reply.result(), request, StatusCode.NOT_FOUND);
                             }
-                            checkReply(reply.result(), request, StatusCode.NOT_FOUND);
                         });
             }
         });
@@ -644,7 +645,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
                         if (reply.failed()) {
                             log.error("Failed to bulkDeleteQueues.", reply.cause());
                             respondWith(StatusCode.INTERNAL_SERVER_ERROR, request);
-                            return; // "https://softwareengineering.stackexchange.com/a/190535"
+                            return;
                         }
                         final JsonObject body = reply.result().body();
                         if (OK.equals(body.getString(STATUS))) {
@@ -686,6 +687,13 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         respondWith(statusCode, statusCode.getStatusMessage(), request);
     }
 
+    private void respondWithQueueMustBeLocked(HttpServerResponse response) {
+        final String msg = "Queue must be locked to perform this operation";
+        response.setStatusCode(StatusCode.CONFLICT.getStatusCode());
+        response.setStatusMessage(msg);
+        response.end(msg);
+    }
+
     private String lastPart(String source) {
         String[] tokens = source.split("/");
         return tokens[tokens.length - 1];
@@ -723,13 +731,6 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
             }
             handler.handle(result);
         });
-    }
-
-    private void respondWithQueueMustBeLocked(HttpServerResponse response) {
-        final String msg = "Queue must be locked to perform this operation";
-        response.setStatusCode(StatusCode.CONFLICT.getStatusCode());
-        response.setStatusMessage(msg);
-        response.end(msg);
     }
 
     private void checkReply(Message<JsonObject> reply, HttpServerRequest request, StatusCode statusCode) {
