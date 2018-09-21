@@ -202,7 +202,7 @@ public class RedisQues extends AbstractVerticle {
         eb.consumer(address, (Handler<Message<JsonObject>>) event -> {
             final JsonObject body = event.body();
             if (null == body) {
-                log.warn("Got msg with empty body from ev bus. Will ignore it. address={}  replyAddress={} ", event.address(), event.replyAddress());
+                log.warn("Got msg with empty body from event bus. Will ignore it. address={}  replyAddress={} ", event.address(), event.replyAddress());
                 // There is no sense to continue below. We would run directly into
                 // NullPointerException anyway.
                 return;
@@ -308,7 +308,7 @@ public class RedisQues extends AbstractVerticle {
             if (queue == null) {
                 log.warn("Ignored uid msg with empty body.  uid={}  address={}  replyAddress={}", uid, event.address(), event.replyAddress());
             } else {
-                log.debug("RedisQues Got notification for queue '{}'", queue);
+                log.debug("RedisQues got notification for queue '{}'", queue);
                 consume(queue);
             }
         });
