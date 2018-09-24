@@ -675,16 +675,15 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     private void checkLocked(String queue, final HttpServerRequest request, final Handler<AsyncResult<Boolean>> handler) {
         request.pause();
         eventBus.send(redisquesAddress, buildGetLockOperation(queue), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
-            final Future<Boolean> result;
             request.resume();
-            if (reply.failed()) {
-                result = Future.failedFuture(reply.cause());
-            } else if (NO_SUCH_LOCK.equals(reply.result().body().getString(STATUS))) {
-                result = Future.succeededFuture(false);
+            if (NO_SUCH_LOCK.equals(reply.result().body().getString(STATUS))) {
+                final HttpServerResponse response = request.response();
+                response.setStatusCode(StatusCode.CONFLICT.getStatusCode());
+                response.setStatusMessage("Queue must be locked to perform this operation");
+                response.end("Queue must be locked to perform this operation");
             } else {
-                result = Future.succeededFuture(true);
+                handler.handle(null);
             }
-            handler.handle(result);
         });
     }
 

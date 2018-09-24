@@ -34,10 +34,6 @@ public class RedisQues extends AbstractVerticle {
         READY, CONSUMING
     }
 
-    private static final String REPLY_OK = new JsonObject().put(STATUS, OK).toString();
-    private static final String REPLY_ERROR = new JsonObject().put(STATUS, ERROR).toString();
-    private static final String REPLY_ERROR_BODY_MISSING = new JsonObject().put(STATUS,ERROR).put(MESSAGE,"Message body missing").toString();
-
     // Identifies the consumer
     private String uid = UUID.randomUUID().toString();
 
@@ -130,7 +126,7 @@ public class RedisQues extends AbstractVerticle {
         final String queue = event.body();
         if (queue == null) {
             log.warn("Got message without queue name. Will ignore request.");
-            event.reply(REPLY_ERROR_BODY_MISSING);
+            event.reply( newErrorReplyBodyMissing() );
             return;
         }
         log.debug("RedisQues Got registration request for queue " + queue + " from consumer: " + uid);
@@ -208,7 +204,7 @@ public class RedisQues extends AbstractVerticle {
             final JsonObject body = event.body();
             if (null == body) {
                 log.warn("Got msg with empty body from event bus. Will ignore it. address={}  replyAddress={} ", event.address(), event.replyAddress());
-                event.reply(REPLY_ERROR_BODY_MISSING);
+                event.reply(newErrorReplyBodyMissing());
                 // There is no sense to continue below. We would run directly into
                 // NullPointerException anyway.
                 return;
@@ -313,7 +309,7 @@ public class RedisQues extends AbstractVerticle {
             final String queue = event.body();
             if (queue == null) {
                 log.warn("Ignored uid msg with empty body.  uid={}  address={}  replyAddress={}", uid, event.address(), event.replyAddress());
-                event.reply(REPLY_ERROR_BODY_MISSING);
+                event.reply(newErrorReplyBodyMissing());
             } else {
                 log.debug("RedisQues got notification for queue '{}'", queue);
                 consume(queue);
@@ -409,7 +405,7 @@ public class RedisQues extends AbstractVerticle {
                 redisClient.lrange(keyListRange, 0, maxQueueItemCountIndex, new GetQueueItemsHandler(event, queueItemCount));
             } else {
                 log.warn("Operation getQueueItems failed", countReply.cause());
-                event.reply(REPLY_ERROR);
+                event.reply(newErrorReply());
             }
         });
     }
@@ -466,15 +462,15 @@ public class RedisQues extends AbstractVerticle {
                 String keyLrem = getQueuesPrefix() + event.body().getJsonObject(PAYLOAD).getString(QUEUENAME);
                 redisClient.lrem(keyLrem, 0, "TO_DELETE", replyLrem -> {
                     if (replyLrem.succeeded()) {
-                        event.reply(REPLY_OK);
+                        event.reply(newOkReply());
                     } else {
                         log.warn("Redis 'lrem' command failed.", replyLrem.cause());
-                        event.reply(REPLY_ERROR);
+                        event.reply(newErrorReply());
                     }
                 });
             } else {
                 log.error("Failed to 'lset' while deleteQueueItem.", event1.cause());
-                event.reply(REPLY_ERROR);
+                event.reply(newErrorReply());
             }
         });
     }
@@ -493,7 +489,7 @@ public class RedisQues extends AbstractVerticle {
                 redisClient.hdel(getLocksKey(), queue, unlockReply -> {
                     if (unlockReply.failed()) {
                         log.warn("Failed to unlock queue '{}'.", queue, unlockReply.cause());
-                        event.reply(REPLY_ERROR);
+                        event.reply(newErrorReply());
                     } else {
                         replyResultGreaterThanZero(event, deleteReply);
                     }
@@ -1226,6 +1222,18 @@ public class RedisQues extends AbstractVerticle {
                 });
             }
         });
+    }
+
+    private static JsonObject newOkReply() {
+        return new JsonObject().put(STATUS, OK);
+    }
+
+    private static JsonObject newErrorReply() {
+        return new JsonObject().put(STATUS, ERROR);
+    }
+
+    private static JsonObject newErrorReplyBodyMissing() {
+        return new JsonObject().put(STATUS,ERROR).put(MESSAGE,"Message body missing");
     }
 
     /**
