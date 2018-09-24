@@ -210,13 +210,9 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
                 String strBuffer = encodePayload(buffer.toString());
                 eventBus.send(redisquesAddress, buildEnqueueOrLockedEnqueueOperation(queue, strBuffer, ctx.request()),
                         (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
-                            if (reply.failed()) {
-                                log.error("Received failed message for enqueueOrLockedEnqueue.", reply.cause());
-                                respondWith(StatusCode.INTERNAL_SERVER_ERROR, ctx.request());
-                            } else {
-                                checkReply(reply.result(), ctx.request(), StatusCode.BAD_REQUEST);
-                            }
-                        });
+                            checkReply(reply.result(), ctx.request(), StatusCode.BAD_REQUEST);
+                        }
+                );
             } catch (Exception ex) {
                 respondWith(StatusCode.BAD_REQUEST, ex.getMessage(), ctx.request());
             }
@@ -259,13 +255,9 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         String queue = lastPart(ctx.request().path());
         eventBus.send(redisquesAddress, buildPutLockOperation(queue, extractUser(ctx.request())),
                 (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
-                    if (reply.failed()) {
-                        log.error("Received failed message for addLockOperation.", reply.cause());
-                        respondWith(StatusCode.INTERNAL_SERVER_ERROR, ctx.request());
-                    } else {
-                        checkReply(reply.result(), ctx.request(), StatusCode.BAD_REQUEST);
-                    }
-                });
+                    checkReply(reply.result(), ctx.request(), StatusCode.BAD_REQUEST);
+                }
+        );
     }
 
     private void getSingleLock(RoutingContext ctx) {
@@ -290,13 +282,9 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         String queue = lastPart(ctx.request().path());
         eventBus.send(redisquesAddress, buildDeleteLockOperation(queue),
                 (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
-                    if (reply.failed()) {
-                        log.error("Received failed message for deleteSingleLockOperation.", reply.cause());
-                        respondWith(StatusCode.INTERNAL_SERVER_ERROR, ctx.request());
-                    } else {
-                        checkReply(reply.result(), ctx.request(), StatusCode.INTERNAL_SERVER_ERROR);
-                    }
-                });
+                    checkReply(reply.result(), ctx.request(), StatusCode.INTERNAL_SERVER_ERROR);
+                }
+        );
     }
 
     private void deleteAllLocks(RoutingContext ctx) {
@@ -524,13 +512,9 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
                 String strBuffer = encodePayload(buffer.toString());
                 eventBus.send(redisquesAddress, buildAddQueueItemOperation(queue, strBuffer),
                         (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
-                            if (reply.failed()) {
-                                log.error("Received failed message for addQueueItemOperation.", reply.cause());
-                                respondWith(StatusCode.INTERNAL_SERVER_ERROR, ctx.request());
-                            } else {
-                                checkReply(reply.result(), ctx.request(), StatusCode.BAD_REQUEST);
-                            }
-                        });
+                            checkReply(reply.result(), ctx.request(), StatusCode.BAD_REQUEST);
+                        }
+                );
             } catch (Exception ex) {
                 respondWith(StatusCode.BAD_REQUEST, ex.getMessage(), ctx.request());
             }
@@ -563,31 +547,20 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         final HttpServerRequest request = ctx.request();
         final String queue = part(request.path(), 2);
         checkLocked(queue, request, event -> {
-            if (event.failed()) {
-                log.error("Failed to check if queue '{}' is locked", queue, event.cause());
-                respondWith(StatusCode.INTERNAL_SERVER_ERROR, request);
-            } else if (!event.result()) {
-                respondWithQueueMustBeLocked(ctx.response());
-            } else {
-                final int index = Integer.parseInt(lastPart(request.path()));
-                request.bodyHandler(buffer -> {
-                    try {
-                        String strBuffer = encodePayload(buffer.toString());
-                        eventBus.send(redisquesAddress, buildReplaceQueueItemOperation(queue, index, strBuffer),
-                                (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
-                                    if (reply.failed()) {
-                                        log.error("Received failed message for replaceSingleQueueItemOperation.", reply.cause());
-                                        respondWith(StatusCode.INTERNAL_SERVER_ERROR, request);
-                                    } else {
-                                        checkReply(reply.result(), request, StatusCode.NOT_FOUND);
-                                    }
-                                });
-                    } catch (Exception ex) {
-                        log.warn("Undocumented exception caught while replaceSingleQueueItem.", ex);
-                        respondWith(StatusCode.BAD_REQUEST, ex.getMessage(), request);
-                    }
-                });
-            }
+            final int index = Integer.parseInt(lastPart(request.path()));
+            request.bodyHandler(buffer -> {
+                try {
+                    String strBuffer = encodePayload(buffer.toString());
+                    eventBus.send(redisquesAddress, buildReplaceQueueItemOperation(queue, index, strBuffer),
+                            (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
+                                checkReply(reply.result(), request, StatusCode.NOT_FOUND);
+                            }
+                    );
+                } catch (Exception ex) {
+                    log.warn("Undocumented exception caught while replaceSingleQueueItem.", ex);
+                    respondWith(StatusCode.BAD_REQUEST, ex.getMessage(), request);
+                }
+            });
         });
     }
 
@@ -596,24 +569,11 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         final String queue = part(request.path(), 2);
         final int index = Integer.parseInt(lastPart(request.path()));
         checkLocked(queue, request, event -> {
-            if (event.failed()) {
-                log.error("Failed to query if queue '{}' is locked", queue, event.cause());
-                respondWith(StatusCode.INTERNAL_SERVER_ERROR, request);
-            } else if (!event.result()) {
-                // Queue not locked
-                respondWithQueueMustBeLocked(ctx.response());
-            } else {
-                // Queue is locked. Go on.
-                eventBus.send(redisquesAddress, buildDeleteQueueItemOperation(queue, index),
-                        (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
-                            if (reply.failed()) {
-                                log.error("Received failed message for deleteQueueItemOperation.", reply.cause());
-                                respondWith(StatusCode.INTERNAL_SERVER_ERROR, request);
-                            }else{
-                                checkReply(reply.result(), request, StatusCode.NOT_FOUND);
-                            }
-                        });
-            }
+            eventBus.send(redisquesAddress, buildDeleteQueueItemOperation(queue, index),
+                    (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
+                        checkReply(reply.result(), request, StatusCode.NOT_FOUND);
+                    }
+            );
         });
     }
 
@@ -622,12 +582,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         boolean unlock = evaluateUrlParameterToBeEmptyOrTrue(UNLOCK_PARAM, request);
         final String queue = lastPart(request.path());
         eventBus.send(redisquesAddress, buildDeleteAllQueueItemsOperation(queue, unlock), reply -> {
-            if (reply.failed()) {
-                log.error("Received failed message for deleteAllQueueItemsOperation.", reply.cause());
-                respondWith(StatusCode.INTERNAL_SERVER_ERROR, request);
-            } else {
-                ctx.response().end();
-            }
+            ctx.response().end();
         });
     }
 

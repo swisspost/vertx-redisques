@@ -34,6 +34,10 @@ public class RedisQues extends AbstractVerticle {
         READY, CONSUMING
     }
 
+    private static final String REPLY_OK = new JsonObject().put(STATUS, OK).toString();
+    private static final String REPLY_ERROR = new JsonObject().put(STATUS, ERROR).toString();
+    private static final String REPLY_ERROR_BODY_MISSING = new JsonObject().put(STATUS,ERROR).put(MESSAGE,"Message body missing").toString();
+
     // Identifies the consumer
     private String uid = UUID.randomUUID().toString();
 
@@ -126,6 +130,7 @@ public class RedisQues extends AbstractVerticle {
         final String queue = event.body();
         if (queue == null) {
             log.warn("Got message without queue name. Will ignore request.");
+            event.reply(REPLY_ERROR_BODY_MISSING);
             return;
         }
         log.debug("RedisQues Got registration request for queue " + queue + " from consumer: " + uid);
@@ -203,6 +208,7 @@ public class RedisQues extends AbstractVerticle {
             final JsonObject body = event.body();
             if (null == body) {
                 log.warn("Got msg with empty body from event bus. Will ignore it. address={}  replyAddress={} ", event.address(), event.replyAddress());
+                event.reply(REPLY_ERROR_BODY_MISSING);
                 // There is no sense to continue below. We would run directly into
                 // NullPointerException anyway.
                 return;
@@ -307,6 +313,7 @@ public class RedisQues extends AbstractVerticle {
             final String queue = event.body();
             if (queue == null) {
                 log.warn("Ignored uid msg with empty body.  uid={}  address={}  replyAddress={}", uid, event.address(), event.replyAddress());
+                event.reply(REPLY_ERROR_BODY_MISSING);
             } else {
                 log.debug("RedisQues got notification for queue '{}'", queue);
                 consume(queue);
@@ -370,7 +377,6 @@ public class RedisQues extends AbstractVerticle {
         log.debug("RedisQues about to lockedEnqueue");
         JsonObject lockInfo = extractLockInfo(event.body().getJsonObject(PAYLOAD).getString(REQUESTED_BY));
         if (lockInfo != null) {
-            // TODO: This looks like we acquiring a lock here. But who releases that later?
             redisClient.hmset(getLocksKey(), new JsonObject().put(event.body().getJsonObject(PAYLOAD).getString(QUEUENAME), lockInfo.encode()),
                     putLockResult -> {
                         if (putLockResult.succeeded()) {
@@ -403,7 +409,7 @@ public class RedisQues extends AbstractVerticle {
                 redisClient.lrange(keyListRange, 0, maxQueueItemCountIndex, new GetQueueItemsHandler(event, queueItemCount));
             } else {
                 log.warn("Operation getQueueItems failed", countReply.cause());
-                event.reply(new JsonObject().put(STATUS, ERROR));
+                event.reply(REPLY_ERROR);
             }
         });
     }
@@ -460,15 +466,15 @@ public class RedisQues extends AbstractVerticle {
                 String keyLrem = getQueuesPrefix() + event.body().getJsonObject(PAYLOAD).getString(QUEUENAME);
                 redisClient.lrem(keyLrem, 0, "TO_DELETE", replyLrem -> {
                     if (replyLrem.succeeded()) {
-                        event.reply(new JsonObject().put(STATUS, OK));
+                        event.reply(REPLY_OK);
                     } else {
                         log.warn("Redis 'lrem' command failed.", replyLrem.cause());
-                        replyWithStatusError(event);
+                        event.reply(REPLY_ERROR);
                     }
                 });
             } else {
                 log.error("Failed to 'lset' while deleteQueueItem.", event1.cause());
-                replyWithStatusError(event);
+                event.reply(REPLY_ERROR);
             }
         });
     }
@@ -480,15 +486,14 @@ public class RedisQues extends AbstractVerticle {
         redisClient.del(buildQueueKey(queue), deleteReply -> {
             if (deleteReply.failed()) {
                 log.warn("Failed to deleteAllQueueItems.", deleteReply.cause());
-                // I like to return here. But:
-                // We need to continue below to release lock. After lock is released, impl will
-                // respond to event with ERROR anyway.
+                // I like to return here. But: We need to continue below to may release lock.
+                // After lock is released, impl will respond to event with ERROR anyway.
             }
             if (unlock) {
                 redisClient.hdel(getLocksKey(), queue, unlockReply -> {
                     if (unlockReply.failed()) {
                         log.warn("Failed to unlock queue '{}'.", queue, unlockReply.cause());
-                        replyWithStatusError(event);
+                        event.reply(REPLY_ERROR);
                     } else {
                         replyResultGreaterThanZero(event, deleteReply);
                     }
@@ -497,10 +502,6 @@ public class RedisQues extends AbstractVerticle {
                 replyResultGreaterThanZero(event, deleteReply);
             }
         });
-    }
-
-    private void replyWithStatusError(Message<?> event) {
-        event.reply(new JsonObject().put(STATUS, ERROR));
     }
 
     int updateQueueFailureCountAndGetRetryInterval(String queue, boolean sendSuccess) {
@@ -901,7 +902,6 @@ public class RedisQues extends AbstractVerticle {
             redisClient.get(key, event1 -> {
                 if (event1.failed()) {
                     log.error("Unable to get consumer for queue " + queue, event1.cause());
-                    // TODO: Do we need to 'myQueues.remove(queue)' or 'notifyConsumer(queue)' here?
                     return;
                 }
                 String consumer = event1.result();
@@ -941,12 +941,8 @@ public class RedisQues extends AbstractVerticle {
     private Future<Boolean> isQueueLocked(final String queue) {
         Future<Boolean> future = Future.future();
         redisClient.hexists(getLocksKey(), queue, event -> {
-            if (event.failed()) {
-                log.warn("Failed to check if queue '{}' is locked. Assume no.", queue, event.cause());
-                // TODO:  Is it correct, to assume a queue is not locked in case our query failed?
-                // Previous implementation assumed this. See "https://github.com/hiddenalpha/vertx-redisques/blob/v2.5.1/src/main/java/org/swisspush/redisques/RedisQues.java#L856".
-                future.complete(Boolean.FALSE);
-            } else if (event.result() == null) {
+            if (event.failed() || event.result() == null) {
+                log.warn("failed to check if queue '" + queue + "' is locked. Message: " + event.cause().getMessage());
                 future.complete(Boolean.FALSE);
             } else {
                 future.complete(event.result() == 1);
@@ -999,8 +995,6 @@ public class RedisQues extends AbstractVerticle {
                                     }
                                     log.debug("RedisQues Message removed, queue " + queue + " is ready again");
                                     myQueues.put(queue, QueueState.READY);
-                                    // TODO: Why do we need to cleanup resources which is not ours? Seems someone
-                                    //       is leaking internal state to us. Yes I'm looking at You 'processMessageWithTimeout()'.
                                     vertx.cancelTimer(sendResult.timeoutId);
                                     // Notify that we are stopped in
                                     // case it
@@ -1081,7 +1075,6 @@ public class RedisQues extends AbstractVerticle {
             // start a timer, which will cancel the processing, if the consumer didn't respond
             final long timeoutId = vertx.setTimer(processorTimeout, timeoutId1 -> {
                 log.info("RedisQues QUEUE_ERROR: Consumer timeout " + uid + " queue: " + queue);
-                // TODO: Why do ne need to pass timeoutId here? Its timed out anyway right now.
                 handler.handle(new SendResult(false, timeoutId1));
             });
 
@@ -1093,8 +1086,6 @@ public class RedisQues extends AbstractVerticle {
                 } else {
                     success = Boolean.FALSE;
                 }
-                // TODO: We simply should cancel timer here before delegating. This way,
-                //       there's no need to leak that handle to our callee.
                 handler.handle(new SendResult(success, timeoutId));
             });
             updateTimestamp(queue, null);
@@ -1211,7 +1202,7 @@ public class RedisQues extends AbstractVerticle {
                         // If not empty, update the queue timestamp to keep it in the sorted set.
                         updateTimestamp(queue, result -> {
                             if (result.failed()) {
-                                log.error("Failed to update timestamps", result.cause());
+                                log.error("Failed to update timestamps for queue '{}'", queue, result.cause());
                                 return;
                             }
                             // Ensure we clean the old queues after having updated all timestamps
