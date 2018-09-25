@@ -94,8 +94,8 @@ public class LuaScriptState {
                 log.info("load lua script for script type: " + luaScriptType);
                 redisClient.scriptLoad(script, stringAsyncResult -> {
                     if (stringAsyncResult.failed()) {
-                        log.error("Received failed message for loadLuaScript.", stringAsyncResult.cause());
-                        return; // "https://softwareengineering.stackexchange.com/a/190535"
+                        log.warn("Received failed message for loadLuaScript. Lets run into NullPointerException now.", stringAsyncResult.cause());
+                        // IMO we should respond with 'HTTP 5xx'. But we don't, to keep backward compatibility.
                     }
                     String newSha = stringAsyncResult.result();
                     log.info("got sha from redis for lua script: " + luaScriptType + ": " + newSha);
