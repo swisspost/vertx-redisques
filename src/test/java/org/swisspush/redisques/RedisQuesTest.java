@@ -254,14 +254,14 @@ public class RedisQuesTest extends AbstractTestCase {
 
         assertKeyCount(context, getQueuesRedisKeyPrefix(), 20);
         Async async = context.async();
-        eventBusSend(buildGetQueuesOperation(Optional.of("3")), message -> {
+        eventBusSend(buildGetQueuesOperation("3"), message -> {
             context.assertEquals(OK, message.result().body().getString(STATUS));
             JsonArray queuesArray = message.result().body().getJsonObject(VALUE).getJsonArray("queues");
             context.assertEquals(2, queuesArray.size());
             context.assertTrue(queuesArray.contains("queue3"), "item queue1 expected to be in result");
             context.assertTrue(queuesArray.contains("queue13"), "item queue11 expected to be in result");
 
-            eventBusSend(buildGetQueuesOperation(Optional.of("abc")), message2 -> {
+            eventBusSend(buildGetQueuesOperation("abc"), message2 -> {
                 context.assertEquals(OK, message2.result().body().getString(STATUS));
                 JsonArray queuesArray2 = message2.result().body().getJsonObject(VALUE).getJsonArray("queues");
                 context.assertTrue(queuesArray2.isEmpty());
@@ -285,7 +285,7 @@ public class RedisQuesTest extends AbstractTestCase {
 
         assertKeyCount(context, getQueuesRedisKeyPrefix(), 20);
         Async async = context.async();
-        eventBusSend(buildGetQueuesOperation(Optional.of("abc(.*")), message -> {
+        eventBusSend(buildGetQueuesOperation("abc(.*"), message -> {
             context.assertEquals(ERROR, message.result().body().getString(STATUS));
             context.assertEquals(BAD_INPUT, message.result().body().getString(ERROR_TYPE));
             context.assertTrue(message.result().body().getString(MESSAGE).contains("Error while compile regex pattern"));
@@ -330,10 +330,10 @@ public class RedisQuesTest extends AbstractTestCase {
 
         assertKeyCount(context, getQueuesRedisKeyPrefix(), 50);
         Async async = context.async();
-        eventBusSend(buildGetQueuesCountOperation(Optional.of("8")), message -> {
+        eventBusSend(buildGetQueuesCountOperation("8"), message -> {
             context.assertEquals(OK, message.result().body().getString(STATUS));
             context.assertEquals(5L, message.result().body().getLong(VALUE));
-            eventBusSend(buildGetQueuesCountOperation(Optional.of("abc")), message2 -> {
+            eventBusSend(buildGetQueuesCountOperation("abc"), message2 -> {
                 context.assertEquals(OK, message2.result().body().getString(STATUS));
                 context.assertEquals(0L, message2.result().body().getLong(VALUE));
                 async.complete();
@@ -356,7 +356,7 @@ public class RedisQuesTest extends AbstractTestCase {
 
         assertKeyCount(context, getQueuesRedisKeyPrefix(), 50);
         Async async = context.async();
-        eventBusSend(buildGetQueuesCountOperation(Optional.of("abc(.*")), message -> {
+        eventBusSend(buildGetQueuesCountOperation("abc(.*"), message -> {
             context.assertEquals(ERROR, message.result().body().getString(STATUS));
             context.assertEquals(BAD_INPUT, message.result().body().getString(ERROR_TYPE));
             context.assertTrue(message.result().body().getString(MESSAGE).contains("Error while compile regex pattern"));
@@ -721,7 +721,7 @@ public class RedisQuesTest extends AbstractTestCase {
                             String item1 = locksArray1.getString(1);
                             context.assertTrue(item1.matches("abcLock.*"));
                         }
-                        eventBusSend(buildGetAllLocksOperation(of("abc(.*)")), message4 -> {
+                        eventBusSend(buildGetAllLocksOperation("abc(.*)"), message4 -> {
                             context.assertEquals(OK, message4.result().body().getString(STATUS));
                             JsonArray locksArray2 = message4.result().body().getJsonObject(VALUE).getJsonArray("locks");
                             context.assertNotNull(locksArray2, "locks array should not be null");

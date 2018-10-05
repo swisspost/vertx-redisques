@@ -190,7 +190,7 @@ public class RedisquesAPITest {
         JsonObject operation = RedisquesAPI.buildGetQueuesOperation();
         context.assertEquals(buildExpectedJsonObject("getQueues"), operation);
 
-        operation = RedisquesAPI.buildGetQueuesOperation(Optional.of("abc"));
+        operation = RedisquesAPI.buildGetQueuesOperation("abc");
         JsonObject expected = buildExpectedJsonObject("getQueues", new JsonObject()
                 .put(FILTER, "abc"));
         context.assertEquals(expected, operation);
@@ -201,7 +201,7 @@ public class RedisquesAPITest {
         JsonObject operation = RedisquesAPI.buildGetQueuesCountOperation();
         context.assertEquals(buildExpectedJsonObject("getQueuesCount"), operation);
 
-        operation = RedisquesAPI.buildGetQueuesCountOperation(Optional.of("abc"));
+        operation = RedisquesAPI.buildGetQueuesCountOperation("abc");
         JsonObject expected = buildExpectedJsonObject("getQueuesCount", new JsonObject()
                 .put(FILTER, "abc"));
         context.assertEquals(expected, operation);
@@ -271,7 +271,7 @@ public class RedisquesAPITest {
         JsonObject operation = RedisquesAPI.buildGetAllLocksOperation();
         context.assertEquals(buildExpectedJsonObject("getAllLocks"), operation);
 
-        operation = RedisquesAPI.buildGetAllLocksOperation(Optional.of("abc"));
+        operation = RedisquesAPI.buildGetAllLocksOperation("abc");
         JsonObject expected = buildExpectedJsonObject("getAllLocks", new JsonObject()
                 .put(FILTER, "abc"));
         context.assertEquals(expected, operation);

@@ -2,6 +2,8 @@ package org.swisspush.redisques.util;
 
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonObject;
+import io.vertx.core.logging.Logger;
+import io.vertx.core.logging.LoggerFactory;
 
 import java.util.Optional;
 import java.util.regex.Pattern;
@@ -16,6 +18,8 @@ import static org.swisspush.redisques.util.RedisquesAPI.PAYLOAD;
  */
 public class MessageUtil {
 
+    private static final Logger log = LoggerFactory.getLogger(MessageUtil.class);
+
     public static Result<Optional<Pattern>, String> extractFilterPattern(Message<JsonObject> event) {
         JsonObject payload = event.body().getJsonObject(PAYLOAD);
         if (payload == null || payload.getString(FILTER) == null) {
@@ -26,6 +30,7 @@ public class MessageUtil {
             Pattern pattern = Pattern.compile(filterString);
             return Result.ok(Optional.of(pattern));
         } catch (Exception ex) {
+            log.error("Interface doesn't allow to pass stack trace. Therefore simply log it now.", ex);
             return Result.err("Error while compile regex pattern. Cause: " + ex.getMessage());
         }
     }

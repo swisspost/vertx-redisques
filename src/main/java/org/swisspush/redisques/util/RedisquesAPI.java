@@ -5,8 +5,6 @@ import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
 
-import java.util.Optional;
-
 /**
  * Class RedisquesAPI listing the operations and response values which are supported in Redisques.
  *
@@ -159,9 +157,13 @@ public class RedisquesAPI {
         return buildOperation(QueueOperation.getQueues);
     }
 
-    public static JsonObject buildGetQueuesOperation(Optional<String> filterPattern){
-        if(filterPattern.isPresent()){
-            return buildOperation(QueueOperation.getQueues, new JsonObject().put(FILTER, filterPattern.get()));
+    /**
+     * @param filterPattern
+     *      Filter pattern. Method handles {@code null} gracefully.
+     */
+    public static JsonObject buildGetQueuesOperation(String filterPattern) {
+        if (filterPattern != null) {
+            return buildOperation(QueueOperation.getQueues, new JsonObject().put(FILTER, filterPattern));
         } else {
             return buildOperation(QueueOperation.getQueues);
         }
@@ -171,9 +173,13 @@ public class RedisquesAPI {
         return buildOperation(QueueOperation.getQueuesCount);
     }
 
-    public static JsonObject buildGetQueuesCountOperation(Optional<String> filterPattern){
-        if(filterPattern.isPresent()){
-            return buildOperation(QueueOperation.getQueuesCount, new JsonObject().put(FILTER, filterPattern.get()));
+    /**
+     * @param filterPattern
+     *      Filter pattern. Method handles {@code null} gracefully.
+     */
+    public static JsonObject buildGetQueuesCountOperation(String filterPattern) {
+        if (filterPattern != null) {
+            return buildOperation(QueueOperation.getQueuesCount, new JsonObject().put(FILTER, filterPattern));
         } else {
             return buildOperation(QueueOperation.getQueuesCount);
         }
@@ -211,9 +217,13 @@ public class RedisquesAPI {
         return buildOperation(QueueOperation.getAllLocks);
     }
 
-    public static JsonObject buildGetAllLocksOperation(Optional<String> filterPattern){
-        if(filterPattern.isPresent()){
-            return buildOperation(QueueOperation.getAllLocks, new JsonObject().put(FILTER, filterPattern.get()));
+    /**
+     * @param filterPattern
+     *      Filter pattern. Method handles {@code null} gracefully.
+     */
+    public static JsonObject buildGetAllLocksOperation(String filterPattern) {
+        if (filterPattern != null) {
+            return buildOperation(QueueOperation.getAllLocks, new JsonObject().put(FILTER, filterPattern));
         } else {
             return buildGetAllLocksOperation();
         }

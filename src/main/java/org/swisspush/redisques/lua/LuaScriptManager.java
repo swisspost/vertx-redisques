@@ -81,7 +81,7 @@ public class LuaScriptManager {
                             luaScripts.get(LuaScript.CHECK).loadLuaScript(new Check(keys, arguments, redisClient, handler), executionCounter);
                         }
                     } else {
-                        log.error("Check request failed with message: " + message);
+                        log.error("Check request failed.", event.cause());
                     }
                 }
             });
