@@ -41,18 +41,18 @@ public class MessageUtilTest {
         context.assertTrue(result.isOk());
         context.assertFalse(result.getOk().isPresent());
 
-        when(message.body()).thenReturn(RedisquesAPI.buildGetAllLocksOperation(Optional.of(""))); // payload object with empty filter property
+        when(message.body()).thenReturn(RedisquesAPI.buildGetAllLocksOperation("")); // payload object with empty filter property
         result = MessageUtil.extractFilterPattern(message);
         context.assertTrue(result.isOk());
         context.assertTrue(result.getOk().isPresent());
 
-        when(message.body()).thenReturn(RedisquesAPI.buildGetAllLocksOperation(Optional.of("xyz(.*)"))); // payload object with valid filter property
+        when(message.body()).thenReturn(RedisquesAPI.buildGetAllLocksOperation("xyz(.*)")); // payload object with valid filter property
         result = MessageUtil.extractFilterPattern(message);
         context.assertTrue(result.isOk());
         context.assertTrue(result.getOk().isPresent());
         context.assertEquals("xyz(.*)", result.getOk().get().pattern());
 
-        when(message.body()).thenReturn(RedisquesAPI.buildGetAllLocksOperation(Optional.of("xyz(.*"))); // payload object with invalid filter property
+        when(message.body()).thenReturn(RedisquesAPI.buildGetAllLocksOperation("xyz(.*")); // payload object with invalid filter property
         result = MessageUtil.extractFilterPattern(message);
         context.assertTrue(result.isErr());
         context.assertTrue(result.getErr().contains("Error while compile regex pattern"));

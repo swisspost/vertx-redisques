@@ -120,12 +120,14 @@ public class RedisQues extends AbstractVerticle {
 
     private LuaScriptManager luaScriptManager;
 
-    // Handler receiving registration requests when no consumer is registered
-    // for a queue.
-    private Handler<Message<String>> registrationRequestHandler = event -> {
+    /**
+     * <p>Handler receiving registration requests when no consumer is registered
+     * for a queue.</p>
+     */
+    private void handleRegistrationRequest(Message<String> event) {
         final String queue = event.body();
         if (queue == null) {
-            log.warn("Got message without queue name. _2e098ed6828ff13db_");
+            log.warn("Got message without queue name while handleRegistrationRequest.");
             // IMO we should 'fail()' here. But we don't, to keep backward compatibility.
         }
         log.debug("RedisQues Got registration request for queue " + queue + " from consumer: " + uid);
@@ -151,7 +153,7 @@ public class RedisQues extends AbstractVerticle {
                 log.error("RedisQues setxn failed", event1.cause());
             }
         });
-    };
+    }
 
     @Override
     public void start() {
@@ -298,7 +300,7 @@ public class RedisQues extends AbstractVerticle {
         });
 
         // Handles registration requests
-        conumersMessageConsumer = eb.consumer(address + "-consumers", registrationRequestHandler);
+        conumersMessageConsumer = eb.consumer(address + "-consumers", this::handleRegistrationRequest);
 
         // Handles notifications
         uidMessageConsumer = eb.consumer(uid, event -> {
@@ -375,12 +377,12 @@ public class RedisQues extends AbstractVerticle {
                             enqueue(event);
                         } else {
                             log.warn("RedisQues lockedEnqueue locking failed. Skip enqueue");
-                            event.reply(new JsonObject().put(STATUS, ERROR));
+                            event.reply(createErrorReply());
                         }
                     });
         } else {
             log.warn("RedisQues lockedEnqueue failed because property '" + REQUESTED_BY + "' was missing");
-            event.reply(new JsonObject().put(STATUS, ERROR).put(MESSAGE, "Property '" + REQUESTED_BY + "' missing"));
+            event.reply(createErrorReply().put(MESSAGE, "Property '" + REQUESTED_BY + "' missing"));
         }
 
     }
@@ -412,7 +414,7 @@ public class RedisQues extends AbstractVerticle {
 
     private void getQueues(Message<JsonObject> event, boolean countOnly, Result<Optional<Pattern>, String> filterPatternResult) {
         if (filterPatternResult.isErr()) {
-            event.reply(new JsonObject().put(STATUS, ERROR).put(ERROR_TYPE, BAD_INPUT).put(MESSAGE, filterPatternResult.getErr()));
+            event.reply(createErrorReply().put(ERROR_TYPE, BAD_INPUT).put(MESSAGE, filterPatternResult.getErr()));
         } else {
             redisClient.zrangebyscore(getQueuesKey(), String.valueOf(getMaxAgeTimestamp()), "+inf",
                     RangeLimitOptions.NONE, new GetQueuesHandler(event, filterPatternResult.getOk(), countOnly));
@@ -422,7 +424,7 @@ public class RedisQues extends AbstractVerticle {
     private void getQueuesCount(Message<JsonObject> event) {
         Result<Optional<Pattern>, String> result = MessageUtil.extractFilterPattern(event);
         if (result.isErr()) {
-            event.reply(new JsonObject().put(STATUS, ERROR).put(ERROR_TYPE, BAD_INPUT).put(MESSAGE, result.getErr()));
+            event.reply(createErrorReply().put(ERROR_TYPE, BAD_INPUT).put(MESSAGE, result.getErr()));
             return;
         }
 
@@ -531,8 +533,9 @@ public class RedisQues extends AbstractVerticle {
         if(queues == null){
             return null;
         }
-        List<String> queueKeys = new ArrayList<>();
-        for (int i = 0; i < queues.size(); i++) {
+        final int size = queues.size();
+        List<String> queueKeys = new ArrayList<>(size);
+        for (int i = 0; i < size; i++) {
             String queue = queues.getString(i);
             queueKeys.add(buildQueueKey(queue));
         }
@@ -542,34 +545,36 @@ public class RedisQues extends AbstractVerticle {
     private void bulkDeleteQueues(Message<JsonObject> event){
         JsonArray queues = event.body().getJsonObject(PAYLOAD).getJsonArray(QUEUES);
         if (queues == null) {
-            event.reply(new JsonObject().put(STATUS, ERROR).put(MESSAGE, "No queues to delete provided"));
+            event.reply(createErrorReply().put(MESSAGE, "No queues to delete provided"));
             return;
         }
 
         if(queues.isEmpty()){
-            event.reply(new JsonObject().put(STATUS, OK).put(VALUE, 0));
+            event.reply(createOkReply().put(VALUE, 0));
             return;
         }
 
         if(!jsonArrayContainsStringsOnly(queues)){
-            event.reply(new JsonObject().put(STATUS, ERROR).put(ERROR_TYPE, BAD_INPUT).put(MESSAGE, "Queues must be string values"));
+            event.reply(createErrorReply().put(ERROR_TYPE, BAD_INPUT).put(MESSAGE, "Queues must be string values"));
             return;
         }
 
         redisClient.delMany(buildQueueKeys(queues), delManyReply -> {
             if(delManyReply.succeeded()){
-                event.reply(new JsonObject().put(STATUS, OK).put(VALUE, delManyReply.result()));
+                event.reply(createOkReply().put(VALUE, delManyReply.result()));
             } else {
-                event.reply(new JsonObject().put(STATUS, ERROR));
+                log.error("Failed to bulkDeleteQueues", delManyReply.cause());
+                event.reply(createErrorReply());
             }
         });
     }
 
     private void replyResultGreaterThanZero(Message<JsonObject> event, AsyncResult<Long> reply) {
         if (reply.succeeded() && reply.result() != null && reply.result() > 0) {
-            event.reply(new JsonObject().put(STATUS, OK).put(VALUE, reply.result()));
+            event.reply(createOkReply().put(VALUE, reply.result()));
         } else {
-            event.reply(new JsonObject().put(STATUS, ERROR));
+            log.error("Failed to replyResultGreaterThanZero", reply.cause());
+            event.reply(createErrorReply());
         }
     }
 
@@ -578,7 +583,7 @@ public class RedisQues extends AbstractVerticle {
         if (result.isOk()) {
             redisClient.hkeys(getLocksKey(), new GetAllLocksHandler(event, result.getOk()));
         } else {
-            event.reply(new JsonObject().put(STATUS, ERROR).put(ERROR_TYPE, BAD_INPUT).put(MESSAGE, result.getErr()));
+            event.reply(createErrorReply().put(ERROR_TYPE, BAD_INPUT).put(MESSAGE, result.getErr()));
         }
     }
 
@@ -587,30 +592,30 @@ public class RedisQues extends AbstractVerticle {
         if (lockInfo != null) {
             JsonArray lockNames = new JsonArray().add(event.body().getJsonObject(PAYLOAD).getString(QUEUENAME));
             if(!jsonArrayContainsStringsOnly(lockNames)){
-                event.reply(new JsonObject().put(STATUS, ERROR).put(ERROR_TYPE, BAD_INPUT).put(MESSAGE, "Lock must be a string value"));
+                event.reply(createErrorReply().put(ERROR_TYPE, BAD_INPUT).put(MESSAGE, "Lock must be a string value"));
                 return;
             }
             redisClient.hmset(getLocksKey(), buildLocksItems(lockNames, lockInfo), new PutLockHandler(event));
         } else {
-            event.reply(new JsonObject().put(STATUS, ERROR).put(MESSAGE, "Property '" + REQUESTED_BY + "' missing"));
+            event.reply(createErrorReply().put(MESSAGE, "Property '" + REQUESTED_BY + "' missing"));
         }
     }
 
     private void bulkPutLocks(Message<JsonObject> event) {
         JsonArray locks = event.body().getJsonObject(PAYLOAD).getJsonArray(LOCKS);
         if (locks == null || locks.isEmpty()) {
-            event.reply(new JsonObject().put(STATUS, ERROR).put(MESSAGE, "No locks to put provided"));
+            event.reply(createErrorReply().put(MESSAGE, "No locks to put provided"));
             return;
         }
 
         JsonObject lockInfo = extractLockInfo(event.body().getJsonObject(PAYLOAD).getString(REQUESTED_BY));
         if (lockInfo == null) {
-            event.reply(new JsonObject().put(STATUS, ERROR).put(MESSAGE, "Property '" + REQUESTED_BY + "' missing"));
+            event.reply(createErrorReply().put(MESSAGE, "Property '" + REQUESTED_BY + "' missing"));
             return;
         }
 
         if(!jsonArrayContainsStringsOnly(locks)){
-            event.reply(new JsonObject().put(STATUS, ERROR).put(ERROR_TYPE, BAD_INPUT).put(MESSAGE, "Locks must be string values"));
+            event.reply(createErrorReply().put(ERROR_TYPE, BAD_INPUT).put(MESSAGE, "Locks must be string values"));
             return;
         }
 
@@ -642,7 +647,7 @@ public class RedisQues extends AbstractVerticle {
         if (locks != null) {
             deleteLocks(event, locks);
         } else {
-            event.reply(new JsonObject().put(STATUS, ERROR).put(MESSAGE, "No locks to delete provided"));
+            event.reply(createErrorReply().put(MESSAGE, "No locks to delete provided"));
         }
     }
 
@@ -653,29 +658,29 @@ public class RedisQues extends AbstractVerticle {
                 deleteLocks(event, locks);
             } else {
                 log.warn("failed to delete all locks. Message: " + locksResult.cause().getMessage());
-                event.reply(new JsonObject().put(STATUS, ERROR).put(MESSAGE, locksResult.cause().getMessage()));
+                event.reply(createErrorReply().put(MESSAGE, locksResult.cause().getMessage()));
             }
         });
     }
 
     private void deleteLocks(Message<JsonObject> event, JsonArray locks) {
         if (locks == null || locks.isEmpty()) {
-            event.reply(new JsonObject().put(STATUS, OK).put(VALUE, 0));
+            event.reply(createOkReply().put(VALUE, 0));
             return;
         }
 
         if(!jsonArrayContainsStringsOnly(locks)){
-            event.reply(new JsonObject().put(STATUS, ERROR).put(ERROR_TYPE, BAD_INPUT).put(MESSAGE, "Locks must be string values"));
+            event.reply(createErrorReply().put(ERROR_TYPE, BAD_INPUT).put(MESSAGE, "Locks must be string values"));
             return;
         }
 
         redisClient.hdelMany(getLocksKey(), locks.getList(), delManyResult -> {
             if (delManyResult.succeeded()) {
                 log.info("Successfully deleted " + delManyResult.result() + " locks");
-                event.reply(new JsonObject().put(STATUS, OK).put(VALUE, delManyResult.result()));
+                event.reply(createOkReply().put(VALUE, delManyResult.result()));
             } else {
                 log.warn("failed to delete locks. Message: " + delManyResult.cause().getMessage());
-                event.reply(new JsonObject().put(STATUS, ERROR).put(MESSAGE, delManyResult.cause().getMessage()));
+                event.reply(createErrorReply().put(MESSAGE, delManyResult.cause().getMessage()));
             }
         });
     }
@@ -686,7 +691,7 @@ public class RedisQues extends AbstractVerticle {
                 array.getString(i);
             }
             return true;
-        } catch(Exception ex){
+        } catch (ClassCastException ex) {
             return false;
         }
     }
@@ -708,7 +713,7 @@ public class RedisQues extends AbstractVerticle {
         result.put(RedisquesConfiguration.PROP_HTTP_REQUEST_HANDLER_PREFIX, httpRequestHandlerPrefix);
         result.put(RedisquesConfiguration.PROP_HTTP_REQUEST_HANDLER_PORT, httpRequestHandlerPort);
         result.put(RedisquesConfiguration.PROP_HTTP_REQUEST_HANDLER_USER_HEADER, httpRequestHandlerUserHeader);
-        event.reply(new JsonObject().put(STATUS, OK).put(VALUE, result));
+        event.reply(createOkReply().put(VALUE, result));
     }
 
     private void setConfiguration(Message<JsonObject> event) {
@@ -719,7 +724,7 @@ public class RedisQues extends AbstractVerticle {
                 vertx.eventBus().publish(configurationUpdatedAddress, configurationValues);
                 event.reply(setConfigurationValuesEvent.result());
             } else {
-                event.reply(new JsonObject().put(STATUS, ERROR).put(MESSAGE, setConfigurationValuesEvent.cause().getMessage()));
+                event.reply(createErrorReply().put(MESSAGE, setConfigurationValuesEvent.cause().getMessage()));
             }
         });
     }
@@ -740,7 +745,7 @@ public class RedisQues extends AbstractVerticle {
                         this.processorDelayMax = processorDelayMaxValue;
                         log.info("Updated configuration value of property '" + PROCESSOR_DELAY_MAX + "' to " + processorDelayMaxValue);
                     }
-                    future.complete(new JsonObject().put(STATUS, OK));
+                    future.complete(createOkReply());
                 } catch (ClassCastException ex) {
                     future.fail("Value for configuration property '" + PROCESSOR_DELAY_MAX + "' is not a number");
                 }
@@ -1132,12 +1137,7 @@ public class RedisQues extends AbstractVerticle {
         if (log.isTraceEnabled()) {
             log.trace("RedisQues refresh registration: " + key);
         }
-        if (handler != null) {
-            redisClient.expire(key, consumerLockTime, handler);
-        } else {
-            redisClient.expire(key, consumerLockTime, event -> {
-            });
-        }
+        redisClient.expire(key, consumerLockTime, handler);
     }
 
     /**
@@ -1151,12 +1151,7 @@ public class RedisQues extends AbstractVerticle {
         if (log.isTraceEnabled()) {
             log.trace("RedisQues update timestamp for queue: " + queue + " to: " + ts);
         }
-        if (handler != null) {
-            redisClient.zadd(getQueuesKey(), ts, queue, handler);
-        } else {
-            redisClient.zadd(getQueuesKey(), ts, queue, event -> {
-            });
-        }
+        redisClient.zadd(getQueuesKey(), ts, queue, handler);
     }
 
     /**

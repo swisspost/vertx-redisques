@@ -4,6 +4,8 @@ import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.json.DecodeException;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
+import io.vertx.core.logging.Logger;
+import io.vertx.core.logging.LoggerFactory;
 
 import java.nio.charset.Charset;
 
@@ -16,6 +18,7 @@ import static org.swisspush.redisques.util.RedisquesAPI.PAYLOAD;
  */
 public class HttpServerRequestUtil {
 
+    private static final Logger log = LoggerFactory.getLogger(HttpServerRequestUtil.class);
     private static final String EMPTY = "";
     private static final String TRUE = "true";
     private static final String UTF_8 = "UTF-8";
@@ -62,7 +65,9 @@ public class HttpServerRequestUtil {
             }
             return Result.ok(jsonArray);
         } catch (Exception ex){
-            return Result.err("failed to parse request payload");
+            final String msg = "failed to parse request payload";
+            log.error(msg, ex);
+            return Result.err(msg);
         }
     }
 
@@ -71,8 +76,11 @@ public class HttpServerRequestUtil {
      *
      * @param decoded decoded
      * @return String
+     * @throws Exception
+     *      In case {@code decoded} is not valid json.
      */
     public static String encodePayload(String decoded) throws Exception {
+        // This may throws io.vertx.core.json.DecodeException.
         JsonObject object = new JsonObject(decoded);
 
         String payloadString;
