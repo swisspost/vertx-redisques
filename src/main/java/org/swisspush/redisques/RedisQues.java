@@ -4,6 +4,7 @@ import io.vertx.core.AbstractVerticle;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
+import io.vertx.core.eventbus.DeliveryOptions;
 import io.vertx.core.eventbus.EventBus;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.eventbus.MessageConsumer;
@@ -994,7 +995,6 @@ public class RedisQues extends AbstractVerticle {
                                     }
                                     log.debug("RedisQues Message removed, queue " + queue + " is ready again");
                                     myQueues.put(queue, QueueState.READY);
-                                    vertx.cancelTimer(sendResult.timeoutId);
                                     // Notify that we are stopped in
                                     // case it
                                     // was the last active consumer
@@ -1021,7 +1021,6 @@ public class RedisQues extends AbstractVerticle {
                                 
                                 // reschedule
                                 log.debug("RedisQues will re-send the message to queue '" + queue + "' in " + retryInterval + " seconds");
-                                vertx.cancelTimer(sendResult.timeoutId);
                                 rescheduleSendMessageAfterFailure(queue, retryInterval);
                             }
                         });
@@ -1070,21 +1069,17 @@ public class RedisQues extends AbstractVerticle {
                 log.trace("RedisQues process message: " + message + " for queue: " + queue + " send it to processor: " + processorAddress);
             }
 
-            // start a timer, which will cancel the processing, if the consumer didn't respond
-            final long timeoutId = vertx.setTimer(processorTimeout, timeoutId1 -> {
-                log.info("RedisQues QUEUE_ERROR: Consumer timeout " + uid + " queue: " + queue);
-                handler.handle(new SendResult(false, timeoutId1));
-            });
-
             // send the message to the consumer
-            eb.send(processorAddress, message, (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
+            DeliveryOptions options = new DeliveryOptions().setSendTimeout(processorTimeout);
+            eb.send(processorAddress, message, options, (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
                 Boolean success;
                 if (reply.succeeded()) {
                     success = OK.equals(reply.result().body().getString(STATUS));
                 } else {
+                    log.info("RedisQues QUEUE_ERROR: Consumer failed " + uid + " queue: " + queue + " (" + reply.cause().getMessage() + ")");
                     success = Boolean.FALSE;
                 }
-                handler.handle(new SendResult(success, timeoutId));
+                handler.handle(new SendResult(success));
             });
             updateTimestamp(queue, null);
         });
@@ -1092,11 +1087,9 @@ public class RedisQues extends AbstractVerticle {
 
     private class SendResult {
         public final Boolean success;
-        public final Long timeoutId;
 
-        public SendResult(Boolean success, Long timeoutId) {
+        public SendResult(Boolean success) {
             this.success = success;
-            this.timeoutId = timeoutId;
         }
     }
 
