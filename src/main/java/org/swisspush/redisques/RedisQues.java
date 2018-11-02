@@ -976,12 +976,12 @@ public class RedisQues extends AbstractVerticle {
                         log.trace("RedisQues read queue lindex result: " + answer.result());
                     }
                     if (answer.result() != null) {
-                        processMessageWithTimeout(queue, answer.result(), sendResult -> {
+                        processMessageWithTimeout(queue, answer.result(), success -> {
                             
                             // update the queue failure count and get a retry interval
-                            int retryInterval = updateQueueFailureCountAndGetRetryInterval(queue, sendResult.success);
+                            int retryInterval = updateQueueFailureCountAndGetRetryInterval(queue, success);
 
-                            if (sendResult.success) {
+                            if (success) {
                                 // Remove the processed message from the
                                 // queue
                                 String key1 = getQueuesPrefix() + queue;
@@ -1051,7 +1051,7 @@ public class RedisQues extends AbstractVerticle {
         });
     }
 
-    private void processMessageWithTimeout(final String queue, final String payload, final Handler<SendResult> handler) {
+    private void processMessageWithTimeout(final String queue, final String payload, final Handler<Boolean> handler) {
         if (processorDelayMax > 0) {
             log.info("About to process message for queue " + queue + " with a maximum delay of " + processorDelayMax + "ms");
         }
@@ -1079,18 +1079,10 @@ public class RedisQues extends AbstractVerticle {
                     log.info("RedisQues QUEUE_ERROR: Consumer failed " + uid + " queue: " + queue + " (" + reply.cause().getMessage() + ")");
                     success = Boolean.FALSE;
                 }
-                handler.handle(new SendResult(success));
+                handler.handle(success);
             });
             updateTimestamp(queue, null);
         });
-    }
-
-    private class SendResult {
-        public final Boolean success;
-
-        public SendResult(Boolean success) {
-            this.success = success;
-        }
     }
 
     private void notifyConsumer(final String queue) {
