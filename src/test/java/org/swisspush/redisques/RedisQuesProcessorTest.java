@@ -70,6 +70,7 @@ public class RedisQuesProcessorTest extends AbstractTestCase {
                 .processorAddress("processor-address")
                 .redisEncoding("ISO-8859-1")
                 .refreshPeriod(2)
+                .processorTimeout(10)
                 .build()
                 .asJsonObject();
 
