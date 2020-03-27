@@ -360,10 +360,10 @@ public class RedisQues extends AbstractVerticle {
                 long delayReplyMillis = 0;
                 QueueConfiguration queueConfiguration = findQueueConfiguration(queueName);
                 if (queueConfiguration != null) {
-                    float delayMillisPerSize = queueConfiguration.getEnqueueDelayMillisPerSize();
-                    if (delayMillisPerSize > 0f) {
+                    float enqueueDelayFactorMillis = queueConfiguration.getEnqueueDelayFactorMillis();
+                    if (enqueueDelayFactorMillis > 0f) {
                         // minus one as we need the queueLength _before_ our en-queue here
-                        delayReplyMillis = (long) ((queueLength - 1) * delayMillisPerSize);
+                        delayReplyMillis = (long) ((queueLength - 1) * enqueueDelayFactorMillis);
                         int max = queueConfiguration.getEnqueueMaxDelayMillis();
                         if (max > 0 && delayReplyMillis > max) {
                             delayReplyMillis = max;
@@ -944,7 +944,9 @@ public class RedisQues extends AbstractVerticle {
                         readQueue(queueName);
 
                     } else {
-                        log.debug("RedisQues Queue " + queueName + " is already being consumed");
+                        if(log.isDebugEnabled()) {
+                            log.debug("RedisQues Queue " + queueName + " is already being consumed");
+                        }
                     }
                 } else {
                     // Somehow registration changed. Let's renotify.
@@ -1034,21 +1036,26 @@ public class RedisQues extends AbstractVerticle {
                                 });
                             } else {
                                 // Failed. Message will be kept in queue and retried later
-                                log.debug("RedisQues Processing failed for queue " + queueName);
-                                
-                                // reschedule
-                                log.debug("RedisQues will re-send the message to queue '" + queueName + "' in " + retryInterval + " seconds");
+                                if (log.isDebugEnabled()) {
+                                    log.debug("RedisQues Processing failed for queue " + queueName);
+                                    // reschedule
+                                    log.debug("RedisQues will re-send the message to queue '" + queueName + "' in " + retryInterval + " seconds");
+                                }
                                 rescheduleSendMessageAfterFailure(queueName, retryInterval);
                             }
                         });
                     } else {
                         // This can happen when requests to consume happen at the same moment the queue is emptied.
-                        log.debug("Got a request to consume from empty queue " + queueName);
+                        if (log.isDebugEnabled()) {
+                            log.debug("Got a request to consume from empty queue " + queueName);
+                        }
                         myQueues.put(queueName, QueueState.READY);
                     }
                 });
             } else {
-                log.debug("Got a request to consume from locked queue " + queueName);
+                if (log.isDebugEnabled()) {
+                    log.debug("Got a request to consume from locked queue " + queueName);
+                }
                 myQueues.put(queueName, QueueState.READY);
             }
         });
@@ -1060,7 +1067,9 @@ public class RedisQues extends AbstractVerticle {
         }
         
         vertx.setTimer(retryInSeconds * 1000, timerId -> {
-            log.debug("RedisQues re-notify the consumer of queue '" + queueName + "' at " + new Date(System.currentTimeMillis()));
+            if (log.isDebugEnabled()) {
+                log.debug("RedisQues re-notify the consumer of queue '" + queueName + "' at " + new Date(System.currentTimeMillis()));
+            }
             notifyConsumer(queueName);
 
             // reset the queue state to be consumed by {@link RedisQues#consume(String)}
@@ -1259,7 +1268,6 @@ public class RedisQues extends AbstractVerticle {
      * @return null when no queueConfiguration's RegEx matches given queueName - else the QueueConfiguration
      */
     private QueueConfiguration findQueueConfiguration(String queueName) {
-        // find a retry interval from the queue configurations
         for (QueueConfiguration queueConfiguration : queueConfigurations) {
             if (queueConfiguration.compiledPattern().matcher(queueName).matches()) {
                 return queueConfiguration;

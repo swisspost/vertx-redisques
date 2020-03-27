@@ -20,14 +20,17 @@ public class QueueConfiguration {
 
     /**
      * EN-queuing speed can be throttled by delaying the "ok" response.
-     * This is a simple linear factor. E.g. when set to "0.3" this means that
-     * enqueuing is delayed for 0.3 seconds when queue is of length 1000 (0.6 seconds when length is 2000 etc...)
+     *
+     * This is a simple linear factor. E.g. when set to "300" this means that
+     * "success" enqueuing-reply is delayed for 300 ms (0.3 seconds= when queue is of
+     * length 1000 (0.6 seconds when length is 2000 etc...)
+     *
      * "0" means: turn of this feature
      */
-    private float enqueueDelayMillisPerSize = 0f;
+    private float enqueueDelayFactorMillis = 0f;
 
     /**
-     * When EN-queue slowdown is used ({@link #enqueueDelayMillisPerSize}) you can limit the maximum delay here.
+     * When EN-queue slowdown is used ({@link #enqueueDelayFactorMillis}) you can limit the maximum delay here.
      * E.g. when set to "1000" you still have a maximum EN-queuing rate of "one per second" - even when the queue already is very large
      *
      * default "0" means: no limit
@@ -52,8 +55,8 @@ public class QueueConfiguration {
         return retryIntervals;
     }
 
-    public float getEnqueueDelayMillisPerSize() {
-        return enqueueDelayMillisPerSize;
+    public float getEnqueueDelayFactorMillis() {
+        return enqueueDelayFactorMillis;
     }
 
     public int getEnqueueMaxDelayMillis() {
@@ -84,11 +87,11 @@ public class QueueConfiguration {
         return this;
     }
 
-    public QueueConfiguration withEnqueueDelayMillisPerSize(float enqueueDelayMillisPerSize) {
-        if (enqueueDelayMillisPerSize <= 0f) {
-            throw new IllegalArgumentException("enqueueDelayMillisPerSize must be >0 but is " + enqueueDelayMillisPerSize);
+    public QueueConfiguration withEnqueueDelayMillisPerSize(float enqueueDelayFactorMillis) {
+        if (enqueueDelayFactorMillis <= 0f) {
+            throw new IllegalArgumentException("enqueueDelayMillisPerSize must be >0 but is " + enqueueDelayFactorMillis);
         }
-        this.enqueueDelayMillisPerSize = enqueueDelayMillisPerSize;
+        this.enqueueDelayFactorMillis = enqueueDelayFactorMillis;
         return this;
     }
 
