@@ -56,10 +56,9 @@ public class RedisquesConfigurationTest {
                 .httpRequestHandlerPrefix("/queuing/test")
                 .httpRequestHandlerPort(7171)
                 .httpRequestHandlerUserHeader("x-custom-user-header")
-                .queueConfigurations(Arrays.asList(QueueConfiguration.with()
-                        .pattern("vehicle-.*")
-                        .retryIntervals(Arrays.asList(10, 20, 30, 60))
-                        .build()))
+                .queueConfigurations(Arrays.asList(
+                        new QueueConfiguration().withPattern("vehicle-.*").withRetryIntervals(10, 20, 30, 60)
+                ))
                 .build();
 
         // default values
@@ -85,7 +84,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getQueueConfigurations().size(), 1);
         QueueConfiguration queueConfiguration = config.getQueueConfigurations().get(0);
         testContext.assertEquals(queueConfiguration.getPattern(), "vehicle-.*");
-        testContext.assertEquals(queueConfiguration.getRetryIntervals(), Arrays.asList(10, 20, 30, 60));
+        testContext.assertTrue(Arrays.equals(queueConfiguration.getRetryIntervals(), new int[]{10, 20, 30, 60}));
     }
 
     @Test
@@ -124,10 +123,9 @@ public class RedisquesConfigurationTest {
                 .processorDelayMax(50)
                 .httpRequestHandlerPort(7171)
                 .httpRequestHandlerUserHeader("x-custom-user-header")
-                .queueConfigurations(Arrays.asList(QueueConfiguration.with()
-                        .pattern("vehicle-.*")
-                        .retryIntervals(Arrays.asList(10, 20, 30, 60))
-                        .build()))
+                .queueConfigurations(Arrays.asList(
+                        new QueueConfiguration().withPattern("vehicle-.*").withRetryIntervals(10, 20, 30, 60)
+                ))
                 .build();
 
         JsonObject json = config.asJsonObject();
@@ -156,8 +154,8 @@ public class RedisquesConfigurationTest {
         List<JsonObject> queueConfigurationJsonObjects = queueConfigurationsJsonArray.getList();
         testContext.assertEquals(queueConfigurationJsonObjects.size(), 1);
         JsonObject queueConfigurationJsonObject = queueConfigurationJsonObjects.get(0);
-        testContext.assertEquals(queueConfigurationJsonObject.getString(QueueConfiguration.PROP_PATTERN), "vehicle-.*");
-        testContext.assertEquals(queueConfigurationJsonObject.getJsonArray(QueueConfiguration.PROP_RETRY_INTERVALS).getList(), Arrays.asList(10, 20, 30, 60));
+        testContext.assertEquals(queueConfigurationJsonObject.getString("pattern"), "vehicle-.*");
+        testContext.assertEquals(queueConfigurationJsonObject.getJsonArray("retryIntervals").getList(), Arrays.asList(10, 20, 30, 60));
     }
 
     @Test
@@ -202,10 +200,8 @@ public class RedisquesConfigurationTest {
         json.put(PROP_HTTP_REQUEST_HANDLER_PREFIX, "/queuing/test123");
         json.put(PROP_HTTP_REQUEST_HANDLER_PORT, 7171);
         json.put(PROP_HTTP_REQUEST_HANDLER_USER_HEADER, "x-custom-user-header");
-        json.put(PROP_QUEUE_CONFIGURATIONS, new JsonArray(Arrays.asList(QueueConfiguration.with()
-                .pattern("vehicle-.*")
-                .retryIntervals(Arrays.asList(10, 20, 30, 60))
-                .build().asJsonObject())));
+        json.put(PROP_QUEUE_CONFIGURATIONS, new JsonArray(Arrays.asList(new QueueConfiguration().withPattern("vehicle-.*").withRetryIntervals(10, 20, 30, 60)
+                .asJsonObject())));
 
         RedisquesConfiguration config = fromJsonObject(json);
         testContext.assertEquals(config.getAddress(), "new_address");
@@ -228,7 +224,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getQueueConfigurations().size(), 1);
         QueueConfiguration queueConfiguration = config.getQueueConfigurations().get(0);
         testContext.assertEquals(queueConfiguration.getPattern(), "vehicle-.*");
-        testContext.assertEquals(queueConfiguration.getRetryIntervals(), Arrays.asList(10, 20, 30, 60));
+        testContext.assertTrue(Arrays.equals(queueConfiguration.getRetryIntervals(), new int[]{10, 20, 30, 60}));
     }
 
     @Test
