@@ -324,5 +324,6 @@
             https://oss.sonatype.org/content/repositories/snapshots/
         </sonatypeOssDistMgmtSnapshotsUrl>
         <arguments />
+        <repositoryId />
     </properties>
 </project>
