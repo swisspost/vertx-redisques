@@ -40,10 +40,10 @@ public class RedisQuesTest extends AbstractTestCase {
                 .processorAddress(PROCESSOR_ADDRESS)
                 .redisEncoding("ISO-8859-1")
                 .refreshPeriod(2)
-                .queueConfigurations(Arrays.asList(QueueConfiguration.with()
-                        .pattern("queue.*")
-                        .retryIntervals(Arrays.asList(2, 7, 12, 17, 22, 27, 32, 37, 42, 47, 52))
-                        .build()))
+                .queueConfigurations(Arrays.asList(new QueueConfiguration()
+                        .withPattern("queue.*")
+                        .withRetryIntervals(2, 7, 12, 17, 22, 27, 32, 37, 42, 47, 52))
+                )
                 .build()
                 .asJsonObject();
 
