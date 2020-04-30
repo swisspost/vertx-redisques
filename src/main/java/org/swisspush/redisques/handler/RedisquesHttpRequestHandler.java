@@ -210,7 +210,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
                 eventBus.send(redisquesAddress, buildEnqueueOrLockedEnqueueOperation(queue, strBuffer, ctx.request()),
                         (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
                             if (reply.failed()) {
-                                log.warn("Received failed message for enqueueOrLockedEnqueue. But will continue anyway. _441dcfdffcbf422e24_", reply.cause());
+                                log.warn("Received failed message for enqueueOrLockedEnqueue. But will continue anyway", reply.cause());
                                 // We should respond with 'HTTP 5xx' here. But we don't, to keep backward compatibility.
                                 // Why we should? See: "https://softwareengineering.stackexchange.com/a/190535"
                             }
@@ -235,7 +235,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         String filter = ctx.request().params().get(FILTER);
         eventBus.send(redisquesAddress, buildGetAllLocksOperation(filter), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
             if (reply.failed()) {
-                log.warn("Received failed message for getAllLocksOperation. Lets run into NullPointerException now. _b90a185fa905e_", reply.cause());
+                log.warn("Received failed message for getAllLocksOperation. Lets run into NullPointerException now", reply.cause());
                 // IMO we should respond with 'HTTP 5xx'. But we don't, to keep backward compatibility.
             }
             final JsonObject body = reply.result().body();
@@ -261,7 +261,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         eventBus.send(redisquesAddress, buildPutLockOperation(queue, extractUser(ctx.request())),
                 (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
                     if (reply.failed()) {
-                        log.warn("Received failed message for addLockOperation. Lets run into NullPointerException now. _9dafe6dbc8ee87c8d0b1_", reply.cause());
+                        log.warn("Received failed message for addLockOperation. Lets run into NullPointerException now", reply.cause());
                         // IMO we should respond with 'HTTP 5xx' here. But we don't, to keep backward compatibility.
                         // Nevertheless. Lets run into NullPointerException by calling method below.
                     }
@@ -275,7 +275,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         eventBus.send(redisquesAddress, buildGetLockOperation(queue), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
             final HttpServerResponse response = ctx.response();
             if (reply.failed()) {
-                log.warn("Received failed message for getSingleLockOperation. Lets run into NullPointerException now. _f82af1e092812d59cf_", reply.cause());
+                log.warn("Received failed message for getSingleLockOperation. Lets run into NullPointerException now", reply.cause());
                 // IMO we should respond with 'HTTP 5xx' here. But we don't, to keep backward compatibility.
             }
             if (OK.equals(reply.result().body().getString(STATUS))) {
@@ -294,7 +294,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         eventBus.send(redisquesAddress, buildDeleteLockOperation(queue),
                 (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
                     if (reply.failed()) {
-                        log.warn("Received failed message for deleteSingleLockOperation. Lets run into NullPointerException now. _5dcf418d606183_", reply.cause());
+                        log.warn("Received failed message for deleteSingleLockOperation. Lets run into NullPointerException now", reply.cause());
                         // IMO we should respond with 'HTTP 5xx'. But we don't, to keep backward compatibility.
                         // Nevertheless. Lets run into NullPointerException by calling below method.
                     }
@@ -517,7 +517,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         }
         eventBus.send(redisquesAddress, buildGetQueueItemsOperation(queue, limitParam), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
             if (reply.failed()) {
-                log.error("Received failed message for listQueueItemsOperation. _757074e6af79b816f2942_", reply.cause());
+                log.error("Received failed message for listQueueItemsOperation", reply.cause());
                 respondWith(StatusCode.INTERNAL_SERVER_ERROR, ctx.request());
                 return;
             }
@@ -546,7 +546,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
                 eventBus.send(redisquesAddress, buildAddQueueItemOperation(queue, strBuffer),
                         (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
                             if (reply.failed()) {
-                                log.warn("Received failed message for addQueueItemOperation. Lets run into NullPointerException now. _1a06e3030ddf3775415_", reply.cause());
+                                log.warn("Received failed message for addQueueItemOperation. Lets run into NullPointerException now", reply.cause());
                                 // IMO we should respond with 'HTTP 5xx'. But we don't, to keep backward compatibility.
                                 // Nevertheless. Lets run into NullPointerException by calling method below.
                             }
@@ -564,7 +564,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         final int index = Integer.parseInt(lastPart(requestPath));
         eventBus.send(redisquesAddress, buildGetQueueItemOperation(queue, index), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
             if (reply.failed()) {
-                log.warn("Received failed message for getSingleQueueItemOperation. Lets run into NullPointerException now. _4cb8173344dfea5ae_", reply.cause());
+                log.warn("Received failed message for getSingleQueueItemOperation. Lets run into NullPointerException now", reply.cause());
                 // IMO we should respond with 'HTTP 5xx'. But we don't, to keep backward compatibility.
             }
             final JsonObject replyBody = reply.result().body();
@@ -591,7 +591,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
                     eventBus.send(redisquesAddress, buildReplaceQueueItemOperation(queue, index, strBuffer),
                             (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
                                 if (reply.failed()) {
-                                    log.warn("Received failed message for replaceSingleQueueItemOperation. Lets run into NullPointerException now. _fc928c9bda5d5ac26c562_", reply.cause());
+                                    log.warn("Received failed message for replaceSingleQueueItemOperation. Lets run into NullPointerException now", reply.cause());
                                     // IMO we should respond with 'HTTP 5xx'. But we don't, to keep backward compatibility.
                                     // Nevertheless. Lets run into NullPointerException by calling method below.
                                 }
@@ -613,7 +613,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
             eventBus.send(redisquesAddress, buildDeleteQueueItemOperation(queue, index),
                     (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
                         if (reply.failed()) {
-                            log.warn("Received failed message for deleteQueueItemOperation. Lets run into NullPointerException now. _57d9c0bcc34c64bc5f6dc8b_", reply.cause());
+                            log.warn("Received failed message for deleteQueueItemOperation. Lets run into NullPointerException now", reply.cause());
                             // IMO we should respond with 'HTTP 5xx'. But we don't, to keep backward compatibility.
                             // Nevertheless. Lets run into NullPointerException by calling method below.
                         }
@@ -629,7 +629,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         final String queue = lastPart(request.path());
         eventBus.send(redisquesAddress, buildDeleteAllQueueItemsOperation(queue, unlock), reply -> {
             if (reply.failed()) {
-                log.warn("Received failed message for deleteAllQueueItemsOperation. _aa9786093e87b5ae_", reply.cause());
+                log.warn("Received failed message for deleteAllQueueItemsOperation", reply.cause());
                 // IMO we should respond with 'HTTP 5xx'. But we don't, to keep backward compatibility.
             }
             ctx.response().end();
@@ -648,7 +648,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
                     }
                     eventBus.send(redisquesAddress, buildBulkDeleteQueuesOperation(result.getOk()), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
                         if (reply.failed()) {
-                            log.warn("Failed to bulkDeleteQueues. Lets run into NullPointerException now. _969d89cdf7f8f4dd5c49b_", reply.cause());
+                            log.warn("Failed to bulkDeleteQueues. Lets run into NullPointerException now", reply.cause());
                             // IMO we should respond with 'HTTP 5xx'. But we don't, to keep backward compatibility.
                             // Nevertheless. Lets run into NullPointerException in else case below now.
                         }
