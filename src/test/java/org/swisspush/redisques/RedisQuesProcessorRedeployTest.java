@@ -111,17 +111,13 @@ public class RedisQuesProcessorRedeployTest extends AbstractTestCase {
 
                 // execute check operation, which registers a new consumer to the existing queue and process the queue
                 final JsonObject operation = buildCheckOperation();
-                eventBusSend(operation, reply -> {
-                    context.assertEquals(OK, reply.result().body().getString(STATUS));
-                });
+                eventBusSend(operation, reply -> context.assertEquals(OK, reply.result().body().getString(STATUS)));
             });
 
         });
 
         final JsonObject operation = buildEnqueueOperation("check-queue", "hello");
-        eventBusSend(operation, reply -> {
-            context.assertEquals(OK, reply.result().body().getString(STATUS));
-        });
+        eventBusSend(operation, reply -> context.assertEquals(OK, reply.result().body().getString(STATUS)));
     }
 
     private void sleep(int millis) {

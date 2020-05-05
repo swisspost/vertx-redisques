@@ -18,7 +18,7 @@ import org.swisspush.redisques.util.QueueConfiguration;
 import org.swisspush.redisques.util.RedisquesAPI;
 import org.swisspush.redisques.util.RedisquesConfiguration;
 
-import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashSet;
 
 import static org.swisspush.redisques.util.RedisquesAPI.*;
@@ -44,8 +44,8 @@ public class EnqueueThrottleTest {
                 .httpRequestHandlerEnabled(true)
                 .refreshPeriod(2)
                 .checkInterval(10)
-                .queueConfigurations(Arrays.asList(
-                  new QueueConfiguration().withPattern(QUEUE_NAME).withEnqueueDelayMillisPerSize(500).withEnqueueMaxDelayMillis(1700)
+                .queueConfigurations(Collections.singletonList(
+                        new QueueConfiguration().withPattern(QUEUE_NAME).withEnqueueDelayMillisPerSize(500).withEnqueueMaxDelayMillis(1700)
                 ))
                 .build();
 
@@ -53,9 +53,7 @@ public class EnqueueThrottleTest {
 
         vertx.deployVerticle(new RedisQues(), new DeploymentOptions().setConfig(redisquesConfig.asJsonObject()), done -> {
             JsonObject delete = RedisquesAPI.buildDeleteAllQueueItemsOperation(QUEUE_NAME);
-            vertx.eventBus().send(REDISQUES_ADDRESS, delete, deleteDone -> {
-                async.complete();
-            });
+            vertx.eventBus().send(REDISQUES_ADDRESS, delete, deleteDone -> async.complete());
         });
     }
 

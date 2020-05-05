@@ -78,8 +78,8 @@ public class QueueConfiguration {
     }
 
     public QueueConfiguration withRetryIntervals(int... retryIntervals) {
-        for (int i = 0; i < retryIntervals.length; i++) {
-            if (retryIntervals[i] < 1) {
+        for (int retryInterval : retryIntervals) {
+            if (retryInterval < 1) {
                 throw new IllegalArgumentException("retryIntervals must all be >=1 (second) but is " + Arrays.toString(retryIntervals));
             }
         }

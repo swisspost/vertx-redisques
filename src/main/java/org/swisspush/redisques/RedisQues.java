@@ -302,7 +302,7 @@ public class RedisQues extends AbstractVerticle {
         uidMessageConsumer = eb.consumer(uid, event -> {
             final String queue = event.body();
             if (queue == null) {
-                log.warn("Got event bus msg with empty body! _28904718b4af0cc_  uid={}  address={}  replyAddress={}", uid, event.address(), event.replyAddress());
+                log.warn("Got event bus msg with empty body! uid={}  address={}  replyAddress={}", uid, event.address(), event.replyAddress());
                 // IMO we should 'fail()' here. But we don't, to keep backward compatibility.
             }
             log.debug("RedisQues got notification for queue '{}'", queue);
@@ -371,9 +371,7 @@ public class RedisQues extends AbstractVerticle {
                     }
                 }
                 if (delayReplyMillis > 0) {
-                    vertx.setTimer(delayReplyMillis, timeIsUp -> {
-                        event.reply(reply);
-                    });
+                    vertx.setTimer(delayReplyMillis, timeIsUp -> event.reply(reply));
                 } else {
                     event.reply(reply);
                 }
@@ -422,7 +420,7 @@ public class RedisQues extends AbstractVerticle {
             if (countReply.succeeded() && queueItemCount != null) {
                 redisClient.lrange(keyListRange, 0, maxQueueItemCountIndex, new GetQueueItemsHandler(event, queueItemCount));
             } else {
-                log.warn("Operation getQueueItems failed. But I'll not notify my caller :) _5e51764bf36c19a781_", countReply.cause());
+                log.warn("Operation getQueueItems failed. But I'll not notify my caller :)", countReply.cause());
                 // IMO we should 'event.fail(countReply.cause())' here. But we don't, to keep backward compatibility.
             }
         });
@@ -480,7 +478,7 @@ public class RedisQues extends AbstractVerticle {
                 String keyLrem = queuesPrefix + event.body().getJsonObject(PAYLOAD).getString(QUEUENAME);
                 redisClient.lrem(keyLrem, 0, "TO_DELETE", replyLrem -> {
                     if (replyLrem.failed()) {
-                        log.warn("Redis 'lrem' command failed. But will continue anyway _bba106b17e21cc_.", replyLrem.cause());
+                        log.warn("Redis 'lrem' command failed. But will continue anyway.", replyLrem.cause());
                         // IMO we should 'fail()' here. But we don't, to keep backward compatibility.
                     }
                     event.reply(createOkReply());
@@ -498,7 +496,7 @@ public class RedisQues extends AbstractVerticle {
         String queue = payload.getString(QUEUENAME);
         redisClient.del(buildQueueKey(queue), deleteReply -> {
             if (deleteReply.failed()) {
-                log.warn("Failed to deleteAllQueueItems. But we'll continue anyway. _dfc641c96464_", deleteReply.cause());
+                log.warn("Failed to deleteAllQueueItems. But we'll continue anyway", deleteReply.cause());
                 // May we should 'fail()' here. But:
                 // 1st: We don't, to keep backward compatibility
                 // 2nd: We don't, to may unlock below.
@@ -506,7 +504,7 @@ public class RedisQues extends AbstractVerticle {
             if (unlock) {
                 redisClient.hdel(locksKey, queue, unlockReply -> {
                     if (unlockReply.failed()) {
-                        log.warn("Failed to unlock queue '{}'. Will continue anyway _d08ae0e0986587_.", queue, unlockReply.cause());
+                        log.warn("Failed to unlock queue '{}'. Will continue anyway", queue, unlockReply.cause());
                         // IMO we should 'fail()' here. But we don't, to keep backward compatibility.
                     }
                     replyResultGreaterThanZero(event, deleteReply);

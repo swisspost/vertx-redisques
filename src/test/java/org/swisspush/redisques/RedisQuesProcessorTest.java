@@ -1,7 +1,6 @@
 package org.swisspush.redisques;
 
-import com.jayway.awaitility.Awaitility;
-import com.jayway.awaitility.Duration;
+import org.awaitility.Awaitility;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.DeploymentOptions;
 import io.vertx.core.Handler;
@@ -19,6 +18,7 @@ import redis.clients.jedis.Jedis;
 import javax.xml.bind.DatatypeConverter;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Random;
@@ -46,7 +46,9 @@ public class RedisQuesProcessorTest extends AbstractTestCase {
     }
 
     @Override
-    protected String getRedisquesAddress() { return CUSTOM_REDISQUES_ADDRESS; }
+    protected String getRedisquesAddress() {
+        return CUSTOM_REDISQUES_ADDRESS;
+    }
 
     @Rule
     public Timeout rule = Timeout.seconds(300);
@@ -106,7 +108,7 @@ public class RedisQuesProcessorTest extends AbstractTestCase {
                     }
                 }
                 signature.update(payload.getBytes());
-                log.info("added queue ["+queue+"] signature ["+digestStr(signature)+"]");
+                log.info("added queue [" + queue + "] signature [" + digestStr(signature) + "]");
             }
 
             vertx.setTimer(new Random().nextLong() % 1 + 1, event -> {
@@ -119,7 +121,7 @@ public class RedisQuesProcessorTest extends AbstractTestCase {
         flushAll();
         assertKeyCount(context, 0);
         for (int i = 0; i < NUM_QUEUES; i++) {
-            log.info("create new sender for queue: queue_" + i );
+            log.info("create new sender for queue: queue_" + i);
             new Sender(context, async, "queue_" + i).send(null);
         }
     }
@@ -151,17 +153,14 @@ public class RedisQuesProcessorTest extends AbstractTestCase {
                 throw new RuntimeException(e);
             }
 
-            vertx.eventBus().consumer("digest-" + queue, new Handler<Message<String>>() {
-                @Override
-                public void handle(Message<String> event) {
-                    log.info("Received signature for " + queue + ": " + event.body());
-                    if(! event.body().equals(DatatypeConverter.printBase64Binary(signature.digest()))) {
-                        log.error("signatures are not identical: " + event.body() + " != " + DatatypeConverter.printBase64Binary(signature.digest()));
-                    }
-                    context.assertEquals(event.body(), DatatypeConverter.printBase64Binary(signature.digest()), "Signatures differ");
-                    if (finished.incrementAndGet() == NUM_QUEUES) {
-                        async.complete();
-                    }
+            vertx.eventBus().consumer("digest-" + queue, (Handler<Message<String>>) event -> {
+                log.info("Received signature for " + queue + ": " + event.body());
+                if (!event.body().equals(DatatypeConverter.printBase64Binary(signature.digest()))) {
+                    log.error("signatures are not identical: " + event.body() + " != " + DatatypeConverter.printBase64Binary(signature.digest()));
+                }
+                context.assertEquals(event.body(), DatatypeConverter.printBase64Binary(signature.digest()), "Signatures differ");
+                if (finished.incrementAndGet() == NUM_QUEUES) {
+                    async.complete();
                 }
             });
         }
@@ -169,32 +168,26 @@ public class RedisQuesProcessorTest extends AbstractTestCase {
         void send(final String m) {
             if (messageCount < numMessages) {
                 final String message;
-                if(m==null) {
+                if (m == null) {
                     message = Double.toString(Math.random());
                 } else {
                     message = m;
                 }
                 signature.update(message.getBytes());
-                log.info("send message ["+digestStr(signature)+"] for queue ["+queue+"] ");
-                vertx.eventBus().send(getRedisquesAddress(), buildEnqueueOperation(queue, message), new Handler<AsyncResult<Message<JsonObject>>>() {
-                    @Override
-                    public void handle(AsyncResult<Message<JsonObject>> event) {
-                        if(event.result().body().getString(STATUS).equals(OK)) {
-                            send(null);
-                        } else {
-                            log.error("ERROR sending "+message+" to "+queue);
-                            send(message);
-                        }
+                log.info("send message [" + digestStr(signature) + "] for queue [" + queue + "] ");
+                vertx.eventBus().send(getRedisquesAddress(), buildEnqueueOperation(queue, message), (Handler<AsyncResult<Message<JsonObject>>>) event -> {
+                    if (event.result().body().getString(STATUS).equals(OK)) {
+                        send(null);
+                    } else {
+                        log.error("ERROR sending " + message + " to " + queue);
+                        send(message);
                     }
                 });
                 messageCount++;
             } else {
-                vertx.eventBus().send(getRedisquesAddress(), buildEnqueueOperation(queue, "STOP"), new Handler<AsyncResult<Message<JsonObject>>>() {
-                    @Override
-                    public void handle(AsyncResult<Message<JsonObject>> reply) {
-                        context.assertEquals(OK, reply.result().body().getString(STATUS));
-                    }
-                });
+                vertx.eventBus().send(getRedisquesAddress(), buildEnqueueOperation(queue, "STOP"),
+                        (Handler<AsyncResult<Message<JsonObject>>>) reply ->
+                                context.assertEquals(OK, reply.result().body().getString(STATUS)));
             }
         }
     }
@@ -228,11 +221,8 @@ public class RedisQuesProcessorTest extends AbstractTestCase {
         });
 
 
-
         final JsonObject operation = buildEnqueueOperation("check-queue", "hello");
-        eventBusSend(operation, reply -> {
-            context.assertEquals(OK, reply.result().body().getString(STATUS));
-        });
+        eventBusSend(operation, reply -> context.assertEquals(OK, reply.result().body().getString(STATUS)));
     }
 
     @Test
@@ -282,9 +272,7 @@ public class RedisQuesProcessorTest extends AbstractTestCase {
         });
 
         final JsonObject operation = buildEnqueueOperation("check-queue", "hello");
-        eventBusSend(operation, reply -> {
-            context.assertEquals(OK, reply.result().body().getString(STATUS));
-        });
+        eventBusSend(operation, reply -> context.assertEquals(OK, reply.result().body().getString(STATUS)));
     }
 
     @Test
@@ -328,9 +316,7 @@ public class RedisQuesProcessorTest extends AbstractTestCase {
         });
 
         final JsonObject operation = buildEnqueueOperation("check-queue", "hello");
-        eventBusSend(operation, reply -> {
-            context.assertEquals(OK, reply.result().body().getString(STATUS));
-        });
+        eventBusSend(operation, reply -> context.assertEquals(OK, reply.result().body().getString(STATUS)));
     }
 
     @Test
@@ -349,12 +335,11 @@ public class RedisQuesProcessorTest extends AbstractTestCase {
             processorCalled.set(true);
         });
 
-        eventBusSend(buildEnqueueOperation(queue, "hello"), reply -> {
-            context.assertEquals(OK, reply.result().body().getString(STATUS));
-        });
+        eventBusSend(buildEnqueueOperation(queue, "hello"), reply ->
+                context.assertEquals(OK, reply.result().body().getString(STATUS)));
 
         // after at most 5 seconds, the processor-address consumer should have been called
-        Awaitility.await().atMost(Duration.FIVE_SECONDS).until(processorCalled::get, equalTo(true));
+        Awaitility.await().atMost(Duration.ofSeconds(5)).until(processorCalled::get, equalTo(true));
 
         async.complete();
     }
@@ -390,9 +375,7 @@ public class RedisQuesProcessorTest extends AbstractTestCase {
 
         lockQueue(queue);
 
-        queueProcessor.handler(event -> {
-            processorCalled.set(true);
-        });
+        queueProcessor.handler(event -> processorCalled.set(true));
 
         eventBusSend(buildEnqueueOperation(queue, "hello"), reply -> {
             context.assertEquals(OK, reply.result().body().getString(STATUS));
