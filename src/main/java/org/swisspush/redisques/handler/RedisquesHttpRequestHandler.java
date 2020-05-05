@@ -626,14 +626,14 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         final int index = Integer.parseInt(lastPart(request.path()));
         checkLocked(queue, request, event -> {
             eventBus.send(redisquesAddress, buildDeleteQueueItemOperation(queue, index),
-                    (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
-                        if (reply.failed()) {
-                            log.warn("Received failed message for deleteQueueItemOperation. Lets run into NullPointerException now", reply.cause());
-                            // IMO we should respond with 'HTTP 5xx'. But we don't, to keep backward compatibility.
-                            // Nevertheless. Lets run into NullPointerException by calling method below.
-                        }
-                        checkReply(reply.result(), request, StatusCode.NOT_FOUND);
+                (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
+                    if (reply.failed()) {
+                        log.warn("Received failed message for deleteQueueItemOperation. Lets run into NullPointerException now", reply.cause());
+                        // IMO we should respond with 'HTTP 5xx'. But we don't, to keep backward compatibility.
+                        // Nevertheless. Lets run into NullPointerException by calling method below.
                     }
+                    checkReply(reply.result(), request, StatusCode.NOT_FOUND);
+                }
             );
         });
     }

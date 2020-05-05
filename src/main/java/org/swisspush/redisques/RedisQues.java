@@ -371,9 +371,7 @@ public class RedisQues extends AbstractVerticle {
                     }
                 }
                 if (delayReplyMillis > 0) {
-                    vertx.setTimer(delayReplyMillis, timeIsUp -> {
-                        event.reply(reply);
-                    });
+                    vertx.setTimer(delayReplyMillis, timeIsUp -> event.reply(reply));
                 } else {
                     event.reply(reply);
                 }

@@ -14,10 +14,8 @@ import org.swisspush.redisques.util.QueueConfiguration;
 import org.swisspush.redisques.util.RedisquesConfiguration;
 import redis.clients.jedis.Jedis;
 
-import java.util.Arrays;
-import java.util.Optional;
+import java.util.Collections;
 
-import static java.util.Optional.of;
 import static org.swisspush.redisques.util.RedisquesAPI.*;
 
 /**
@@ -40,7 +38,7 @@ public class RedisQuesTest extends AbstractTestCase {
                 .processorAddress(PROCESSOR_ADDRESS)
                 .redisEncoding("ISO-8859-1")
                 .refreshPeriod(2)
-                .queueConfigurations(Arrays.asList(new QueueConfiguration()
+                .queueConfigurations(Collections.singletonList(new QueueConfiguration()
                         .withPattern("queue.*")
                         .withRetryIntervals(2, 7, 12, 17, 22, 27, 32, 37, 42, 47, 52))
                 )

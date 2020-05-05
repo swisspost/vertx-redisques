@@ -91,9 +91,7 @@ public class RedisQuesProcessorDelayedExecutionTest extends AbstractTestCase {
             processorCalled.set(true);
         });
 
-        eventBusSend(buildEnqueueOperation(queue, "hello"), reply -> {
-            context.assertEquals(OK, reply.result().body().getString(STATUS));
-        });
+        eventBusSend(buildEnqueueOperation(queue, "hello"), reply -> context.assertEquals(OK, reply.result().body().getString(STATUS)));
 
         // after at most 5 seconds, the processor-address consumer should have been called
         Awaitility.await().atMost(Duration.ofSeconds(5)).until(processorCalled::get, equalTo(true));
