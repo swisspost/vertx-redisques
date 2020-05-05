@@ -1,7 +1,6 @@
 package org.swisspush.redisques;
 
-import com.jayway.awaitility.Awaitility;
-import com.jayway.awaitility.Duration;
+import org.awaitility.Awaitility;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.DeploymentOptions;
 import io.vertx.core.Handler;
@@ -19,6 +18,7 @@ import redis.clients.jedis.Jedis;
 import javax.xml.bind.DatatypeConverter;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Random;
@@ -354,7 +354,7 @@ public class RedisQuesProcessorTest extends AbstractTestCase {
         });
 
         // after at most 5 seconds, the processor-address consumer should have been called
-        Awaitility.await().atMost(Duration.FIVE_SECONDS).until(processorCalled::get, equalTo(true));
+        Awaitility.await().atMost(Duration.ofSeconds(5)).until(processorCalled::get, equalTo(true));
 
         async.complete();
     }

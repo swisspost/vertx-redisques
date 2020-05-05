@@ -1,6 +1,6 @@
 package org.swisspush.redisques.handler;
 
-import com.jayway.restassured.RestAssured;
+import io.restassured.RestAssured;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.DeploymentOptions;
 import io.vertx.core.Handler;
@@ -16,13 +16,13 @@ import org.swisspush.redisques.RedisQues;
 import org.swisspush.redisques.util.RedisquesConfiguration;
 import redis.clients.jedis.Jedis;
 
-import static com.jayway.restassured.RestAssured.given;
-import static com.jayway.restassured.RestAssured.when;
+import static io.restassured.RestAssured.given;
+import static io.restassured.RestAssured.when;
 import static java.lang.System.currentTimeMillis;
 import static org.hamcrest.CoreMatchers.*;
 import static org.hamcrest.collection.IsEmptyCollection.empty;
-import static org.hamcrest.number.OrderingComparison.greaterThanOrEqualTo;
 import static org.hamcrest.collection.IsEmptyCollection.emptyCollectionOf;
+import static org.hamcrest.number.OrderingComparison.greaterThanOrEqualTo;
 import static org.swisspush.redisques.util.RedisquesAPI.*;
 
 /**
@@ -268,6 +268,25 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
     }
 
     @Test
+    public void getQueuesCountEncoded(TestContext context) {
+        Async async = context.async();
+        flushAll();
+        eventBusSend(buildEnqueueOperation("queue_1", "item1_1"), m1 -> {
+            eventBusSend(buildEnqueueOperation("queue_2", "item2_1"), m2 -> {
+                eventBusSend(buildEnqueueOperation("queue{3}", "item3_1"), m3 -> {
+                    when()
+                            .get("/queuing/queues/?count")
+                            .then().assertThat()
+                            .statusCode(200)
+                            .body("count", equalTo(3));
+                    async.complete();
+                });
+            });
+        });
+        async.awaitSuccess();
+    }
+
+    @Test
     public void getQueuesCountNoQueues(TestContext context) {
         Async async = context.async();
         flushAll();
@@ -329,13 +348,13 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         flushAll();
         eventBusSend(buildEnqueueOperation("queue_1", "item1_1"), m1 -> {
             eventBusSend(buildEnqueueOperation("queue_2", "item2_1"), m2 -> {
-                eventBusSend(buildEnqueueOperation("queue_3", "item3_1"), m3 -> {
+                eventBusSend(buildEnqueueOperation("queue_{with_special_chars}", "item3_1"), m3 -> {
                     when()
                             .get("/queuing/queues/")
                             .then().assertThat()
                             .statusCode(200)
                             .body(
-                                    "queues", hasItems("queue_1", "queue_2", "queue_3")
+                                    "queues", hasItems("queue_1", "queue_2", "queue_{with_special_chars}")
                             );
                     async.complete();
                 });
@@ -404,6 +423,28 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         context.assertEquals(2L, jedis.llen(getQueuesRedisKeyPrefix() + queueName));
 
         assertLockDoesNotExist(context, queueName);
+
+        async.complete();
+    }
+
+    @Test
+    public void enqueueValidBodyEncoded(TestContext context) {
+        Async async = context.async();
+        flushAll();
+        String queueName = "queue%7BEnqueue%7D";
+        String queueNameDecoded = "queue{Enqueue}";
+        assertKeyCount(context, getQueuesRedisKeyPrefix(), 0);
+        assertKeyCount(context, getQueuesRedisKeyPrefix() + queueName, 0);
+
+        given().urlEncodingEnabled(false).body(queueItemValid).when().put("/queuing/enqueue/" + queueName + "/").then().assertThat().statusCode(200);
+        assertKeyCount(context, getQueuesRedisKeyPrefix(), 1);
+        context.assertEquals(1L, jedis.llen(getQueuesRedisKeyPrefix() + queueNameDecoded));
+
+        given().urlEncodingEnabled(false).body(queueItemValid).when().put("/queuing/enqueue/" + queueName + "/").then().assertThat().statusCode(200);
+        assertKeyCount(context, getQueuesRedisKeyPrefix(), 1);
+        context.assertEquals(2L, jedis.llen(getQueuesRedisKeyPrefix() + queueNameDecoded));
+
+        assertLockDoesNotExist(context, queueNameDecoded);
 
         async.complete();
     }
@@ -511,6 +552,27 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
     }
 
     @Test
+    public void addQueueItemValidBodyEncoded(TestContext context) {
+        Async async = context.async();
+        flushAll();
+        String queueName = "queue%7BEnqueue%7D";
+        String queueNameDecoded = "queue{Enqueue}";
+        assertKeyCount(context, getQueuesRedisKeyPrefix(), 0);
+        assertKeyCount(context, getQueuesRedisKeyPrefix() + queueName, 0);
+        assertKeyCount(context, getQueuesRedisKeyPrefix() + queueNameDecoded, 0);
+
+        given().urlEncodingEnabled(false).body(queueItemValid).when().post("/queuing/queues/" + queueName + "/").then().assertThat().statusCode(200);
+        assertKeyCount(context, getQueuesRedisKeyPrefix(), 1);
+        context.assertEquals(1L, jedis.llen(getQueuesRedisKeyPrefix() + queueNameDecoded));
+
+        given().urlEncodingEnabled(false).body(queueItemValid).when().post("/queuing/queues/" + queueName + "/").then().assertThat().statusCode(200);
+        assertKeyCount(context, getQueuesRedisKeyPrefix(), 1);
+        context.assertEquals(2L, jedis.llen(getQueuesRedisKeyPrefix() + queueNameDecoded));
+
+        async.complete();
+    }
+
+    @Test
     public void addQueueItemInvalidBody(TestContext context) {
         Async async = context.async();
         flushAll();
@@ -569,6 +631,28 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
 
         String numericIndex = "0";
         when().get("/queuing/queues/" + queueName + "/" + numericIndex).then().assertThat()
+                .statusCode(200)
+                .header("content-type", "application/json")
+                .body(equalTo(new JsonObject(queueItemValid).toString()));
+
+        async.complete();
+    }
+
+    @Test
+    public void getSingleQueueItemEncoded(TestContext context) {
+        Async async = context.async();
+        flushAll();
+        String queueName = "queue%7BEnqueue%7D";
+        String queueNameDecoded = "queue{Enqueue}";
+        assertKeyCount(context, getQueuesRedisKeyPrefix(), 0);
+        assertKeyCount(context, getQueuesRedisKeyPrefix() + queueNameDecoded, 0);
+
+        given().urlEncodingEnabled(false).body(queueItemValid).when().post("/queuing/queues/" + queueName + "/").then().assertThat().statusCode(200);
+        assertKeyCount(context, getQueuesRedisKeyPrefix(), 1);
+        context.assertEquals(1L, jedis.llen(getQueuesRedisKeyPrefix() + queueNameDecoded));
+
+        String numericIndex = "0";
+        given().urlEncodingEnabled(false).when().get("/queuing/queues/" + queueName + "/" + numericIndex).then().assertThat()
                 .statusCode(200)
                 .header("content-type", "application/json")
                 .body(equalTo(new JsonObject(queueItemValid).toString()));
@@ -691,6 +775,36 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
     }
 
     @Test
+    public void replaceSingleQueueItemEncoded(TestContext context) {
+        Async async = context.async();
+        flushAll();
+        String queueName = "queue%7BEnqueue%7D";
+        String queueNameDecoded = "queue{Enqueue}";
+        assertKeyCount(context, getQueuesRedisKeyPrefix(), 0);
+        assertKeyCount(context, getQueuesRedisKeyPrefix() + queueNameDecoded, 0);
+
+        // lock queue
+        given().urlEncodingEnabled(false).body("{}").when().put("/queuing/locks/" + queueName).then().assertThat().statusCode(200);
+
+        given().urlEncodingEnabled(false).body(queueItemValid).when().post("/queuing/queues/" + queueName + "/").then().assertThat().statusCode(200);
+        assertKeyCount(context, getQueuesRedisKeyPrefix(), 1);
+        context.assertEquals(1L, jedis.llen(getQueuesRedisKeyPrefix() + queueNameDecoded));
+
+        given().urlEncodingEnabled(false).body(queueItemValid2).when().put("/queuing/queues/" + queueName + "/0").then().assertThat().statusCode(200);
+        assertKeyCount(context, getQueuesRedisKeyPrefix(), 1);
+        context.assertEquals(1L, jedis.llen(getQueuesRedisKeyPrefix() + queueNameDecoded));
+
+        // check queue item has not been replaced
+        given().urlEncodingEnabled(false).when().get("/queuing/queues/" + queueName + "/0").then().assertThat()
+                .statusCode(200)
+                .header("content-type", "application/json")
+                .body(equalTo(new JsonObject(queueItemValid2).toString()));
+
+        async.complete();
+    }
+
+
+    @Test
     public void deleteQueueItemWithNonNumericIndex(TestContext context) {
         Async async = context.async();
         flushAll();
@@ -798,6 +912,23 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
     }
 
     @Test
+    public void getQueueItemsCountEncoded(TestContext context) {
+        Async async = context.async();
+        flushAll();
+        eventBusSend(buildEnqueueOperation("queue{Enqueue}", "helloEnqueue"), message -> {
+            eventBusSend(buildEnqueueOperation("queue{Enqueue}", "helloEnqueue2"), message2 -> {
+                given().urlEncodingEnabled(false).when()
+                        .get("/queuing/queues/queue%7BEnqueue%7D?count")
+                        .then().assertThat()
+                        .statusCode(200)
+                        .body("count", equalTo(2));
+                async.complete();
+            });
+        });
+        async.awaitSuccess();
+    }
+
+    @Test
     public void getQueueItemsCountOfUnknownQueue(TestContext context) {
         Async async = context.async();
         flushAll();
@@ -819,6 +950,22 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
                         .then().assertThat()
                         .statusCode(200)
                         .body("queueEnqueue", hasItems("helloEnqueue", "helloEnqueue2"));
+                async.complete();
+            });
+        });
+        async.awaitSuccess();
+    }
+
+    @Test
+    public void listQueueItemsEncoded(TestContext context) {
+        Async async = context.async();
+        flushAll();
+        eventBusSend(buildEnqueueOperation("queue{Enqueue}", "helloEnqueue"), message -> {
+            eventBusSend(buildEnqueueOperation("queue{Enqueue}", "helloEnqueue2"), message2 -> {
+                given().urlEncodingEnabled(false).when().get("/queuing/queues/queue%7BEnqueue%7D")
+                        .then().assertThat()
+                        .statusCode(200)
+                        .body("'queue{Enqueue}'", hasItems("helloEnqueue", "helloEnqueue2"));
                 async.complete();
             });
         });
@@ -1173,7 +1320,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         flushAll();
         eventBusSend(buildPutLockOperation("queue1", "someuser"), m1 -> {
             eventBusSend(buildPutLockOperation("queue2", "someuser"), m2-> {
-                eventBusSend(buildPutLockOperation("queue3", "someuser"), m3-> {
+                eventBusSend(buildPutLockOperation("queue{3}", "someuser"), m3-> {
                     given()
                             .queryParam(BULK_DELETE)
                             .body("{\"locks\": [\"a\",\"b\",123456]}")
@@ -1184,7 +1331,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
 
                     assertLockExists(context, "queue1");
                     assertLockExists(context, "queue2");
-                    assertLockExists(context, "queue3");
+                    assertLockExists(context, "queue{3}");
 
                     given()
                             .queryParam(BULK_DELETE)
@@ -1196,7 +1343,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
 
                     assertLockExists(context, "queue1");
                     assertLockExists(context, "queue2");
-                    assertLockExists(context, "queue3");
+                    assertLockExists(context, "queue{3}");
 
                     given()
                             .queryParam(BULK_DELETE)
@@ -1208,7 +1355,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
 
                     assertLockExists(context, "queue1");
                     assertLockExists(context, "queue2");
-                    assertLockExists(context, "queue3");
+                    assertLockExists(context, "queue{3}");
 
                     given()
                             .queryParam(BULK_DELETE)
@@ -1220,11 +1367,11 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
 
                     assertLockExists(context, "queue1");
                     assertLockExists(context, "queue2");
-                    assertLockExists(context, "queue3");
+                    assertLockExists(context, "queue{3}");
 
                     given()
                             .queryParam(BULK_DELETE)
-                            .body("{\"locks\": [\"queue1\",\"queue3\"]}")
+                            .body("{\"locks\": [\"queue1\",\"queue{3}\"]}")
                             .when().post("/queuing/locks/")
                             .then().assertThat()
                             .statusCode(200)
@@ -1232,11 +1379,11 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
 
                     assertLockDoesNotExist(context, "queue1");
                     assertLockExists(context, "queue2");
-                    assertLockDoesNotExist(context, "queue3");
+                    assertLockDoesNotExist(context, "queue{3}");
 
                     given()
                             .queryParam(BULK_DELETE)
-                            .body("{\"locks\": [\"queue1\",\"queue3\"]}")
+                            .body("{\"locks\": [\"queue1\",\"queue{3}\"]}")
                             .when().post("/queuing/locks/")
                             .then().assertThat()
                             .statusCode(200)
@@ -1244,7 +1391,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
 
                     assertLockDoesNotExist(context, "queue1");
                     assertLockExists(context, "queue2");
-                    assertLockDoesNotExist(context, "queue3");
+                    assertLockDoesNotExist(context, "queue{3}");
 
                     given()
                             .queryParam(BULK_DELETE)
@@ -1256,7 +1403,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
 
                     assertLockDoesNotExist(context, "queue1");
                     assertLockDoesNotExist(context, "queue2");
-                    assertLockDoesNotExist(context, "queue3");
+                    assertLockDoesNotExist(context, "queue{3}");
 
                     async.complete();
                 });
@@ -1270,7 +1417,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         Async async = context.async();
         flushAll();
         eventBusSend(buildPutLockOperation("queue1", "someuser"), message -> {
-            eventBusSend(buildPutLockOperation("queue2", "someuser"), message2 -> {
+            eventBusSend(buildPutLockOperation("queue{2}", "someuser"), message2 -> {
                 when().delete("/queuing/locks/")
                         .then().assertThat()
                         .statusCode(200)
@@ -1320,6 +1467,27 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
     }
 
     @Test
+    public void getSingleLockEncoded(TestContext context) {
+        Async async = context.async();
+        flushAll();
+        Long ts = System.currentTimeMillis();
+        String lock = "myLock%7Bwith_curly_brackets%7D";
+        String lockDecoded = "myLock{with_curly_brackets}";
+        String requestedBy = "someuser_" + ts;
+        eventBusSend(buildPutLockOperation(lockDecoded, requestedBy), message -> {
+            given().urlEncodingEnabled(false).when().get("/queuing/locks/" + lock)
+                    .then().assertThat()
+                    .statusCode(200)
+                    .body(
+                            REQUESTED_BY, equalTo(requestedBy),
+                            TIMESTAMP, greaterThanOrEqualTo(ts)
+                    );
+            async.complete();
+        });
+        async.awaitSuccess();
+    }
+
+    @Test
     public void addLock(TestContext context) {
         Async async = context.async();
         flushAll();
@@ -1337,6 +1505,31 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
 
         assertLockExists(context, lock);
         assertLockContent(context, lock, requestedBy);
+
+        async.complete();
+    }
+
+    @Test
+    public void addLockEncoded(TestContext context) {
+        Async async = context.async();
+        flushAll();
+        long ts = currentTimeMillis();
+        String lock = "myLock%7Bwith_curly_brackets%7D";
+        String lockDecoded = "myLock{with_curly_brackets}";
+        String requestedBy = "someuser_" + ts;
+
+        assertLockDoesNotExist(context, lock);
+        assertLockDoesNotExist(context, lockDecoded);
+
+        given()
+                .urlEncodingEnabled(false)
+                .header("x-rp-usr", requestedBy)
+                .body("{}")
+                .when()
+                .put("/queuing/locks/" + lock).then().assertThat().statusCode(200);
+
+        assertLockExists(context, lockDecoded);
+        assertLockContent(context, lockDecoded, requestedBy);
 
         async.complete();
     }
@@ -1436,21 +1629,29 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         Long ts = System.currentTimeMillis();
 
         given()
-                .body("{\"locks\": [\"queue1\",\"queue2\",\"queue3\"]}")
+                .body("{\"locks\": [\"queue1\",\"queue2\",\"queue{3}\"]}")
                 .when().post("/queuing/locks/")
                 .then().assertThat()
                 .statusCode(200);
 
         assertLockExists(context, "queue1");
         assertLockExists(context, "queue2");
-        assertLockExists(context, "queue3");
+        assertLockExists(context, "queue{3}");
 
         when().get("/queuing/locks/")
                 .then().assertThat()
                 .statusCode(200)
-                .body(LOCKS, hasItems("queue1", "queue2", "queue3"));
+                .body(LOCKS, hasItems("queue1", "queue2", "queue{3}"));
 
         when().get("/queuing/locks/queue1")
+                .then().assertThat()
+                .statusCode(200)
+                .body(
+                        REQUESTED_BY, equalTo("Unknown"),
+                        TIMESTAMP, greaterThanOrEqualTo(ts)
+                );
+
+        given().urlEncodingEnabled(false).when().get("/queuing/locks/queue%7B3%7D")
                 .then().assertThat()
                 .statusCode(200)
                 .body(
@@ -1468,7 +1669,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
 
         assertLockExists(context, "queue1");
         assertLockExists(context, "queue2");
-        assertLockExists(context, "queue3");
+        assertLockExists(context, "queue{3}");
         assertLockExists(context, "queue4");
         assertLockExists(context, "queue5");
         assertLockExists(context, "queue6");
@@ -1476,7 +1677,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         when().get("/queuing/locks/")
                 .then().assertThat()
                 .statusCode(200)
-                .body(LOCKS, hasItems("queue1", "queue2", "queue3", "queue4", "queue5", "queue6"));
+                .body(LOCKS, hasItems("queue1", "queue2", "queue{3}", "queue4", "queue5", "queue6"));
 
         when().get("/queuing/locks/queue5")
                 .then().assertThat()
@@ -1533,6 +1734,29 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
                     .statusCode(200);
 
             assertLockDoesNotExist(context, lock);
+
+            async.complete();
+        });
+        async.awaitSuccess();
+    }
+
+    @Test
+    public void deleteSingleLockEncoded(TestContext context) {
+        Async async = context.async();
+        flushAll();
+        long ts = System.currentTimeMillis();
+        String lock = "myLock%7Bwith_curly_brackets%7D";
+        String lockDecoded = "myLock{with_curly_brackets}";
+        String requestedBy = "someuser_" + ts;
+        eventBusSend(buildPutLockOperation(lockDecoded, requestedBy), message -> {
+
+            assertLockExists(context, lockDecoded);
+
+            given().urlEncodingEnabled(false).when().delete("/queuing/locks/" + lock)
+                    .then().assertThat()
+                    .statusCode(200);
+
+            assertLockDoesNotExist(context, lockDecoded);
 
             async.complete();
         });

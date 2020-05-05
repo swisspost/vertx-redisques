@@ -1,7 +1,6 @@
 package org.swisspush.redisques;
 
-import com.jayway.awaitility.Awaitility;
-import com.jayway.awaitility.Duration;
+import org.awaitility.Awaitility;
 import io.vertx.core.DeploymentOptions;
 import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.MessageConsumer;
@@ -16,6 +15,7 @@ import org.junit.Test;
 import org.swisspush.redisques.util.RedisquesConfiguration;
 import redis.clients.jedis.Jedis;
 
+import java.time.Duration;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.hamcrest.CoreMatchers.equalTo;
@@ -96,7 +96,7 @@ public class RedisQuesProcessorDelayedExecutionTest extends AbstractTestCase {
         });
 
         // after at most 5 seconds, the processor-address consumer should have been called
-        Awaitility.await().atMost(Duration.FIVE_SECONDS).until(processorCalled::get, equalTo(true));
+        Awaitility.await().atMost(Duration.ofSeconds(5)).until(processorCalled::get, equalTo(true));
 
         async.complete();
     }
