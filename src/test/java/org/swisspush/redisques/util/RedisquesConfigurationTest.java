@@ -8,6 +8,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
 import static org.swisspush.redisques.util.RedisquesConfiguration.*;
@@ -21,7 +22,7 @@ import static org.swisspush.redisques.util.RedisquesConfiguration.*;
 public class RedisquesConfigurationTest {
 
     @Test
-    public void testDefaultConfiguration(TestContext testContext){
+    public void testDefaultConfiguration(TestContext testContext) {
         RedisquesConfiguration config = new RedisquesConfiguration();
         testContext.assertEquals(config.getAddress(), "redisques");
         testContext.assertEquals(config.getConfigurationUpdatedAddress(), "redisques-configuration-updated");
@@ -42,8 +43,8 @@ public class RedisquesConfigurationTest {
     }
 
     @Test
-    public void testOverrideConfiguration(TestContext testContext){
-        
+    public void testOverrideConfiguration(TestContext testContext) {
+
         RedisquesConfiguration config = with()
                 .address("new_address")
                 .configurationUpdatedAddress("config_updated")
@@ -56,7 +57,7 @@ public class RedisquesConfigurationTest {
                 .httpRequestHandlerPrefix("/queuing/test")
                 .httpRequestHandlerPort(7171)
                 .httpRequestHandlerUserHeader("x-custom-user-header")
-                .queueConfigurations(Arrays.asList(
+                .queueConfigurations(Collections.singletonList(
                         new QueueConfiguration().withPattern("vehicle-.*").withRetryIntervals(10, 20, 30, 60)
                 ))
                 .build();
@@ -88,7 +89,7 @@ public class RedisquesConfigurationTest {
     }
 
     @Test
-    public void testGetDefaultAsJsonObject(TestContext testContext){
+    public void testGetDefaultAsJsonObject(TestContext testContext) {
         RedisquesConfiguration config = new RedisquesConfiguration();
         JsonObject json = config.asJsonObject();
 
@@ -111,7 +112,7 @@ public class RedisquesConfigurationTest {
     }
 
     @Test
-    public void testGetOverriddenAsJsonObject(TestContext testContext){
+    public void testGetOverriddenAsJsonObject(TestContext testContext) {
 
         RedisquesConfiguration config = with()
                 .address("new_address")
@@ -123,7 +124,7 @@ public class RedisquesConfigurationTest {
                 .processorDelayMax(50)
                 .httpRequestHandlerPort(7171)
                 .httpRequestHandlerUserHeader("x-custom-user-header")
-                .queueConfigurations(Arrays.asList(
+                .queueConfigurations(Collections.singletonList(
                         new QueueConfiguration().withPattern("vehicle-.*").withRetryIntervals(10, 20, 30, 60)
                 ))
                 .build();
@@ -159,8 +160,8 @@ public class RedisquesConfigurationTest {
     }
 
     @Test
-    public void testGetDefaultFromJsonObject(TestContext testContext){
-        JsonObject json  = new RedisquesConfiguration().asJsonObject();
+    public void testGetDefaultFromJsonObject(TestContext testContext) {
+        JsonObject json = new RedisquesConfiguration().asJsonObject();
         RedisquesConfiguration config = fromJsonObject(json);
 
         testContext.assertEquals(config.getAddress(), "redisques");
@@ -182,7 +183,7 @@ public class RedisquesConfigurationTest {
     }
 
     @Test
-    public void testGetOverriddenFromJsonObject(TestContext testContext){
+    public void testGetOverriddenFromJsonObject(TestContext testContext) {
 
         JsonObject json = new JsonObject();
         json.put(PROP_ADDRESS, "new_address");
@@ -200,8 +201,11 @@ public class RedisquesConfigurationTest {
         json.put(PROP_HTTP_REQUEST_HANDLER_PREFIX, "/queuing/test123");
         json.put(PROP_HTTP_REQUEST_HANDLER_PORT, 7171);
         json.put(PROP_HTTP_REQUEST_HANDLER_USER_HEADER, "x-custom-user-header");
-        json.put(PROP_QUEUE_CONFIGURATIONS, new JsonArray(Arrays.asList(new QueueConfiguration().withPattern("vehicle-.*").withRetryIntervals(10, 20, 30, 60)
-                .asJsonObject())));
+        json.put(PROP_QUEUE_CONFIGURATIONS, new JsonArray(Collections.singletonList(
+                new QueueConfiguration().withPattern("vehicle-.*")
+                        .withRetryIntervals(10, 20, 30, 60)
+                        .asJsonObject()
+        )));
 
         RedisquesConfiguration config = fromJsonObject(json);
         testContext.assertEquals(config.getAddress(), "new_address");
@@ -228,7 +232,7 @@ public class RedisquesConfigurationTest {
     }
 
     @Test
-    public void testProcessorDelay(TestContext testContext){
+    public void testProcessorDelay(TestContext testContext) {
         RedisquesConfiguration config = with().processorDelayMax(5).build();
         testContext.assertEquals(5L, config.getProcessorDelayMax());
 
@@ -246,7 +250,7 @@ public class RedisquesConfigurationTest {
     }
 
     @Test
-    public void testCleanupInterval(TestContext testContext){
+    public void testCleanupInterval(TestContext testContext) {
         int additional = 500;
         RedisquesConfiguration config = with().checkInterval(5).build();
         testContext.assertEquals(5, config.getCheckInterval());
@@ -287,7 +291,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(add500ms(2500), config.getCheckIntervalTimerMs());
     }
 
-    private int add500ms(int interval){
+    private int add500ms(int interval) {
         return interval + 500;
     }
 }
