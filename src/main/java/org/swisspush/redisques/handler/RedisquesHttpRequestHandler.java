@@ -642,12 +642,19 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         final HttpServerRequest request = ctx.request();
         boolean unlock = evaluateUrlParameterToBeEmptyOrTrue(UNLOCK_PARAM, request);
         final String queue = lastPart(request.path());
-        eventBus.send(redisquesAddress, buildDeleteAllQueueItemsOperation(queue, unlock), reply -> {
+        eventBus.send(redisquesAddress, buildDeleteAllQueueItemsOperation(queue, unlock), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
             if (reply.failed()) {
                 log.warn("Received failed message for deleteAllQueueItemsOperation", reply.cause());
-                // IMO we should respond with 'HTTP 5xx'. But we don't, to keep backward compatibility.
+                respondWith(StatusCode.INTERNAL_SERVER_ERROR, "Error deleting all queue items of queue " + queue, request);
+                return;
             }
-            ctx.response().end();
+
+            final long deletedQueueCount = reply.result().body().getLong(VALUE);
+            if(deletedQueueCount == 0){
+                respondWith(StatusCode.NOT_FOUND, request);
+            } else {
+                respondWith(StatusCode.OK, request);
+            }
         });
     }
 

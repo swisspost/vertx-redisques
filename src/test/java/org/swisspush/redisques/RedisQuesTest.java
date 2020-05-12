@@ -381,6 +381,20 @@ public class RedisQuesTest extends AbstractTestCase {
     }
 
     @Test
+    public void deleteAllQueueItemsNoItemsFound(TestContext context) {
+        Async async = context.async();
+        flushAll();
+        assertKeyCount(context, getQueuesRedisKeyPrefix(), 0);
+        final String queue = "queue1";
+        eventBusSend(buildDeleteAllQueueItemsOperation(queue), message1 -> {
+            context.assertEquals(OK, message1.result().body().getString(STATUS));
+            context.assertEquals(0, message1.result().body().getInteger(VALUE));
+            assertKeyCount(context, getQueuesRedisKeyPrefix(), 0);
+            async.complete();
+        });
+    }
+
+    @Test
     public void deleteAllQueueItems(TestContext context) {
         Async async = context.async();
         flushAll();
@@ -391,6 +405,7 @@ public class RedisQuesTest extends AbstractTestCase {
             assertKeyCount(context, getQueuesRedisKeyPrefix(), 1);
             eventBusSend(buildDeleteAllQueueItemsOperation(queue), message1 -> {
                 context.assertEquals(OK, message1.result().body().getString(STATUS));
+                context.assertEquals(1, message1.result().body().getInteger(VALUE));
                 assertKeyCount(context, getQueuesRedisKeyPrefix(), 0);
                 async.complete();
             });
@@ -410,6 +425,7 @@ public class RedisQuesTest extends AbstractTestCase {
             // use legacy operation without any 'unlock' configuration
             eventBusSend(buildOperation(QueueOperation.deleteAllQueueItems, new JsonObject().put(QUEUENAME, queue)), message1 -> {
                 context.assertEquals(OK, message1.result().body().getString(STATUS));
+                context.assertEquals(1, message1.result().body().getInteger(VALUE));
                 assertKeyCount(context, getQueuesRedisKeyPrefix(), 0);
                 async.complete();
             });
@@ -430,6 +446,7 @@ public class RedisQuesTest extends AbstractTestCase {
                 assertKeyCount(context, getQueuesRedisKeyPrefix(), 1);
                 eventBusSend(buildDeleteAllQueueItemsOperation(queue), message1 -> {
                     context.assertEquals(OK, message1.result().body().getString(STATUS));
+                    context.assertEquals(1, message1.result().body().getInteger(VALUE));
                     assertKeyCount(context, getQueuesRedisKeyPrefix(), 0);
                     assertLockExists(context, queue); // check that lock still exists
                     async.complete();
@@ -452,6 +469,7 @@ public class RedisQuesTest extends AbstractTestCase {
                 assertKeyCount(context, getQueuesRedisKeyPrefix(), 1);
                 eventBusSend(buildDeleteAllQueueItemsOperation(queue, false), message1 -> {
                     context.assertEquals(OK, message1.result().body().getString(STATUS));
+                    context.assertEquals(1, message1.result().body().getInteger(VALUE));
                     assertKeyCount(context, getQueuesRedisKeyPrefix(), 0);
                     assertLockExists(context, queue); // check that lock still exists
                     async.complete();
@@ -474,6 +492,7 @@ public class RedisQuesTest extends AbstractTestCase {
                 assertKeyCount(context, getQueuesRedisKeyPrefix(), 1);
                 eventBusSend(buildDeleteAllQueueItemsOperation(queue, true), message1 -> {
                     context.assertEquals(OK, message1.result().body().getString(STATUS));
+                    context.assertEquals(1, message1.result().body().getInteger(VALUE));
                     assertKeyCount(context, getQueuesRedisKeyPrefix(), 0);
                     assertLockDoesNotExist(context, queue); // check that lock doesn't exist anymore
                     async.complete();

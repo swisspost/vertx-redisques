@@ -1024,7 +1024,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
             // delete all queue items again
             when().delete("/queuing/queues/queueEnqueue")
                     .then().assertThat()
-                    .statusCode(200);
+                    .statusCode(404);
             assertKeyCount(context, getQueuesRedisKeyPrefix(), 0);
 
             async.complete();
@@ -1048,7 +1048,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
             // delete all queue items again
             when().delete("/queuing/queues/queueEnqueue")
                     .then().assertThat()
-                    .statusCode(200);
+                    .statusCode(404);
             assertKeyCount(context, getQueuesRedisKeyPrefix(), 0);
 
             async.complete();
@@ -1077,7 +1077,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
                 // delete all queue items again
                 when().delete("/queuing/queues/queueEnqueue")
                         .then().assertThat()
-                        .statusCode(200);
+                        .statusCode(404);
                 assertKeyCount(context, getQueuesRedisKeyPrefix(), 0);
                 assertLockExists(context, "queueEnqueue");
 
@@ -1108,7 +1108,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
                 // delete all queue items again
                 when().delete("/queuing/queues/queueEnqueue")
                         .then().assertThat()
-                        .statusCode(200);
+                        .statusCode(404);
                 assertKeyCount(context, getQueuesRedisKeyPrefix(), 0);
                 assertLockDoesNotExist(context, "queueEnqueue");
 
@@ -1124,7 +1124,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         flushAll();
         when().delete("/queuing/queues/notExistingQueue_" + System.currentTimeMillis())
                 .then().assertThat()
-                .statusCode(200);
+                .statusCode(404);
         async.complete();
     }
 
