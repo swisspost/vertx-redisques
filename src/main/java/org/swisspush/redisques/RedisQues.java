@@ -507,10 +507,10 @@ public class RedisQues extends AbstractVerticle {
                         log.warn("Failed to unlock queue '{}'. Will continue anyway", queue, unlockReply.cause());
                         // IMO we should 'fail()' here. But we don't, to keep backward compatibility.
                     }
-                    replyResultGreaterThanZero(event, deleteReply);
+                    handleDeleteQueueReply(event, deleteReply);
                 });
             } else {
-                replyResultGreaterThanZero(event, deleteReply);
+                handleDeleteQueueReply(event, deleteReply);
             }
         });
     }
@@ -586,8 +586,8 @@ public class RedisQues extends AbstractVerticle {
         });
     }
 
-    private void replyResultGreaterThanZero(Message<JsonObject> event, AsyncResult<Long> reply) {
-        if (reply.succeeded() && reply.result() != null && reply.result() > 0) {
+    private void handleDeleteQueueReply(Message<JsonObject> event, AsyncResult<Long> reply) {
+        if (reply.succeeded()) {
             event.reply(createOkReply().put(VALUE, reply.result()));
         } else {
             log.error("Failed to replyResultGreaterThanZero", reply.cause());
