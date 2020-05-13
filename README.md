@@ -422,7 +422,8 @@ Request Data
 Response Data
 ```
 {
-    "status": "ok" / "error"
+    "status": "ok" / "error",
+    "value": <long 1 when the queue was deleted, long 0 when no queue was found>
 }
 ```
 
@@ -752,6 +753,8 @@ The result will be a json object with the count of queue items like the example 
 ### Delete all queue items
 To delete all queue items of a single queue use
 > DELETE /queuing/queues/myQueue
+
+The result will be a statusCode _200 OK_ when the queue could be successfully deleted or a _404 Not Found_ when the queue did not exist. Any error will result in a statusCode _500 Internal Server Error_. 
 
 Available url parameters are:
 * _unlock=true_: Unlock the queue after deleting all queue items
