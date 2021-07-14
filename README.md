@@ -17,7 +17,7 @@ A highly scalable redis-persistent queuing system for vert.x.
   * [Other](http://redis.io/download)
 
 ### Build
-You need Java 8 and Maven.
+You need **Java 11** and Maven.
 ```
 cd vertx-redisques
 mvn clean install
@@ -902,7 +902,9 @@ The result will be a json object containing the number of deleted locks like the
 
 ## Dependencies
 
-Redisques versions greater than 01.00.17 depend on Vert.x v3.2.0 and therefore require Java 8.
+- Starting from version 2.6.x redisques requires **Java 11**.
+
+- Redisques versions greater than 01.00.17 depend on Vert.x v3.2.0 and therefore require Java 8.
 
 
 [![Bitdeli Badge](https://d2weczhvl823v0.cloudfront.net/lbovet/vertx-redisques/trend.png)](https://bitdeli.com/free "Bitdeli Badge")
