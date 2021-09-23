@@ -32,6 +32,7 @@ public class RedisquesConfiguration {
     private Integer httpRequestHandlerPort;
     private String httpRequestHandlerUserHeader;
     private List<QueueConfiguration> queueConfigurations;
+    private boolean enableQueueNameDecoding;
 
     private static final int DEFAULT_CHECK_INTERVAL = 60; // 60s
     private static final long DEFAULT_PROCESSOR_DELAY_MAX = 0;
@@ -53,6 +54,7 @@ public class RedisquesConfiguration {
     public static final String PROP_HTTP_REQUEST_HANDLER_PORT = "httpRequestHandlerPort";
     public static final String PROP_HTTP_REQUEST_HANDLER_USER_HEADER = "httpRequestHandlerUserHeader";
     public static final String PROP_QUEUE_CONFIGURATIONS = "queueConfigurations";
+    public static final String PROP_ENABLE_QUEUE_NAME_DECODING = "enableQueueNameDecoding";
 
     /**
      * Constructor with default values. Use the {@link RedisquesConfigurationBuilder} class
@@ -66,7 +68,8 @@ public class RedisquesConfiguration {
                                   String redisHost, int redisPort, String redisAuth, String redisEncoding, int checkInterval,
                                   int processorTimeout, long processorDelayMax, boolean httpRequestHandlerEnabled,
                                   String httpRequestHandlerPrefix, Integer httpRequestHandlerPort,
-                                  String httpRequestHandlerUserHeader, List<QueueConfiguration> queueConfigurations) {
+                                  String httpRequestHandlerUserHeader, List<QueueConfiguration> queueConfigurations,
+                                  boolean enableQueueNameDecoding) {
         this.address = address;
         this.configurationUpdatedAddress = configurationUpdatedAddress;
         this.redisPrefix = redisPrefix;
@@ -100,6 +103,7 @@ public class RedisquesConfiguration {
         this.httpRequestHandlerPort = httpRequestHandlerPort;
         this.httpRequestHandlerUserHeader = httpRequestHandlerUserHeader;
         this.queueConfigurations = queueConfigurations;
+        this.enableQueueNameDecoding = enableQueueNameDecoding;
     }
 
     public static RedisquesConfigurationBuilder with(){
@@ -110,7 +114,7 @@ public class RedisquesConfiguration {
         this(builder.address, builder.configurationUpdatedAddress, builder.redisPrefix, builder.processorAddress, builder.refreshPeriod,
                 builder.redisHost, builder.redisPort, builder.redisAuth, builder.redisEncoding, builder.checkInterval,
                 builder.processorTimeout, builder.processorDelayMax, builder.httpRequestHandlerEnabled, builder.httpRequestHandlerPrefix,
-                builder.httpRequestHandlerPort, builder.httpRequestHandlerUserHeader, builder.queueConfigurations);
+                builder.httpRequestHandlerPort, builder.httpRequestHandlerUserHeader, builder.queueConfigurations, builder.enableQueueNameDecoding);
     }
 
     public JsonObject asJsonObject(){
@@ -132,6 +136,7 @@ public class RedisquesConfiguration {
         obj.put(PROP_HTTP_REQUEST_HANDLER_PORT, getHttpRequestHandlerPort());
         obj.put(PROP_HTTP_REQUEST_HANDLER_USER_HEADER, getHttpRequestHandlerUserHeader());
         obj.put(PROP_QUEUE_CONFIGURATIONS, new JsonArray(getQueueConfigurations().stream().map(QueueConfiguration::asJsonObject).collect(Collectors.toList())));
+        obj.put(PROP_ENABLE_QUEUE_NAME_DECODING, getEnableQueueNameDecoding());
             
         return obj;
     }
@@ -192,6 +197,9 @@ public class RedisquesConfiguration {
                     .map(jsonObject -> QueueConfiguration.fromJsonObject((JsonObject)jsonObject))
                     .collect(Collectors.toList()));
         }
+        if(json.containsKey(PROP_ENABLE_QUEUE_NAME_DECODING)) {
+            builder.enableQueueNameDecoding(json.getBoolean(PROP_ENABLE_QUEUE_NAME_DECODING));
+        }
         return builder.build();
     }
 
@@ -236,6 +244,10 @@ public class RedisquesConfiguration {
     public String getHttpRequestHandlerUserHeader() { return httpRequestHandlerUserHeader; }
     
     public List<QueueConfiguration> getQueueConfigurations() { return queueConfigurations; }
+
+    public boolean getEnableQueueNameDecoding() {
+        return enableQueueNameDecoding;
+    }
 
     /**
      * Gets the value for the vertx periodic timer.
@@ -284,6 +296,7 @@ public class RedisquesConfiguration {
         private Integer httpRequestHandlerPort;
         private String httpRequestHandlerUserHeader;
         private List<QueueConfiguration> queueConfigurations;
+        private boolean enableQueueNameDecoding;
 
         public RedisquesConfigurationBuilder(){
             this.address = "redisques";
@@ -302,6 +315,7 @@ public class RedisquesConfiguration {
             this.httpRequestHandlerPort = 7070;
             this.httpRequestHandlerUserHeader = "x-rp-usr";
             this.queueConfigurations = new LinkedList<>();
+            this.enableQueueNameDecoding = true;
         }
 
         public RedisquesConfigurationBuilder address(String address){
@@ -386,6 +400,11 @@ public class RedisquesConfiguration {
 
         public RedisquesConfigurationBuilder queueConfigurations(List<QueueConfiguration> queueConfigurations){
             this.queueConfigurations = queueConfigurations;
+            return this;
+        }
+
+        public RedisquesConfigurationBuilder enableQueueNameDecoding(boolean enableQueueNameDecoding) {
+            this.enableQueueNameDecoding = enableQueueNameDecoding;
             return this;
         }
 
