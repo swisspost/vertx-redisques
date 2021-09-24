@@ -51,6 +51,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
 
     private final String redisquesAddress;
     private final String userHeader;
+    private final boolean enableQueueNameDecoding;
 
     public static void init(Vertx vertx, RedisquesConfiguration modConfig) {
         log.info("Enable http request handler: " + modConfig.getHttpRequestHandlerEnabled());
@@ -77,6 +78,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         this.eventBus = vertx.eventBus();
         this.redisquesAddress = modConfig.getAddress();
         this.userHeader = modConfig.getHttpRequestHandlerUserHeader();
+        this.enableQueueNameDecoding = modConfig.getEnableQueueNameDecoding();
 
         final String prefix = modConfig.getHttpRequestHandlerPrefix();
 
@@ -292,12 +294,17 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     }
 
     private Optional<String> decodedQueueNameOrRespondWithBadRequest(RoutingContext ctx, String encodedQueueName) {
-        try {
-            return Optional.of(java.net.URLDecoder.decode(encodedQueueName, StandardCharsets.UTF_8.name()));
-        } catch (UnsupportedEncodingException ex) {
-            // not going to happen - value came from JDK's own StandardCharsets
-            respondWith(StatusCode.BAD_REQUEST, ex.getMessage(), ctx.request());
-            return Optional.empty();
+        if (enableQueueNameDecoding) {
+            String decodedQueueName;
+            try {
+                decodedQueueName = java.net.URLDecoder.decode(encodedQueueName, StandardCharsets.UTF_8);
+            } catch (IllegalArgumentException ex) {
+                respondWith(StatusCode.BAD_REQUEST, ex.getMessage(), ctx.request());
+                return Optional.empty();
+            }
+            return Optional.of(decodedQueueName);
+        } else {
+            return Optional.of(encodedQueueName);
         }
     }
 
