@@ -19,6 +19,7 @@ import org.swisspush.redisques.util.RedisquesConfiguration;
 import org.swisspush.redisques.util.Result;
 import org.swisspush.redisques.util.StatusCode;
 
+import java.io.UnsupportedEncodingException;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -206,7 +207,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     }
 
     private void enqueueOrLockedEnqueue(RoutingContext ctx) {
-        decodedQueueNameOrRespondWithBadRequest(lastPart(ctx.request().path())).ifPresent(
+        decodedQueueNameOrRespondWithBadRequest(ctx, lastPart(ctx.request().path())).ifPresent(
                 queue -> ctx.request().bodyHandler(buffer -> {
                     try {
                         String strBuffer = encodePayload(buffer.toString());
@@ -260,7 +261,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     }
 
     private void addLock(RoutingContext ctx) {
-        decodedQueueNameOrRespondWithBadRequest(lastPart(ctx.request().path())).ifPresent(
+        decodedQueueNameOrRespondWithBadRequest(ctx, lastPart(ctx.request().path())).ifPresent(
                 queue -> eventBus.send(redisquesAddress, buildPutLockOperation(queue, extractUser(ctx.request())),
                         (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
                             if (reply.failed()) {
@@ -274,7 +275,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     }
 
     private void getSingleLock(RoutingContext ctx) {
-        decodedQueueNameOrRespondWithBadRequest(lastPart(ctx.request().path())).ifPresent(
+        decodedQueueNameOrRespondWithBadRequest(ctx, lastPart(ctx.request().path())).ifPresent(
                 queue -> eventBus.send(redisquesAddress, buildGetLockOperation(queue), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
                     final HttpServerResponse response = ctx.response();
                     if (reply.failed()) {
@@ -292,16 +293,23 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
                 }));
     }
 
-    private Optional<String> decodedQueueNameOrRespondWithBadRequest(String encodedQueueName) {
+    private Optional<String> decodedQueueNameOrRespondWithBadRequest(RoutingContext ctx, String encodedQueueName) {
         if (enableQueueNameDecoding) {
-            return Optional.of(java.net.URLDecoder.decode(encodedQueueName, StandardCharsets.UTF_8));
+            String decodedQueueName;
+            try {
+                decodedQueueName = java.net.URLDecoder.decode(encodedQueueName, StandardCharsets.UTF_8);
+            } catch (IllegalArgumentException ex) {
+                respondWith(StatusCode.BAD_REQUEST, ex.getMessage(), ctx.request());
+                return Optional.empty();
+            }
+            return Optional.of(decodedQueueName);
         } else {
             return Optional.of(encodedQueueName);
         }
     }
 
     private void deleteSingleLock(RoutingContext ctx) {
-        decodedQueueNameOrRespondWithBadRequest(lastPart(ctx.request().path())).ifPresent(
+        decodedQueueNameOrRespondWithBadRequest(ctx, lastPart(ctx.request().path())).ifPresent(
                 queue -> eventBus.send(redisquesAddress, buildDeleteLockOperation(queue),
                         (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
                             if (reply.failed()) {
@@ -384,7 +392,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     }
 
     private void getQueueItemsCount(RoutingContext ctx) {
-        decodedQueueNameOrRespondWithBadRequest(lastPart(ctx.request().path())).ifPresent(queue ->
+        decodedQueueNameOrRespondWithBadRequest(ctx, lastPart(ctx.request().path())).ifPresent(queue ->
                 eventBus.send(redisquesAddress, buildGetQueueItemsCountOperation(queue), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
                     if (reply.failed()) {
                         log.warn("Failed to getQueueItemsCount", reply.cause());
@@ -521,7 +529,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     }
 
     private void listQueueItems(RoutingContext ctx) {
-        decodedQueueNameOrRespondWithBadRequest(lastPart(ctx.request().path())).ifPresent(queue -> {
+        decodedQueueNameOrRespondWithBadRequest(ctx, lastPart(ctx.request().path())).ifPresent(queue -> {
             String limitParam = null;
             if (ctx.request() != null && ctx.request().params().contains(LIMIT)) {
                 limitParam = ctx.request().params().get(LIMIT);
@@ -551,7 +559,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     }
 
     private void addQueueItem(RoutingContext ctx) {
-        decodedQueueNameOrRespondWithBadRequest(part(ctx.request().path(), 1)).ifPresent(
+        decodedQueueNameOrRespondWithBadRequest(ctx, part(ctx.request().path(), 1)).ifPresent(
                 queue -> ctx.request().bodyHandler(buffer -> {
                     try {
                         String strBuffer = encodePayload(buffer.toString());
@@ -572,7 +580,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
 
     private void getSingleQueueItem(RoutingContext ctx) {
         final String requestPath = ctx.request().path();
-        decodedQueueNameOrRespondWithBadRequest(lastPart(requestPath.substring(0, requestPath.length() - 2))).ifPresent(
+        decodedQueueNameOrRespondWithBadRequest(ctx, lastPart(requestPath.substring(0, requestPath.length() - 2))).ifPresent(
                 queue -> {
                     final int index = Integer.parseInt(lastPart(requestPath));
                     eventBus.send(redisquesAddress, buildGetQueueItemOperation(queue, index), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
@@ -596,7 +604,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
 
     private void replaceSingleQueueItem(RoutingContext ctx) {
         final HttpServerRequest request = ctx.request();
-        decodedQueueNameOrRespondWithBadRequest(part(request.path(), 2)).ifPresent(
+        decodedQueueNameOrRespondWithBadRequest(ctx, part(request.path(), 2)).ifPresent(
                 queue -> checkLocked(queue, request, voidEvent -> {
                     final int index = Integer.parseInt(lastPart(request.path()));
                     request.bodyHandler(buffer -> {
