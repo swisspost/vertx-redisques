@@ -6,13 +6,14 @@ import static org.swisspush.redisques.util.RedisquesAPI.*;
 import io.vertx.core.Handler;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonObject;
+import io.vertx.redis.client.Response;
 
 /**
  * Class GetQueueItemsHandler.
  *
  * @author baldim, https://github.com/mcweba [Marc-Andre Weber]
  */
-public class GetQueueItemsHandler implements Handler<AsyncResult<JsonArray>> {
+public class GetQueueItemsHandler implements Handler<AsyncResult<Response>> {
     private Message<JsonObject> event;
     private Long queueItemCount;
 
@@ -22,9 +23,9 @@ public class GetQueueItemsHandler implements Handler<AsyncResult<JsonArray>> {
     }
 
     @Override
-    public void handle(AsyncResult<JsonArray> reply) {
+    public void handle(AsyncResult<Response> reply) {
         if(reply.succeeded()){
-            JsonArray resultArray = reply.result();
+            Response resultArray = reply.result();
             JsonArray countInfo = new JsonArray();
             if (resultArray != null) {
                 countInfo.add(resultArray.size());

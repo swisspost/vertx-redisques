@@ -4,6 +4,7 @@ import io.vertx.core.AsyncResult;
 import io.vertx.core.Handler;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonObject;
+import io.vertx.redis.client.Response;
 
 import static org.swisspush.redisques.util.RedisquesAPI.*;
 
@@ -12,7 +13,7 @@ import static org.swisspush.redisques.util.RedisquesAPI.*;
  *
  * @author baldim
  */
-public class GetLockHandler implements Handler<AsyncResult<String>> {
+public class GetLockHandler implements Handler<AsyncResult<Response>> {
     private Message<JsonObject> event;
 
     public GetLockHandler(Message<JsonObject> event) {
@@ -20,10 +21,10 @@ public class GetLockHandler implements Handler<AsyncResult<String>> {
     }
 
     @Override
-    public void handle(AsyncResult<String> reply) {
+    public void handle(AsyncResult<Response> reply) {
         if (reply.succeeded()) {
             if (reply.result() != null) {
-                event.reply(new JsonObject().put(STATUS, OK).put(VALUE, reply.result()));
+                event.reply(new JsonObject().put(STATUS, OK).put(VALUE, reply.result().toString()));
             } else {
                 event.reply(new JsonObject().put(STATUS, NO_SUCH_LOCK));
             }

@@ -211,7 +211,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
                 queue -> ctx.request().bodyHandler(buffer -> {
                     try {
                         String strBuffer = encodePayload(buffer.toString());
-                        eventBus.send(redisquesAddress, buildEnqueueOrLockedEnqueueOperation(queue, strBuffer, ctx.request()),
+                        eventBus.request(redisquesAddress, buildEnqueueOrLockedEnqueueOperation(queue, strBuffer, ctx.request()),
                                 (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
                                     if (reply.failed()) {
                                         log.warn("Received failed message for enqueueOrLockedEnqueue. But will continue anyway", reply.cause());
@@ -237,7 +237,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
 
     private void getAllLocks(RoutingContext ctx) {
         String filter = ctx.request().params().get(FILTER);
-        eventBus.send(redisquesAddress, buildGetAllLocksOperation(filter), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
+        eventBus.request(redisquesAddress, buildGetAllLocksOperation(filter), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
             if (reply.failed()) {
                 log.warn("Received failed message for getAllLocksOperation. Lets run into NullPointerException now", reply.cause());
                 // IMO we should respond with 'HTTP 5xx'. But we don't, to keep backward compatibility.
@@ -262,7 +262,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
 
     private void addLock(RoutingContext ctx) {
         decodedQueueNameOrRespondWithBadRequest(ctx, lastPart(ctx.request().path())).ifPresent(
-                queue -> eventBus.send(redisquesAddress, buildPutLockOperation(queue, extractUser(ctx.request())),
+                queue -> eventBus.request(redisquesAddress, buildPutLockOperation(queue, extractUser(ctx.request())),
                         (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
                             if (reply.failed()) {
                                 log.warn("Received failed message for addLockOperation. Lets run into NullPointerException now", reply.cause());
@@ -276,7 +276,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
 
     private void getSingleLock(RoutingContext ctx) {
         decodedQueueNameOrRespondWithBadRequest(ctx, lastPart(ctx.request().path())).ifPresent(
-                queue -> eventBus.send(redisquesAddress, buildGetLockOperation(queue), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
+                queue -> eventBus.request(redisquesAddress, buildGetLockOperation(queue), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
                     final HttpServerResponse response = ctx.response();
                     if (reply.failed()) {
                         log.warn("Received failed message for getSingleLockOperation. Lets run into NullPointerException now", reply.cause());
@@ -310,7 +310,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
 
     private void deleteSingleLock(RoutingContext ctx) {
         decodedQueueNameOrRespondWithBadRequest(ctx, lastPart(ctx.request().path())).ifPresent(
-                queue -> eventBus.send(redisquesAddress, buildDeleteLockOperation(queue),
+                queue -> eventBus.request(redisquesAddress, buildDeleteLockOperation(queue),
                         (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
                             if (reply.failed()) {
                                 log.warn("Received failed message for deleteSingleLockOperation. Lets run into NullPointerException now", reply.cause());
@@ -322,7 +322,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     }
 
     private void deleteAllLocks(RoutingContext ctx) {
-        eventBus.send(redisquesAddress, buildDeleteAllLocksOperation(), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
+        eventBus.request(redisquesAddress, buildDeleteAllLocksOperation(), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
             if (reply.succeeded() && OK.equals(reply.result().body().getString(STATUS))) {
                 JsonObject result = new JsonObject();
                 result.put(DELETED, reply.result().body().getLong(VALUE));
@@ -354,7 +354,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     }
 
     private void bulkDeleteLocks(RoutingContext ctx, JsonArray locks) {
-        eventBus.send(redisquesAddress, buildBulkDeleteLocksOperation(locks), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
+        eventBus.request(redisquesAddress, buildBulkDeleteLocksOperation(locks), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
             if (reply.succeeded() && OK.equals(reply.result().body().getString(STATUS))) {
                 JsonObject result = new JsonObject();
                 result.put(DELETED, reply.result().body().getLong(VALUE));
@@ -371,7 +371,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     }
 
     private void bulkPutLocks(RoutingContext ctx, JsonArray locks) {
-        eventBus.send(redisquesAddress, buildBulkPutLocksOperation(locks, extractUser(ctx.request())),
+        eventBus.request(redisquesAddress, buildBulkPutLocksOperation(locks, extractUser(ctx.request())),
                 (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
                     if (reply.failed()) {
                         log.warn("Problem while bulkPutLocks", reply.cause());
@@ -393,7 +393,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
 
     private void getQueueItemsCount(RoutingContext ctx) {
         decodedQueueNameOrRespondWithBadRequest(ctx, lastPart(ctx.request().path())).ifPresent(queue ->
-                eventBus.send(redisquesAddress, buildGetQueueItemsCountOperation(queue), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
+                eventBus.request(redisquesAddress, buildGetQueueItemsCountOperation(queue), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
                     if (reply.failed()) {
                         log.warn("Failed to getQueueItemsCount", reply.cause());
                         // Continue, only to keep backward compatibility.
@@ -409,7 +409,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     }
 
     private void getConfiguration(RoutingContext ctx) {
-        eventBus.send(redisquesAddress, buildGetConfigurationOperation(), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
+        eventBus.request(redisquesAddress, buildGetConfigurationOperation(), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
             if (reply.failed()) {
                 log.warn("Failed to getConfiguration.", reply.cause());
                 // Continue, only to keep backward compatibility.
@@ -428,7 +428,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         ctx.request().bodyHandler((Buffer buffer) -> {
             try {
                 JsonObject configurationValues = new JsonObject(buffer.toString());
-                eventBus.send(redisquesAddress, buildSetConfigurationOperation(configurationValues),
+                eventBus.request(redisquesAddress, buildSetConfigurationOperation(configurationValues),
                         (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
                             if (reply.failed()) {
                                 log.error("Failed to setConfiguration.", reply.cause());
@@ -451,7 +451,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         boolean emptyQueues = evaluateUrlParameterToBeEmptyOrTrue(EMPTY_QUEUES_PARAM, ctx.request());
         final JsonObject resultObject = new JsonObject();
         final JsonArray queuesArray = new JsonArray();
-        eventBus.send(redisquesAddress, buildGetQueuesOperation(), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
+        eventBus.request(redisquesAddress, buildGetQueuesOperation(), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
             if (reply.failed()) {
                 log.warn("Failed to getMonitorInformation", reply.cause());
                 // Continue, to keep backward compatibility (aka run into NPE).
@@ -486,7 +486,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
 
     private void getQueuesCount(RoutingContext ctx) {
         String filter = ctx.request().params().get(FILTER);
-        eventBus.send(redisquesAddress, buildGetQueuesCountOperation(filter), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
+        eventBus.request(redisquesAddress, buildGetQueuesCountOperation(filter), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
             if (reply.succeeded() && OK.equals(reply.result().body().getString(STATUS))) {
                 JsonObject result = new JsonObject();
                 result.put("count", reply.result().body().getLong(VALUE));
@@ -505,7 +505,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
 
     private void listQueues(RoutingContext ctx) {
         String filter = ctx.request().params().get(FILTER);
-        eventBus.send(redisquesAddress, buildGetQueuesOperation(filter), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
+        eventBus.request(redisquesAddress, buildGetQueuesOperation(filter), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
             if (reply.succeeded() && OK.equals(reply.result().body().getString(STATUS))) {
                 jsonResponse(ctx.response(), reply.result().body().getJsonObject(VALUE));
             } else {
@@ -534,7 +534,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
             if (ctx.request() != null && ctx.request().params().contains(LIMIT)) {
                 limitParam = ctx.request().params().get(LIMIT);
             }
-            eventBus.send(redisquesAddress, buildGetQueueItemsOperation(queue, limitParam), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
+            eventBus.request(redisquesAddress, buildGetQueueItemsOperation(queue, limitParam), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
                 if (reply.failed()) {
                     log.error("Received failed message for listQueueItemsOperation", reply.cause());
                     respondWith(StatusCode.INTERNAL_SERVER_ERROR, ctx.request());
@@ -563,7 +563,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
                 queue -> ctx.request().bodyHandler(buffer -> {
                     try {
                         String strBuffer = encodePayload(buffer.toString());
-                        eventBus.send(redisquesAddress, buildAddQueueItemOperation(queue, strBuffer),
+                        eventBus.request(redisquesAddress, buildAddQueueItemOperation(queue, strBuffer),
                                 (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
                                     if (reply.failed()) {
                                         log.warn("Received failed message for addQueueItemOperation. Lets run into NullPointerException now", reply.cause());
@@ -583,7 +583,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         decodedQueueNameOrRespondWithBadRequest(ctx, lastPart(requestPath.substring(0, requestPath.length() - 2))).ifPresent(
                 queue -> {
                     final int index = Integer.parseInt(lastPart(requestPath));
-                    eventBus.send(redisquesAddress, buildGetQueueItemOperation(queue, index), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
+                    eventBus.request(redisquesAddress, buildGetQueueItemOperation(queue, index), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
                         if (reply.failed()) {
                             log.warn("Received failed message for getSingleQueueItemOperation. Lets run into NullPointerException now", reply.cause());
                             // IMO we should respond with 'HTTP 5xx'. But we don't, to keep backward compatibility.
@@ -610,7 +610,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
                     request.bodyHandler(buffer -> {
                         try {
                             String strBuffer = encodePayload(buffer.toString());
-                            eventBus.send(redisquesAddress, buildReplaceQueueItemOperation(queue, index, strBuffer),
+                            eventBus.request(redisquesAddress, buildReplaceQueueItemOperation(queue, index, strBuffer),
                                     (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
                                         if (reply.failed()) {
                                             log.warn("Received failed message for replaceSingleQueueItemOperation. Lets run into NullPointerException now", reply.cause());
@@ -632,7 +632,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         final String queue = part(request.path(), 2);
         final int index = Integer.parseInt(lastPart(request.path()));
         checkLocked(queue, request, event -> {
-            eventBus.send(redisquesAddress, buildDeleteQueueItemOperation(queue, index),
+            eventBus.request(redisquesAddress, buildDeleteQueueItemOperation(queue, index),
                 (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
                     if (reply.failed()) {
                         log.warn("Received failed message for deleteQueueItemOperation. Lets run into NullPointerException now", reply.cause());
@@ -649,7 +649,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         final HttpServerRequest request = ctx.request();
         boolean unlock = evaluateUrlParameterToBeEmptyOrTrue(UNLOCK_PARAM, request);
         final String queue = lastPart(request.path());
-        eventBus.send(redisquesAddress, buildDeleteAllQueueItemsOperation(queue, unlock), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
+        eventBus.request(redisquesAddress, buildDeleteAllQueueItemsOperation(queue, unlock), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
             if (reply.failed()) {
                 log.warn("Received failed message for deleteAllQueueItemsOperation", reply.cause());
                 respondWith(StatusCode.INTERNAL_SERVER_ERROR, "Error deleting all queue items of queue " + queue, request);
@@ -675,7 +675,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
                         respondWith(StatusCode.BAD_REQUEST, result.getErr(), request);
                         return;
                     }
-                    eventBus.send(redisquesAddress, buildBulkDeleteQueuesOperation(result.getOk()), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
+                    eventBus.request(redisquesAddress, buildBulkDeleteQueuesOperation(result.getOk()), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
                         if (reply.failed()) {
                             log.warn("Failed to bulkDeleteQueues. Lets run into NullPointerException now", reply.cause());
                             // IMO we should respond with 'HTTP 5xx'. But we don't, to keep backward compatibility.
@@ -746,7 +746,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
 
     private void checkLocked(String queue, final HttpServerRequest request, final Handler<Void> handler) {
         request.pause();
-        eventBus.send(redisquesAddress, buildGetLockOperation(queue), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
+        eventBus.request(redisquesAddress, buildGetLockOperation(queue), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
             request.resume();
             if (NO_SUCH_LOCK.equals(reply.result().body().getString(STATUS))) {
                 final HttpServerResponse response = request.response();
@@ -788,7 +788,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         final AtomicInteger subCommandCount = new AtomicInteger(queueNames.size());
         if (!queueNames.isEmpty()) {
             for (final String name : queueNames) {
-                eventBus.send(redisquesAddress, buildGetQueueItemsCountOperation(name), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
+                eventBus.request(redisquesAddress, buildGetQueueItemsCountOperation(name), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
                     subCommandCount.decrementAndGet();
                     if (reply.succeeded() && OK.equals(reply.result().body().getString(STATUS))) {
                         final long count = reply.result().body().getLong(VALUE);

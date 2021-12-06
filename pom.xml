@@ -43,12 +43,12 @@
         <dependency>
             <groupId>io.vertx</groupId>
             <artifactId>vertx-core</artifactId>
-            <version>3.5.0</version>
+            <version>4.2.1</version>
         </dependency>
         <dependency>
             <groupId>io.vertx</groupId>
             <artifactId>vertx-redis-client</artifactId>
-            <version>3.5.0</version>
+            <version>4.2.1</version>
         </dependency>
         <dependency>
             <groupId>commons-codec</groupId>
@@ -58,7 +58,7 @@
         <dependency>
             <groupId>io.vertx</groupId>
             <artifactId>vertx-web</artifactId>
-            <version>3.5.0</version>
+            <version>4.2.1</version>
         </dependency>
 
         <!-- TEST dependencies -->
@@ -83,7 +83,7 @@
         <dependency>
             <groupId>io.vertx</groupId>
             <artifactId>vertx-unit</artifactId>
-            <version>3.5.0</version>
+            <version>4.2.1</version>
             <scope>test</scope>
         </dependency>
         <dependency>
