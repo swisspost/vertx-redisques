@@ -92,7 +92,7 @@ public class LuaScriptState {
                 log.error("Error checking whether lua script exists", resultArray.cause());
                 return;
             }
-            Long exists = resultArray.result().toLong();
+            Long exists = resultArray.result().get(0).toLong();
             // if script already
             if (Long.valueOf(1).equals(exists)) {
                 log.debug("RedisStorage script already exists in redis cache: " + luaScriptType);

@@ -5,13 +5,14 @@ import static org.swisspush.redisques.util.RedisquesAPI.*;
 import io.vertx.core.Handler;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonObject;
+import io.vertx.redis.client.Response;
 
 /**
  * Class PutLock.
  *
  * @author baldim
  */
-public class PutLockHandler implements Handler<AsyncResult<String>> {
+public class PutLockHandler implements Handler<AsyncResult<Response>> {
     private Message<JsonObject> event;
 
     public PutLockHandler(Message<JsonObject> event) {
@@ -19,7 +20,7 @@ public class PutLockHandler implements Handler<AsyncResult<String>> {
     }
 
     @Override
-    public void handle(AsyncResult<String> reply) {
+    public void handle(AsyncResult<Response> reply) {
         if(reply.succeeded()){
             event.reply(new JsonObject().put(STATUS, OK));
         } else {

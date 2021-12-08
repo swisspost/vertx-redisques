@@ -175,7 +175,7 @@ public class RedisQuesProcessorTest extends AbstractTestCase {
                 }
                 signature.update(message.getBytes());
                 log.info("send message [" + digestStr(signature) + "] for queue [" + queue + "] ");
-                vertx.eventBus().send(getRedisquesAddress(), buildEnqueueOperation(queue, message), (Handler<AsyncResult<Message<JsonObject>>>) event -> {
+                vertx.eventBus().request(getRedisquesAddress(), buildEnqueueOperation(queue, message), (Handler<AsyncResult<Message<JsonObject>>>) event -> {
                     if (event.result().body().getString(STATUS).equals(OK)) {
                         send(null);
                     } else {
@@ -185,7 +185,7 @@ public class RedisQuesProcessorTest extends AbstractTestCase {
                 });
                 messageCount++;
             } else {
-                vertx.eventBus().send(getRedisquesAddress(), buildEnqueueOperation(queue, "STOP"),
+                vertx.eventBus().request(getRedisquesAddress(), buildEnqueueOperation(queue, "STOP"),
                         (Handler<AsyncResult<Message<JsonObject>>>) reply ->
                                 context.assertEquals(OK, reply.result().body().getString(STATUS)));
             }

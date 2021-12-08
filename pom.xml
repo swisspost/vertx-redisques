@@ -2,7 +2,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>org.swisspush</groupId>
     <artifactId>redisques</artifactId>
-    <version>2.6.2-SNAPSHOT</version>
+    <version>3.0.0-SNAPSHOT</version>
     <name>redisques</name>
     <description>
         A highly scalable redis-persistent queuing system for vertx
@@ -40,6 +40,11 @@
     </developers>
 
     <dependencies>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <version>2.12.2</version>
+        </dependency>
         <dependency>
             <groupId>io.vertx</groupId>
             <artifactId>vertx-core</artifactId>

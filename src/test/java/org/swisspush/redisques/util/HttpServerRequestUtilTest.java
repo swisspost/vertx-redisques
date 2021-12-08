@@ -1,7 +1,7 @@
 package org.swisspush.redisques.util;
 
-import io.vertx.core.http.CaseInsensitiveHeaders;
 import io.vertx.core.http.HttpServerRequest;
+import io.vertx.core.http.impl.headers.HeadersMultiMap;
 import io.vertx.core.json.JsonArray;
 import io.vertx.ext.unit.TestContext;
 import io.vertx.ext.unit.junit.VertxUnitRunner;
@@ -34,25 +34,25 @@ public class HttpServerRequestUtilTest {
     public void testEvaluateUrlParameterToBeEmptyOrTrue(TestContext context) {
         String paramX = "param_x";
 
-        when(request.params()).thenReturn(new CaseInsensitiveHeaders());
+        when(request.params()).thenReturn(new HeadersMultiMap());
         context.assertFalse(evaluateUrlParameterToBeEmptyOrTrue(paramX, request));
 
-        when(request.params()).thenReturn(new CaseInsensitiveHeaders().add(paramX, "false"));
+        when(request.params()).thenReturn(new HeadersMultiMap().add(paramX, "false"));
         context.assertFalse(evaluateUrlParameterToBeEmptyOrTrue(paramX, request));
 
-        when(request.params()).thenReturn(new CaseInsensitiveHeaders().add(paramX, "someValue"));
+        when(request.params()).thenReturn(new HeadersMultiMap().add(paramX, "someValue"));
         context.assertFalse(evaluateUrlParameterToBeEmptyOrTrue(paramX, request));
 
-        when(request.params()).thenReturn(new CaseInsensitiveHeaders().add(paramX, ""));
+        when(request.params()).thenReturn(new HeadersMultiMap().add(paramX, ""));
         context.assertTrue(evaluateUrlParameterToBeEmptyOrTrue(paramX, request));
 
-        when(request.params()).thenReturn(new CaseInsensitiveHeaders().add(paramX, "true"));
+        when(request.params()).thenReturn(new HeadersMultiMap().add(paramX, "true"));
         context.assertTrue(evaluateUrlParameterToBeEmptyOrTrue(paramX, request));
 
-        when(request.params()).thenReturn(new CaseInsensitiveHeaders().add(paramX, "TRUE"));
+        when(request.params()).thenReturn(new HeadersMultiMap().add(paramX, "TRUE"));
         context.assertTrue(evaluateUrlParameterToBeEmptyOrTrue(paramX, request));
 
-        when(request.params()).thenReturn(new CaseInsensitiveHeaders().add(paramX, "trUe"));
+        when(request.params()).thenReturn(new HeadersMultiMap().add(paramX, "trUe"));
         context.assertTrue(evaluateUrlParameterToBeEmptyOrTrue(paramX, request));
     }
 

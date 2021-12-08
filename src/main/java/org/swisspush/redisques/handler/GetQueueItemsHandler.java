@@ -2,7 +2,9 @@ package org.swisspush.redisques.handler;
 
 import io.vertx.core.AsyncResult;
 import io.vertx.core.json.JsonArray;
+
 import static org.swisspush.redisques.util.RedisquesAPI.*;
+
 import io.vertx.core.Handler;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonObject;
@@ -24,14 +26,18 @@ public class GetQueueItemsHandler implements Handler<AsyncResult<Response>> {
 
     @Override
     public void handle(AsyncResult<Response> reply) {
-        if(reply.succeeded()){
-            Response resultArray = reply.result();
+        if (reply.succeeded()) {
+            Response result = reply.result();
             JsonArray countInfo = new JsonArray();
-            if (resultArray != null) {
-                countInfo.add(resultArray.size());
+            if (result != null) {
+                countInfo.add(result.size());
             }
             countInfo.add(queueItemCount);
-            event.reply(new JsonObject().put(STATUS, OK).put(VALUE, resultArray).put(INFO, countInfo));
+            JsonArray values = new JsonArray();
+            for (Response res : result) {
+                values.add(res.toString());
+            }
+            event.reply(new JsonObject().put(STATUS, OK).put(VALUE, values).put(INFO, countInfo));
         } else {
             event.reply(new JsonObject().put(STATUS, ERROR));
         }

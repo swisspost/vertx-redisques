@@ -16,6 +16,8 @@ import io.vertx.redis.client.RedisOptions;
 import io.vertx.redis.client.Response;
 import io.vertx.redis.client.impl.RedisAPIImpl;
 import io.vertx.redis.client.impl.RedisClient;
+import io.vertx.redis.client.impl.types.MultiType;
+import io.vertx.redis.client.impl.types.SimpleStringType;
 import org.swisspush.redisques.handler.*;
 import org.swisspush.redisques.lua.LuaScriptManager;
 import org.swisspush.redisques.util.*;
@@ -125,7 +127,7 @@ public class RedisQues extends AbstractVerticle {
         // Try to register for this queue
         redisAPI.setnx(consumersPrefix + queueName, uid, event -> {
             if (event.succeeded()) {
-                redisAPI.setex(consumersPrefix + queueName, uid, String.valueOf(consumerLockTime), event1 -> {
+                redisAPI.setex(consumersPrefix + queueName, String.valueOf(consumerLockTime), uid, event1 -> {
                     if (event1.succeeded()) {
                         String value = event1.result().toString();
                         if (log.isTraceEnabled()) {
@@ -144,11 +146,11 @@ public class RedisQues extends AbstractVerticle {
                             // give up.
                         }
                     } else {
-                        log.error("RedisQues setxn failed", event1.cause());
+                        log.error("RedisQues setex failed", event1.cause());
                     }
                 });
             } else {
-                log.error("RedisQues setxn failed", event.cause());
+                log.error("RedisQues setnx failed", event.cause());
             }
         });
     }
@@ -440,8 +442,8 @@ public class RedisQues extends AbstractVerticle {
         if (filterPatternResult.isErr()) {
             event.reply(createErrorReply().put(ERROR_TYPE, BAD_INPUT).put(MESSAGE, filterPatternResult.getErr()));
         } else {
-            redisAPI.zrangebyscore(queuesKey, String.valueOf(getMaxAgeTimestamp()), "+inf",
-                    RangeLimitOptions.NONE, new GetQueuesHandler(event, filterPatternResult.getOk(), countOnly));
+            redisAPI.zrangebyscore(Arrays.asList(queuesKey, String.valueOf(getMaxAgeTimestamp()), "+inf"),
+                    new GetQueuesHandler(event, filterPatternResult.getOk(), countOnly));
         }
     }
 
@@ -581,9 +583,9 @@ public class RedisQues extends AbstractVerticle {
             return;
         }
 
-        redisAPI.delMany(buildQueueKeys(queues), delManyReply -> {
+        redisAPI.del(buildQueueKeys(queues), delManyReply -> {
             if (delManyReply.succeeded()) {
-                event.reply(createOkReply().put(VALUE, delManyReply.result()));
+                event.reply(createOkReply().put(VALUE, delManyReply.result().toLong()));
             } else {
                 log.error("Failed to bulkDeleteQueues", delManyReply.cause());
                 event.reply(createErrorReply());
@@ -593,7 +595,7 @@ public class RedisQues extends AbstractVerticle {
 
     private void handleDeleteQueueReply(Message<JsonObject> event, AsyncResult<Response> reply) {
         if (reply.succeeded()) {
-            event.reply(createOkReply().put(VALUE, reply.result()));
+            event.reply(createOkReply().put(VALUE, reply.result().toLong()));
         } else {
             log.error("Failed to replyResultGreaterThanZero", reply.cause());
             event.reply(createErrorReply());
@@ -617,7 +619,7 @@ public class RedisQues extends AbstractVerticle {
                 event.reply(createErrorReply().put(ERROR_TYPE, BAD_INPUT).put(MESSAGE, "Lock must be a string value"));
                 return;
             }
-            redisAPI.hmset(locksKey, buildLocksItems(lockNames, lockInfo), new PutLockHandler(event));
+            redisAPI.hmset(buildLocksItems(locksKey, lockNames, lockInfo), new PutLockHandler(event));
         } else {
             event.reply(createErrorReply().put(MESSAGE, "Property '" + REQUESTED_BY + "' missing"));
         }
@@ -641,17 +643,19 @@ public class RedisQues extends AbstractVerticle {
             return;
         }
 
-        redisAPI.hmset(locksKey, buildLocksItems(locks, lockInfo), new PutLockHandler(event));
+        redisAPI.hmset(buildLocksItems(locksKey, locks, lockInfo), new PutLockHandler(event));
     }
 
-    private JsonObject buildLocksItems(JsonArray lockNames, JsonObject lockInfo) {
-        JsonObject obj = new JsonObject();
+    private List<String> buildLocksItems(String locksKey, JsonArray lockNames, JsonObject lockInfo) {
+        List<String> list = new ArrayList<>();
+        list.add(locksKey);
         String lockInfoStr = lockInfo.encode();
         for (int i = 0; i < lockNames.size(); i++) {
             String lock = lockNames.getString(i);
-            obj.put(lock, lockInfoStr);
+            list.add(lock);
+            list.add(lockInfoStr);
         }
-        return obj;
+        return list;
     }
 
     private void deleteLock(Message<JsonObject> event) {
@@ -665,7 +669,12 @@ public class RedisQues extends AbstractVerticle {
     }
 
     private void bulkDeleteLocks(Message<JsonObject> event) {
-        Response locks = event.body().getJsonObject(PAYLOAD).getJsonArray(LOCKS);
+        JsonArray jsonArray = event.body().getJsonObject(PAYLOAD).getJsonArray(LOCKS);
+        MultiType locks = MultiType.EMPTY_MULTI;
+        for (int j = 0; j > jsonArray.size(); j++) {
+            Response response = SimpleStringType.create(jsonArray.getString(j));
+            locks.add(response);
+        }
         if (locks != null) {
             deleteLocks(event, locks);
         } else {
@@ -691,15 +700,21 @@ public class RedisQues extends AbstractVerticle {
             return;
         }
 
-        if (!jsonArrayContainsStringsOnly(locks)) {
+        if (!responseContainsStringsOnly(locks)) {
             event.reply(createErrorReply().put(ERROR_TYPE, BAD_INPUT).put(MESSAGE, "Locks must be string values"));
             return;
         }
 
-        redisAPI.hdelMany(locksKey, locks.getList(), delManyResult -> {
+        List<String> args = new ArrayList<>();
+        args.add(locksKey);
+        for (Response response : locks) {
+            args.add(response.toString());
+        }
+
+        redisAPI.hdel(args, delManyResult -> {
             if (delManyResult.succeeded()) {
                 log.info("Successfully deleted " + delManyResult.result() + " locks");
-                event.reply(createOkReply().put(VALUE, delManyResult.result()));
+                event.reply(createOkReply().put(VALUE, delManyResult.result().toLong()));
             } else {
                 log.warn("failed to delete locks. Message: " + delManyResult.cause().getMessage());
                 event.reply(createErrorReply().put(MESSAGE, delManyResult.cause().getMessage()));
@@ -707,10 +722,21 @@ public class RedisQues extends AbstractVerticle {
         });
     }
 
-    private boolean jsonArrayContainsStringsOnly(Response array) {
+    private boolean jsonArrayContainsStringsOnly(JsonArray array) {
         try {
             for (int i = 0; i < array.size(); i++) {
-                array.get(i).toString();
+                array.getString(i);
+            }
+            return true;
+        } catch (ClassCastException ex) {
+            return false;
+        }
+    }
+
+    private boolean responseContainsStringsOnly(Response response) {
+        try {
+            for (int i = 0; i < response.size(); i++) {
+                response.get(i).toString();
             }
             return true;
         } catch (ClassCastException ex) {
@@ -893,7 +919,11 @@ public class RedisQues extends AbstractVerticle {
                 log.debug("No consumers found to reset");
                 return;
             }
-            redisAPI.del(keys.getList(), delManyResult -> {
+            List<String> args = new ArrayList<>();
+            for (Response response : keys) {
+                args.add(response.toString());
+            }
+            redisAPI.del(args, delManyResult -> {
                 if (delManyResult.succeeded()) {
                     Long count = delManyResult.result().toLong();
                     log.debug("Successfully reset " + count + " consumers");
@@ -994,7 +1024,7 @@ public class RedisQues extends AbstractVerticle {
             }
             boolean locked = lockAnswer.result();
             if (!locked) {
-                redisClient.lindex(queueKey, 0, answer -> {
+                redisAPI.lindex(queueKey, "0", answer -> {
                     if (answer.failed()) {
                         log.error("Failed to peek queue '{}'", queueName, answer.cause());
                         // We should return here. See: "https://softwareengineering.stackexchange.com/a/190535"
@@ -1003,7 +1033,7 @@ public class RedisQues extends AbstractVerticle {
                         log.trace("RedisQues read queue lindex result: " + answer.result());
                     }
                     if (answer.result() != null) {
-                        processMessageWithTimeout(queueName, answer.result(), success -> {
+                        processMessageWithTimeout(queueName, answer.result().toString(), success -> {
 
                             // update the queue failure count and get a retry interval
                             int retryInterval = updateQueueFailureCountAndGetRetryInterval(queueName, success);
@@ -1128,7 +1158,7 @@ public class RedisQues extends AbstractVerticle {
                 log.warn("Failed to get consumer for queue '{}'", queueName, event.cause());
                 // We should return here. See: "https://softwareengineering.stackexchange.com/a/190535"
             }
-            String consumer = event.result().toString();
+            String consumer = Objects.toString(event.result(), null);
             if (log.isTraceEnabled()) {
                 log.trace("RedisQues got consumer: " + consumer);
             }
@@ -1151,7 +1181,11 @@ public class RedisQues extends AbstractVerticle {
             log.debug("RedisQues Refreshing registration of queue " + queueName + ", expire in " + consumerLockTime + " s");
         }
         String consumerKey = consumersPrefix + queueName;
-        redisAPI.expire(consumerKey, String.valueOf(consumerLockTime), handler);
+        if (handler == null) {
+            redisAPI.expire(consumerKey, String.valueOf(consumerLockTime));
+        } else {
+            redisAPI.expire(consumerKey, String.valueOf(consumerLockTime), handler);
+        }
     }
 
     /**
@@ -1165,7 +1199,11 @@ public class RedisQues extends AbstractVerticle {
         if (log.isTraceEnabled()) {
             log.trace("RedisQues update timestamp for queue: " + queueName + " to: " + ts);
         }
-        redisAPI.zadd(Arrays.asList(queuesKey, String.valueOf(ts), queueName), handler);
+        if (handler == null) {
+            redisAPI.zadd(Arrays.asList(queuesKey, String.valueOf(ts), queueName));
+        } else {
+            redisAPI.zadd(Arrays.asList(queuesKey, String.valueOf(ts), queueName), handler);
+        }
     }
 
     /**
@@ -1177,8 +1215,8 @@ public class RedisQues extends AbstractVerticle {
         log.debug("Checking queues timestamps");
         // List all queues that look inactive (i.e. that have not been updated since 3 periods).
         final long limit = System.currentTimeMillis() - 3 * refreshPeriod * 1000;
-        redisAPI.zrangebyscore(queuesKey, "-inf", String.valueOf(limit), RangeLimitOptions.NONE, answer -> {
-            JsonArray queues = answer.result();
+        redisAPI.zrangebyscore(Arrays.asList(queuesKey, "-inf", String.valueOf(limit)), answer -> {
+            Response queues = answer.result();
             if (answer.failed() || queues == null) {
                 log.error("RedisQues is unable to get list of queues", answer.cause());
                 return;
@@ -1187,9 +1225,9 @@ public class RedisQues extends AbstractVerticle {
             if (log.isTraceEnabled()) {
                 log.trace("RedisQues update queues: " + counter);
             }
-            for (Object queueObject : queues) {
+            for (Response queueObject : queues) {
                 // Check if the inactive queue is not empty (i.e. the key exists)
-                final String queueName = (String) queueObject;
+                final String queueName = queueObject.toString();
                 String key = queuesPrefix + queueName;
                 if (log.isTraceEnabled()) {
                     log.trace("RedisQues update queue: " + key);

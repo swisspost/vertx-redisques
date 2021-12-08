@@ -187,7 +187,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
 
     @Override
     public void handle(HttpServerRequest request) {
-        router.accept(request);
+        router.handle(request);
     }
 
     private void respondMethodNotAllowed(RoutingContext ctx) {
