@@ -9,12 +9,9 @@ import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
-
-
 import io.vertx.redis.client.RedisAPI;
 import io.vertx.redis.client.RedisOptions;
 import io.vertx.redis.client.Response;
-import io.vertx.redis.client.impl.RedisAPIImpl;
 import io.vertx.redis.client.impl.RedisClient;
 import io.vertx.redis.client.impl.types.MultiType;
 import io.vertx.redis.client.impl.types.SimpleStringType;
@@ -193,7 +190,7 @@ public class RedisQues extends AbstractVerticle {
         this.redisClient = new RedisClient(vertx, new RedisOptions().setConnectionString("redis://" + redisHost + ":" + redisPort).setPassword(redisAuth));
         //TODO: vertx4
         //       .setEncoding(redisEncoding));
-        this.redisAPI = new RedisAPIImpl(redisClient);
+        this.redisAPI = RedisAPI.api(redisClient);
         this.luaScriptManager = new LuaScriptManager(redisAPI);
 
         RedisquesHttpRequestHandler.init(vertx, modConfig);
@@ -883,7 +880,7 @@ public class RedisQues extends AbstractVerticle {
                             log.warn("Failed to retrieve consumer '{}'.", consumerKey, event1.cause());
                             // IMO we should 'fail()' here. But we don't, to keep backward compatibility.
                         }
-                        String consumer = Objects.toString(event1.result(),"");
+                        String consumer = Objects.toString(event1.result(), "");
                         if (log.isTraceEnabled()) {
                             log.trace("RedisQues unregister consumers get result: " + consumer);
                         }
@@ -951,7 +948,7 @@ public class RedisQues extends AbstractVerticle {
                     log.error("Unable to get consumer for queue " + queueName, event1.cause());
                     return;
                 }
-                String consumer = Objects.toString(event1.result(),"");
+                String consumer = Objects.toString(event1.result(), "");
                 if (log.isTraceEnabled()) {
                     log.trace("RedisQues refresh registration consumer: " + consumer);
                 }
