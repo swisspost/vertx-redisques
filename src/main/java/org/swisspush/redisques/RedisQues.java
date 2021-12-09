@@ -331,7 +331,7 @@ public class RedisQues extends AbstractVerticle {
                         log.warn("Failed to get queue consumer for queue '{}'. But we'll continue anyway :)", queue, getConsumerEvent.cause());
                         // We should return here. See: "https://softwareengineering.stackexchange.com/a/190535"
                     }
-                    final String consumer = getConsumerEvent.result().toString();
+                    final String consumer = Objects.toString(getConsumerEvent.result(), "");
                     if (uid.equals(consumer)) {
                         log.debug("RedisQues Periodic consumer refresh for active queue " + queue);
                         refreshRegistration(queue, null);
@@ -670,12 +670,12 @@ public class RedisQues extends AbstractVerticle {
 
     private void bulkDeleteLocks(Message<JsonObject> event) {
         JsonArray jsonArray = event.body().getJsonObject(PAYLOAD).getJsonArray(LOCKS);
-        MultiType locks = MultiType.EMPTY_MULTI;
-        for (int j = 0; j > jsonArray.size(); j++) {
-            Response response = SimpleStringType.create(jsonArray.getString(j));
-            locks.add(response);
-        }
-        if (locks != null) {
+        if (jsonArray != null) {
+            MultiType locks = MultiType.create(jsonArray.size(), false);
+            for (int j = 0; j < jsonArray.size(); j++) {
+                Response response = SimpleStringType.create(jsonArray.getString(j));
+                locks.add(response);
+            }
             deleteLocks(event, locks);
         } else {
             event.reply(createErrorReply().put(MESSAGE, "No locks to delete provided"));
@@ -723,14 +723,12 @@ public class RedisQues extends AbstractVerticle {
     }
 
     private boolean jsonArrayContainsStringsOnly(JsonArray array) {
-        try {
-            for (int i = 0; i < array.size(); i++) {
-                array.getString(i);
+        for (Object obj : array) {
+            if (!(obj instanceof String)) {
+                return false;
             }
-            return true;
-        } catch (ClassCastException ex) {
-            return false;
         }
+        return true;
     }
 
     private boolean responseContainsStringsOnly(Response response) {
@@ -885,7 +883,7 @@ public class RedisQues extends AbstractVerticle {
                             log.warn("Failed to retrieve consumer '{}'.", consumerKey, event1.cause());
                             // IMO we should 'fail()' here. But we don't, to keep backward compatibility.
                         }
-                        String consumer = event1.result().toString();
+                        String consumer = Objects.toString(event1.result(),"");
                         if (log.isTraceEnabled()) {
                             log.trace("RedisQues unregister consumers get result: " + consumer);
                         }
@@ -953,7 +951,7 @@ public class RedisQues extends AbstractVerticle {
                     log.error("Unable to get consumer for queue " + queueName, event1.cause());
                     return;
                 }
-                String consumer = event1.result().toString();
+                String consumer = Objects.toString(event1.result(),"");
                 if (log.isTraceEnabled()) {
                     log.trace("RedisQues refresh registration consumer: " + consumer);
                 }
@@ -1062,7 +1060,7 @@ public class RedisQues extends AbstractVerticle {
                                         log.trace("RedisQues read queue: " + queueKey);
                                     }
                                     redisAPI.llen(queueKey, answer1 -> {
-                                        if (answer1.succeeded() && answer1.result() != null && answer1.result().size() > 0) {
+                                        if (answer1.succeeded() && answer1.result() != null && answer1.result().toInteger() > 0) {
                                             notifyConsumer(queueName);
                                         }
                                     });
