@@ -100,7 +100,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         /*
          * Get monitor information
          */
-        router.get(prefix + "/monitor/").handler(this::getMonitorInformation);
+        router.get(prefix + "/monitor").handler(this::getMonitorInformation);
 
         /*
          * Enqueue or LockedEnqueue

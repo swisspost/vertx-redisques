@@ -161,7 +161,11 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
     }
 
     protected void eventBusSend(JsonObject operation, Handler<AsyncResult<Message<JsonObject>>> handler) {
-        testVertx.eventBus().request(getRedisquesAddress(), operation, handler);
+        if (handler == null) {
+            testVertx.eventBus().request(getRedisquesAddress(), operation);
+        } else {
+            testVertx.eventBus().request(getRedisquesAddress(), operation, handler);
+        }
     }
 
     @Test
@@ -255,12 +259,12 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         eventBusSend(buildEnqueueOperation("queue_1", "item1_1"), m1 -> {
             eventBusSend(buildEnqueueOperation("queue_2", "item2_1"), m2 -> {
                 eventBusSend(buildEnqueueOperation("queue_3", "item3_1"), m3 -> {
-            when()
-                    .get("/queuing/queues/?count")
-                    .then().assertThat()
-                    .statusCode(200)
-                    .body("count", equalTo(3));
-            async.complete();
+                    when()
+                            .get("/queuing/queues/?count")
+                            .then().assertThat()
+                            .statusCode(200)
+                            .body("count", equalTo(3));
+                    async.complete();
                 });
             });
         });
@@ -274,12 +278,12 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         eventBusSend(buildEnqueueOperation("queue_1", "item1_1"), m1 -> {
             eventBusSend(buildEnqueueOperation("queue_2", "item2_1"), m2 -> {
                 eventBusSend(buildEnqueueOperation("queue{3}", "item3_1"), m3 -> {
-            when()
-                    .get("/queuing/queues/?count")
-                    .then().assertThat()
-                    .statusCode(200)
-                    .body("count", equalTo(3));
-            async.complete();
+                    when()
+                            .get("/queuing/queues/?count")
+                            .then().assertThat()
+                            .statusCode(200)
+                            .body("count", equalTo(3));
+                    async.complete();
                 });
             });
         });
@@ -306,36 +310,36 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
             eventBusSend(buildEnqueueOperation("aab", "item2_1"), m2 -> {
                 eventBusSend(buildEnqueueOperation("abc", "item3_1"), m3 -> {
 
-                                    given().param(FILTER, "x").param(COUNT, true).when()
-                                            .get("/queuing/queues/")
-                                            .then().assertThat()
-                                            .statusCode(200)
-                                            .body("count", equalTo(0));
+                    given().param(FILTER, "x").param(COUNT, true).when()
+                            .get("/queuing/queues/")
+                            .then().assertThat()
+                            .statusCode(200)
+                            .body("count", equalTo(0));
 
-                                    given().param(FILTER, "a").param(COUNT, true).when()
-                                            .get("/queuing/queues/")
-                                            .then().assertThat()
-                                            .statusCode(200)
-                                            .body("count", equalTo(3));
+                    given().param(FILTER, "a").param(COUNT, true).when()
+                            .get("/queuing/queues/")
+                            .then().assertThat()
+                            .statusCode(200)
+                            .body("count", equalTo(3));
 
-                                    given().param(FILTER, "ab").param(COUNT, true).when()
-                                            .get("/queuing/queues/")
-                                            .then().assertThat()
-                                            .statusCode(200)
-                                            .body("count", equalTo(2));
+                    given().param(FILTER, "ab").param(COUNT, true).when()
+                            .get("/queuing/queues/")
+                            .then().assertThat()
+                            .statusCode(200)
+                            .body("count", equalTo(2));
 
-                                    given().param(FILTER, "c").param(COUNT, true).when()
-                                            .get("/queuing/queues/")
-                                            .then().assertThat()
-                                            .statusCode(200)
-                                            .body("count", equalTo(1));
+                    given().param(FILTER, "c").param(COUNT, true).when()
+                            .get("/queuing/queues/")
+                            .then().assertThat()
+                            .statusCode(200)
+                            .body("count", equalTo(1));
 
-                                    given().param(FILTER, "c(.*").param(COUNT, true).when()
-                                            .get("/queuing/queues/")
-                                            .then().assertThat()
-                                            .statusCode(400);
+                    given().param(FILTER, "c(.*").param(COUNT, true).when()
+                            .get("/queuing/queues/")
+                            .then().assertThat()
+                            .statusCode(400);
 
-                                    async.complete();
+                    async.complete();
                 });
             });
         });
@@ -349,14 +353,14 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         eventBusSend(buildEnqueueOperation("queue_1", "item1_1"), m1 -> {
             eventBusSend(buildEnqueueOperation("queue_2", "item2_1"), m2 -> {
                 eventBusSend(buildEnqueueOperation("queue_{with_special_chars}", "item3_1"), m3 -> {
-            when()
-                    .get("/queuing/queues/")
-                    .then().assertThat()
-                    .statusCode(200)
-                    .body(
-                            "queues", hasItems("queue_1", "queue_2", "queue_{with_special_chars}")
-                    );
-            async.complete();
+                    when()
+                            .get("/queuing/queues/")
+                            .then().assertThat()
+                            .statusCode(200)
+                            .body(
+                                    "queues", hasItems("queue_1", "queue_2", "queue_{with_special_chars}")
+                            );
+                    async.complete();
                 });
             });
         });
@@ -371,35 +375,35 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
             eventBusSend(buildEnqueueOperation("aab", "item2_1"), m2 -> {
                 eventBusSend(buildEnqueueOperation("abc", "item3_1"), m3 -> {
 
-            given().param(FILTER, "x").when()
-                    .get("/queuing/queues/")
-                    .then().assertThat()
-                    .statusCode(200)
-                    .body("queues", is(emptyCollectionOf(String.class)));
+                    given().param(FILTER, "x").when()
+                            .get("/queuing/queues/")
+                            .then().assertThat()
+                            .statusCode(200)
+                            .body("queues", is(emptyCollectionOf(String.class)));
 
-            given().param(FILTER, "ab").when()
-                    .get("/queuing/queues/")
-                    .then().assertThat()
-                    .statusCode(200)
-                    .body(
-                            "queues", hasItems("aab", "abc"),
-                            "queues", not(hasItem("aaa"))
-                    );
+                    given().param(FILTER, "ab").when()
+                            .get("/queuing/queues/")
+                            .then().assertThat()
+                            .statusCode(200)
+                            .body(
+                                    "queues", hasItems("aab", "abc"),
+                                    "queues", not(hasItem("aaa"))
+                            );
 
-            given().param(FILTER, "a").when()
-                    .get("/queuing/queues/")
-                    .then().assertThat()
-                    .statusCode(200)
-                    .body(
-                            "queues", hasItems("aaa", "aab", "abc")
-                    );
+                    given().param(FILTER, "a").when()
+                            .get("/queuing/queues/")
+                            .then().assertThat()
+                            .statusCode(200)
+                            .body(
+                                    "queues", hasItems("aaa", "aab", "abc")
+                            );
 
-            given().param(FILTER, "a(.*").when()
-                    .get("/queuing/queues/")
-                    .then().assertThat()
-                    .statusCode(400);
+                    given().param(FILTER, "a(.*").when()
+                            .get("/queuing/queues/")
+                            .then().assertThat()
+                            .statusCode(400);
 
-            async.complete();
+                    async.complete();
                 });
             });
         });
@@ -900,12 +904,12 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         flushAll();
         eventBusSend(buildEnqueueOperation("queueEnqueue", "helloEnqueue"), message -> {
             eventBusSend(buildEnqueueOperation("queueEnqueue", "helloEnqueue2"), message2 -> {
-            when()
-                    .get("/queuing/queues/queueEnqueue?count")
-                    .then().assertThat()
-                    .statusCode(200)
-                    .body("count", equalTo(2));
-            async.complete();
+                when()
+                        .get("/queuing/queues/queueEnqueue?count")
+                        .then().assertThat()
+                        .statusCode(200)
+                        .body("count", equalTo(2));
+                async.complete();
             });
         });
         async.awaitSuccess();
@@ -917,12 +921,12 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         flushAll();
         eventBusSend(buildEnqueueOperation("queue{Enqueue}", "helloEnqueue"), message -> {
             eventBusSend(buildEnqueueOperation("queue{Enqueue}", "helloEnqueue2"), message2 -> {
-            given().urlEncodingEnabled(false).when()
-                    .get("/queuing/queues/queue%7BEnqueue%7D?count")
-                    .then().assertThat()
-                    .statusCode(200)
-                    .body("count", equalTo(2));
-            async.complete();
+                given().urlEncodingEnabled(false).when()
+                        .get("/queuing/queues/queue%7BEnqueue%7D?count")
+                        .then().assertThat()
+                        .statusCode(200)
+                        .body("count", equalTo(2));
+                async.complete();
             });
         });
         async.awaitSuccess();
@@ -946,11 +950,11 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         flushAll();
         eventBusSend(buildEnqueueOperation("queueEnqueue", "helloEnqueue"), message -> {
             eventBusSend(buildEnqueueOperation("queueEnqueue", "helloEnqueue2"), message2 -> {
-            when().get("/queuing/queues/queueEnqueue")
-                    .then().assertThat()
-                    .statusCode(200)
-                    .body("queueEnqueue", hasItems("helloEnqueue", "helloEnqueue2"));
-            async.complete();
+                when().get("/queuing/queues/queueEnqueue")
+                        .then().assertThat()
+                        .statusCode(200)
+                        .body("queueEnqueue", hasItems("helloEnqueue", "helloEnqueue2"));
+                async.complete();
             });
         });
         async.awaitSuccess();
@@ -962,11 +966,11 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         flushAll();
         eventBusSend(buildEnqueueOperation("queue{Enqueue}", "helloEnqueue"), message -> {
             eventBusSend(buildEnqueueOperation("queue{Enqueue}", "helloEnqueue2"), message2 -> {
-            given().urlEncodingEnabled(false).when().get("/queuing/queues/queue%7BEnqueue%7D")
-                    .then().assertThat()
-                    .statusCode(200)
-                    .body("'queue{Enqueue}'", hasItems("helloEnqueue", "helloEnqueue2"));
-            async.complete();
+                given().urlEncodingEnabled(false).when().get("/queuing/queues/queue%7BEnqueue%7D")
+                        .then().assertThat()
+                        .statusCode(200)
+                        .body("'queue{Enqueue}'", hasItems("helloEnqueue", "helloEnqueue2"));
+                async.complete();
             });
         });
         async.awaitSuccess();
@@ -980,17 +984,17 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
             eventBusSend(buildEnqueueOperation("queueEnqueue", "helloEnqueue2"), m2 -> {
                 eventBusSend(buildEnqueueOperation("queueEnqueue", "helloEnqueue3"), m3 -> {
                     eventBusSend(buildEnqueueOperation("queueEnqueue", "helloEnqueue4"), m4 -> {
-            given()
-                    .param("limit", 3)
-                    .when()
-                    .get("/queuing/queues/queueEnqueue")
-                    .then().assertThat()
-                    .statusCode(200)
-                    .body(
-                            "queueEnqueue", hasItems("helloEnqueue1", "helloEnqueue2", "helloEnqueue3"),
-                            "queueEnqueue", not(hasItem("helloEnqueue4"))
-                    );
-            async.complete();
+                        given()
+                                .param("limit", 3)
+                                .when()
+                                .get("/queuing/queues/queueEnqueue")
+                                .then().assertThat()
+                                .statusCode(200)
+                                .body(
+                                        "queueEnqueue", hasItems("helloEnqueue1", "helloEnqueue2", "helloEnqueue3"),
+                                        "queueEnqueue", not(hasItem("helloEnqueue4"))
+                                );
+                        async.complete();
                     });
                 });
             });
@@ -1137,98 +1141,98 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
             eventBusSend(buildEnqueueOperation("q1", "q1_message"), e2 -> {
                 eventBusSend(buildEnqueueOperation("q2", "q2_message"), e3 -> {
                     eventBusSend(buildEnqueueOperation("q3", "q3_message"), e4 -> {
-            given()
-                    .queryParam(BULK_DELETE)
-                    .body("{\"queues\": [\"a\",\"b\", 123456]}")
-                    .when().post("/queuing/queues/")
-                    .then().assertThat()
-                    .statusCode(400)
-                    .body(containsString("Queues must be string values"));
+                        given()
+                                .queryParam(BULK_DELETE)
+                                .body("{\"queues\": [\"a\",\"b\", 123456]}")
+                                .when().post("/queuing/queues/")
+                                .then().assertThat()
+                                .statusCode(400)
+                                .body(containsString("Queues must be string values"));
 
-            assertQueuesCount(context, 3);
-            assertQueueItemsCount(context, "q1", 2);
-            assertQueueItemsCount(context, "q2", 1);
-            assertQueueItemsCount(context, "q3", 1);
+                        assertQueuesCount(context, 3);
+                        assertQueueItemsCount(context, "q1", 2);
+                        assertQueueItemsCount(context, "q2", 1);
+                        assertQueueItemsCount(context, "q3", 1);
 
-            given()
-                    .queryParam(BULK_DELETE)
-                    .body("{\"zzz\": [\"a\",\"b\",\"c\"]}")
-                    .when().post("/queuing/queues/")
-                    .then().assertThat()
-                    .statusCode(400)
-                    .body(containsString("no array called 'queues' found"));
+                        given()
+                                .queryParam(BULK_DELETE)
+                                .body("{\"zzz\": [\"a\",\"b\",\"c\"]}")
+                                .when().post("/queuing/queues/")
+                                .then().assertThat()
+                                .statusCode(400)
+                                .body(containsString("no array called 'queues' found"));
 
-            assertQueuesCount(context, 3);
-            assertQueueItemsCount(context, "q1", 2);
-            assertQueueItemsCount(context, "q2", 1);
-            assertQueueItemsCount(context, "q3", 1);
+                        assertQueuesCount(context, 3);
+                        assertQueueItemsCount(context, "q1", 2);
+                        assertQueueItemsCount(context, "q2", 1);
+                        assertQueueItemsCount(context, "q3", 1);
 
-            given()
-                    .queryParam(BULK_DELETE)
-                    .body("{\"zzz\": [\"a\",\"b\",\"c\"]")
-                    .when().post("/queuing/queues/")
-                    .then().assertThat()
-                    .statusCode(400)
-                    .body(containsString("failed to parse request payload"));
+                        given()
+                                .queryParam(BULK_DELETE)
+                                .body("{\"zzz\": [\"a\",\"b\",\"c\"]")
+                                .when().post("/queuing/queues/")
+                                .then().assertThat()
+                                .statusCode(400)
+                                .body(containsString("failed to parse request payload"));
 
-            assertQueuesCount(context, 3);
-            assertQueueItemsCount(context, "q1", 2);
-            assertQueueItemsCount(context, "q2", 1);
-            assertQueueItemsCount(context, "q3", 1);
+                        assertQueuesCount(context, 3);
+                        assertQueueItemsCount(context, "q1", 2);
+                        assertQueueItemsCount(context, "q2", 1);
+                        assertQueueItemsCount(context, "q3", 1);
 
-            given()
-                    .queryParam(BULK_DELETE)
-                    .body("{\"queues\": []}")
-                    .when().post("/queuing/queues/")
-                    .then().assertThat()
-                    .statusCode(400)
-                    .body(containsString("array 'queues' is not allowed to be empty"));
+                        given()
+                                .queryParam(BULK_DELETE)
+                                .body("{\"queues\": []}")
+                                .when().post("/queuing/queues/")
+                                .then().assertThat()
+                                .statusCode(400)
+                                .body(containsString("array 'queues' is not allowed to be empty"));
 
-            assertQueuesCount(context, 3);
-            assertQueueItemsCount(context, "q1", 2);
-            assertQueueItemsCount(context, "q2", 1);
-            assertQueueItemsCount(context, "q3", 1);
+                        assertQueuesCount(context, 3);
+                        assertQueueItemsCount(context, "q1", 2);
+                        assertQueueItemsCount(context, "q2", 1);
+                        assertQueueItemsCount(context, "q3", 1);
 
-            given()
-                    .queryParam(BULK_DELETE)
-                    .body("{\"queues\": [\"q1\",\"q3\"]}")
-                    .when().post("/queuing/queues/")
-                    .then().assertThat()
-                    .statusCode(200)
-                    .body("deleted", equalTo(2));
+                        given()
+                                .queryParam(BULK_DELETE)
+                                .body("{\"queues\": [\"q1\",\"q3\"]}")
+                                .when().post("/queuing/queues/")
+                                .then().assertThat()
+                                .statusCode(200)
+                                .body("deleted", equalTo(2));
 
-            assertQueuesCount(context, 1);
-            assertQueueItemsCount(context, "q1", 0);
-            assertQueueItemsCount(context, "q2", 1);
-            assertQueueItemsCount(context, "q3", 0);
+                        assertQueuesCount(context, 1);
+                        assertQueueItemsCount(context, "q1", 0);
+                        assertQueueItemsCount(context, "q2", 1);
+                        assertQueueItemsCount(context, "q3", 0);
 
-            given()
-                    .queryParam(BULK_DELETE)
-                    .body("{\"queues\": [\"q1\",\"q3\"]}")
-                    .when().post("/queuing/queues/")
-                    .then().assertThat()
-                    .statusCode(200)
-                    .body("deleted", equalTo(0));
+                        given()
+                                .queryParam(BULK_DELETE)
+                                .body("{\"queues\": [\"q1\",\"q3\"]}")
+                                .when().post("/queuing/queues/")
+                                .then().assertThat()
+                                .statusCode(200)
+                                .body("deleted", equalTo(0));
 
-            assertQueuesCount(context, 1);
-            assertQueueItemsCount(context, "q1", 0);
-            assertQueueItemsCount(context, "q2", 1);
-            assertQueueItemsCount(context, "q3", 0);
+                        assertQueuesCount(context, 1);
+                        assertQueueItemsCount(context, "q1", 0);
+                        assertQueueItemsCount(context, "q2", 1);
+                        assertQueueItemsCount(context, "q3", 0);
 
-            given()
-                    .queryParam(BULK_DELETE)
-                    .body("{\"queues\": [1111]}")
-                    .when().post("/queuing/queues/")
-                    .then().assertThat()
-                    .statusCode(400)
-                    .body(containsString("Queues must be string values"));
+                        given()
+                                .queryParam(BULK_DELETE)
+                                .body("{\"queues\": [1111]}")
+                                .when().post("/queuing/queues/")
+                                .then().assertThat()
+                                .statusCode(400)
+                                .body(containsString("Queues must be string values"));
 
-            assertQueuesCount(context, 1);
-            assertQueueItemsCount(context, "q1", 0);
-            assertQueueItemsCount(context, "q2", 1);
-            assertQueueItemsCount(context, "q3", 0);
+                        assertQueuesCount(context, 1);
+                        assertQueueItemsCount(context, "q1", 0);
+                        assertQueueItemsCount(context, "q2", 1);
+                        assertQueueItemsCount(context, "q3", 0);
 
-            async.complete();
+                        async.complete();
                     });
                 });
             });
@@ -1255,11 +1259,11 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         flushAll();
         eventBusSend(buildPutLockOperation("queue1", "someuser"), message -> {
             eventBusSend(buildPutLockOperation("queue2", "someuser"), message2 -> {
-            when().get("/queuing/locks/")
-                    .then().assertThat()
-                    .statusCode(200)
-                    .body(LOCKS, hasItems("queue1", "queue2"));
-            async.complete();
+                when().get("/queuing/locks/")
+                        .then().assertThat()
+                        .statusCode(200)
+                        .body(LOCKS, hasItems("queue1", "queue2"));
+                async.complete();
             });
         });
         async.awaitSuccess();
@@ -1273,31 +1277,31 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
             eventBusSend(buildPutLockOperation("aab", "someuser"), message2 -> {
                 eventBusSend(buildPutLockOperation("abc", "someuser"), message3 -> {
 
-            given().param("filter", "^a$")
-                    .when().get("/queuing/locks/")
-                    .then().assertThat()
-                    .statusCode(200)
-                    .body(LOCKS, is(emptyCollectionOf(String.class)));
+                    given().param("filter", "^a$")
+                            .when().get("/queuing/locks/")
+                            .then().assertThat()
+                            .statusCode(200)
+                            .body(LOCKS, is(emptyCollectionOf(String.class)));
 
-            given().param("filter", "a")
-                    .when().get("/queuing/locks/")
-                    .then().assertThat()
-                    .statusCode(200)
-                    .body(LOCKS, hasItems("aaa", "aab", "abc"));
+                    given().param("filter", "a")
+                            .when().get("/queuing/locks/")
+                            .then().assertThat()
+                            .statusCode(200)
+                            .body(LOCKS, hasItems("aaa", "aab", "abc"));
 
-            given().param("filter", "ab")
-                    .when().get("/queuing/locks/")
-                    .then().assertThat()
-                    .statusCode(200)
-                    .body(LOCKS, hasItems("aab", "abc"));
+                    given().param("filter", "ab")
+                            .when().get("/queuing/locks/")
+                            .then().assertThat()
+                            .statusCode(200)
+                            .body(LOCKS, hasItems("aab", "abc"));
 
-            given().param("filter", "c")
-                    .when().get("/queuing/locks/")
-                    .then().assertThat()
-                    .statusCode(200)
-                    .body(LOCKS, hasItems("abc"));
+                    given().param("filter", "c")
+                            .when().get("/queuing/locks/")
+                            .then().assertThat()
+                            .statusCode(200)
+                            .body(LOCKS, hasItems("abc"));
 
-            async.complete();
+                    async.complete();
 
                 });
             });
@@ -1319,93 +1323,93 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         Async async = context.async();
         flushAll();
         eventBusSend(buildPutLockOperation("queue1", "someuser"), m1 -> {
-            eventBusSend(buildPutLockOperation("queue2", "someuser"), m2-> {
-                eventBusSend(buildPutLockOperation("queue{3}", "someuser"), m3-> {
-            given()
-                    .queryParam(BULK_DELETE)
-                    .body("{\"locks\": [\"a\",\"b\",123456]}")
-                    .when().post("/queuing/locks/")
-                    .then().assertThat()
-                    .statusCode(400)
-                    .body(containsString("Locks must be string values"));
+            eventBusSend(buildPutLockOperation("queue2", "someuser"), m2 -> {
+                eventBusSend(buildPutLockOperation("queue{3}", "someuser"), m3 -> {
+                    given()
+                            .queryParam(BULK_DELETE)
+                            .body("{\"locks\": [\"a\",\"b\",123456]}")
+                            .when().post("/queuing/locks/")
+                            .then().assertThat()
+                            .statusCode(200); // not 400 any more vertx 4 convert any number in request into String
+                          //  .body(containsString("Locks must be string values"));
 
-            assertLockExists(context, "queue1");
-            assertLockExists(context, "queue2");
-            assertLockExists(context, "queue{3}");
+                    assertLockExists(context, "queue1");
+                    assertLockExists(context, "queue2");
+                    assertLockExists(context, "queue{3}");
 
-            given()
-                    .queryParam(BULK_DELETE)
-                    .body("{\"zzz\": [\"a\",\"b\",\"c\"]}")
-                    .when().post("/queuing/locks/")
-                    .then().assertThat()
-                    .statusCode(400)
-                    .body(containsString("no array called 'locks' found"));
+                    given()
+                            .queryParam(BULK_DELETE)
+                            .body("{\"zzz\": [\"a\",\"b\",\"c\"]}")
+                            .when().post("/queuing/locks/")
+                            .then().assertThat()
+                            .statusCode(400)
+                            .body(containsString("no array called 'locks' found"));
 
-            assertLockExists(context, "queue1");
-            assertLockExists(context, "queue2");
-            assertLockExists(context, "queue{3}");
+                    assertLockExists(context, "queue1");
+                    assertLockExists(context, "queue2");
+                    assertLockExists(context, "queue{3}");
 
-            given()
-                    .queryParam(BULK_DELETE)
-                    .body("{\"zzz\": [\"a\",\"b\",\"c\"]")
-                    .when().post("/queuing/locks/")
-                    .then().assertThat()
-                    .statusCode(400)
-                    .body(containsString("failed to parse request payload"));
+                    given()
+                            .queryParam(BULK_DELETE)
+                            .body("{\"zzz\": [\"a\",\"b\",\"c\"]")
+                            .when().post("/queuing/locks/")
+                            .then().assertThat()
+                            .statusCode(400)
+                            .body(containsString("failed to parse request payload"));
 
-            assertLockExists(context, "queue1");
-            assertLockExists(context, "queue2");
-            assertLockExists(context, "queue{3}");
+                    assertLockExists(context, "queue1");
+                    assertLockExists(context, "queue2");
+                    assertLockExists(context, "queue{3}");
 
-            given()
-                    .queryParam(BULK_DELETE)
-                    .body("{\"locks\": []}")
-                    .when().post("/queuing/locks/")
-                    .then().assertThat()
-                    .statusCode(400)
-                    .body(containsString("array 'locks' is not allowed to be empty"));
+                    given()
+                            .queryParam(BULK_DELETE)
+                            .body("{\"locks\": []}")
+                            .when().post("/queuing/locks/")
+                            .then().assertThat()
+                            .statusCode(400)
+                            .body(containsString("array 'locks' is not allowed to be empty"));
 
-            assertLockExists(context, "queue1");
-            assertLockExists(context, "queue2");
-            assertLockExists(context, "queue{3}");
+                    assertLockExists(context, "queue1");
+                    assertLockExists(context, "queue2");
+                    assertLockExists(context, "queue{3}");
 
-            given()
-                    .queryParam(BULK_DELETE)
-                    .body("{\"locks\": [\"queue1\",\"queue{3}\"]}")
-                    .when().post("/queuing/locks/")
-                    .then().assertThat()
-                    .statusCode(200)
-                    .body("deleted", equalTo(2));
+                    given()
+                            .queryParam(BULK_DELETE)
+                            .body("{\"locks\": [\"queue1\",\"queue{3}\"]}")
+                            .when().post("/queuing/locks/")
+                            .then().assertThat()
+                            .statusCode(200)
+                            .body("deleted", equalTo(2));
 
-            assertLockDoesNotExist(context, "queue1");
-            assertLockExists(context, "queue2");
-            assertLockDoesNotExist(context, "queue{3}");
+                    assertLockDoesNotExist(context, "queue1");
+                    assertLockExists(context, "queue2");
+                    assertLockDoesNotExist(context, "queue{3}");
 
-            given()
-                    .queryParam(BULK_DELETE)
-                    .body("{\"locks\": [\"queue1\",\"queue{3}\"]}")
-                    .when().post("/queuing/locks/")
-                    .then().assertThat()
-                    .statusCode(200)
-                    .body("deleted", equalTo(0));
+                    given()
+                            .queryParam(BULK_DELETE)
+                            .body("{\"locks\": [\"queue1\",\"queue{3}\"]}")
+                            .when().post("/queuing/locks/")
+                            .then().assertThat()
+                            .statusCode(200)
+                            .body("deleted", equalTo(0));
 
-            assertLockDoesNotExist(context, "queue1");
-            assertLockExists(context, "queue2");
-            assertLockDoesNotExist(context, "queue{3}");
+                    assertLockDoesNotExist(context, "queue1");
+                    assertLockExists(context, "queue2");
+                    assertLockDoesNotExist(context, "queue{3}");
 
-            given()
-                    .queryParam(BULK_DELETE)
-                    .body("{\"locks\": [\"queue2\"]}")
-                    .when().post("/queuing/locks/")
-                    .then().assertThat()
-                    .statusCode(200)
-                    .body("deleted", equalTo(1));
+                    given()
+                            .queryParam(BULK_DELETE)
+                            .body("{\"locks\": [\"queue2\"]}")
+                            .when().post("/queuing/locks/")
+                            .then().assertThat()
+                            .statusCode(200)
+                            .body("deleted", equalTo(1));
 
-            assertLockDoesNotExist(context, "queue1");
-            assertLockDoesNotExist(context, "queue2");
-            assertLockDoesNotExist(context, "queue{3}");
+                    assertLockDoesNotExist(context, "queue1");
+                    assertLockDoesNotExist(context, "queue2");
+                    assertLockDoesNotExist(context, "queue{3}");
 
-            async.complete();
+                    async.complete();
                 });
             });
         });
@@ -1418,18 +1422,18 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         flushAll();
         eventBusSend(buildPutLockOperation("queue1", "someuser"), message -> {
             eventBusSend(buildPutLockOperation("queue{2}", "someuser"), message2 -> {
-            when().delete("/queuing/locks/")
-                    .then().assertThat()
-                    .statusCode(200)
-                    .body("deleted", equalTo(2));
+                when().delete("/queuing/locks/")
+                        .then().assertThat()
+                        .statusCode(200)
+                        .body("deleted", equalTo(2));
 
-            //delete all locks again
-            when().delete("/queuing/locks/")
-                    .then().assertThat()
-                    .statusCode(200)
-                    .body("deleted", equalTo(0));
+                //delete all locks again
+                when().delete("/queuing/locks/")
+                        .then().assertThat()
+                        .statusCode(200)
+                        .body("deleted", equalTo(0));
 
-            async.complete();
+                async.complete();
             });
         });
         async.awaitSuccess();

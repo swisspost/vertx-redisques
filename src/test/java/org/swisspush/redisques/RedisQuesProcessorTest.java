@@ -123,6 +123,7 @@ public class RedisQuesProcessorTest extends AbstractTestCase {
         for (int i = 0; i < NUM_QUEUES; i++) {
             log.info("create new sender for queue: queue_" + i);
             new Sender(context, async, "queue_" + i).send(null);
+            Thread.sleep(10);
         }
     }
 
@@ -379,18 +380,15 @@ public class RedisQuesProcessorTest extends AbstractTestCase {
 
         eventBusSend(buildEnqueueOperation(queue, "hello"), reply -> {
             context.assertEquals(OK, reply.result().body().getString(STATUS));
-
-            sleep(5000);
-
             // after at most 5 seconds, the processor-address consumer should not have been called
             context.assertFalse(processorCalled.get(), "QueueProcessor should not have been called after enqueue into a locked queue");
 
-            eventBusSend(buildDeleteLockOperation(queue), event -> {
+            new Thread(() -> eventBusSend(buildDeleteLockOperation(queue), event -> {
                 context.assertEquals(OK, event.result().body().getString(STATUS));
-                sleep(100);
+                sleep(200);
                 context.assertTrue(processorCalled.get(), "QueueProcessor should have been called immediately after queue unlock");
                 async.complete();
-            });
+            })).start();
         });
     }
 

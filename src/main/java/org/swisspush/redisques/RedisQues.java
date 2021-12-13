@@ -719,6 +719,7 @@ public class RedisQues extends AbstractVerticle {
         });
     }
 
+    //TODO: useless in vertx 4
     private boolean jsonArrayContainsStringsOnly(JsonArray array) {
         for (Object obj : array) {
             if (!(obj instanceof String)) {
@@ -728,9 +729,11 @@ public class RedisQues extends AbstractVerticle {
         return true;
     }
 
+    //TODO: useless in vertx 4
     private boolean responseContainsStringsOnly(Response response) {
         try {
             for (int i = 0; i < response.size(); i++) {
+
                 response.get(i).toString();
             }
             return true;
