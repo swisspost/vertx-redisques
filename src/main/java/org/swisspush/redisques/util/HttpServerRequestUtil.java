@@ -1,15 +1,18 @@
 package org.swisspush.redisques.util;
 
+import static org.swisspush.redisques.util.RedisquesAPI.PAYLOAD;
+
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.json.DecodeException;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
-
 import java.nio.charset.Charset;
-
-import static org.swisspush.redisques.util.RedisquesAPI.PAYLOAD;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+import java.util.regex.Pattern;
 
 /**
  * Util class to work with {@link HttpServerRequest}s
@@ -145,4 +148,5 @@ public class HttpServerRequestUtil {
         }
         return object.toString();
     }
+
 }

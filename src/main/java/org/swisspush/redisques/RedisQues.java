@@ -1,5 +1,25 @@
 package org.swisspush.redisques;
 
+import static org.swisspush.redisques.util.RedisquesAPI.BAD_INPUT;
+import static org.swisspush.redisques.util.RedisquesAPI.BUFFER;
+import static org.swisspush.redisques.util.RedisquesAPI.ERROR;
+import static org.swisspush.redisques.util.RedisquesAPI.ERROR_TYPE;
+import static org.swisspush.redisques.util.RedisquesAPI.INDEX;
+import static org.swisspush.redisques.util.RedisquesAPI.LIMIT;
+import static org.swisspush.redisques.util.RedisquesAPI.LOCKS;
+import static org.swisspush.redisques.util.RedisquesAPI.MESSAGE;
+import static org.swisspush.redisques.util.RedisquesAPI.OK;
+import static org.swisspush.redisques.util.RedisquesAPI.OPERATION;
+import static org.swisspush.redisques.util.RedisquesAPI.PAYLOAD;
+import static org.swisspush.redisques.util.RedisquesAPI.PROCESSOR_DELAY_MAX;
+import static org.swisspush.redisques.util.RedisquesAPI.QUEUENAME;
+import static org.swisspush.redisques.util.RedisquesAPI.QUEUES;
+import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation;
+import static org.swisspush.redisques.util.RedisquesAPI.REQUESTED_BY;
+import static org.swisspush.redisques.util.RedisquesAPI.STATUS;
+import static org.swisspush.redisques.util.RedisquesAPI.UNLOCK;
+import static org.swisspush.redisques.util.RedisquesAPI.VALUE;
+
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Future;
@@ -16,17 +36,40 @@ import io.vertx.redis.RedisClient;
 import io.vertx.redis.RedisOptions;
 import io.vertx.redis.op.RangeLimitOptions;
 import io.vertx.redis.op.SetOptions;
-import org.swisspush.redisques.handler.*;
-import org.swisspush.redisques.lua.LuaScriptManager;
-import org.swisspush.redisques.util.*;
-
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-
-import static org.swisspush.redisques.util.RedisquesAPI.*;
+import org.swisspush.redisques.handler.AddQueueItemHandler;
+import org.swisspush.redisques.handler.DeleteLockHandler;
+import org.swisspush.redisques.handler.GetAllLocksHandler;
+import org.swisspush.redisques.handler.GetLockHandler;
+import org.swisspush.redisques.handler.GetQueueItemHandler;
+import org.swisspush.redisques.handler.GetQueueItemsCountHandler;
+import org.swisspush.redisques.handler.GetQueueItemsHandler;
+import org.swisspush.redisques.handler.GetQueuesCountHandler;
+import org.swisspush.redisques.handler.GetQueuesHandler;
+import org.swisspush.redisques.handler.GetQueuesItemsCountHandler;
+import org.swisspush.redisques.handler.GetQueuesStatisticsHandler;
+import org.swisspush.redisques.handler.PutLockHandler;
+import org.swisspush.redisques.handler.RedisquesHttpRequestHandler;
+import org.swisspush.redisques.handler.ReplaceQueueItemHandler;
+import org.swisspush.redisques.lua.LuaScriptManager;
+import org.swisspush.redisques.util.MessageUtil;
+import org.swisspush.redisques.util.QueueConfiguration;
+import org.swisspush.redisques.util.QueueStatisticsCollector;
+import org.swisspush.redisques.util.RedisQuesTimer;
+import org.swisspush.redisques.util.RedisquesConfiguration;
+import org.swisspush.redisques.util.Result;
 
 public class RedisQues extends AbstractVerticle {
 
@@ -42,10 +85,10 @@ public class RedisQues extends AbstractVerticle {
 
     // The queues this verticle is listening to
     private final Map<String, QueueState> myQueues = new HashMap<>();
-    
-    private final Map<String, Integer> myQueueFailureCounts = new HashMap<>();
 
     private final Logger log = LoggerFactory.getLogger(RedisQues.class);
+
+    private QueueStatisticsCollector queueStatisticsCollector;
 
     private Handler<Void> stoppedHandler = null;
 
@@ -188,6 +231,8 @@ public class RedisQues extends AbstractVerticle {
                 .setEncoding(redisEncoding));
 
         this.luaScriptManager = new LuaScriptManager(redisClient);
+        this.queueStatisticsCollector = new QueueStatisticsCollector(redisClient, luaScriptManager,
+            queuesPrefix);
 
         RedisquesHttpRequestHandler.init(vertx, modConfig);
 
@@ -264,7 +309,10 @@ public class RedisQues extends AbstractVerticle {
                     deleteAllLocks(event);
                     break;
                 case getQueueItemsCount:
-                    redisClient.llen(queuesPrefix + body.getJsonObject(PAYLOAD).getString(QUEUENAME), new GetQueueItemsCountHandler(event));
+                    getQueueItemsCount(event);
+                    break;
+                case getQueuesItemsCount:
+                    getQueuesItemsCount(event);
                     break;
                 case getQueuesCount:
                     getQueuesCount(event);
@@ -289,6 +337,9 @@ public class RedisQues extends AbstractVerticle {
                     break;
                 case setConfiguration:
                     setConfiguration(event);
+                    break;
+                case getQueuesStatistics:
+                    getQueuesStatistics(event);
                     break;
                 default:
                     unsupportedOperation(operation, event);
@@ -332,6 +383,7 @@ public class RedisQues extends AbstractVerticle {
                     } else {
                         log.debug("RedisQues Removing queue " + queue + " from the list");
                         myQueues.remove(queue);
+                        queueStatisticsCollector.resetQueueStatistics(queue);
                     }
                 });
             });
@@ -375,6 +427,7 @@ public class RedisQues extends AbstractVerticle {
                 } else {
                     event.reply(reply);
                 }
+                queueStatisticsCollector.setQueueBackPressureTime(queueName, delayReplyMillis);
             } else {
                 String message = "RedisQues QUEUE_ERROR: Error while enqueueing message into queue " + queueName;
                 log.error(message, event2.cause());
@@ -413,7 +466,8 @@ public class RedisQues extends AbstractVerticle {
     }
 
     private void getQueueItems(Message<JsonObject> event) {
-        String keyListRange = queuesPrefix + event.body().getJsonObject(PAYLOAD).getString(QUEUENAME);
+        String queueName = event.body().getJsonObject(PAYLOAD).getString(QUEUENAME);
+        String keyListRange = queuesPrefix + queueName;
         int maxQueueItemCountIndex = getMaxQueueItemCountIndex(event.body().getJsonObject(PAYLOAD).getString(LIMIT));
         redisClient.llen(keyListRange, countReply -> {
             Long queueItemCount = countReply.result();
@@ -501,6 +555,7 @@ public class RedisQues extends AbstractVerticle {
                 // 1st: We don't, to keep backward compatibility
                 // 2nd: We don't, to may unlock below.
             }
+            queueStatisticsCollector.resetQueueStatistics(queue);
             if (unlock) {
                 redisClient.hdel(locksKey, queue, unlockReply -> {
                     if (unlockReply.failed()) {
@@ -517,31 +572,27 @@ public class RedisQues extends AbstractVerticle {
 
     int updateQueueFailureCountAndGetRetryInterval(final String queueName, boolean sendSuccess) {
         if (sendSuccess) {
-            myQueueFailureCounts.remove(queueName);
+            queueStatisticsCollector.resetQueueStatistics(queueName);
             return 0;
         } else {
             // update the failure count
-            Integer failureCount = myQueueFailureCounts.get(queueName);
-            if (failureCount == null) {
-                failureCount = 0;
-            }
-            failureCount++;
-            myQueueFailureCounts.put(queueName, failureCount);
-
+            long failureCount = queueStatisticsCollector.incrementQueueFailureCount(queueName);
             // find a retry interval from the queue configurations
             QueueConfiguration queueConfiguration = findQueueConfiguration(queueName);
             if (queueConfiguration != null) {
                 int[] retryIntervals = queueConfiguration.getRetryIntervals();
                 if (retryIntervals != null && retryIntervals.length > 0) {
-                    int retryIntervalIndex = failureCount <= retryIntervals.length ? failureCount - 1 : retryIntervals.length - 1;
-                    return retryIntervals[retryIntervalIndex];
+                    int retryIntervalIndex = (int)(failureCount <= retryIntervals.length ? failureCount - 1 : retryIntervals.length - 1);
+                    int retryTime = retryIntervals[retryIntervalIndex];
+                    queueStatisticsCollector.setQueueSlowDownTime(queueName, retryTime);
+                    return retryTime;
                 }
             }
         }
 
         return refreshPeriod;
     }
-    
+
     private String buildQueueKey(String queue){
         return queuesPrefix + queue;
     }
@@ -575,6 +626,8 @@ public class RedisQues extends AbstractVerticle {
             event.reply(createErrorReply().put(ERROR_TYPE, BAD_INPUT).put(MESSAGE, "Queues must be string values"));
             return;
         }
+
+        queueStatisticsCollector.resetQueueStatistics(queues);
 
         redisClient.delMany(buildQueueKeys(queues), delManyReply -> {
             if (delManyReply.succeeded()) {
@@ -940,7 +993,6 @@ public class RedisQues extends AbstractVerticle {
                             log.debug("RedisQues Starting to consume queue " + queueName);
                         }
                         readQueue(queueName);
-
                     } else {
                         if(log.isDebugEnabled()) {
                             log.debug("RedisQues Queue " + queueName + " is already being consumed");
@@ -999,7 +1051,7 @@ public class RedisQues extends AbstractVerticle {
                     }
                     if (answer.result() != null) {
                         processMessageWithTimeout(queueName, answer.result(), success -> {
-                            
+
                             // update the queue failure count and get a retry interval
                             int retryInterval = updateQueueFailureCountAndGetRetryInterval(queueName, success);
 
@@ -1027,7 +1079,8 @@ public class RedisQues extends AbstractVerticle {
                                         log.trace("RedisQues read queue: " + queueKey);
                                     }
                                     redisClient.llen(queueKey, answer1 -> {
-                                        if (answer1.succeeded() && answer1.result() != null && answer1.result() > 0) {
+                                        long queueLength = answer1.result();
+                                        if (answer1.succeeded() && answer1.result() != null && queueLength > 0) {
                                             notifyConsumer(queueName);
                                         }
                                     });
@@ -1063,7 +1116,7 @@ public class RedisQues extends AbstractVerticle {
         if (log.isTraceEnabled()) {
             log.trace("RedsQues reschedule after failure for queue: " + queueName);
         }
-        
+
         vertx.setTimer(retryInSeconds * 1000, timerId -> {
             if (log.isDebugEnabled()) {
                 log.debug("RedisQues re-notify the consumer of queue '" + queueName + "' at " + new Date(System.currentTimeMillis()));
@@ -1219,6 +1272,7 @@ public class RedisQues extends AbstractVerticle {
                         if (counter.decrementAndGet() == 0) {
                             removeOldQueues(limit);
                         }
+                        queueStatisticsCollector.resetQueueStatistics(queueName);
                     }
                 });
             }
@@ -1273,4 +1327,62 @@ public class RedisQues extends AbstractVerticle {
         }
         return null;
     }
+
+    /**
+     * Retrieve the number of items of the requested queue
+     */
+    private void getQueueItemsCount(Message<JsonObject> event) {
+        String queue = event.body().getJsonObject(PAYLOAD).getString(QUEUENAME);
+        redisClient.llen(queuesPrefix + queue, new GetQueueItemsCountHandler(event));
+    }
+
+    /**
+     * Retrieve the number of items of many queues
+     */
+    private void getQueuesItemsCount(Message<JsonObject> event) {
+        Result<Optional<Pattern>, String> filterPattern = MessageUtil.extractFilterPattern(event);
+        getQueuesItemsCount(event, filterPattern);
+    }
+
+    /**
+     * Retrieve the size of the queues matching the given filter pattern
+     */
+    private void getQueuesItemsCount(Message<JsonObject> event,
+        Result<Optional<Pattern>, String> filterPatternResult) {
+        if (filterPatternResult.isErr()) {
+            event.reply(createErrorReply().put(ERROR_TYPE, BAD_INPUT)
+                .put(MESSAGE, filterPatternResult.getErr()));
+        } else {
+            redisClient.zrangebyscore(queuesKey, String.valueOf(getMaxAgeTimestamp()), "+inf",
+                RangeLimitOptions.NONE,
+                new GetQueuesItemsCountHandler(event, filterPatternResult.getOk(),luaScriptManager, queuesPrefix));
+        }
+    }
+
+    /**
+     * Retrieve the queue statistics info of the requested queues
+     * @param event
+     */
+    private void getQueuesStatistics(Message<JsonObject> event) {
+        Result<Optional<Pattern>, String> filterPattern = MessageUtil.extractFilterPattern(event);
+        getQueuesStatistics(event, filterPattern);
+    }
+
+    /**
+     * Retrieve the queue statistics info of the requested queues filtered by the
+     * given filter pattern.
+     */
+    private void getQueuesStatistics(Message<JsonObject> event,
+        Result<Optional<Pattern>, String> filterPattern) {
+        if (filterPattern.isErr()) {
+            event.reply(createErrorReply().put(ERROR_TYPE, BAD_INPUT)
+                .put(MESSAGE, filterPattern.getErr()));
+        } else {
+            redisClient.zrangebyscore(queuesKey, String.valueOf(getMaxAgeTimestamp()), "+inf",
+                RangeLimitOptions.NONE,
+                new GetQueuesStatisticsHandler(event, filterPattern.getOk(),
+                    queueStatisticsCollector));
+        }
+    }
+
 }

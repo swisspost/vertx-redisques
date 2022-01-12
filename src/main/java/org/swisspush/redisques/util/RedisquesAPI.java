@@ -1,9 +1,14 @@
 package org.swisspush.redisques.util;
 
+import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+import java.util.regex.Pattern;
 
 /**
  * Class RedisquesAPI listing the operations and response values which are supported in Redisques.
@@ -62,7 +67,9 @@ public class RedisquesAPI {
         bulkDeleteLocks(null),
         getQueues(null),
         getQueuesCount(null),
-        getQueueItemsCount(null);
+        getQueueItemsCount(null),
+        getQueuesItemsCount(null),
+        getQueuesStatistics(null);
 
         private final String legacyName;
 
@@ -174,22 +181,32 @@ public class RedisquesAPI {
     }
 
     /**
+     * Evaluate the size of all queues matching the optional given filter pattern.
+     *
      * @param filterPattern
      *      Filter pattern. Method handles {@code null} gracefully.
      */
     public static JsonObject buildGetQueuesCountOperation(String filterPattern) {
-        if (filterPattern != null) {
-            return buildOperation(QueueOperation.getQueuesCount, new JsonObject().put(FILTER, filterPattern));
-        } else {
-            return buildOperation(QueueOperation.getQueuesCount);
-        }
+        return buildOperation(QueueOperation.getQueuesCount, new JsonObject().put(FILTER, filterPattern));
     }
 
+    /**
+     * Evaluate the size of the given queue
+     * @param queueName the name of the queue to be evaluated
+     * @return the evaluated size
+     */
     public static JsonObject buildGetQueueItemsCountOperation(String queueName){
         return buildOperation(QueueOperation.getQueueItemsCount, new JsonObject().put(QUEUENAME, queueName));
     }
 
-    public static JsonObject buildGetLockOperation(String queueName){
+    /**
+     * Evaluate the size of the ques according to the given filter
+     */
+    public static JsonObject buildGetQueuesItemsCountOperation(String filter){
+        return buildOperation(QueueOperation.getQueuesItemsCount, new JsonObject().put(FILTER, filter));
+    }
+
+     public static JsonObject buildGetLockOperation(String queueName){
         return buildOperation(QueueOperation.getLock, new JsonObject().put(QUEUENAME, queueName));
     }
 
@@ -228,4 +245,20 @@ public class RedisquesAPI {
             return buildGetAllLocksOperation();
         }
     }
+
+    public static JsonObject buildGetQueuesStatisticsOperation() {
+        return buildOperation(QueueOperation.getQueuesStatistics);
+    }
+
+    /**
+     * @param filterPattern
+     *      Filter pattern. Method handles {@code null} gracefully.
+     */
+    public static JsonObject buildGetQueuesStatisticsOperation(String filterPattern) {
+        if (filterPattern != null) {
+            return buildOperation(QueueOperation.getQueuesStatistics, new JsonObject().put(FILTER, filterPattern));
+        }
+        return buildGetQueuesStatisticsOperation();
+    }
+
 }

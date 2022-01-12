@@ -1,5 +1,25 @@
 package org.swisspush.redisques.handler;
 
+import static io.restassured.RestAssured.given;
+import static io.restassured.RestAssured.when;
+import static java.lang.System.currentTimeMillis;
+import static org.hamcrest.CoreMatchers.containsString;
+import static org.hamcrest.CoreMatchers.equalTo;
+import static org.hamcrest.CoreMatchers.hasItem;
+import static org.hamcrest.CoreMatchers.hasItems;
+import static org.hamcrest.CoreMatchers.is;
+import static org.hamcrest.CoreMatchers.not;
+import static org.hamcrest.collection.IsEmptyCollection.empty;
+import static org.hamcrest.collection.IsEmptyCollection.emptyCollectionOf;
+import static org.hamcrest.number.OrderingComparison.greaterThanOrEqualTo;
+import static org.swisspush.redisques.util.RedisquesAPI.BULK_DELETE;
+import static org.swisspush.redisques.util.RedisquesAPI.COUNT;
+import static org.swisspush.redisques.util.RedisquesAPI.FILTER;
+import static org.swisspush.redisques.util.RedisquesAPI.LOCKS;
+import static org.swisspush.redisques.util.RedisquesAPI.REQUESTED_BY;
+import static org.swisspush.redisques.util.RedisquesAPI.buildEnqueueOperation;
+import static org.swisspush.redisques.util.RedisquesAPI.buildPutLockOperation;
+
 import io.restassured.RestAssured;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.DeploymentOptions;
@@ -10,20 +30,19 @@ import io.vertx.core.json.JsonObject;
 import io.vertx.ext.unit.Async;
 import io.vertx.ext.unit.TestContext;
 import io.vertx.ext.unit.junit.Timeout;
-import org.junit.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import org.junit.After;
+import org.junit.Before;
+import org.junit.BeforeClass;
+import org.junit.Rule;
+import org.junit.Test;
 import org.swisspush.redisques.AbstractTestCase;
 import org.swisspush.redisques.RedisQues;
+import org.swisspush.redisques.util.QueueConfiguration;
 import org.swisspush.redisques.util.RedisquesConfiguration;
 import redis.clients.jedis.Jedis;
-
-import static io.restassured.RestAssured.given;
-import static io.restassured.RestAssured.when;
-import static java.lang.System.currentTimeMillis;
-import static org.hamcrest.CoreMatchers.*;
-import static org.hamcrest.collection.IsEmptyCollection.empty;
-import static org.hamcrest.collection.IsEmptyCollection.emptyCollectionOf;
-import static org.hamcrest.number.OrderingComparison.greaterThanOrEqualTo;
-import static org.swisspush.redisques.util.RedisquesAPI.*;
 
 /**
  * Tests for the {@link RedisquesHttpRequestHandler} class
@@ -133,6 +152,11 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
                 .refreshPeriod(2)
                 .httpRequestHandlerEnabled(true)
                 .httpRequestHandlerPort(7070)
+                .queueConfigurations(List.of(
+                   new QueueConfiguration().withPattern("queue_1").withRetryIntervals(1, 2, 3, 5),
+                   new QueueConfiguration().withPattern("stat.*").withRetryIntervals(1, 2, 3, 5)
+                       .withEnqueueDelayMillisPerSize(5).withEnqueueMaxDelayMillis(100)
+                ))
                 .build()
                 .asJsonObject();
 
@@ -205,7 +229,6 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
     }
 
     @Test
-
     public void setConfiguration(TestContext context) {
         when()
                 .get("/queuing/configuration/")
@@ -1879,4 +1902,247 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
 
         async.complete();
     }
+
+    @Test(timeout = 10000L)
+    public void getStatisticsInformation(TestContext context) throws Exception {
+        Async async = context.async();
+        ArrayList<HashMap<String, Object>> response;
+        flushAll();
+
+        // Test no statistics if no queues
+        when().get("/queuing/statistics").then().assertThat().statusCode(200)
+            .body("queues", empty());
+
+        // Check normal send with missing message consumer -> 1 failure immediately
+        eventBusSend(buildEnqueueOperation("stat_a", "item_a_1"), null);
+        JsonObject json = new JsonObject(
+            "{\n" +
+                "  \"queues\": [\n" +
+                "    {\n" +
+                "      \"name\":\"stat_a\",\n" +
+                "      \"size\":1,\n" +
+                "      \"failures\":1,\n" +
+                "      \"backpressureTime\":0,\n" +
+                "      \"slowdownTime\":1\n" +
+                "    }" +
+                "  ]\n" +
+                "}");
+        when().get("/queuing/statistics")
+            .then()
+            .assertThat().statusCode(200)
+            .body(equalTo(json.toString()));
+        flushAll();
+
+        // Test increasing slowDown Time within 5 seconds
+        eventBusSend(buildEnqueueOperation("stat_b", "item_b_1"), null);
+
+        response = when().get("/queuing/statistics")
+            .then()
+            .assertThat().statusCode(200)
+            .extract().path("queues");
+        assert (response.size() == 1);
+        assert (response.get(0).get("name").equals("stat_b"));
+        assert (response.get(0).get("size").equals(1));
+        assert (((int) response.get(0).get("failures")) == 1);
+        assert (((int) response.get(0).get("slowdownTime")) == 1);
+        Thread.sleep(5000);
+        response = when().get("/queuing/statistics")
+            .then()
+            .assertThat().statusCode(200)
+            .extract().path("queues");
+        assert (response.size() == 1);
+        assert (response.get(0).get("name").equals("stat_b"));
+        assert (response.get(0).get("size").equals(1));
+        assert (((int) response.get(0).get("failures")) > 1);
+        assert (((int) response.get(0).get("slowdownTime")) > 1);
+        flushAll();
+
+        // Test increasing backPressure Time
+        // see the QueueConfiguration for stat_* queues in the @Before section
+        eventBusSend(buildEnqueueOperation("stat_c", "item_c_1"), h1 -> {
+        });
+
+        response = when().get("/queuing/statistics")
+            .then()
+            .assertThat().statusCode(200)
+            .extract().path("queues");
+        assert (response.size() == 1);
+        assert (response.get(0).get("name").equals("stat_c"));
+        assert (response.get(0).get("size").equals(1));
+        assert (((int) response.get(0).get("failures")) == 1);
+        assert (((int) response.get(0).get("slowdownTime")) == 1);
+        assert (((int) response.get(0).get("backpressureTime")) == 0);
+        eventBusSend(buildEnqueueOperation("stat_c", "item_c_2"), h1 -> {
+        });
+        response = when().get("/queuing/statistics")
+            .then()
+            .assertThat().statusCode(200)
+            .extract().path("queues");
+        assert (response.size() == 1);
+        assert (response.get(0).get("name").equals("stat_c"));
+        assert (response.get(0).get("size").equals(2));
+        assert (((int) response.get(0).get("failures")) >= 1);
+        assert (((int) response.get(0).get("slowdownTime")) >= 1);
+        // (2msg - 1) * 5 = 5
+        assert (((int) response.get(0).get("backpressureTime")) == 5);
+        eventBusSend(buildEnqueueOperation("stat_c", "item_c_3"), h1 -> {
+        });
+        response = when().get("/queuing/statistics")
+            .then()
+            .assertThat().statusCode(200)
+            .extract().path("queues");
+        assert (response.size() == 1);
+        assert (response.get(0).get("name").equals("stat_c"));
+        assert (response.get(0).get("size").equals(3));
+        assert (((int) response.get(0).get("failures")) >= 1);
+        assert (((int) response.get(0).get("slowdownTime")) >= 1);
+        // (3msg - 1) * 5 = 10
+        assert (((int) response.get(0).get("backpressureTime")) == 10);
+        flushAll();
+
+        // Test retrieve statistics with queue filter
+        for (int i = 0; i < 10; i++) {
+            eventBusSend(buildEnqueueOperation("stat_" + i, "item_1_stat_" + i), null);
+        }
+        json = new JsonObject(
+            "{\n" +
+                "  \"queues\": [\n" +
+                "    {\n" +
+                "      \"name\":\"stat_1\",\n" +
+                "      \"size\":3,\n" +
+                "      \"failures\":3,\n" +
+                "      \"backpressureTime\":0,\n" +
+                "      \"slowdownTime\":0\n" +
+                "    }" +
+                "  ]\n" +
+                "}");
+        response = given().param(FILTER, "stat_1")
+            .when().get("/queuing/statistics")
+            .then()
+            .assertThat().statusCode(200).extract().path("queues");
+        assert (response.size() == 1);
+        assert (response.get(0).get("name").equals("stat_1"));
+
+        response = given().param(FILTER, "stat_[1-5]")
+            .when().get("/queuing/statistics")
+            .then()
+            .assertThat().statusCode(200).extract().path("queues");
+        assert (response.size() == 5);
+        flushAll();
+
+        async.complete();
+    }
+
+    @Test(timeout = 10000L)
+    //@Ignore
+    public void testPerformance(TestContext context) throws Exception {
+        Async async = context.async();
+        ArrayList<HashMap<String, Object>> response;
+        flushAll();
+
+        long statisticsReferenceTime = 0;
+        long monitoringReferenceTime = 0;
+
+        System.out.println("----------------------- WARMING UP PHASE ----------------------------");
+        {
+            long timestamp = System.currentTimeMillis();
+            response = given().when().get("/queuing/statistics").then().assertThat().statusCode(200)
+                .extract().path("queues");
+            assert (response.size() == 0);
+            long statisticsTime = System.currentTimeMillis() - timestamp;
+            System.out.println("Statistics initial time:" + statisticsTime);
+        }
+
+        {   // note: we do it a second time as it seems to be some optimising/caching applied
+            // on first time within Redis. Second one is much faster.
+            long timestamp = System.currentTimeMillis();
+            response = given().when().when().get("/queuing/statistics").then().assertThat()
+                .statusCode(200).extract().path("queues");
+            assert (response.size() == 0);
+            statisticsReferenceTime = System.currentTimeMillis() - timestamp;
+            System.out.println("Statistics reference time=" + statisticsReferenceTime);
+        }
+
+        {
+            long timestamp = System.currentTimeMillis();
+            response = given().when().when().get("/queuing/monitor").then().assertThat()
+                .statusCode(200).extract().path("queues");
+            assert (response.size() == 0);
+            long monitorTime = System.currentTimeMillis() - timestamp;
+            System.out.println("Monitoring empty initial time=" + monitorTime);
+        }
+
+        {
+            long timestamp = System.currentTimeMillis();
+            response = given().when().when().get("/queuing/monitor").then().assertThat()
+                .statusCode(200).extract().path("queues");
+            assert (response.size() == 0);
+            monitoringReferenceTime = System.currentTimeMillis() - timestamp;
+            System.out.println("Monitoring reference time=" + monitoringReferenceTime);
+        }
+
+        System.out.println("---------------------- EVENT CREATION PHASE -------------------------");
+
+        { // feed the system with a bunch of messages for further tests
+            long timestamp = System.currentTimeMillis();
+            for (int i = 0; i < 1000; i++) {
+                eventBusSend(buildEnqueueOperation("queue_" + i, "item"),
+                    emptyHandler -> {
+                    });
+            }
+            long usedTime = System.currentTimeMillis() - timestamp;
+            System.out.println("Event creation time=" + usedTime);
+        }
+
+        System.out.println("---------------------- MONITORING CHECK PHASE -----------------------");
+
+        {   // first run to warm up the system
+            long timestamp = System.currentTimeMillis();
+            response = given().when().when().get("/queuing/monitor").then().assertThat()
+                .statusCode(200).extract().path("queues");
+            assert (response.size() == 1000);
+            long monitorTime = System.currentTimeMillis() - timestamp;
+            System.out.println("Monitoring initial time=" + monitorTime);
+        }
+
+        {   // redo a second time in order to have any caching/optimizing stuff in place
+            long timestamp = System.currentTimeMillis();
+            response = given().when().when().get("/queuing/monitor").then().assertThat()
+                .statusCode(200).extract().path("queues");
+            assert (response.size() == 1000);
+            long monitorTime = System.currentTimeMillis() - timestamp;
+            System.out.println("Monitoring time=" + monitorTime);
+            // assume that the used time is smaller than  10 times the reference times
+            assert (monitorTime < 10 * monitoringReferenceTime);
+        }
+
+        System.out.println("-------------------- STATISTICS CHECK PHASE -------------------------");
+
+        {   // first run to warm up the system
+            long timestamp = System.currentTimeMillis();
+            response = given().when().when().get("/queuing/statistics").then().assertThat()
+                .statusCode(200).extract().path("queues");
+            assert (response.size() == 1000);
+            long statisticsTime = System.currentTimeMillis() - timestamp;
+            System.out.println("Statistics initial time=" + statisticsTime);
+        }
+
+        {   // redo a second time in order to have any caching/optimizing stuff in place
+            long timestamp = System.currentTimeMillis();
+            response = given().when().when().get("/queuing/statistics").then().assertThat()
+                .statusCode(200).extract().path("queues");
+            assert (response.size() == 1000);
+            long statisticsTime = System.currentTimeMillis() - timestamp;
+            System.out.println("Statistics time=" + statisticsTime);
+            // assume that the used time is smaller than  10 times the reference times
+            assert (statisticsTime < 10 * statisticsReferenceTime);
+        }
+
+        System.out.println("------------------ PERFORMANCE CHECKS COMPLETED ---------------------");
+
+        flushAll();
+        async.complete();
+    }
+
+
 }

@@ -71,7 +71,7 @@ public class EnqueueThrottleTest {
     }
 
     @Test
-    public void testEnqueuThrottling(TestContext testContext) {
+    public void testEnqueueThrottling(TestContext testContext) {
         Async async = testContext.async();
         sendAMessage(testContext);
         Vertx vertx = RULE.vertx();
@@ -86,7 +86,7 @@ public class EnqueueThrottleTest {
     private void sendAMessage(TestContext testContext) {
         int num = queueMirror.size();
         if (num == 6) { // the 5th and 6th message (Hallo-4 and Hallo-5) reach "enqueueMaxDelayMillis" - don't need more
-            System.out.println("All messages enqueued - will now allow Processor to conume successfully");
+            System.out.println("All messages enqueued - will now allow Processor to consume successfully");
             blockProcessor = false;
             return;
         }
