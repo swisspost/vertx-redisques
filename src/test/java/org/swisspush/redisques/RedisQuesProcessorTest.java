@@ -123,7 +123,7 @@ public class RedisQuesProcessorTest extends AbstractTestCase {
         for (int i = 0; i < NUM_QUEUES; i++) {
             log.info("create new sender for queue: queue_" + i);
             new Sender(context, async, "queue_" + i).send(null);
-            Thread.sleep(10);
+            Thread.sleep(20);
         }
     }
 
