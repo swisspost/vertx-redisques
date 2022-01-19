@@ -697,11 +697,6 @@ public class RedisQues extends AbstractVerticle {
             return;
         }
 
-        if (!responseContainsStringsOnly(locks)) {
-            event.reply(createErrorReply().put(ERROR_TYPE, BAD_INPUT).put(MESSAGE, "Locks must be string values"));
-            return;
-        }
-
         List<String> args = new ArrayList<>();
         args.add(locksKey);
         for (Response response : locks) {
@@ -719,7 +714,6 @@ public class RedisQues extends AbstractVerticle {
         });
     }
 
-    //TODO: useless in vertx 4
     private boolean jsonArrayContainsStringsOnly(JsonArray array) {
         for (Object obj : array) {
             if (!(obj instanceof String)) {
@@ -727,19 +721,6 @@ public class RedisQues extends AbstractVerticle {
             }
         }
         return true;
-    }
-
-    //TODO: useless in vertx 4
-    private boolean responseContainsStringsOnly(Response response) {
-        try {
-            for (int i = 0; i < response.size(); i++) {
-
-                response.get(i).toString();
-            }
-            return true;
-        } catch (ClassCastException ex) {
-            return false;
-        }
     }
 
     private void getConfiguration(Message<JsonObject> event) {
@@ -917,7 +898,7 @@ public class RedisQues extends AbstractVerticle {
                 log.debug("No consumers found to reset");
                 return;
             }
-            List<String> args = new ArrayList<>();
+            List<String> args = new ArrayList<>(keys.size());
             for (Response response : keys) {
                 args.add(response.toString());
             }

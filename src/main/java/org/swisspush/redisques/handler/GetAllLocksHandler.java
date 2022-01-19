@@ -7,6 +7,7 @@ import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.redis.client.Response;
 
+import java.util.ArrayList;
 import java.util.Optional;
 import java.util.regex.Pattern;
 
@@ -43,7 +44,7 @@ public class GetAllLocksHandler implements Handler<AsyncResult<Response>> {
                 }
                 result.put("locks", filteredLocks);
             } else {
-                JsonArray values = new JsonArray();
+                JsonArray values = new JsonArray(new ArrayList<>(locks.size()));
                 for (Response res : locks) {
                     values.add(res.toString());
                 }
