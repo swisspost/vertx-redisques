@@ -188,8 +188,7 @@ public class RedisQues extends AbstractVerticle {
         queueConfigurations = modConfig.getQueueConfigurations();
 
         this.redisClient = new RedisClient(vertx, new RedisOptions().setConnectionString("redis://" + redisHost + ":" + redisPort).setPassword(redisAuth));
-        //TODO: vertx4
-        //       .setEncoding(redisEncoding));
+
         this.redisAPI = RedisAPI.api(redisClient);
         this.luaScriptManager = new LuaScriptManager(redisAPI);
 
