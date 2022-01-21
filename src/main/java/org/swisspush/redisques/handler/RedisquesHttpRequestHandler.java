@@ -850,19 +850,37 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     }
 
     private void getQueuesStatistics(RoutingContext ctx) {
+        final boolean emptyQueues = evaluateUrlParameterToBeEmptyOrTrue(EMPTY_QUEUES_PARAM, ctx.request());
+        final int limit = extractLimit(ctx);
         String filter = ctx.request().params().get(FILTER);
-        final JsonObject resultObject = new JsonObject();
         eventBus.send(redisquesAddress, buildGetQueuesStatisticsOperation(filter),
             (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
                 if (reply.succeeded() && OK.equals(reply.result().body().getString(STATUS))) {
                     JsonArray queuesArray = reply.result().body().getJsonArray(QUEUES);
-                    resultObject.put(QUEUES, queuesArray);
-                    jsonResponse(ctx.response(), resultObject);
+                    if (queuesArray!=null && !queuesArray.isEmpty()) {
+                        List<JsonObject> queuesList = queuesArray.getList();
+                        queuesList = sortJsonQueueArrayBySize(queuesList);
+                        if (!emptyQueues) {
+                            queuesList = filterJsonQueueArrayNotEmpty(queuesList);
+                        }
+                        if (limit > 0) {
+                            queuesList = limitJsonQueueArray(queuesList, limit);
+                        }
+                        JsonObject resultObject = new JsonObject();
+                        resultObject.put(QUEUES, queuesList);
+                        jsonResponse(ctx.response(), resultObject);
+                    } else {
+                        // there was no result, we as well return an empty result
+                        JsonObject resultObject = new JsonObject();
+                        resultObject.put(QUEUES, new JsonArray());
+                        jsonResponse(ctx.response(), resultObject);
+                    }
                 } else {
                     String error = "Error gathering names of active queues";
                     log.error(error);
                     respondWith(StatusCode.INTERNAL_SERVER_ERROR, error, ctx.request());
                 }
+
             });
     }
 

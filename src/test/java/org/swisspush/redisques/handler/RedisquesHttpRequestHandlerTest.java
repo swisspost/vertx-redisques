@@ -2112,8 +2112,8 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
             assert (response.size() == 1000);
             long monitorTime = System.currentTimeMillis() - timestamp;
             System.out.println("Monitoring time=" + monitorTime);
-            // assume that the used time is smaller than  10 times the reference times
-            assert (monitorTime < 10 * monitoringReferenceTime);
+            // assume that the used time is smaller than  xx times the reference times
+            assert (monitorTime < 20 * monitoringReferenceTime);
         }
 
         System.out.println("-------------------- STATISTICS CHECK PHASE -------------------------");
@@ -2134,8 +2134,8 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
             assert (response.size() == 1000);
             long statisticsTime = System.currentTimeMillis() - timestamp;
             System.out.println("Statistics time=" + statisticsTime);
-            // assume that the used time is smaller than  10 times the reference times
-            assert (statisticsTime < 10 * statisticsReferenceTime);
+            // assume that the used time is smaller than  xx times the reference times
+            assert (statisticsTime < 20 * statisticsReferenceTime);
         }
 
         System.out.println("------------------ PERFORMANCE CHECKS COMPLETED ---------------------");
