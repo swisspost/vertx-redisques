@@ -37,7 +37,7 @@ public class RedisquesConfiguration {
 
     private static final int DEFAULT_CHECK_INTERVAL = 60; // 60s
     private static final long DEFAULT_PROCESSOR_DELAY_MAX = 0;
-    private static final int DEFAULT_REDIS_MAX_POOL_SIZE = 24;
+    private static final int DEFAULT_REDIS_MAX_POOL_SIZE = 200;
 
     public static final String PROP_ADDRESS = "address";
     public static final String PROP_CONFIGURATION_UPDATED_ADDRESS = "configuration-updated-address";

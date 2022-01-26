@@ -42,7 +42,6 @@ public class RedisQuesTest extends AbstractTestCase {
                         .withPattern("queue.*")
                         .withRetryIntervals(2, 7, 12, 17, 22, 27, 32, 37, 42, 47, 52))
                 )
-                .maxPoolSize(200)
                 .build()
                 .asJsonObject();
 

@@ -73,7 +73,6 @@ public class RedisQuesProcessorTest extends AbstractTestCase {
                 .redisEncoding("ISO-8859-1")
                 .refreshPeriod(2)
                 .processorTimeout(10)
-                .maxPoolSize(200)
                 .build()
                 .asJsonObject();
 
