@@ -9,6 +9,7 @@ import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
+import io.vertx.redis.client.Command;
 import io.vertx.redis.client.RedisAPI;
 import io.vertx.redis.client.RedisOptions;
 import io.vertx.redis.client.Response;
@@ -94,6 +95,7 @@ public class RedisQues extends AbstractVerticle {
     private int redisPort;
     private String redisAuth;
     private String redisEncoding;
+    private int redisMaxPoolSize;
 
     private boolean httpRequestHandlerEnabled;
     private String httpRequestHandlerPrefix;
@@ -107,6 +109,16 @@ public class RedisQues extends AbstractVerticle {
     private static final Set<String> ALLOWED_CONFIGURATION_VALUES = Stream.of("processorDelayMax").collect(Collectors.toSet());
 
     private LuaScriptManager luaScriptManager;
+
+
+    private void redisSetWithOptions(String key, String value, boolean nx, int ex, Handler<AsyncResult<Response>> handler) {
+        JsonArray options = new JsonArray();
+        options.add("EX").add(ex);
+        if (nx) {
+            options.add("NX");
+        }
+        redisAPI.send(Command.SET, RedisUtils.toPayload(key, value, options).toArray(new String[0])).onComplete(handler);
+    }
 
     /**
      * <p>Handler receiving registration requests when no consumer is registered
@@ -122,32 +134,26 @@ public class RedisQues extends AbstractVerticle {
             log.debug("RedisQues Got registration request for queue " + queueName + " from consumer: " + uid);
         }
         // Try to register for this queue
-        redisAPI.setnx(consumersPrefix + queueName, uid, event -> {
+        redisSetWithOptions(consumersPrefix + queueName, uid, true, consumerLockTime, event -> {
             if (event.succeeded()) {
-                redisAPI.setex(consumersPrefix + queueName, String.valueOf(consumerLockTime), uid, event1 -> {
-                    if (event1.succeeded()) {
-                        String value = event1.result().toString();
-                        if (log.isTraceEnabled()) {
-                            log.trace("RedisQues setxn result: " + value + " for queue: " + queueName);
-                        }
-                        if ("OK".equals(value)) {
-                            // I am now the registered consumer for this queue.
-                            if (log.isDebugEnabled()) {
-                                log.debug("RedisQues Now registered for queue " + queueName);
-                            }
-                            myQueues.put(queueName, QueueState.READY);
-                            consume(queueName);
-                        } else {
-                            log.debug("RedisQues Missed registration for queue " + queueName);
-                            // Someone else just became the registered consumer. I
-                            // give up.
-                        }
-                    } else {
-                        log.error("RedisQues setex failed", event1.cause());
+                String value = event.result().toString();
+                if (log.isTraceEnabled()) {
+                    log.trace("RedisQues setxn result: " + value + " for queue: " + queueName);
+                }
+                if ("OK".equals(value)) {
+                    // I am now the registered consumer for this queue.
+                    if (log.isDebugEnabled()) {
+                        log.debug("RedisQues Now registered for queue " + queueName);
                     }
-                });
+                    myQueues.put(queueName, QueueState.READY);
+                    consume(queueName);
+                } else {
+                    log.debug("RedisQues Missed registration for queue " + queueName);
+                    // Someone else just became the registered consumer. I
+                    // give up.
+                }
             } else {
-                log.error("RedisQues setnx failed", event.cause());
+                log.error("redisSetWithOptions failed", event.cause());
             }
         });
     }
@@ -180,6 +186,7 @@ public class RedisQues extends AbstractVerticle {
         redisPort = modConfig.getRedisPort();
         redisAuth = modConfig.getRedisAuth();
         redisEncoding = modConfig.getRedisEncoding();
+        redisMaxPoolSize = modConfig.getMaxPoolSize();
 
         httpRequestHandlerEnabled = modConfig.getHttpRequestHandlerEnabled();
         httpRequestHandlerPrefix = modConfig.getHttpRequestHandlerPrefix();
@@ -187,7 +194,7 @@ public class RedisQues extends AbstractVerticle {
         httpRequestHandlerUserHeader = modConfig.getHttpRequestHandlerUserHeader();
         queueConfigurations = modConfig.getQueueConfigurations();
 
-        this.redisClient = new RedisClient(vertx, new RedisOptions().setConnectionString("redis://" + redisHost + ":" + redisPort).setPassword(redisAuth));
+        this.redisClient = new RedisClient(vertx, new RedisOptions().setConnectionString("redis://" + redisHost + ":" + redisPort).setPassword(redisAuth).setMaxPoolSize(redisMaxPoolSize));
 
         this.redisAPI = RedisAPI.api(redisClient);
         this.luaScriptManager = new LuaScriptManager(redisAPI);

@@ -9,7 +9,6 @@ import java.util.stream.Stream;
 /**
  * Useful utilities for Redis
  *
- * @author https://github.com/mcweba [Marc-Andre Weber]
  */
 public final class RedisUtils {
 

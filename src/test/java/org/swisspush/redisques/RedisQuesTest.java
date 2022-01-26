@@ -42,6 +42,7 @@ public class RedisQuesTest extends AbstractTestCase {
                         .withPattern("queue.*")
                         .withRetryIntervals(2, 7, 12, 17, 22, 27, 32, 37, 42, 47, 52))
                 )
+                .maxPoolSize(200)
                 .build()
                 .asJsonObject();
 
@@ -212,7 +213,7 @@ public class RedisQuesTest extends AbstractTestCase {
     }
 
     @Test
-    public void getQueues(TestContext context) throws InterruptedException {
+    public void getQueues(TestContext context) {
         Async asyncEnqueue = context.async(100);
         flushAll();
         assertKeyCount(context, getQueuesRedisKeyPrefix(), 0);
@@ -221,7 +222,7 @@ public class RedisQuesTest extends AbstractTestCase {
                 context.assertEquals(OK, message.result().body().getString(STATUS));
                 asyncEnqueue.countDown();
             });
-            Thread.sleep(10);
+
         }
         asyncEnqueue.awaitSuccess();
 
@@ -239,7 +240,7 @@ public class RedisQuesTest extends AbstractTestCase {
     }
 
     @Test
-    public void getQueuesFiltered(TestContext context) throws InterruptedException {
+    public void getQueuesFiltered(TestContext context) {
         Async asyncEnqueue = context.async(20);
         flushAll();
         assertKeyCount(context, getQueuesRedisKeyPrefix(), 0);
@@ -248,7 +249,7 @@ public class RedisQuesTest extends AbstractTestCase {
                 context.assertEquals(OK, message.result().body().getString(STATUS));
                 asyncEnqueue.countDown();
             });
-            Thread.sleep(10);
+
         }
         asyncEnqueue.awaitSuccess();
 
@@ -271,7 +272,7 @@ public class RedisQuesTest extends AbstractTestCase {
     }
 
     @Test
-    public void getQueuesFilteredInvalidPattern(TestContext context) throws InterruptedException {
+    public void getQueuesFilteredInvalidPattern(TestContext context) {
         Async asyncEnqueue = context.async(20);
         flushAll();
         assertKeyCount(context, getQueuesRedisKeyPrefix(), 0);
@@ -280,7 +281,7 @@ public class RedisQuesTest extends AbstractTestCase {
                 context.assertEquals(OK, message.result().body().getString(STATUS));
                 asyncEnqueue.countDown();
             });
-            Thread.sleep(10);
+
         }
         asyncEnqueue.awaitSuccess();
 
@@ -295,7 +296,7 @@ public class RedisQuesTest extends AbstractTestCase {
     }
 
     @Test
-    public void getQueuesCount(TestContext context) throws InterruptedException {
+    public void getQueuesCount(TestContext context) {
         Async asyncEnqueue = context.async(100);
         flushAll();
         assertKeyCount(context, getQueuesRedisKeyPrefix(), 0);
@@ -304,7 +305,7 @@ public class RedisQuesTest extends AbstractTestCase {
                 context.assertEquals(OK, message.result().body().getString(STATUS));
                 asyncEnqueue.countDown();
             });
-            Thread.sleep(10);
+
         }
         asyncEnqueue.awaitSuccess();
 
@@ -318,7 +319,7 @@ public class RedisQuesTest extends AbstractTestCase {
     }
 
     @Test
-    public void getQueuesCountFiltered(TestContext context) throws InterruptedException {
+    public void getQueuesCountFiltered(TestContext context) {
         Async asyncEnqueue = context.async(50);
         flushAll();
         assertKeyCount(context, getQueuesRedisKeyPrefix(), 0);
@@ -327,7 +328,7 @@ public class RedisQuesTest extends AbstractTestCase {
                 context.assertEquals(OK, message.result().body().getString(STATUS));
                 asyncEnqueue.countDown();
             });
-            Thread.sleep(10);
+
         }
         asyncEnqueue.awaitSuccess();
 
@@ -345,7 +346,7 @@ public class RedisQuesTest extends AbstractTestCase {
     }
 
     @Test
-    public void getQueuesCountFilteredInvalidPattern(TestContext context) throws InterruptedException {
+    public void getQueuesCountFilteredInvalidPattern(TestContext context) {
         Async asyncEnqueue = context.async(50);
         flushAll();
         assertKeyCount(context, getQueuesRedisKeyPrefix(), 0);
@@ -354,7 +355,7 @@ public class RedisQuesTest extends AbstractTestCase {
                 context.assertEquals(OK, message.result().body().getString(STATUS));
                 asyncEnqueue.countDown();
             });
-            Thread.sleep(10);
+
         }
         asyncEnqueue.awaitSuccess();
 
