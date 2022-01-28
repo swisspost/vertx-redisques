@@ -80,7 +80,7 @@ public abstract class AbstractTestCase {
     }
 
     protected void eventBusSend(JsonObject operation, Handler<AsyncResult<Message<JsonObject>>> handler){
-        vertx.eventBus().send(getRedisquesAddress(), operation, handler);
+        vertx.eventBus().request(getRedisquesAddress(), operation, handler);
     }
 
     protected void assertQueueItemsCount(TestContext context, String queue, int count){

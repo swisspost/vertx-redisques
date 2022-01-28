@@ -22,7 +22,7 @@ public class RedisQuesTimerTest {
         final int delayMs = 1500;
         final long start = System.currentTimeMillis();
 
-        timer.executeDelayedMax(delayMs).setHandler(delayed -> {
+        timer.executeDelayedMax(delayMs).onComplete(delayed -> {
             context.assertTrue(delayed.succeeded());
 
             long end = System.currentTimeMillis();
@@ -39,7 +39,7 @@ public class RedisQuesTimerTest {
         final int delayMs = 50;
         final long start = System.currentTimeMillis();
 
-        timer.executeDelayedMax(delayMs).setHandler(delayed -> {
+        timer.executeDelayedMax(delayMs).onComplete(delayed -> {
             context.assertTrue(delayed.succeeded());
 
             long end = System.currentTimeMillis();
@@ -56,7 +56,7 @@ public class RedisQuesTimerTest {
         final int delayMs = 0;
         final long start = System.currentTimeMillis();
 
-        timer.executeDelayedMax(delayMs).setHandler(delayed -> {
+        timer.executeDelayedMax(delayMs).onComplete(delayed -> {
             context.assertTrue(delayed.succeeded());
 
             long end = System.currentTimeMillis();
