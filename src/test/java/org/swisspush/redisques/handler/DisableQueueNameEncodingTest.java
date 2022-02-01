@@ -87,7 +87,7 @@ public class DisableQueueNameEncodingTest extends AbstractTestCase {
     }
 
     protected void eventBusSend(JsonObject operation, Handler<AsyncResult<Message<JsonObject>>> handler) {
-        testVertx.eventBus().send(getRedisquesAddress(), operation, handler);
+        testVertx.eventBus().request(getRedisquesAddress(), operation, handler);
     }
 
     @Test

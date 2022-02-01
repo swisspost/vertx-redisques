@@ -175,7 +175,7 @@ public class RedisQuesProcessorTest extends AbstractTestCase {
                 }
                 signature.update(message.getBytes());
                 log.info("send message [" + digestStr(signature) + "] for queue [" + queue + "] ");
-                vertx.eventBus().send(getRedisquesAddress(), buildEnqueueOperation(queue, message), (Handler<AsyncResult<Message<JsonObject>>>) event -> {
+                vertx.eventBus().request(getRedisquesAddress(), buildEnqueueOperation(queue, message), (Handler<AsyncResult<Message<JsonObject>>>) event -> {
                     if (event.result().body().getString(STATUS).equals(OK)) {
                         send(null);
                     } else {
@@ -185,7 +185,7 @@ public class RedisQuesProcessorTest extends AbstractTestCase {
                 });
                 messageCount++;
             } else {
-                vertx.eventBus().send(getRedisquesAddress(), buildEnqueueOperation(queue, "STOP"),
+                vertx.eventBus().request(getRedisquesAddress(), buildEnqueueOperation(queue, "STOP"),
                         (Handler<AsyncResult<Message<JsonObject>>>) reply ->
                                 context.assertEquals(OK, reply.result().body().getString(STATUS)));
             }
@@ -379,18 +379,15 @@ public class RedisQuesProcessorTest extends AbstractTestCase {
 
         eventBusSend(buildEnqueueOperation(queue, "hello"), reply -> {
             context.assertEquals(OK, reply.result().body().getString(STATUS));
-
-            sleep(5000);
-
             // after at most 5 seconds, the processor-address consumer should not have been called
             context.assertFalse(processorCalled.get(), "QueueProcessor should not have been called after enqueue into a locked queue");
 
-            eventBusSend(buildDeleteLockOperation(queue), event -> {
+            new Thread(() -> eventBusSend(buildDeleteLockOperation(queue), event -> {
                 context.assertEquals(OK, event.result().body().getString(STATUS));
-                sleep(100);
+                sleep(200);
                 context.assertTrue(processorCalled.get(), "QueueProcessor should have been called immediately after queue unlock");
                 async.complete();
-            });
+            })).start();
         });
     }
 

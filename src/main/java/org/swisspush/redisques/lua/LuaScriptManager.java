@@ -3,7 +3,8 @@ package org.swisspush.redisques.lua;
 import io.vertx.core.Handler;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
-import io.vertx.redis.RedisClient;
+import io.vertx.redis.client.RedisAPI;
+import org.swisspush.redisques.util.RedisUtils;
 
 import java.util.*;
 
@@ -14,14 +15,14 @@ import java.util.*;
  */
 public class LuaScriptManager {
 
-    private RedisClient redisClient;
+    private RedisAPI redisAPI;
     private Map<LuaScript,LuaScriptState> luaScripts = new HashMap<>();
     private Logger log = LoggerFactory.getLogger(LuaScriptManager.class);
 
-    public LuaScriptManager(RedisClient redisClient){
-        this.redisClient = redisClient;
+    public LuaScriptManager(RedisAPI redisAPI){
+        this.redisAPI = redisAPI;
 
-        LuaScriptState luaGetScriptState = new LuaScriptState(LuaScript.CHECK, redisClient);
+        LuaScriptState luaGetScriptState = new LuaScriptState(LuaScript.CHECK, redisAPI);
         luaGetScriptState.loadLuaScript(new RedisCommandDoNothing(), 0);
         luaScripts.put(LuaScript.CHECK, luaGetScriptState);
 
@@ -49,7 +50,7 @@ public class LuaScriptManager {
                 String.valueOf(System.currentTimeMillis()),
                 String.valueOf(checkInterval)
         );
-        executeRedisCommand(new Check(keys, arguments, redisClient, handler), 0);
+        executeRedisCommand(new Check(keys, arguments, redisAPI, handler), 0);
     }
 
     private class Check implements RedisCommand {
@@ -57,20 +58,21 @@ public class LuaScriptManager {
         private List<String> keys;
         private List<String> arguments;
         private Handler<Boolean> handler;
-        private RedisClient redisClient;
+        private RedisAPI redisAPI;
 
-        public Check(List<String> keys, List<String> arguments, RedisClient redisClient, final Handler<Boolean> handler) {
+        public Check(List<String> keys, List<String> arguments, RedisAPI redisAPI, final Handler<Boolean> handler) {
             this.keys = keys;
             this.arguments = arguments;
-            this.redisClient = redisClient;
+            this.redisAPI = redisAPI;
             this.handler = handler;
         }
 
         @Override
         public void exec(int executionCounter) {
-            redisClient.evalsha(luaScripts.get(LuaScript.CHECK).getSha(), keys, arguments, event -> {
+            List<String> args= RedisUtils.toPayload(luaScripts.get(LuaScript.CHECK).getSha(), keys.size(), keys, arguments);
+            redisAPI.evalsha(args, event -> {
                 if(event.succeeded()){
-                    Long value = event.result().getLong(0);
+                    Long value = event.result().toLong();
                     if (log.isTraceEnabled()) {
                         log.trace("Check lua script got result: " + value);
                     }
@@ -83,7 +85,7 @@ public class LuaScriptManager {
                         if(executionCounter > 10) {
                             log.error("amount the script got loaded is higher than 10, we abort");
                         } else {
-                            luaScripts.get(LuaScript.CHECK).loadLuaScript(new Check(keys, arguments, redisClient, handler), executionCounter);
+                            luaScripts.get(LuaScript.CHECK).loadLuaScript(new Check(keys, arguments, redisAPI, handler), executionCounter);
                         }
                     } else {
                         log.error("Check request failed.", event.cause());

@@ -53,7 +53,7 @@ public class EnqueueThrottleTest {
 
         vertx.deployVerticle(new RedisQues(), new DeploymentOptions().setConfig(redisquesConfig.asJsonObject()), done -> {
             JsonObject delete = RedisquesAPI.buildDeleteAllQueueItemsOperation(QUEUE_NAME);
-            vertx.eventBus().send(REDISQUES_ADDRESS, delete, deleteDone -> async.complete());
+            vertx.eventBus().request(REDISQUES_ADDRESS, delete, deleteDone -> async.complete());
         });
     }
 
@@ -95,7 +95,7 @@ public class EnqueueThrottleTest {
         System.out.println("enqueue " + message);
         JsonObject enque = RedisquesAPI.buildEnqueueOperation(QUEUE_NAME, message);
         long t0 = System.nanoTime();
-        RULE.vertx().eventBus().send(REDISQUES_ADDRESS, enque, result -> {
+        RULE.vertx().eventBus().request(REDISQUES_ADDRESS, enque, result -> {
             long enqueuDurationMillis = (System.nanoTime() - t0) / 1_000_000;
             long expectedDurationMillis = Math.min(num * 500, 1700); // see QueueConfiguration above
             if (Math.abs(enqueuDurationMillis - expectedDurationMillis) > 100) {

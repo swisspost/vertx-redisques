@@ -1,6 +1,7 @@
 package org.swisspush.redisques.util;
 
 import io.vertx.core.Future;
+import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
@@ -31,16 +32,16 @@ public class RedisQuesTimer {
      * @return A {@link Future} which completes after the delay
      */
     public Future<Void> executeDelayedMax(long delayMs) {
-        Future<Void> future = Future.future();
+        Promise<Void> promise = Promise.promise();
 
         if (delayMs > 0) {
             int delay = random.nextInt((int) (delayMs + 1)) + 1;
             log.debug("starting timer with a delay of " + delay + "ms");
-            vertx.setTimer(delay, delayed -> future.complete());
+            vertx.setTimer(delay, delayed -> promise.complete());
         } else {
-            future.complete();
+            promise.complete();
         }
 
-        return future;
+        return promise.future();
     }
 }
