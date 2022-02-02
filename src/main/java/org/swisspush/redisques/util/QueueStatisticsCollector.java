@@ -10,9 +10,11 @@ import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
-import io.vertx.redis.RedisClient;
+import io.vertx.redis.client.RedisAPI;
+import io.vertx.redis.client.Response;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
@@ -22,12 +24,12 @@ import org.swisspush.redisques.lua.LuaScriptManager;
  * Class StatisticsCollector helps collecting statistics information about queue handling and
  * failures.
  * <p>
- * Due to the fact that there is a Redisques responsible for a queue in a cluster, we could assume
- * that the values are good enough when cached locally for queue processing only.  If the
- * responsible Redisques Instance changes it will build up the statistics straight away by itself
- * anyway.
+ * Due to the fact that there is a Redisques responsible for one queue instance at the same time
+ * in a cluster, we could assume that the values are good enough when cached locally for queue
+ * processing by itself. If the responsible Redisques Instance changes, it will build up the
+ * statistics straight away by itself anyway.
  * <p>
- * But in the case or the stattistics read operation, we must get the statistics of all queues
+ * But in the case of the statistics read operation, we must get the statistics of all queues
  * existing, not only the ones which are treated by the redisques instance (there might be multiple
  * involved). Therefore, we must write the statistics values as well to redis and retrieve them from
  * there once needed. Note that the statistics is written asynch and only in the case of queue
@@ -46,13 +48,13 @@ public class QueueStatisticsCollector {
     private final Map<String, Long> queueBackpressureTime = new HashMap<>();
     private final Map<String, Long> queueSlowDownTime = new HashMap<>();
 
-    private final RedisClient redisClient;
+    private final RedisAPI redisAPI;
     private final LuaScriptManager luaScriptManager;
     private final String queuePrefix;
 
-    public QueueStatisticsCollector(RedisClient redisClient, LuaScriptManager luaScriptManager,
+    public QueueStatisticsCollector(RedisAPI redisAPI, LuaScriptManager luaScriptManager,
         String queuePrefix) {
-        this.redisClient = redisClient;
+        this.redisAPI = redisAPI;
         this.luaScriptManager = luaScriptManager;
         this.queuePrefix = queuePrefix;
     }
@@ -67,8 +69,7 @@ public class QueueStatisticsCollector {
      * @param queueName The queue name for which the statistic values must be reset.
      */
     public void resetQueueStatistics(String queueName) {
-        AtomicLong failureCount = queueFailureCount.get(queueName);
-        queueFailureCount.remove(queueName);
+        AtomicLong failureCount = queueFailureCount.remove(queueName);
         queueSlowDownTime.remove(queueName);
         queueBackpressureTime.remove(queueName);
         if (failureCount != null && failureCount.get()>0) {
@@ -85,7 +86,7 @@ public class QueueStatisticsCollector {
      * @param queues The list of queue names for which the statistic values must be reset.
      */
     public void resetQueueStatistics(JsonArray queues) {
-        if (queues == null) {
+        if (queues == null || queues.isEmpty()) {
             return;
         }
         final int size = queues.size();
@@ -213,10 +214,10 @@ public class QueueStatisticsCollector {
             obj.put(QUEUE_FAILURES, failures);
             obj.put(QUEUE_SLOWDOWNTIME, slowDownTime);
             obj.put(QUEUE_BACKPRESSURE, backpressureTime);
-            redisClient.hset(STATSKEY, queueName, obj.toString(), emptyHandler -> {
+            redisAPI.hset(List.of(STATSKEY, queueName, obj.toString()), emptyHandler -> {
             });
         } else {
-            redisClient.hdel(STATSKEY, queueName, emptyHandler -> {
+            redisAPI.hdel(List.of(STATSKEY, queueName), emptyHandler -> {
             });
         }
     }
@@ -325,7 +326,7 @@ public class QueueStatisticsCollector {
             }
             // now retrieve all available statistics from Redis and merge them
             // together with the previous populated queue statistics map
-            redisClient.hvals(STATSKEY, statisticsSet -> {
+            redisAPI.hvals(STATSKEY, statisticsSet -> {
                 if (statisticsSet == null) {
                     log.error("Unexepected statistics queue evaluation result result null");
                     event.reply(new JsonObject().put(STATUS, ERROR));
@@ -333,9 +334,9 @@ public class QueueStatisticsCollector {
                 }
                 // put the received statistics data to the former prepared statistics objects
                 // per queue
-                List<String> statistics = statisticsSet.result().getList();
-                for (String jStr : statistics) {
-                    JsonObject jObj = new JsonObject(jStr);
+                Iterator<Response> itr = statisticsSet.result().stream().iterator();
+                while (itr.hasNext()){
+                    JsonObject jObj = new JsonObject(itr.next().toString());
                     String queueName = jObj.getString(RedisquesAPI.QUEUENAME);
                     QueueStatistic queueStatistic = statisticsMap.get(queueName);
                     if (queueStatistic != null) {

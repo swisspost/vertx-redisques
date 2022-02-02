@@ -33,9 +33,11 @@ import io.vertx.ext.unit.junit.Timeout;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.BeforeClass;
+import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
 import org.swisspush.redisques.AbstractTestCase;
@@ -144,11 +146,12 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
     public void deployRedisques(TestContext context) {
         Async async = context.async();
         testVertx = Vertx.vertx();
-
         JsonObject config = RedisquesConfiguration.with()
                 .address(getRedisquesAddress())
                 .processorAddress("processor-address")
                 .redisEncoding("ISO-8859-1")
+                .maxPoolSize(200)
+                .maxWaitSize(-1)
                 .refreshPeriod(2)
                 .httpRequestHandlerEnabled(true)
                 .httpRequestHandlerPort(7070)
@@ -2038,7 +2041,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
     }
 
     @Test(timeout = 10000L)
-    //@Ignore
+    @Ignore
     public void testPerformance(TestContext context) throws Exception {
         Async async = context.async();
         ArrayList<HashMap<String, Object>> response;
@@ -2089,10 +2092,18 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
 
         { // feed the system with a bunch of messages for further tests
             long timestamp = System.currentTimeMillis();
-            for (int i = 0; i < 1000; i++) {
-                eventBusSend(buildEnqueueOperation("queue_" + i, "item"),
+            final AtomicInteger ctr = new AtomicInteger(0);
+            while (ctr.get()<1000) {
+                eventBusSend(buildEnqueueOperation("queue_" + ctr, "item"),
                     emptyHandler -> {
+                      ctr.incrementAndGet();
+                      synchronized (ctr) {
+                          ctr.notifyAll();
+                      }
                     });
+                synchronized (ctr) {
+                    ctr.wait();
+                }
             }
             long usedTime = System.currentTimeMillis() - timestamp;
             System.out.println("Event creation time=" + usedTime);

@@ -8,10 +8,8 @@ import io.vertx.core.json.JsonObject;
 import io.vertx.redis.client.Response;
 
 import java.util.ArrayList;
-import java.util.List;
 import java.util.Optional;
 import java.util.regex.Pattern;
-import org.swisspush.redisques.util.QueueHandlerUtil;
 
 import static org.swisspush.redisques.util.RedisquesAPI.*;
 

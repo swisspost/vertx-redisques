@@ -7,12 +7,12 @@ import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
+import io.vertx.redis.client.Response;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.regex.Pattern;
 import org.swisspush.redisques.lua.LuaScriptManager;
-import org.swisspush.redisques.util.HttpServerRequestUtil;
 import org.swisspush.redisques.util.QueueHandlerUtil;
 import org.swisspush.redisques.util.RedisquesAPI;
 
@@ -23,7 +23,7 @@ import static org.swisspush.redisques.util.RedisquesAPI.*;
  *
  * @author https://github.com/mcweba [Marc-Andre Weber]
  */
-public class GetQueuesItemsCountHandler implements Handler<AsyncResult<JsonArray>> {
+public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>> {
 
     private final Logger log = LoggerFactory.getLogger(GetQueuesItemsCountHandler.class);
 
@@ -40,7 +40,7 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<JsonArray
     }
 
     @Override
-    public void handle(AsyncResult<JsonArray> handleQueues) {
+    public void handle(AsyncResult<Response> handleQueues) {
         if(handleQueues.succeeded()){
             List<String> queues = QueueHandlerUtil.filterQueues(handleQueues.result(), filterPattern);
             if (queues==null || queues.isEmpty()) {

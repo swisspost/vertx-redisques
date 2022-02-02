@@ -9,11 +9,8 @@ import io.vertx.redis.client.Response;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.List;
 import java.util.Optional;
 import java.util.regex.Pattern;
-import org.swisspush.redisques.util.QueueHandlerUtil;
-import org.swisspush.redisques.util.RedisquesAPI;
 
 import static org.swisspush.redisques.util.RedisquesAPI.*;
 
@@ -48,13 +45,13 @@ public class GetQueuesHandler implements Handler<AsyncResult<Response>> {
                         filteredQueues.add(queue);
                     }
                 }
-                jsonRes.put(QUEUES_ARR, filteredQueues);
+                jsonRes.put(QUEUES, filteredQueues);
             } else {
                 List<String> arrayQueues = new ArrayList<>();
                 for (Response response : queues) {
                     arrayQueues.add(response.toString());
                 }
-                jsonRes.put(QUEUES_ARR, arrayQueues);
+                jsonRes.put(QUEUES, arrayQueues);
             }
             if(countOnly){
                 event.reply(new JsonObject().put(STATUS, OK).put(VALUE, jsonRes.getJsonArray(QUEUES).size()));

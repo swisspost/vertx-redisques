@@ -141,7 +141,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         /*
          * Get statistic information
          */
-        router.get(prefix + "/statistics/").handler(this::getQueuesStatistics);
+        router.get(prefix + "/statistics").handler(this::getQueuesStatistics);
 
         /*
          * Enqueue or LockedEnqueue

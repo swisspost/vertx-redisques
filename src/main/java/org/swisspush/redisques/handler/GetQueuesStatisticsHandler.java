@@ -8,6 +8,7 @@ import io.vertx.core.Handler;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
+import io.vertx.redis.client.Response;
 import java.util.List;
 import java.util.Optional;
 import java.util.regex.Pattern;
@@ -20,7 +21,7 @@ import org.swisspush.redisques.util.QueueStatisticsCollector;
  * Retrieves in it's AsyncResult handler for all given queue names the queue statistics information
  * and returns the same in the event completion.
  */
-public class GetQueuesStatisticsHandler implements Handler<AsyncResult<JsonArray>> {
+public class GetQueuesStatisticsHandler implements Handler<AsyncResult<Response>> {
 
     private final Message<JsonObject> event;
     private final Optional<Pattern> filterPattern;
@@ -34,7 +35,7 @@ public class GetQueuesStatisticsHandler implements Handler<AsyncResult<JsonArray
     }
 
     @Override
-    public void handle(AsyncResult<JsonArray> handleQueues) {
+    public void handle(AsyncResult<Response> handleQueues) {
         if (handleQueues.succeeded()) {
             List<String> queues = QueueHandlerUtil
                 .filterQueues(handleQueues.result(), filterPattern);

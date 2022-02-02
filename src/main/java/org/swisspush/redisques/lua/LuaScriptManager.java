@@ -4,6 +4,7 @@ import io.vertx.core.Handler;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
 import io.vertx.redis.client.RedisAPI;
+import io.vertx.redis.client.Response;
 import org.swisspush.redisques.util.RedisUtils;
 
 import java.util.*;
@@ -27,7 +28,7 @@ public class LuaScriptManager {
         luaScripts.put(LuaScript.CHECK, luaGetScriptState);
 
         // load the MultiListLength Lua Script
-        LuaScriptState luaMllenScriptState = new LuaScriptState(LuaScript.MLLEN, redisClient);
+        LuaScriptState luaMllenScriptState = new LuaScriptState(LuaScript.MLLEN, redisAPI);
         luaMllenScriptState.loadLuaScript(new RedisCommandDoNothing(), 0);
         luaScripts.put(LuaScript.MLLEN, luaMllenScriptState);
     }
@@ -97,18 +98,18 @@ public class LuaScriptManager {
 
 
     public void handleMultiListLength(List<String> keys, Handler<List<Long>> handler){
-        executeRedisCommand(new MultiListLength(keys, redisClient, handler), 0);
+        executeRedisCommand(new MultiListLength(keys, redisAPI, handler), 0);
     }
 
     private class MultiListLength implements RedisCommand {
 
         private List<String> keys;
         private Handler<List<Long>> handler;
-        private RedisClient redisClient;
+        private RedisAPI redisAPI;
 
-        public MultiListLength(List<String> keys, RedisClient redisClient, final Handler<List<Long>> handler) {
+        public MultiListLength(List<String> keys, RedisAPI redisAPI, final Handler<List<Long>> handler) {
             this.keys = keys;
-            this.redisClient = redisClient;
+            this.redisAPI = redisAPI;
             this.handler = handler;
         }
 
@@ -118,9 +119,15 @@ public class LuaScriptManager {
                 handler.handle(List.of());
                 return;
             }
-            redisClient.evalsha(luaScripts.get(LuaScript.MLLEN).getSha(), keys, List.of(), event -> {
+            List<String> args= RedisUtils.toPayload(luaScripts.get(LuaScript.MLLEN).getSha(),
+                keys.size(), keys);
+            redisAPI.evalsha(args, event -> {
                 if(event.succeeded()){
-                    List<Long> res = event.result().getList();
+                    List<Long> res = new ArrayList<>();
+                    Iterator <Response> itr = event.result().iterator();
+                    while (itr.hasNext()){
+                      res.add(itr.next().toLong());
+                    }
                     handler.handle(res);
                 } else {
                     String message = event.cause().getMessage();
@@ -130,7 +137,7 @@ public class LuaScriptManager {
                         if(executionCounter > 10) {
                             log.error("amount the MultiListLength script got loaded is higher than 10, we abort");
                         } else {
-                            luaScripts.get(LuaScript.MLLEN).loadLuaScript(new MultiListLength(keys, redisClient, handler), executionCounter);
+                            luaScripts.get(LuaScript.MLLEN).loadLuaScript(new MultiListLength(keys, redisAPI, handler), executionCounter);
                         }
                     } else {
                         log.error("ListLength request failed.", event.cause());
