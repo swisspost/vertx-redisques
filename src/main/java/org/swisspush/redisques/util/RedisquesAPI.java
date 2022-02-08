@@ -41,6 +41,13 @@ public class RedisquesAPI {
     public static final String NO_SUCH_LOCK = "No such lock";
     public static final String PROCESSOR_DELAY_MAX = "processorDelayMax";
 
+    public static final String MONITOR_QUEUE_NAME = "name";
+    public static final String MONITOR_QUEUE_SIZE = "size";
+    public static final String STATISTIC_QUEUE_FAILURES = "failures";
+    public static final String STATISTIC_QUEUE_BACKPRESSURE = "backpressureTime";
+    public static final String STATISTIC_QUEUE_SLOWDOWN = "slowdownTime";
+
+
     private static Logger log = LoggerFactory.getLogger(RedisquesAPI.class);
 
     public enum QueueOperation {

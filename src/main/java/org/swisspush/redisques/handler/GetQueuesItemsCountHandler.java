@@ -67,8 +67,8 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
                 for (int i = 0; i < queues.size(); i++) {
                     String queueName = queues.get(i);
                     result.add(new JsonObject()
-                        .put("name", queueName)
-                        .put("size", multiListLength.get(i)));
+                        .put(MONITOR_QUEUE_NAME, queueName)
+                        .put(MONITOR_QUEUE_SIZE, multiListLength.get(i)));
                 }
                 event.reply(new JsonObject().put(RedisquesAPI.STATUS, RedisquesAPI.OK)
                     .put(QUEUES, result));

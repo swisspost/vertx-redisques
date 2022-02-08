@@ -4,41 +4,7 @@ import static org.swisspush.redisques.util.HttpServerRequestUtil.decode;
 import static org.swisspush.redisques.util.HttpServerRequestUtil.encodePayload;
 import static org.swisspush.redisques.util.HttpServerRequestUtil.evaluateUrlParameterToBeEmptyOrTrue;
 import static org.swisspush.redisques.util.HttpServerRequestUtil.extractNonEmptyJsonArrayFromBody;
-import static org.swisspush.redisques.util.RedisquesAPI.BAD_INPUT;
-import static org.swisspush.redisques.util.RedisquesAPI.ERROR_TYPE;
-import static org.swisspush.redisques.util.RedisquesAPI.FILTER;
-import static org.swisspush.redisques.util.RedisquesAPI.LIMIT;
-import static org.swisspush.redisques.util.RedisquesAPI.LOCKS;
-import static org.swisspush.redisques.util.RedisquesAPI.MESSAGE;
-import static org.swisspush.redisques.util.RedisquesAPI.NO_SUCH_LOCK;
-import static org.swisspush.redisques.util.RedisquesAPI.OK;
-import static org.swisspush.redisques.util.RedisquesAPI.QUEUES;
-import static org.swisspush.redisques.util.RedisquesAPI.STATUS;
-import static org.swisspush.redisques.util.RedisquesAPI.VALUE;
-import static org.swisspush.redisques.util.RedisquesAPI.COUNT;
-import static org.swisspush.redisques.util.RedisquesAPI.buildAddQueueItemOperation;
-import static org.swisspush.redisques.util.RedisquesAPI.buildBulkDeleteLocksOperation;
-import static org.swisspush.redisques.util.RedisquesAPI.buildBulkDeleteQueuesOperation;
-import static org.swisspush.redisques.util.RedisquesAPI.buildBulkPutLocksOperation;
-import static org.swisspush.redisques.util.RedisquesAPI.buildDeleteAllLocksOperation;
-import static org.swisspush.redisques.util.RedisquesAPI.buildDeleteAllQueueItemsOperation;
-import static org.swisspush.redisques.util.RedisquesAPI.buildDeleteLockOperation;
-import static org.swisspush.redisques.util.RedisquesAPI.buildDeleteQueueItemOperation;
-import static org.swisspush.redisques.util.RedisquesAPI.buildEnqueueOperation;
-import static org.swisspush.redisques.util.RedisquesAPI.buildGetAllLocksOperation;
-import static org.swisspush.redisques.util.RedisquesAPI.buildGetConfigurationOperation;
-import static org.swisspush.redisques.util.RedisquesAPI.buildGetLockOperation;
-import static org.swisspush.redisques.util.RedisquesAPI.buildGetQueueItemOperation;
-import static org.swisspush.redisques.util.RedisquesAPI.buildGetQueueItemsCountOperation;
-import static org.swisspush.redisques.util.RedisquesAPI.buildGetQueueItemsOperation;
-import static org.swisspush.redisques.util.RedisquesAPI.buildGetQueuesItemsCountOperation;
-import static org.swisspush.redisques.util.RedisquesAPI.buildGetQueuesCountOperation;
-import static org.swisspush.redisques.util.RedisquesAPI.buildGetQueuesOperation;
-import static org.swisspush.redisques.util.RedisquesAPI.buildGetQueuesStatisticsOperation;
-import static org.swisspush.redisques.util.RedisquesAPI.buildLockedEnqueueOperation;
-import static org.swisspush.redisques.util.RedisquesAPI.buildPutLockOperation;
-import static org.swisspush.redisques.util.RedisquesAPI.buildReplaceQueueItemOperation;
-import static org.swisspush.redisques.util.RedisquesAPI.buildSetConfigurationOperation;
+import static org.swisspush.redisques.util.RedisquesAPI.*;
 
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Handler;
@@ -834,14 +800,14 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     }
 
     private List<JsonObject> sortJsonQueueArrayBySize(List<JsonObject> queueList) {
-        queueList.sort((left, right) -> right.getLong("size").compareTo(left.getLong("size")));
+        queueList.sort((left, right) -> right.getLong(MONITOR_QUEUE_SIZE).compareTo(left.getLong(MONITOR_QUEUE_SIZE)));
         return queueList;
     }
 
     private List<JsonObject> filterJsonQueueArrayNotEmpty(List<JsonObject> queueList) {
         return queueList.stream()
             .filter(
-                queue -> queue.getLong("size") > 0)
+                queue -> queue.getLong(MONITOR_QUEUE_SIZE) > 0)
             .collect(Collectors.toList());
     }
 

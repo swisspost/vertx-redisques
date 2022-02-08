@@ -1,9 +1,6 @@
 package org.swisspush.redisques.util;
 
-import static org.swisspush.redisques.util.RedisquesAPI.ERROR;
-import static org.swisspush.redisques.util.RedisquesAPI.OK;
-import static org.swisspush.redisques.util.RedisquesAPI.QUEUENAME;
-import static org.swisspush.redisques.util.RedisquesAPI.STATUS;
+import static org.swisspush.redisques.util.RedisquesAPI.*;
 
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonArray;
@@ -271,11 +268,11 @@ public class QueueStatisticsCollector {
 
         JsonObject getAsJsonObject() {
             return new JsonObject()
-                .put("name", queueName)
-                .put("size", size)
-                .put("failures", failures)
-                .put("backpressureTime", backpressureTime)
-                .put("slowdownTime", slowdownTime);
+                .put(MONITOR_QUEUE_NAME, queueName)
+                .put(MONITOR_QUEUE_SIZE, size)
+                .put(STATISTIC_QUEUE_FAILURES, failures)
+                .put(STATISTIC_QUEUE_BACKPRESSURE, backpressureTime)
+                .put(STATISTIC_QUEUE_SLOWDOWN, slowdownTime);
         }
     }
 
