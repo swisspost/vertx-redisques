@@ -6,7 +6,6 @@ import static org.swisspush.redisques.util.RedisquesAPI.STATUS;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Handler;
 import io.vertx.core.eventbus.Message;
-import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.redis.client.Response;
 import java.util.List;
@@ -27,7 +26,8 @@ public class GetQueuesStatisticsHandler implements Handler<AsyncResult<Response>
     private final Optional<Pattern> filterPattern;
     private final QueueStatisticsCollector queueStatisticsCollector;
 
-    public GetQueuesStatisticsHandler(Message<JsonObject> event, Optional<Pattern> filterPattern,
+    public GetQueuesStatisticsHandler(Message<JsonObject> event,
+        Optional<Pattern> filterPattern,
         QueueStatisticsCollector queueStatisticsCollector) {
         this.event = event;
         this.filterPattern = filterPattern;

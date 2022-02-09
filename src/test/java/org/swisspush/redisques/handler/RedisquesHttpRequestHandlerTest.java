@@ -2041,7 +2041,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
     }
 
     @Test(timeout = 10000L)
-    @Ignore
+    //@Ignore
     public void testPerformance(TestContext context) throws Exception {
         Async async = context.async();
         ArrayList<HashMap<String, Object>> response;

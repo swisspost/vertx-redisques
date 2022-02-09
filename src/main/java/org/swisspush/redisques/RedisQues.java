@@ -1,24 +1,6 @@
 package org.swisspush.redisques;
 
-import static org.swisspush.redisques.util.RedisquesAPI.BAD_INPUT;
-import static org.swisspush.redisques.util.RedisquesAPI.BUFFER;
-import static org.swisspush.redisques.util.RedisquesAPI.ERROR;
-import static org.swisspush.redisques.util.RedisquesAPI.ERROR_TYPE;
-import static org.swisspush.redisques.util.RedisquesAPI.INDEX;
-import static org.swisspush.redisques.util.RedisquesAPI.LIMIT;
-import static org.swisspush.redisques.util.RedisquesAPI.LOCKS;
-import static org.swisspush.redisques.util.RedisquesAPI.MESSAGE;
-import static org.swisspush.redisques.util.RedisquesAPI.OK;
-import static org.swisspush.redisques.util.RedisquesAPI.OPERATION;
-import static org.swisspush.redisques.util.RedisquesAPI.PAYLOAD;
-import static org.swisspush.redisques.util.RedisquesAPI.PROCESSOR_DELAY_MAX;
-import static org.swisspush.redisques.util.RedisquesAPI.QUEUENAME;
-import static org.swisspush.redisques.util.RedisquesAPI.QUEUES;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation;
-import static org.swisspush.redisques.util.RedisquesAPI.REQUESTED_BY;
-import static org.swisspush.redisques.util.RedisquesAPI.STATUS;
-import static org.swisspush.redisques.util.RedisquesAPI.UNLOCK;
-import static org.swisspush.redisques.util.RedisquesAPI.VALUE;
+import static org.swisspush.redisques.util.RedisquesAPI.*;
 
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.AsyncResult;

@@ -32,7 +32,10 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
     private final LuaScriptManager luaScriptManager;
     private final String queuesPrefix;
 
-    public GetQueuesItemsCountHandler(Message<JsonObject> event, Optional<Pattern> filterPattern, LuaScriptManager luaScriptManager, String queuesPrefix) {
+    public GetQueuesItemsCountHandler(Message<JsonObject> event,
+        Optional<Pattern> filterPattern,
+        LuaScriptManager luaScriptManager,
+        String queuesPrefix) {
         this.event = event;
         this.filterPattern = filterPattern;
         this.luaScriptManager = luaScriptManager;
@@ -42,7 +45,8 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
     @Override
     public void handle(AsyncResult<Response> handleQueues) {
         if(handleQueues.succeeded()){
-            List<String> queues = QueueHandlerUtil.filterQueues(handleQueues.result(), filterPattern);
+            List<String> queues = QueueHandlerUtil.filterQueues(handleQueues.result(),
+                filterPattern);
             if (queues==null || queues.isEmpty()) {
                 log.debug("Queue count evaluation with empty queues");
                 event.reply(new JsonObject().put(STATUS, OK).put(QUEUES, new JsonArray()));
@@ -59,7 +63,8 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
                     return;
                 }
                 if (multiListLength.size()!=queues.size()) {
-                    log.error("Unexpected queue MultiListLength result with unequal size {} : {}", queues.size(), multiListLength.size());
+                    log.error("Unexpected queue MultiListLength result with unequal size {} : {}",
+                        queues.size(), multiListLength.size());
                     event.reply(new JsonObject().put(STATUS, ERROR));
                     return;
                 }

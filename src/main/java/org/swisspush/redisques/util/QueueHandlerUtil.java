@@ -1,6 +1,5 @@
 package org.swisspush.redisques.util;
 
-import io.vertx.core.json.JsonArray;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
 import io.vertx.redis.client.Response;
