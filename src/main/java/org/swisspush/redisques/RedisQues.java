@@ -1,6 +1,24 @@
 package org.swisspush.redisques;
 
-import static org.swisspush.redisques.util.RedisquesAPI.*;
+import static org.swisspush.redisques.util.RedisquesAPI.BAD_INPUT;
+import static org.swisspush.redisques.util.RedisquesAPI.BUFFER;
+import static org.swisspush.redisques.util.RedisquesAPI.ERROR;
+import static org.swisspush.redisques.util.RedisquesAPI.ERROR_TYPE;
+import static org.swisspush.redisques.util.RedisquesAPI.INDEX;
+import static org.swisspush.redisques.util.RedisquesAPI.LIMIT;
+import static org.swisspush.redisques.util.RedisquesAPI.LOCKS;
+import static org.swisspush.redisques.util.RedisquesAPI.MESSAGE;
+import static org.swisspush.redisques.util.RedisquesAPI.OK;
+import static org.swisspush.redisques.util.RedisquesAPI.OPERATION;
+import static org.swisspush.redisques.util.RedisquesAPI.PAYLOAD;
+import static org.swisspush.redisques.util.RedisquesAPI.PROCESSOR_DELAY_MAX;
+import static org.swisspush.redisques.util.RedisquesAPI.QUEUENAME;
+import static org.swisspush.redisques.util.RedisquesAPI.QUEUES;
+import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation;
+import static org.swisspush.redisques.util.RedisquesAPI.REQUESTED_BY;
+import static org.swisspush.redisques.util.RedisquesAPI.STATUS;
+import static org.swisspush.redisques.util.RedisquesAPI.UNLOCK;
+import static org.swisspush.redisques.util.RedisquesAPI.VALUE;
 
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.AsyncResult;
@@ -168,8 +186,7 @@ public class RedisQues extends AbstractVerticle {
         }
         if (log.isDebugEnabled()) {
             log.debug(
-                "RedisQues Got registration request for queue " + queueName + " from consumer: "
-                    + uid);
+                "RedisQues Got registration request for queue {} from consumer: {}", queueName, uid);
         }
         // Try to register for this queue
         redisSetWithOptions(consumersPrefix + queueName, uid, true, consumerLockTime, event -> {
@@ -1376,14 +1393,14 @@ public class RedisQues extends AbstractVerticle {
     /**
      * Retrieve the size of the queues matching the given filter pattern
      */
-    private void getQueuesItemsCount(Message<JsonObject> event,
-        Result<Optional<Pattern>, String> filterPatternResult) {
+    private void getQueuesItemsCount(Message<JsonObject> event, Result<Optional<Pattern>, String> filterPatternResult) {
         if (filterPatternResult.isErr()) {
             event.reply(createErrorReply().put(ERROR_TYPE, BAD_INPUT)
                 .put(MESSAGE, filterPatternResult.getErr()));
         } else {
             redisAPI.zrangebyscore(List.of(queuesKey, String.valueOf(getMaxAgeTimestamp()), "+inf"),
-                new GetQueuesItemsCountHandler(event, filterPatternResult.getOk(),luaScriptManager, queuesPrefix));
+                new GetQueuesItemsCountHandler(event, filterPatternResult.getOk(), luaScriptManager,
+                    queuesPrefix));
         }
     }
 

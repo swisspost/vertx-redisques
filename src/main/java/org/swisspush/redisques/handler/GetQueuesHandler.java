@@ -15,8 +15,6 @@ import java.util.regex.Pattern;
 import static org.swisspush.redisques.util.RedisquesAPI.*;
 
 /**
- * Class GetQueuesHandler.
- *
  * @author https://github.com/mcweba [Marc-Andre Weber]
  */
 public class GetQueuesHandler implements Handler<AsyncResult<Response>> {

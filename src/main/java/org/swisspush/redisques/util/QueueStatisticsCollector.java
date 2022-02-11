@@ -15,6 +15,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.stream.Collectors;
 import org.swisspush.redisques.lua.LuaScriptManager;
 
 /**
@@ -70,7 +71,7 @@ public class QueueStatisticsCollector {
         queueSlowDownTime.remove(queueName);
         queueBackpressureTime.remove(queueName);
         if (failureCount != null && failureCount.get()>0) {
-          // there was a real failure, therefore we will execute this
+          // there was a real failure before, therefore we will execute this
           // cleanup as well on Redis itself as we would like to do redis operations
           // only if necessary of course.
           updateStatisticsInRedis(queueName);
@@ -205,7 +206,7 @@ public class QueueStatisticsCollector {
         long failures = getQueueFailureCount(queueName);
         long slowDownTime = getQueueSlowDownTime(queueName);
         long backpressureTime = getQueueBackPressureTime(queueName);
-        if (failures > 0 || slowDownTime > 0 && backpressureTime > 0) {
+        if (failures > 0 || slowDownTime > 0 || backpressureTime > 0) {
             JsonObject obj = new JsonObject();
             obj.put(QUEUENAME, queueName);
             obj.put(QUEUE_FAILURES, failures);
@@ -298,10 +299,8 @@ public class QueueStatisticsCollector {
         // Note: If a queue doesn't exists, it will anyway return 0 for the same, therefore
         //       the size of the returned queues must be equal in any case and has the same
         //       order as the requested queues.
-        List<String> queueKeys = new ArrayList<>();
-        for (String queue : queues){
-            queueKeys.add(this.queuePrefix + queue);
-        }
+        List<String> queueKeys = queues.stream().map(queue -> queuePrefix + queue).collect(
+            Collectors.toList());
         luaScriptManager.handleMultiListLength(queueKeys, queueListLength -> {
             if (queueListLength == null) {
                 log.error("Unexepected queue MultiListLength result null");

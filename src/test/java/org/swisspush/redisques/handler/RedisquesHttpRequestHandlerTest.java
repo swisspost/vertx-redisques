@@ -2063,7 +2063,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         {   // note: we do it a second time as it seems to be some optimising/caching applied
             // on first time within Redis. Second one is much faster.
             long timestamp = System.currentTimeMillis();
-            response = given().when().when().get("/queuing/statistics").then().assertThat()
+            response = given().when().get("/queuing/statistics").then().assertThat()
                 .statusCode(200).extract().path("queues");
             assert (response.size() == 0);
             statisticsReferenceTime = System.currentTimeMillis() - timestamp;
@@ -2072,7 +2072,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
 
         {
             long timestamp = System.currentTimeMillis();
-            response = given().when().when().get("/queuing/monitor").then().assertThat()
+            response = given().when().get("/queuing/monitor").then().assertThat()
                 .statusCode(200).extract().path("queues");
             assert (response.size() == 0);
             long monitorTime = System.currentTimeMillis() - timestamp;
@@ -2081,7 +2081,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
 
         {
             long timestamp = System.currentTimeMillis();
-            response = given().when().when().get("/queuing/monitor").then().assertThat()
+            response = given().when().get("/queuing/monitor").then().assertThat()
                 .statusCode(200).extract().path("queues");
             assert (response.size() == 0);
             monitoringReferenceTime = System.currentTimeMillis() - timestamp;
@@ -2113,7 +2113,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
 
         {   // first run to warm up the system
             long timestamp = System.currentTimeMillis();
-            response = given().when().when().get("/queuing/monitor").then().assertThat()
+            response = given().when().get("/queuing/monitor").then().assertThat()
                 .statusCode(200).extract().path("queues");
             assert (response.size() == 1000);
             long monitorTime = System.currentTimeMillis() - timestamp;
@@ -2122,7 +2122,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
 
         {   // redo a second time in order to have any caching/optimizing stuff in place
             long timestamp = System.currentTimeMillis();
-            response = given().when().when().get("/queuing/monitor").then().assertThat()
+            response = given().when().get("/queuing/monitor").then().assertThat()
                 .statusCode(200).extract().path("queues");
             assert (response.size() == 1000);
             long monitorTime = System.currentTimeMillis() - timestamp;
@@ -2135,7 +2135,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
 
         {   // first run to warm up the system
             long timestamp = System.currentTimeMillis();
-            response = given().when().when().get("/queuing/statistics").then().assertThat()
+            response = given().when().get("/queuing/statistics").then().assertThat()
                 .statusCode(200).extract().path("queues");
             assert (response.size() == 1000);
             long statisticsTime = System.currentTimeMillis() - timestamp;
@@ -2144,7 +2144,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
 
         {   // redo a second time in order to have any caching/optimizing stuff in place
             long timestamp = System.currentTimeMillis();
-            response = given().when().when().get("/queuing/statistics").then().assertThat()
+            response = given().when().get("/queuing/statistics").then().assertThat()
                 .statusCode(200).extract().path("queues");
             assert (response.size() == 1000);
             long statisticsTime = System.currentTimeMillis() - timestamp;

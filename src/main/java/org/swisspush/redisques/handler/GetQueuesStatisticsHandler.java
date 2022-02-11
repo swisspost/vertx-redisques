@@ -15,8 +15,6 @@ import org.swisspush.redisques.util.QueueHandlerUtil;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 
 /**
- * Class GetQueuesStatisticsHandler
- * <p>
  * Retrieves in it's AsyncResult handler for all given queue names the queue statistics information
  * and returns the same in the event completion.
  */

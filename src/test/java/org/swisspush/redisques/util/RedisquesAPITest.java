@@ -310,9 +310,6 @@ public class RedisquesAPITest {
         context.assertEquals(expected, operation);
     }
 
-
-
-
     private JsonObject buildExpectedJsonObject(String operation){
         JsonObject expected = new JsonObject();
         expected.put("operation", operation);

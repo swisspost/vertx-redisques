@@ -12,17 +12,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import org.swisspush.redisques.lua.LuaScriptManager;
 import org.swisspush.redisques.util.QueueHandlerUtil;
 import org.swisspush.redisques.util.RedisquesAPI;
 
 import static org.swisspush.redisques.util.RedisquesAPI.*;
 
-/**
- * Class GetQueueItemsCountHandler.
- *
- * @author https://github.com/mcweba [Marc-Andre Weber]
- */
 public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>> {
 
     private final Logger log = LoggerFactory.getLogger(GetQueuesItemsCountHandler.class);
@@ -32,10 +28,11 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
     private final LuaScriptManager luaScriptManager;
     private final String queuesPrefix;
 
-    public GetQueuesItemsCountHandler(Message<JsonObject> event,
-        Optional<Pattern> filterPattern,
-        LuaScriptManager luaScriptManager,
-        String queuesPrefix) {
+    public GetQueuesItemsCountHandler(
+            Message<JsonObject> event,
+            Optional<Pattern> filterPattern,
+            LuaScriptManager luaScriptManager,
+            String queuesPrefix) {
         this.event = event;
         this.filterPattern = filterPattern;
         this.luaScriptManager = luaScriptManager;
@@ -44,18 +41,16 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
 
     @Override
     public void handle(AsyncResult<Response> handleQueues) {
-        if(handleQueues.succeeded()){
+        if (handleQueues.succeeded()) {
             List<String> queues = QueueHandlerUtil.filterQueues(handleQueues.result(),
                 filterPattern);
-            if (queues==null || queues.isEmpty()) {
+            if (queues == null || queues.isEmpty()) {
                 log.debug("Queue count evaluation with empty queues");
                 event.reply(new JsonObject().put(STATUS, OK).put(QUEUES, new JsonArray()));
                 return;
             }
-            List<String> keys = new ArrayList<>();
-            for (String queue : queues) {
-                keys.add(queuesPrefix + queue);
-            }
+            List<String> keys = queues.stream().map(queue -> queuesPrefix + queue)
+                .collect(Collectors.toList());
             luaScriptManager.handleMultiListLength(keys, multiListLength -> {
                 if (multiListLength==null) {
                     log.error("Unexepected queue MultiListLength result null");
