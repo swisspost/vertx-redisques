@@ -178,19 +178,26 @@ public class RedisquesAPI {
         }
     }
 
+    /**
+     * Evaluate the size of all queues matching the optional given filter pattern.
+     */
     public static JsonObject buildGetQueuesCountOperation(){
         return buildOperation(QueueOperation.getQueuesCount);
     }
 
     /**
      * Evaluate the size of all queues matching the optional given filter pattern.
-     *
      * @param filterPattern
      *      Filter pattern. Method handles {@code null} gracefully.
      */
     public static JsonObject buildGetQueuesCountOperation(String filterPattern) {
-        return buildOperation(QueueOperation.getQueuesCount, new JsonObject().put(FILTER, filterPattern));
+        if (filterPattern != null) {
+            return buildOperation(QueueOperation.getQueuesCount, new JsonObject().put(FILTER, filterPattern));
+        } else {
+            return buildOperation(QueueOperation.getQueuesCount);
+        }
     }
+
 
     /**
      * Evaluate the size of the given queue

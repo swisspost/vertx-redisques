@@ -330,7 +330,7 @@ public class QueueStatisticsCollector {
                 }
                 // put the received statistics data to the former prepared statistics objects
                 // per queue
-                Iterator<Response> itr = statisticsSet.result().stream().iterator();
+                Iterator<Response> itr = statisticsSet.result().iterator();
                 while (itr.hasNext()){
                     JsonObject jObj = new JsonObject(itr.next().toString());
                     String queueName = jObj.getString(RedisquesAPI.QUEUENAME);
@@ -345,8 +345,7 @@ public class QueueStatisticsCollector {
                 // build the final resulting statistics list from the former merged queue
                 // values from various sources
                 JsonArray result = new JsonArray();
-                for (int i = 0; i < queues.size(); i++) {
-                    String queueName = queues.get(i);
+                for (String queueName: queues) {
                     QueueStatistic stats = statisticsMap.get(queueName);
                     if (stats != null) {
                         result.add(stats.getAsJsonObject());
