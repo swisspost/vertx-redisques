@@ -1993,6 +1993,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         flushAll();
 
         // Test increasing backPressure Time
+        Async async1 = context.async();
         // see the QueueConfiguration for stat_* queues in the @Before section
         eventBusSend(buildEnqueueOperation("stat_c", "item_c_1"), handler -> {
             ArrayList<HashMap<String, Object>> response = when().get("/queuing/statistics")
@@ -2005,8 +2006,11 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
             context.assertTrue(((int) response.get(0).get("failures")) == 1);
             context.assertTrue(((int) response.get(0).get("slowdownTime")) == 1);
             context.assertTrue(((int) response.get(0).get("backpressureTime")) == 0);
+            async1.complete();
         });
+        async1.awaitSuccess();
 
+        Async async2 = context.async();
         eventBusSend(buildEnqueueOperation("stat_c", "item_c_2"), h1 -> {
             ArrayList<HashMap<String, Object>> response = when().get("/queuing/statistics")
                 .then()
@@ -2019,7 +2023,9 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
             context.assertTrue(((int) response.get(0).get("slowdownTime")) >= 1);
             // (2msg - 1) * 5 = 5
             context.assertTrue(((int) response.get(0).get("backpressureTime")) == 5);
+            async2.complete();
         });
+        async2.awaitSuccess();
 
         eventBusSend(buildEnqueueOperation("stat_c", "item_c_3"), h1 -> {
             ArrayList<HashMap<String, Object>> response = when().get("/queuing/statistics")
