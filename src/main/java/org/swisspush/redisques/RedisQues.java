@@ -1418,7 +1418,7 @@ public class RedisQues extends AbstractVerticle {
      * given filter pattern.
      */
     private void getQueuesStatistics(Message<JsonObject> event,
-        Result<Optional<Pattern>, String> filterPattern) {
+            Result<Optional<Pattern>, String> filterPattern) {
         if (filterPattern.isErr()) {
             event.reply(createErrorReply().put(ERROR_TYPE, BAD_INPUT)
                 .put(MESSAGE, filterPattern.getErr()));

@@ -51,7 +51,7 @@ public class QueueStatisticsCollector {
     private final String queuePrefix;
 
     public QueueStatisticsCollector(RedisAPI redisAPI, LuaScriptManager luaScriptManager,
-        String queuePrefix) {
+            String queuePrefix) {
         this.redisAPI = redisAPI;
         this.luaScriptManager = luaScriptManager;
         this.queuePrefix = queuePrefix;
