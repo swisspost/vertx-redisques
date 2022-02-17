@@ -169,11 +169,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
             deploymentId = event;
             log.info("vert.x Deploy - " + redisQues.getClass().getSimpleName() + " was successful.");
             jedis = new Jedis("localhost", 6379, 5000);
-            try {
-                Thread.sleep(1000);
-            } catch (InterruptedException e) {
-                //do nothing
-            }
+            delay(1000);
             async.complete();
         }));
         async.awaitSuccess();
@@ -1923,7 +1919,6 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
 
     @Test
     public void getStatisticsFailures(TestContext context) throws Exception {
-        Async async = context.async();
         flushAll();
         JsonObject json = new JsonObject(
             "{\n" +
@@ -1938,14 +1933,30 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
                 "  ]\n" +
                 "}");
         // Check normal send with missing message consumer -> 1 failure immediately
+        Async async1 = context.async();
         eventBusSend(buildEnqueueOperation("stat_a", "item_a_1"), handler -> {
             when().get("/queuing/statistics")
                 .then()
                 .assertThat().statusCode(200)
                 .body(equalTo(json.toString()));
-            async.complete();
+            async1.complete();
         });
-        async.awaitSuccess();
+        async1.awaitSuccess();
+        // now we wait just some time up until the failures are incremented once
+        delay(1000);
+        Async async2 = context.async();
+        eventBusSend(buildEnqueueOperation("stat_a", "item_a_2"), handler -> {
+            ArrayList<HashMap<String, Object>> response = when().get("/queuing/statistics")
+                .then()
+                .assertThat().statusCode(200)
+                .extract().path("queues");
+            context.assertTrue(response.size() == 1);
+            context.assertTrue(response.get(0).get("name").equals("stat_a"));
+            context.assertTrue(response.get(0).get("size").equals(2));
+            context.assertTrue(((int) response.get(0).get("failures")) == 2);
+            async2.complete();
+        });
+        async2.awaitSuccess();
     }
 
     @Test(timeout = 10000L)
@@ -1966,12 +1977,8 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
             context.assertTrue(((int) response.get(0).get("failures")) == 1);
             context.assertTrue(((int) response.get(0).get("slowdownTime")) == 1);
 
-            // now we wait just some time up until the failures and slowdowns are applies
-            try {
-                Thread.sleep(5000);
-            }catch(InterruptedException iex){
-                context.fail();
-            }
+            // now we wait just some time up until the failures and slowdowns are applied
+            delay(5000);
             response = when().get("/queuing/statistics")
                 .then()
                 .assertThat().statusCode(200)
@@ -2194,5 +2201,13 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         flushAll();
     }
 
+    private void delay( long ms) {
+        try {
+            Thread.sleep(ms);
+        }catch(InterruptedException iex){
+            assert false;
+        }
+
+    }
 
 }

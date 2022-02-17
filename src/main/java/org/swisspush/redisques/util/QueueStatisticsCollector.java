@@ -105,12 +105,13 @@ public class QueueStatisticsCollector {
      * @return The new value of the counter after the incrementation.
      */
     public long incrementQueueFailureCount(String queueName) {
-        AtomicLong failureCount = queueFailureCount.putIfAbsent(queueName, new AtomicLong(1));
-        updateStatisticsInRedis(queueName);
+        long newFailureCount = 1;
+        AtomicLong failureCount = queueFailureCount.putIfAbsent(queueName, new AtomicLong(newFailureCount));
         if (failureCount != null) {
-            return failureCount.addAndGet(1);
+            newFailureCount = failureCount.addAndGet(1);
         }
-        return 1;
+        updateStatisticsInRedis(queueName);
+        return newFailureCount;
     }
 
     /**
@@ -336,7 +337,7 @@ public class QueueStatisticsCollector {
                     String queueName = jObj.getString(RedisquesAPI.QUEUENAME);
                     QueueStatistic queueStatistic = statisticsMap.get(queueName);
                     if (queueStatistic != null) {
-                        // if it isn't there, there was obviously no statistic available for this
+                        // if it isn't there, there is obviously no statistic needed
                         queueStatistic.setFailures(jObj.getLong(QUEUE_FAILURES, 0L));
                         queueStatistic.setBackpressureTime(jObj.getLong(QUEUE_BACKPRESSURE, 0L));
                         queueStatistic.setSlowdownTime(jObj.getLong(QUEUE_SLOWDOWNTIME, 0L));
