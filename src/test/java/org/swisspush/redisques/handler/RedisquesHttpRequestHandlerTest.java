@@ -1918,7 +1918,6 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
 
     @Test
     public void getStatisticsFailures(TestContext context) throws Exception {
-        Async async = context.async(2);
         flushAll();
         JsonObject json = new JsonObject(
             "{\n" +
@@ -1933,16 +1932,18 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
                 "  ]\n" +
                 "}");
         // Check normal send with missing message consumer -> 1 failure immediately
+        Async async1 = context.async();
         eventBusSend(buildEnqueueOperation("stat_a", "item_a_1"), handler -> {
             when().get("/queuing/statistics")
                 .then()
                 .assertThat().statusCode(200)
                 .body(equalTo(json.toString()));
-            async.complete();
+            async1.complete();
         });
-        async.awaitSuccess();
+        async1.awaitSuccess();
         // now we wait just some time up until the failures are incremented once
         context.assertTrue(delay(1000));
+        Async async2 = context.async();
         eventBusSend(buildEnqueueOperation("stat_a", "item_a_2"), handler -> {
             ArrayList<HashMap<String, Object>> response = when().get("/queuing/statistics")
                 .then()
@@ -1952,9 +1953,9 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
             context.assertTrue(response.get(0).get("name").equals("stat_a"));
             context.assertTrue(response.get(0).get("size").equals(2));
             context.assertTrue(((int) response.get(0).get("failures")) == 2);
-            async.complete();
+            async2.complete();
         });
-        async.awaitSuccess();
+        async2.awaitSuccess();
     }
 
     @Test(timeout = 10000L)
@@ -1992,11 +1993,11 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
 
     @Test
     public void getStatisticsBackpressure(TestContext context) throws Exception {
-        Async async = context.async(3);
         flushAll();
 
         // Test increasing backPressure Time
         // see the QueueConfiguration for stat_* queues in the @Before section
+        Async async1 = context.async();
         eventBusSend(buildEnqueueOperation("stat_c", "item_c_1"), handler -> {
             ArrayList<HashMap<String, Object>> response = when().get("/queuing/statistics")
                 .then()
@@ -2008,10 +2009,11 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
             context.assertTrue(((int) response.get(0).get("failures")) == 1);
             context.assertTrue(((int) response.get(0).get("slowdownTime")) == 1);
             context.assertTrue(((int) response.get(0).get("backpressureTime")) == 0);
-            async.complete();
+            async1.complete();
         });
-        async.awaitSuccess();
+        async1.awaitSuccess();
 
+        Async async2 = context.async();
         eventBusSend(buildEnqueueOperation("stat_c", "item_c_2"), h1 -> {
             ArrayList<HashMap<String, Object>> response = when().get("/queuing/statistics")
                 .then()
@@ -2024,10 +2026,11 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
             context.assertTrue(((int) response.get(0).get("slowdownTime")) >= 1);
             // (2msg - 1) * 5 = 5
             context.assertTrue(((int) response.get(0).get("backpressureTime")) == 5);
-            async.complete();
+            async2.complete();
         });
-        async.awaitSuccess();
+        async2.awaitSuccess();
 
+        Async async3 = context.async();
         eventBusSend(buildEnqueueOperation("stat_c", "item_c_3"), h1 -> {
             ArrayList<HashMap<String, Object>> response = when().get("/queuing/statistics")
                 .then()
@@ -2040,9 +2043,9 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
             context.assertTrue(((int) response.get(0).get("slowdownTime")) >= 1);
             // (3msg - 1) * 5 = 10
             context.assertTrue(((int) response.get(0).get("backpressureTime")) == 10);
-            async.complete();
+            async3.complete();
         });
-        async.awaitSuccess();
+        async3.awaitSuccess();
     }
 
     @Test
