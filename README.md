@@ -583,6 +583,34 @@ Response Data
 }
 ```
 
+#### getQueuesStatistics
+
+Request Data
+```
+{
+    "operation": "getQueueStatistics",
+    "payload": {
+        "filter": <str regex pattern to filter queues to retrieve statistics information (optional)>
+    }
+}
+```
+
+Response Data
+```
+{
+    "status": "ok" / "error",
+    "queues": [   <JsonArray of resulting queue statistics>
+    {
+      "name": <str QUEUENAME>
+      "size": <Long Size of queue>
+      "failures": <Long Number of current failure count of queue>
+      "slowdownTime": <Long Current slowdown time in ms>
+      "backpressureTime": <Long Current backpressure time in ms>
+    }
+    ]    
+}
+```
+
 ## RedisQues HTTP API
 RedisQues provides a HTTP API to modify queues, queue items and get information about queue counts and queue item counts.
 
@@ -897,6 +925,32 @@ The result will be a json object containing the number of deleted locks like the
 ```json
 {
   "deleted": 22
+}
+```
+
+### Get statistics information
+The statistics information contains the active queues and their queue items count plus the current number of failures and delay times in ms. 
+To get the monitor information use
+> GET /queuing/statistics
+
+Available url parameters are:
+* _limit_: The maximum amount of queues to list
+* _emptyQueues=true_: Also show empty queues
+* _filter=<regex pattern>_: Filter the queues to list or count
+
+The result will be a json object with the statistics information like the example below.
+
+```json
+{
+    "queues": [
+    {
+      "name": "queue_1",
+      "size": 3,
+      "failures": 0,
+      "slowdownTime": 0,
+      "backpressureTime": 0
+    }
+    ]    
 }
 ```
 
