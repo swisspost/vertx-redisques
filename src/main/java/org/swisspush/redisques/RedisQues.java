@@ -191,7 +191,7 @@ public class RedisQues extends AbstractVerticle {
         // Try to register for this queue
         redisSetWithOptions(consumersPrefix + queueName, uid, true, consumerLockTime, event -> {
             if (event.succeeded()) {
-                String value = event.result().toString();
+                String value = event.result() != null ? event.result().toString() : null;
                 if (log.isTraceEnabled()) {
                     log.trace("RedisQues setxn result: " + value + " for queue: " + queueName);
                 }
