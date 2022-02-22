@@ -295,6 +295,21 @@ public class RedisquesAPITest {
         context.assertEquals(expected, operation);
     }
 
+    @Test
+    public void testBuildGetQueuesStatisticsOperation(TestContext context) throws Exception {
+
+        JsonObject operation = RedisquesAPI.buildGetQueuesStatisticsOperation();
+        context.assertEquals(buildExpectedJsonObject("getQueuesStatistics"), operation);
+
+        operation = RedisquesAPI.buildGetQueuesStatisticsOperation(null);
+        context.assertEquals(buildExpectedJsonObject("getQueuesStatistics"), operation);
+
+        operation = RedisquesAPI.buildGetQueuesStatisticsOperation("abc");
+        JsonObject expected = buildExpectedJsonObject("getQueuesStatistics", new JsonObject()
+            .put(FILTER, "abc"));
+        context.assertEquals(expected, operation);
+    }
+
     private JsonObject buildExpectedJsonObject(String operation){
         JsonObject expected = new JsonObject();
         expected.put("operation", operation);

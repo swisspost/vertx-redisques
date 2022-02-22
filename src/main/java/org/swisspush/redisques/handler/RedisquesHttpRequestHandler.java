@@ -1,5 +1,11 @@
 package org.swisspush.redisques.handler;
 
+import static org.swisspush.redisques.util.HttpServerRequestUtil.decode;
+import static org.swisspush.redisques.util.HttpServerRequestUtil.encodePayload;
+import static org.swisspush.redisques.util.HttpServerRequestUtil.evaluateUrlParameterToBeEmptyOrTrue;
+import static org.swisspush.redisques.util.HttpServerRequestUtil.extractNonEmptyJsonArrayFromBody;
+import static org.swisspush.redisques.util.RedisquesAPI.*;
+
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
@@ -15,17 +21,14 @@ import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
 import io.vertx.ext.web.Router;
 import io.vertx.ext.web.RoutingContext;
+import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.stream.Collectors;
 import org.swisspush.redisques.util.RedisquesConfiguration;
 import org.swisspush.redisques.util.Result;
 import org.swisspush.redisques.util.StatusCode;
-
-import java.io.UnsupportedEncodingException;
-import java.nio.charset.StandardCharsets;
-import java.util.*;
-import java.util.concurrent.atomic.AtomicInteger;
-
-import static org.swisspush.redisques.util.HttpServerRequestUtil.*;
-import static org.swisspush.redisques.util.RedisquesAPI.*;
 
 /**
  * Handler class for HTTP requests providing access to Redisques over HTTP.
@@ -44,7 +47,6 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     private static final String CONTENT_TYPE = "content-type";
     private static final String LOCKED_PARAM = "locked";
     private static final String UNLOCK_PARAM = "unlock";
-    private static final String COUNT_PARAM = "count";
     private static final String BULK_DELETE_PARAM = "bulkDelete";
     private static final String EMPTY_QUEUES_PARAM = "emptyQueues";
     private static final String DELETED = "deleted";
@@ -101,6 +103,11 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
          * Get monitor information
          */
         router.get(prefix + "/monitor").handler(this::getMonitorInformation);
+
+        /*
+         * Get statistic information
+         */
+        router.get(prefix + "/statistics").handler(this::getQueuesStatistics);
 
         /*
          * Enqueue or LockedEnqueue
@@ -393,23 +400,26 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
 
     private void getQueueItemsCount(RoutingContext ctx) {
         decodedQueueNameOrRespondWithBadRequest(ctx, lastPart(ctx.request().path())).ifPresent(queue ->
-                eventBus.request(redisquesAddress, buildGetQueueItemsCountOperation(queue), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
-                    if (reply.failed()) {
-                        log.warn("Failed to getQueueItemsCount", reply.cause());
-                        // Continue, only to keep backward compatibility.
-                    }
-                    if (reply.succeeded() && OK.equals(reply.result().body().getString(STATUS))) {
-                        JsonObject result = new JsonObject();
-                        result.put("count", reply.result().body().getLong(VALUE));
-                        jsonResponse(ctx.response(), result);
-                    } else {
-                        respondWith(StatusCode.INTERNAL_SERVER_ERROR, "Error gathering count of active queue items", ctx.request());
-                    }
-                }));
+            eventBus.request(redisquesAddress, buildGetQueueItemsCountOperation(queue),
+                    (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
+                if (reply.failed()) {
+                    log.warn("Failed to getQueueItemsCount", reply.cause());
+                    // Continue, only to keep backward compatibility.
+                }
+                if (reply.succeeded() && OK.equals(reply.result().body().getString(STATUS))) {
+                    JsonObject result = new JsonObject();
+                    result.put(COUNT, reply.result().body().getLong(VALUE));
+                    jsonResponse(ctx.response(), result);
+                } else {
+                    respondWith(StatusCode.INTERNAL_SERVER_ERROR, "Error gathering count of active queue items", ctx.request());
+                }
+            })
+        );
     }
 
     private void getConfiguration(RoutingContext ctx) {
-        eventBus.request(redisquesAddress, buildGetConfigurationOperation(), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
+        eventBus.request(redisquesAddress, buildGetConfigurationOperation(),
+                (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
             if (reply.failed()) {
                 log.warn("Failed to getConfiguration.", reply.cause());
                 // Continue, only to keep backward compatibility.
@@ -448,26 +458,30 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     }
 
     private void getMonitorInformation(RoutingContext ctx) {
-        boolean emptyQueues = evaluateUrlParameterToBeEmptyOrTrue(EMPTY_QUEUES_PARAM, ctx.request());
-        final JsonObject resultObject = new JsonObject();
-        final JsonArray queuesArray = new JsonArray();
-        eventBus.request(redisquesAddress, buildGetQueuesOperation(), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
-            if (reply.failed()) {
-                log.warn("Failed to getMonitorInformation", reply.cause());
-                // Continue, to keep backward compatibility (aka run into NPE).
-            }
+        final boolean emptyQueues = evaluateUrlParameterToBeEmptyOrTrue(EMPTY_QUEUES_PARAM, ctx.request());
+        final int limit = extractLimit(ctx);
+        String filter = ctx.request().params().get(FILTER);
+        eventBus.request(redisquesAddress, buildGetQueuesItemsCountOperation(filter), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
             if (reply.succeeded() && OK.equals(reply.result().body().getString(STATUS))) {
-                final List<String> queueNames = reply.result().body().getJsonObject(VALUE).getJsonArray("queues").getList();
-                collectQueueLengths(queueNames, extractLimit(ctx), emptyQueues, mapEntries -> {
-                    for (Map.Entry<String, Long> entry : mapEntries) {
-                        JsonObject obj = new JsonObject();
-                        obj.put("name", entry.getKey());
-                        obj.put("size", entry.getValue());
-                        queuesArray.add(obj);
+                JsonArray queuesArray = reply.result().body().getJsonArray(QUEUES);
+                if (queuesArray!=null && !queuesArray.isEmpty()) {
+                    List<JsonObject> queuesList = queuesArray.getList();
+                    queuesList = sortJsonQueueArrayBySize(queuesList);
+                    if (!emptyQueues) {
+                        queuesList = filterJsonQueueArrayNotEmpty(queuesList);
                     }
-                    resultObject.put("queues", queuesArray);
+                    if (limit > 0) {
+                        queuesList = limitJsonQueueArray(queuesList, limit);
+                    }
+                    JsonObject resultObject = new JsonObject();
+                    resultObject.put(QUEUES, queuesList);
                     jsonResponse(ctx.response(), resultObject);
-                });
+                } else {
+                    // there was no result, we as well return an empty result
+                    JsonObject resultObject = new JsonObject();
+                    resultObject.put(QUEUES, new JsonArray());
+                    jsonResponse(ctx.response(), resultObject);
+                }
             } else {
                 String error = "Error gathering names of active queues";
                 log.error(error);
@@ -476,8 +490,10 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         });
     }
 
+
+
     private void listOrCountQueues(RoutingContext ctx) {
-        if (evaluateUrlParameterToBeEmptyOrTrue(COUNT_PARAM, ctx.request())) {
+        if (evaluateUrlParameterToBeEmptyOrTrue(COUNT, ctx.request())) {
             getQueuesCount(ctx);
         } else {
             listQueues(ctx);
@@ -489,7 +505,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         eventBus.request(redisquesAddress, buildGetQueuesCountOperation(filter), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
             if (reply.succeeded() && OK.equals(reply.result().body().getString(STATUS))) {
                 JsonObject result = new JsonObject();
-                result.put("count", reply.result().body().getLong(VALUE));
+                result.put(COUNT, reply.result().body().getLong(VALUE));
                 jsonResponse(ctx.response(), result);
             } else {
                 String error = "Error gathering count of active queues. Cause: " + reply.result().body().getString(MESSAGE);
@@ -521,7 +537,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     }
 
     private void listOrCountQueueItems(RoutingContext ctx) {
-        if (evaluateUrlParameterToBeEmptyOrTrue(COUNT_PARAM, ctx.request())) {
+        if (evaluateUrlParameterToBeEmptyOrTrue(COUNT, ctx.request())) {
             getQueueItemsCount(ctx);
         } else {
             listQueueItems(ctx);
@@ -782,42 +798,59 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         }
     }
 
-    private void collectQueueLengths(final List<String> queueNames, final int limit, final boolean showEmptyQueues, final QueueLengthCollectingCallback callback) {
-        final SortedMap<String, Long> resultMap = new TreeMap<>();
-        final List<Map.Entry<String, Long>> mapEntryList = new ArrayList<>();
-        final AtomicInteger subCommandCount = new AtomicInteger(queueNames.size());
-        if (!queueNames.isEmpty()) {
-            for (final String name : queueNames) {
-                eventBus.request(redisquesAddress, buildGetQueueItemsCountOperation(name), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
-                    subCommandCount.decrementAndGet();
-                    if (reply.succeeded() && OK.equals(reply.result().body().getString(STATUS))) {
-                        final long count = reply.result().body().getLong(VALUE);
-                        if (showEmptyQueues || count > 0) {
-                            resultMap.put(name, count);
-                        }
-                    } else {
-                        log.error("Error gathering size of queue " + name);
-                    }
-
-                    if (subCommandCount.get() == 0) {
-                        mapEntryList.addAll(resultMap.entrySet());
-                        sortResultMap(mapEntryList);
-                        int toIndex = limit > queueNames.size() ? queueNames.size() : limit;
-                        toIndex = Math.min(mapEntryList.size(), toIndex);
-                        callback.onDone(mapEntryList.subList(0, toIndex));
-                    }
-                });
-            }
-        } else {
-            callback.onDone(mapEntryList);
-        }
-    }
-
-    private interface QueueLengthCollectingCallback {
-        void onDone(List<Map.Entry<String, Long>> mapEntries);
-    }
-
     private void sortResultMap(List<Map.Entry<String, Long>> input) {
         input.sort((left, right) -> right.getValue().compareTo(left.getValue()));
     }
+
+    private List<JsonObject> sortJsonQueueArrayBySize(List<JsonObject> queueList) {
+        queueList.sort((left, right) -> right.getLong(MONITOR_QUEUE_SIZE).compareTo(left.getLong(MONITOR_QUEUE_SIZE)));
+        return queueList;
+    }
+
+    private List<JsonObject> filterJsonQueueArrayNotEmpty(List<JsonObject> queueList) {
+        return queueList.stream()
+            .filter(
+                queue -> queue.getLong(MONITOR_QUEUE_SIZE) > 0)
+            .collect(Collectors.toList());
+    }
+
+    private List<JsonObject> limitJsonQueueArray(List<JsonObject> queueList, int limit) {
+        return queueList.stream().limit(limit).collect(Collectors.toList());
+    }
+
+    private void getQueuesStatistics(RoutingContext ctx) {
+        final boolean emptyQueues = evaluateUrlParameterToBeEmptyOrTrue(EMPTY_QUEUES_PARAM, ctx.request());
+        final int limit = extractLimit(ctx);
+        String filter = ctx.request().params().get(FILTER);
+        eventBus.request(redisquesAddress, buildGetQueuesStatisticsOperation(filter),
+            (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
+                if (reply.succeeded() && OK.equals(reply.result().body().getString(STATUS))) {
+                    JsonArray queuesArray = reply.result().body().getJsonArray(QUEUES);
+                    if (queuesArray!=null && !queuesArray.isEmpty()) {
+                        List<JsonObject> queuesList = queuesArray.getList();
+                        queuesList = sortJsonQueueArrayBySize(queuesList);
+                        if (!emptyQueues) {
+                            queuesList = filterJsonQueueArrayNotEmpty(queuesList);
+                        }
+                        if (limit > 0) {
+                            queuesList = limitJsonQueueArray(queuesList, limit);
+                        }
+                        JsonObject resultObject = new JsonObject();
+                        resultObject.put(QUEUES, queuesList);
+                        jsonResponse(ctx.response(), resultObject);
+                    } else {
+                        // there was no result, we as well return an empty result
+                        JsonObject resultObject = new JsonObject();
+                        resultObject.put(QUEUES, new JsonArray());
+                        jsonResponse(ctx.response(), resultObject);
+                    }
+                } else {
+                    String error = "Error gathering names of active queues";
+                    log.error(error);
+                    respondWith(StatusCode.INTERNAL_SERVER_ERROR, error, ctx.request());
+                }
+
+            });
+    }
+
 }

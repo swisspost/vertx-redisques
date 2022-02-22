@@ -15,8 +15,6 @@ import java.util.regex.Pattern;
 import static org.swisspush.redisques.util.RedisquesAPI.*;
 
 /**
- * Class GetQueuesCountHandler.
- *
  * @author https://github.com/mcweba [Marc-Andre Weber]
  */
 public class GetQueuesHandler implements Handler<AsyncResult<Response>> {
@@ -24,8 +22,6 @@ public class GetQueuesHandler implements Handler<AsyncResult<Response>> {
     private Message<JsonObject> event;
     private Optional<Pattern> filterPattern;
     private boolean countOnly;
-
-    private static final String QUEUES_ARR = "queues";
 
     public GetQueuesHandler(Message<JsonObject> event, Optional<Pattern> filterPattern, boolean countOnly) {
         this.event = event;
@@ -47,20 +43,19 @@ public class GetQueuesHandler implements Handler<AsyncResult<Response>> {
                         filteredQueues.add(queue);
                     }
                 }
-                jsonRes.put(QUEUES_ARR, filteredQueues);
+                jsonRes.put(QUEUES, filteredQueues);
             } else {
                 List<String> arrayQueues = new ArrayList<>();
                 for (Response response : queues) {
                     arrayQueues.add(response.toString());
                 }
-                jsonRes.put(QUEUES_ARR, arrayQueues);
+                jsonRes.put(QUEUES, arrayQueues);
             }
             if(countOnly){
-                event.reply(new JsonObject().put(STATUS, OK).put(VALUE, jsonRes.getJsonArray(QUEUES_ARR).size()));
+                event.reply(new JsonObject().put(STATUS, OK).put(VALUE, jsonRes.getJsonArray(QUEUES).size()));
             } else {
                 event.reply(new JsonObject().put(STATUS, OK).put(VALUE, jsonRes));
             }
-
         } else {
             event.reply(new JsonObject().put(STATUS, ERROR));
         }
