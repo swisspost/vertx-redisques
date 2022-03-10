@@ -2,6 +2,7 @@ package org.swisspush.redisques.util;
 
 import static org.swisspush.redisques.util.RedisquesAPI.*;
 
+import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
@@ -14,6 +15,9 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 import org.swisspush.redisques.lua.LuaScriptManager;
@@ -45,20 +49,71 @@ public class QueueStatisticsCollector {
     private final Map<String, AtomicLong> queueFailureCount = new HashMap<>();
     private final Map<String, Long> queueBackpressureTime = new HashMap<>();
     private final Map<String, Long> queueSlowDownTime = new HashMap<>();
-
+    private final ConcurrentMap<String, AtomicLong> queueMessagePaceCtr = new ConcurrentHashMap<>();
+    private volatile Map<String, Long> queueMessagePace = new HashMap<>();
     private final RedisAPI redisAPI;
     private final LuaScriptManager luaScriptManager;
     private final String queuePrefix;
+    private final Vertx vertx;
 
     public QueueStatisticsCollector(RedisAPI redisAPI, LuaScriptManager luaScriptManager,
-            String queuePrefix) {
+            String queuePrefix, Vertx vertx, int paceIntervalTime) {
         this.redisAPI = redisAPI;
         this.luaScriptManager = luaScriptManager;
         this.queuePrefix = queuePrefix;
+        this.vertx = vertx;
+        paceStatisticsScheduler(paceIntervalTime);
     }
 
     /**
-     * Does reset all statistics values of the given queue. In memory but as well the persisted
+     * This scheduled task collects and calculates the message pace per queue in the local system
+     * within the past time interval.
+     *
+     * NOTE: The pace values are held in memory only due to performance reasons. We don't want to
+     * store regularly a lot of values (all queues) for pace statistics only.
+     * This would no more work properly of course if there are multiple Redisques instances deployed.
+     * In such case, the client interested in such values must query each instance for itself.
+     *
+     * By default, the pace interval is configured to 1 Minute currently.
+     */
+    private void paceStatisticsScheduler(int paceIntervalTime){
+        if (paceIntervalTime<=0) {
+            // no Pace statistics required
+            log.debug("No pace statistics required");
+            return;
+        }
+        vertx.setPeriodic(paceIntervalTime, timerId -> {
+            log.debug("Schedule statistics queue pace collection");
+            // remember the accumulated message counter as pace value for the previous
+            // pace measurement interval
+            Map<String, Long> newQueueMessagePace = new HashMap<>();
+            Iterator<Entry<String,AtomicLong>> itr = queueMessagePaceCtr.entrySet().iterator();
+            while(itr.hasNext()){
+                Entry<String, AtomicLong> entry = itr.next();
+                if (entry.getValue().longValue() > 0) {
+                    // The ctr was incremented within the previous pace measurement interval.
+                    // Add the value to the pace map for later retrieval
+                    newQueueMessagePace.put(entry.getKey(), entry.getValue().longValue());
+                }
+                // Clear the pace message counter in order to start again from scratch
+                // for next interval.
+                itr.remove();
+            }
+            // now we exchange the list to the new one and make the new pace values available
+            // for pace retrievals about the previous measurement interval
+            queueMessagePace = newQueueMessagePace;
+            // Note: if we want to have this map persistently available over multiple redisques
+            // instances, we would have to store it here after each interval on Redis in an appropriate
+            // structure (map of queue-pace). Be aware of the fact that in a real world system the
+            // list of queues with pace collection might be huge within a short amount of time
+            // due to the exorbitant high queue dispatching performance of gateleen.
+            // For the moment this is not yet implemented in order to keep system performance used
+            // for queue pace evaluation as low as possible.
+        });
+    }
+
+    /**
+     * Does reset all failure statistics values of the given queue. In memory but as well the persisted
      * ones in redis.
      *
      * Note: The reset is only executed on the persisted statistics data if there is really
@@ -66,7 +121,7 @@ public class QueueStatisticsCollector {
      *
      * @param queueName The queue name for which the statistic values must be reset.
      */
-    public void resetQueueStatistics(String queueName) {
+    public void resetQueueFailureStatistics(String queueName) {
         AtomicLong failureCount = queueFailureCount.remove(queueName);
         queueSlowDownTime.remove(queueName);
         queueBackpressureTime.remove(queueName);
@@ -79,7 +134,7 @@ public class QueueStatisticsCollector {
     }
 
     /**
-     * Does reset all statistics values of all given queues. In memory but as well the persisted
+     * Does reset all failure statistics values of all given queues. In memory but as well the persisted
      * ones in redis.
      * @param queues The list of queue names for which the statistic values must be reset.
      */
@@ -90,11 +145,46 @@ public class QueueStatisticsCollector {
         final int size = queues.size();
         List<String> queueKeys = new ArrayList<>(size);
         for (int i = 0; i < size; i++) {
-            resetQueueStatistics(queues.getString(i));
+            resetQueueFailureStatistics(queues.getString(i));
         }
     }
 
     /**
+     * Signals a successful message distribution on the given queue.
+     * Note: Increments the message counter for the given queue by 1.
+     *
+     * @param queueName The name of the queue for which success must be processed.
+     */
+    public void queueMessageSuccess(String queueName) {
+        // count the number of messages per queue for interval pace evaluation.
+        AtomicLong messageCtr = queueMessagePaceCtr.putIfAbsent(queueName, new AtomicLong(1));
+        if (messageCtr != null) {
+            messageCtr.incrementAndGet();
+        }
+        // whenever there is a message successfully sent, our failure statistics could be reset as well
+        resetQueueFailureStatistics(queueName);
+    }
+
+    /**
+     * Retrieves the current message pace in msg/time-unit for the requested queue
+     *
+     * Note: The values are only given from local memory and therefore only for queue instances
+     *       managed by the corresonding Redisques instance
+     *
+     * @param queueName The queue name for which we want to retrieve the measured pace
+     *
+     * @return The latest message pace (msg/ time-unit) for the given queue name
+     */
+    private long getQueuePace(String queueName) {
+        Long pace = queueMessagePace.get(queueName);
+        if (pace != null) {
+            return pace.longValue();
+        }
+        return 0;
+    }
+
+    /**
+     * Signals a failed message distribution on the given queue.
      * Increments the failure counter for the given queue by 1.
      *
      * Note: There is explicitely no decrement operation foreseen because once a queue
@@ -104,7 +194,7 @@ public class QueueStatisticsCollector {
      * @param queueName The name of the queue for which the incrementation must be done.
      * @return The new value of the counter after the incrementation.
      */
-    public long incrementQueueFailureCount(String queueName) {
+    public long queueMessageFailed(String queueName) {
         long newFailureCount = 1;
         AtomicLong failureCount = queueFailureCount.putIfAbsent(queueName, new AtomicLong(newFailureCount));
         if (failureCount != null) {
@@ -198,7 +288,7 @@ public class QueueStatisticsCollector {
     }
 
     /**
-     * Write all the collected statistics for the given Queue to
+     * Write all the collected failure statistics for the given Queue to
      * redis for later usage if somebody requests the queue statistics.
      * If there are no valid useful data available eg. all 0, the corresponding
      * statistics entry is removed from redis
@@ -231,6 +321,7 @@ public class QueueStatisticsCollector {
         private long failures;
         private long backpressureTime;
         private long slowdownTime;
+        private long pace;
 
         QueueStatistic(String queueName) {
             this.queueName = queueName;
@@ -268,16 +359,24 @@ public class QueueStatisticsCollector {
             this.slowdownTime = 0;
         }
 
+        void setMessagePace(Long pace) {
+            if (pace != null && pace >= 0) {
+                this.pace = pace;
+                return;
+            }
+            this.pace = 0;
+        }
+
         JsonObject getAsJsonObject() {
             return new JsonObject()
                 .put(MONITOR_QUEUE_NAME, queueName)
                 .put(MONITOR_QUEUE_SIZE, size)
                 .put(STATISTIC_QUEUE_FAILURES, failures)
                 .put(STATISTIC_QUEUE_BACKPRESSURE, backpressureTime)
-                .put(STATISTIC_QUEUE_SLOWDOWN, slowdownTime);
+                .put(STATISTIC_QUEUE_SLOWDOWN, slowdownTime)
+                .put(STATISTIC_QUEUE_PACE, pace);
         }
     }
-
 
     /**
      * Retrieve the queue statistics for the requested queues.
@@ -319,10 +418,11 @@ public class QueueStatisticsCollector {
             for (int i = 0; i < queues.size(); i++) {
                 QueueStatistic qs = new QueueStatistic(queues.get(i));
                 qs.setSize(queueListLength.get(i));
+                qs.setMessagePace(getQueuePace(qs.queueName));
                 statisticsMap.put(qs.queueName, qs);
             }
-            // now retrieve all available statistics from Redis and merge them
-            // together with the previous populated queue statistics map
+            // now retrieve all available failure statistics from Redis and merge them
+            // together with the previous populated common queue statistics map
             redisAPI.hvals(STATSKEY, statisticsSet -> {
                 if (statisticsSet == null) {
                     log.error("Unexepected statistics queue evaluation result result null");
@@ -358,5 +458,27 @@ public class QueueStatisticsCollector {
         });
     }
 
+    /**
+     * Retrieve the summarized queue pace for the requested queues.
+     *
+     * Note: This method only treats queue pace values from the current redisques instance. There
+     * is no persistent storage of these values due to performance reasons yet.
+     *
+     * @param event  The event on which we will answer finally
+     * @param queues The queues for which we are interested in the overall pace/time-unit
+     */
+    public void getQueuesPace(Message<JsonObject> event, final List<String> queues) {
+        if (queues == null || queues.isEmpty()) {
+            log.debug("No matching filtered queues given");
+            event.reply(new JsonObject().put(STATUS, OK).put(STATISTIC_QUEUE_PACE, 0L));
+            return;
+        }
+        // loop over all queues and summarize the currently available pace values
+        long pace = 0;
+        for (String queue: queues) {
+            pace = pace + getQueuePace(queue);
+        }
+        event.reply(new JsonObject().put(STATUS, OK).put(STATISTIC_QUEUE_PACE, pace));
+    }
 
 }

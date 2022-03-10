@@ -26,6 +26,8 @@ import io.vertx.core.DeploymentOptions;
 import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.Message;
+import io.vertx.core.eventbus.MessageConsumer;
+import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.json.JsonObject;
 import io.vertx.ext.unit.Async;
 import io.vertx.ext.unit.TestContext;
@@ -43,6 +45,7 @@ import org.junit.Test;
 import org.swisspush.redisques.AbstractTestCase;
 import org.swisspush.redisques.RedisQues;
 import org.swisspush.redisques.util.QueueConfiguration;
+import org.swisspush.redisques.util.RedisquesAPI;
 import org.swisspush.redisques.util.RedisquesConfiguration;
 import redis.clients.jedis.Jedis;
 
@@ -54,6 +57,8 @@ import redis.clients.jedis.Jedis;
 public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
     private static String deploymentId = "";
     private Vertx testVertx;
+    private HttpServerRequest request;
+
     private final String queueItemValid = "{\n" +
             "  \"method\": \"PUT\",\n" +
             "  \"uri\": \"/some/url/123/456\",\n" +
@@ -134,7 +139,6 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
     @Rule
     public Timeout rule = Timeout.seconds(15);
 
-
     @BeforeClass
     public static void beforeClass() {
         RestAssured.baseURI = "http://127.0.0.1/";
@@ -159,6 +163,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
                    new QueueConfiguration().withPattern("stat.*").withRetryIntervals(1, 2, 3, 5)
                        .withEnqueueDelayMillisPerSize(5).withEnqueueMaxDelayMillis(100)
                 ))
+                .queueStatisticPaceTime(500)
                 .build()
                 .asJsonObject();
 
@@ -188,6 +193,22 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         } else {
             testVertx.eventBus().request(getRedisquesAddress(), operation, handler);
         }
+    }
+
+    /**
+     * Helper method to register an eventbus queue message handler which consumes just all
+     * queue messages properly.
+     *
+     * Note: don't forget to unregister the given MessageConsumer after test completion. Else this
+     * might influence other tests later.
+     *
+     * @return The MessageConsumer used for later unregistration of the consumer.
+     */
+    private MessageConsumer registerQueueEventOkConsumer(){
+        return testVertx.eventBus().consumer("processor-address", handler ->{
+                handler.reply(new JsonObject().put(RedisquesAPI.STATUS, RedisquesAPI.OK));
+            }
+        );
     }
 
     @Test
@@ -2072,6 +2093,105 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         }
         async.awaitSuccess();
     }
+
+    @Test
+    public void getQueuePaceEmptyFilter(TestContext context) throws Exception {
+        MessageConsumer consumer = registerQueueEventOkConsumer();
+        flushAll();
+        Async async = context.async(3);
+        eventBusSend(buildEnqueueOperation("pace_a", "item_a_1"), handler -> {
+            async.countDown();
+        });
+        eventBusSend(buildEnqueueOperation("pace_a", "item_a_2"), handler -> {
+            async.countDown();
+        });
+        eventBusSend(buildEnqueueOperation("pace_b", "item_b_1"), handler -> {
+            async.countDown();
+        });
+        async.awaitSuccess();
+        // If no filter is given, this would result in the pace over all queues known.
+        context.assertTrue(waitForQueuePace("",3));
+        consumer.unregister();
+    }
+
+    @Test
+    public void getQueuePaceNoMatchingFilter(TestContext context) throws Exception {
+        MessageConsumer consumer = registerQueueEventOkConsumer();
+        flushAll();
+        Async async = context.async();
+        eventBusSend(buildEnqueueOperation("pace_a", "item_a_1"), handler -> {
+            async.complete();
+        });
+        async.awaitSuccess();
+        // we should not get any pace for this other queue and end up in timeout therefore
+        context.assertFalse(waitForQueuePace("pace_b.*",1));
+        consumer.unregister();
+    }
+
+    @Test
+    public void getQueuePaceMatchingFilter(TestContext context) throws Exception {
+        MessageConsumer consumer = registerQueueEventOkConsumer();
+        flushAll();
+        Async async = context.async(2);
+        eventBusSend(buildEnqueueOperation("pace_a", "item_a_1"), handler -> {
+            async.countDown();
+        });
+        eventBusSend(buildEnqueueOperation("pace_a", "item_a_2"), handler -> {
+            async.countDown();
+        });
+        async.awaitSuccess();
+        // two messages must be captured
+        context.assertTrue(waitForQueuePace("pace_a.*",2));
+        consumer.unregister();
+    }
+
+    @Test
+    public void getQueuePaceMatchingPartlyFilter(TestContext context) throws Exception {
+        MessageConsumer consumer = registerQueueEventOkConsumer();
+        flushAll();
+        Async async = context.async(2);
+        eventBusSend(buildEnqueueOperation("pace_a", "item_a_1"), handler -> {
+            async.countDown();
+        });
+        eventBusSend(buildEnqueueOperation("pace_b", "item_b_1"), handler -> {
+            async.countDown();
+        });
+        async.awaitSuccess();
+        context.assertTrue(waitForQueuePace("pace_a.*",1));
+        consumer.unregister();
+    }
+
+    /**
+     * Helper method to wait for a particular pace value for the given queue filter
+     * @param filter The queue filter name (regex) or empty if all
+     * @param pace The expected pace
+     * @return true if the expectation was fulfilled within one second
+     */
+    private boolean waitForQueuePace(String filter, int pace) {
+        String url = "/queuing/pace";
+        if (filter != null && !filter.isEmpty()){
+            url = url + "?filter=" + filter;
+        }
+        long maxWaitTime = System.currentTimeMillis() + 1000;
+        while (true) {
+            Integer response = given().when().get(url)
+                .then().assertThat()
+                .statusCode(200)
+                .extract().path("pace");
+            if(response!=null && response.equals(pace)){
+                return true;
+            }
+            if (System.currentTimeMillis()>maxWaitTime){
+                return false;
+            }
+            try {
+                Thread.sleep(10);
+            } catch (InterruptedException iex){
+                return false;
+            }
+        }
+    }
+
 
     @Test(timeout = 15000L)
     @Ignore  // applicable only on local developers environment for performance comparisons

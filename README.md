@@ -611,6 +611,28 @@ Response Data
 }
 ```
 
+
+#### getQueuesPace
+
+Request Data
+```
+{
+    "operation": "getQueuesPace",
+    "payload": {
+        "filter": <str regex pattern to filter queues to retrieve statistics information (optional)>
+    }
+}
+```
+
+Response Data
+```
+{
+    "pace": <Long pace>
+    "unitMs": <Long ms>
+}
+```
+
+
 ## RedisQues HTTP API
 RedisQues provides a HTTP API to modify queues, queue items and get information about queue counts and queue item counts.
 
@@ -953,6 +975,26 @@ The result will be a json object with the statistics information like the exampl
     ]    
 }
 ```
+
+### Get queue pace
+The pace evaluation collects and calculates the pace of all queues matchting the given filter.
+To get the pace information use
+> GET /queuing/pace
+
+Available url parameters are:
+* _filter=<regex pattern>_: Filter the queues for which the summarized pace is evaluated
+
+The result will be a json object with the pace of the last measurement period calculated
+over all queues matching the given filter regex
+
+```json
+{
+  "pace": 42,
+  "unitMs": 60000
+}
+```
+
+
 
 ## Dependencies
 
