@@ -65,7 +65,7 @@ import org.swisspush.redisques.handler.GetQueueItemsHandler;
 import org.swisspush.redisques.handler.GetQueuesCountHandler;
 import org.swisspush.redisques.handler.GetQueuesHandler;
 import org.swisspush.redisques.handler.GetQueuesItemsCountHandler;
-import org.swisspush.redisques.handler.GetQueuesPaceHandler;
+import org.swisspush.redisques.handler.GetQueuesSpeedHandler;
 import org.swisspush.redisques.handler.GetQueuesStatisticsHandler;
 import org.swisspush.redisques.handler.PutLockHandler;
 import org.swisspush.redisques.handler.RedisquesHttpRequestHandler;
@@ -260,7 +260,7 @@ public class RedisQues extends AbstractVerticle {
         this.redisAPI = RedisAPI.api(redisClient);
         this.luaScriptManager = new LuaScriptManager(redisAPI);
         this.queueStatisticsCollector = new QueueStatisticsCollector(redisAPI, luaScriptManager,
-            queuesPrefix, vertx, modConfig.getQueueStatisticPaceTime());
+            queuesPrefix, vertx, modConfig.getQueueSpeedIntervalSec());
 
         RedisquesHttpRequestHandler.init(vertx, modConfig);
 
@@ -369,8 +369,8 @@ public class RedisQues extends AbstractVerticle {
                 case getQueuesStatistics:
                     getQueuesStatistics(event);
                     break;
-                case getQueuesPace:
-                    getQueuesPace(event);
+                case getQueuesSpeed:
+                    getQueuesSpeed(event);
                     break;
                 default:
                     unsupportedOperation(operation, event);
@@ -1435,19 +1435,19 @@ public class RedisQues extends AbstractVerticle {
     }
 
     /**
-     * Retrieve the queue statistics info of the requested queues
+     * Retrieve the summarized queue speed of the requested queues
      * @param event
      */
-    private void getQueuesPace(Message<JsonObject> event) {
+    private void getQueuesSpeed(Message<JsonObject> event) {
         Result<Optional<Pattern>, String> filterPattern = MessageUtil.extractFilterPattern(event);
-        getQueuesPace(event, filterPattern);
+        getQueuesSpeed(event, filterPattern);
     }
 
     /**
-     * Retrieve the queue statistics info of the requested queues filtered by the
+     * Retrieve the summarized queue speed of the requested queues filtered by the
      * given filter pattern.
      */
-    private void getQueuesPace(Message<JsonObject> event,
+    private void getQueuesSpeed(Message<JsonObject> event,
         Result<Optional<Pattern>, String> filterPattern) {
         if (filterPattern.isErr()) {
             event.reply(createErrorReply().put(ERROR_TYPE, BAD_INPUT)
@@ -1455,7 +1455,7 @@ public class RedisQues extends AbstractVerticle {
         } else {
             // retrieve all currently known queues from storage and pass this to the handler
             redisAPI.zrangebyscore(List.of(queuesKey, String.valueOf(getMaxAgeTimestamp()), "+inf"),
-                new GetQueuesPaceHandler(event, filterPattern.getOk(),
+                new GetQueuesSpeedHandler(event, filterPattern.getOk(),
                     queueStatisticsCollector));
         }
     }

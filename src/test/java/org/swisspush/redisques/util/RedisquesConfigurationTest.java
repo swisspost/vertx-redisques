@@ -40,7 +40,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getHttpRequestHandlerPort(), 7070);
         testContext.assertEquals(config.getHttpRequestHandlerUserHeader(), "x-rp-usr");
         testContext.assertEquals(config.getQueueConfigurations().size(), 0);
-        testContext.assertEquals(config.getQueueStatisticPaceTime(),60000);
+        testContext.assertEquals(config.getQueueSpeedIntervalSec(),60);
     }
 
     @Test
@@ -61,7 +61,7 @@ public class RedisquesConfigurationTest {
                 .queueConfigurations(Collections.singletonList(
                         new QueueConfiguration().withPattern("vehicle-.*").withRetryIntervals(10, 20, 30, 60)
                 ))
-                .queueStatisticPaceTime(1000)
+                .queueSpeedIntervalSec(1)
                 .build();
 
         // default values
@@ -82,7 +82,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getHttpRequestHandlerPrefix(), "/queuing/test");
         testContext.assertEquals(config.getHttpRequestHandlerPort(), 7171);
         testContext.assertEquals(config.getHttpRequestHandlerUserHeader(), "x-custom-user-header");
-        testContext.assertEquals(config.getQueueStatisticPaceTime(), 1000);
+        testContext.assertEquals(config.getQueueSpeedIntervalSec(), 1);
         // queue configurations
         testContext.assertEquals(config.getQueueConfigurations().size(), 1);
         QueueConfiguration queueConfiguration = config.getQueueConfigurations().get(0);
@@ -111,7 +111,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(json.getInteger(PROP_HTTP_REQUEST_HANDLER_PORT), 7070);
         testContext.assertEquals(json.getString(PROP_HTTP_REQUEST_HANDLER_USER_HEADER), "x-rp-usr");
         testContext.assertEquals(json.getJsonArray(PROP_QUEUE_CONFIGURATIONS).getList().size(), 0);
-        testContext.assertEquals(json.getInteger(PROP_QUEUE_STATISTIC_PACE_TIME), 60000);
+        testContext.assertEquals(json.getInteger(PROP_QUEUE_SPEED_INTERVAL_SEC), 60);
     }
 
     @Test
@@ -130,7 +130,7 @@ public class RedisquesConfigurationTest {
                 .queueConfigurations(Collections.singletonList(
                         new QueueConfiguration().withPattern("vehicle-.*").withRetryIntervals(10, 20, 30, 60)
                 ))
-                .queueStatisticPaceTime(1000)
+                .queueSpeedIntervalSec(1)
                 .build();
 
         JsonObject json = config.asJsonObject();
@@ -153,7 +153,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(json.getInteger(PROP_PROCESSOR_DELAY_MAX), 50);
         testContext.assertEquals(json.getInteger(PROP_HTTP_REQUEST_HANDLER_PORT), 7171);
         testContext.assertEquals(json.getString(PROP_HTTP_REQUEST_HANDLER_USER_HEADER), "x-custom-user-header");
-        testContext.assertEquals(json.getInteger(PROP_QUEUE_STATISTIC_PACE_TIME), 1000);
+        testContext.assertEquals(json.getInteger(PROP_QUEUE_SPEED_INTERVAL_SEC), 1);
 
         // queue configurations
         JsonArray queueConfigurationsJsonArray = json.getJsonArray(PROP_QUEUE_CONFIGURATIONS);
@@ -185,7 +185,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getHttpRequestHandlerPort(), 7070);
         testContext.assertEquals(config.getHttpRequestHandlerUserHeader(), "x-rp-usr");
         testContext.assertEquals(config.getQueueConfigurations().size(), 0);
-        testContext.assertEquals(config.getQueueStatisticPaceTime(), 60000);
+        testContext.assertEquals(config.getQueueSpeedIntervalSec(), 60);
     }
 
     @Test
@@ -207,7 +207,7 @@ public class RedisquesConfigurationTest {
         json.put(PROP_HTTP_REQUEST_HANDLER_PREFIX, "/queuing/test123");
         json.put(PROP_HTTP_REQUEST_HANDLER_PORT, 7171);
         json.put(PROP_HTTP_REQUEST_HANDLER_USER_HEADER, "x-custom-user-header");
-        json.put(PROP_QUEUE_STATISTIC_PACE_TIME, 1000);
+        json.put(PROP_QUEUE_SPEED_INTERVAL_SEC, 1);
         json.put(PROP_QUEUE_CONFIGURATIONS, new JsonArray(Collections.singletonList(
                 new QueueConfiguration().withPattern("vehicle-.*")
                         .withRetryIntervals(10, 20, 30, 60)
@@ -230,7 +230,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getHttpRequestHandlerPort(), 7171);
         testContext.assertEquals(config.getHttpRequestHandlerPrefix(), "/queuing/test123");
         testContext.assertEquals(config.getHttpRequestHandlerUserHeader(), "x-custom-user-header");
-        testContext.assertEquals(config.getQueueStatisticPaceTime(), 1000);
+        testContext.assertEquals(config.getQueueSpeedIntervalSec(), 1);
 
         // queue configurations
         testContext.assertEquals(config.getQueueConfigurations().size(), 1);

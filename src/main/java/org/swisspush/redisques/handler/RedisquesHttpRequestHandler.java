@@ -40,7 +40,7 @@ import static org.swisspush.redisques.util.RedisquesAPI.buildLockedEnqueueOperat
 import static org.swisspush.redisques.util.RedisquesAPI.buildPutLockOperation;
 import static org.swisspush.redisques.util.RedisquesAPI.buildReplaceQueueItemOperation;
 import static org.swisspush.redisques.util.RedisquesAPI.buildSetConfigurationOperation;
-import static org.swisspush.redisques.util.RedisquesAPI.buildGetQueuesPaceOperation;
+import static org.swisspush.redisques.util.RedisquesAPI.buildGetQueuesSpeedOperation;
 
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Handler;
@@ -91,7 +91,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     private final String redisquesAddress;
     private final String userHeader;
     private final boolean enableQueueNameDecoding;
-    private final int paceTime;
+    private final int queueSpeedIntervalSec;
 
     public static void init(Vertx vertx, RedisquesConfiguration modConfig) {
         log.info("Enable http request handler: " + modConfig.getHttpRequestHandlerEnabled());
@@ -119,7 +119,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         this.redisquesAddress = modConfig.getAddress();
         this.userHeader = modConfig.getHttpRequestHandlerUserHeader();
         this.enableQueueNameDecoding = modConfig.getEnableQueueNameDecoding();
-        this.paceTime = modConfig.getQueueStatisticPaceTime();
+        this.queueSpeedIntervalSec = modConfig.getQueueSpeedIntervalSec();
 
         final String prefix = modConfig.getHttpRequestHandlerPrefix();
 
@@ -149,9 +149,9 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         router.get(prefix + "/statistics").handler(this::getQueuesStatistics);
 
         /*
-         * Get pace information
+         * Get queue speed information
          */
-        router.get(prefix + "/pace").handler(this::getQueuesPace);
+        router.get(prefix + "/speed").handler(this::getQueuesSpeed);
 
         /*
          * Enqueue or LockedEnqueue
@@ -896,20 +896,20 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
             });
     }
 
-    private void getQueuesPace(RoutingContext ctx) {
+    private void getQueuesSpeed(RoutingContext ctx) {
         String filter = ctx.request().params().get(FILTER);
-        eventBus.request(redisquesAddress, buildGetQueuesPaceOperation(filter),
+        eventBus.request(redisquesAddress, buildGetQueuesSpeedOperation(filter),
             (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
-                if (reply.succeeded() && reply.result().body().getString(RedisquesAPI.STATISTIC_QUEUE_PACE) != null) {
-                    long pace = reply.result().body().getLong(RedisquesAPI.STATISTIC_QUEUE_PACE);
+                if (reply.succeeded() && reply.result().body().getString(RedisquesAPI.STATISTIC_QUEUE_SPEED) != null) {
+                    long speed = reply.result().body().getLong(RedisquesAPI.STATISTIC_QUEUE_SPEED);
                     JsonObject resultObject = new JsonObject();
-                    resultObject.put(RedisquesAPI.STATISTIC_QUEUE_PACE, pace);
-                    resultObject.put(RedisquesAPI.STATISTIC_QUEUE_PACE_UNIT, paceTime );
+                    resultObject.put(RedisquesAPI.STATISTIC_QUEUE_SPEED, speed);
+                    resultObject.put(RedisquesAPI.STATISTIC_QUEUE_SPEED_INTERVAL_UNIT, queueSpeedIntervalSec );
                     jsonResponse(ctx.response(), resultObject);
                 } else {
                     // there was no result, we as well return an empty result
                     JsonObject resultObject = new JsonObject();
-                    resultObject.put(RedisquesAPI.STATISTIC_QUEUE_PACE, 0L);
+                    resultObject.put(RedisquesAPI.STATISTIC_QUEUE_SPEED, 0L);
                     jsonResponse(ctx.response(), resultObject);
                 }
             });

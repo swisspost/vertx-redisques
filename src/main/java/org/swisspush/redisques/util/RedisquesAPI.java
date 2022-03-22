@@ -41,8 +41,8 @@ public class RedisquesAPI {
     public static final String STATISTIC_QUEUE_FAILURES = "failures";
     public static final String STATISTIC_QUEUE_BACKPRESSURE = "backpressureTime";
     public static final String STATISTIC_QUEUE_SLOWDOWN = "slowdownTime";
-    public static final String STATISTIC_QUEUE_PACE = "pace";
-    public static final String STATISTIC_QUEUE_PACE_UNIT= "unitMs";
+    public static final String STATISTIC_QUEUE_SPEED = "speed";
+    public static final String STATISTIC_QUEUE_SPEED_INTERVAL_UNIT= "unitMs";
 
     private static Logger log = LoggerFactory.getLogger(RedisquesAPI.class);
 
@@ -73,7 +73,7 @@ public class RedisquesAPI {
         getQueueItemsCount(null),
         getQueuesItemsCount(null),
         getQueuesStatistics(null),
-        getQueuesPace(null);
+        getQueuesSpeed(null);
 
         private final String legacyName;
 
@@ -274,23 +274,23 @@ public class RedisquesAPI {
 
     /**
      *
-     * Retrieve total pace over all queues if no filter given
-     * @return The total pace overall
+     * Retrieve total speed over all queues if no filter given
+     * @return The total speed overall
      */
-    public static JsonObject buildGetQueuesPaceOperation() {
-        return buildOperation(QueueOperation.getQueuesPace);
+    public static JsonObject buildGetQueuesSpeedOperation() {
+        return buildOperation(QueueOperation.getQueuesSpeed);
     }
 
     /**
-     * Retrieve pace for all the queues matching the given filter
-     * @param filterPattern The queues filter for which we would like to get the total pace
+     * Retrieve speed for all the queues matching the given filter
+     * @param filterPattern The queues filter for which we would like to get the total speed
      *      Filter pattern. Method handles {@code null} gracefully.
      */
-    public static JsonObject buildGetQueuesPaceOperation(String filterPattern) {
+    public static JsonObject buildGetQueuesSpeedOperation(String filterPattern) {
         if (filterPattern != null) {
-            return buildOperation(QueueOperation.getQueuesPace, new JsonObject().put(FILTER, filterPattern));
+            return buildOperation(QueueOperation.getQueuesSpeed, new JsonObject().put(FILTER, filterPattern));
         }
-        return buildGetQueuesPaceOperation();
+        return buildGetQueuesSpeedOperation();
     }
 
 

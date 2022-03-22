@@ -15,16 +15,16 @@ import org.swisspush.redisques.util.QueueHandlerUtil;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 
 /**
- * Retrieves in it's AsyncResult handler the pace sum of the queues matching the given filter
+ * Retrieves in it's AsyncResult handler the speed summary of the queues matching the given filter
  * and returns the same in the event completion.
  */
-public class GetQueuesPaceHandler implements Handler<AsyncResult<Response>> {
+public class GetQueuesSpeedHandler implements Handler<AsyncResult<Response>> {
 
     private final Message<JsonObject> event;
     private final Optional<Pattern> filterPattern;
     private final QueueStatisticsCollector queueStatisticsCollector;
 
-    public GetQueuesPaceHandler(Message<JsonObject> event,
+    public GetQueuesSpeedHandler(Message<JsonObject> event,
         Optional<Pattern> filterPattern,
         QueueStatisticsCollector queueStatisticsCollector) {
         this.event = event;
@@ -38,7 +38,7 @@ public class GetQueuesPaceHandler implements Handler<AsyncResult<Response>> {
             // apply the given filter in order to have only the queues for which we ar interested
             List<String> queues = QueueHandlerUtil
                 .filterQueues(handleQueues.result(), filterPattern);
-            queueStatisticsCollector.getQueuesPace(event, queues);
+            queueStatisticsCollector.getQueuesSpeed(event, queues);
         } else {
             event.reply(new JsonObject().put(STATUS, ERROR));
         }

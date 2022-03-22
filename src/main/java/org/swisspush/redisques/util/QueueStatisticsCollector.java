@@ -1,6 +1,15 @@
 package org.swisspush.redisques.util;
 
-import static org.swisspush.redisques.util.RedisquesAPI.*;
+import static org.swisspush.redisques.util.RedisquesAPI.ERROR;
+import static org.swisspush.redisques.util.RedisquesAPI.MONITOR_QUEUE_NAME;
+import static org.swisspush.redisques.util.RedisquesAPI.MONITOR_QUEUE_SIZE;
+import static org.swisspush.redisques.util.RedisquesAPI.OK;
+import static org.swisspush.redisques.util.RedisquesAPI.QUEUENAME;
+import static org.swisspush.redisques.util.RedisquesAPI.STATISTIC_QUEUE_BACKPRESSURE;
+import static org.swisspush.redisques.util.RedisquesAPI.STATISTIC_QUEUE_FAILURES;
+import static org.swisspush.redisques.util.RedisquesAPI.STATISTIC_QUEUE_SLOWDOWN;
+import static org.swisspush.redisques.util.RedisquesAPI.STATISTIC_QUEUE_SPEED;
+import static org.swisspush.redisques.util.RedisquesAPI.STATUS;
 
 import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.Message;
@@ -49,66 +58,66 @@ public class QueueStatisticsCollector {
     private final Map<String, AtomicLong> queueFailureCount = new HashMap<>();
     private final Map<String, Long> queueBackpressureTime = new HashMap<>();
     private final Map<String, Long> queueSlowDownTime = new HashMap<>();
-    private final ConcurrentMap<String, AtomicLong> queueMessagePaceCtr = new ConcurrentHashMap<>();
-    private volatile Map<String, Long> queueMessagePace = new HashMap<>();
+    private final ConcurrentMap<String, AtomicLong> queueMessageSpeedCtr = new ConcurrentHashMap<>();
+    private volatile Map<String, Long> queueMessageSpeed = new HashMap<>();
     private final RedisAPI redisAPI;
     private final LuaScriptManager luaScriptManager;
     private final String queuePrefix;
     private final Vertx vertx;
 
     public QueueStatisticsCollector(RedisAPI redisAPI, LuaScriptManager luaScriptManager,
-            String queuePrefix, Vertx vertx, int paceIntervalTime) {
+            String queuePrefix, Vertx vertx, int speedIntervalSec) {
         this.redisAPI = redisAPI;
         this.luaScriptManager = luaScriptManager;
         this.queuePrefix = queuePrefix;
         this.vertx = vertx;
-        paceStatisticsScheduler(paceIntervalTime);
+        speedStatisticsScheduler(speedIntervalSec);
     }
 
     /**
-     * This scheduled task collects and calculates the message pace per queue in the local system
+     * This scheduled task collects and calculates the queue speed per queue in the local system
      * within the past time interval.
      *
-     * NOTE: The pace values are held in memory only due to performance reasons. We don't want to
-     * store regularly a lot of values (all queues) for pace statistics only.
+     * NOTE: The speed values are held in memory only due to performance reasons. We don't want to
+     * store regularly a lot of values (all queues) for speed statistics only.
      * This would no more work properly of course if there are multiple Redisques instances deployed.
      * In such case, the client interested in such values must query each instance for itself.
      *
-     * By default, the pace interval is configured to 1 Minute currently.
+     * By default, the speed interval is configured to 1 Minute (60'000ms) currently.
      */
-    private void paceStatisticsScheduler(int paceIntervalTime){
-        if (paceIntervalTime<=0) {
-            // no Pace statistics required
-            log.debug("No pace statistics required");
+    private void speedStatisticsScheduler(int speedIntervalSec){
+        if (speedIntervalSec <= 0) {
+            // no speed statistics required
+            log.debug("No speed statistics required");
             return;
         }
-        vertx.setPeriodic(paceIntervalTime, timerId -> {
-            log.debug("Schedule statistics queue pace collection");
-            // remember the accumulated message counter as pace value for the previous
-            // pace measurement interval
-            Map<String, Long> newQueueMessagePace = new HashMap<>();
-            Iterator<Entry<String,AtomicLong>> itr = queueMessagePaceCtr.entrySet().iterator();
+        vertx.setPeriodic(speedIntervalSec * 1000, timerId -> {
+            log.debug("Schedule statistics queue speed collection");
+            // remember the accumulated message counter as speed value for the previous
+            // speed measurement interval
+            Map<String, Long> newQueueMessageSpeed = new HashMap<>();
+            Iterator<Entry<String,AtomicLong>> itr = queueMessageSpeedCtr.entrySet().iterator();
             while(itr.hasNext()){
                 Entry<String, AtomicLong> entry = itr.next();
                 if (entry.getValue().longValue() > 0) {
-                    // The ctr was incremented within the previous pace measurement interval.
-                    // Add the value to the pace map for later retrieval
-                    newQueueMessagePace.put(entry.getKey(), entry.getValue().longValue());
+                    // The ctr was incremented within the previous speed measurement interval.
+                    // Add the value to the speed map for later retrieval
+                    newQueueMessageSpeed.put(entry.getKey(), entry.getValue().longValue());
                 }
-                // Clear the pace message counter in order to start again from scratch
+                // Clear the speed message counter in order to start again from scratch
                 // for next interval.
                 itr.remove();
             }
-            // now we exchange the list to the new one and make the new pace values available
-            // for pace retrievals about the previous measurement interval
-            queueMessagePace = newQueueMessagePace;
+            // now we exchange the list to the new one and make the new speed values available
+            // for speed retrievals about the previous measurement interval
+            queueMessageSpeed = newQueueMessageSpeed;
             // Note: if we want to have this map persistently available over multiple redisques
             // instances, we would have to store it here after each interval on Redis in an appropriate
-            // structure (map of queue-pace). Be aware of the fact that in a real world system the
-            // list of queues with pace collection might be huge within a short amount of time
+            // structure (map of queue-speed). Be aware of the fact that in a real world system the
+            // list of queues with speed collection might be huge within a short amount of time
             // due to the exorbitant high queue dispatching performance of gateleen.
             // For the moment this is not yet implemented in order to keep system performance used
-            // for queue pace evaluation as low as possible.
+            // for queue speed evaluation as low as possible.
         });
     }
 
@@ -156,8 +165,8 @@ public class QueueStatisticsCollector {
      * @param queueName The name of the queue for which success must be processed.
      */
     public void queueMessageSuccess(String queueName) {
-        // count the number of messages per queue for interval pace evaluation.
-        AtomicLong messageCtr = queueMessagePaceCtr.putIfAbsent(queueName, new AtomicLong(1));
+        // count the number of messages per queue for interval speed evaluation.
+        AtomicLong messageCtr = queueMessageSpeedCtr.putIfAbsent(queueName, new AtomicLong(1));
         if (messageCtr != null) {
             messageCtr.incrementAndGet();
         }
@@ -166,19 +175,19 @@ public class QueueStatisticsCollector {
     }
 
     /**
-     * Retrieves the current message pace in msg/time-unit for the requested queue
+     * Retrieves the current queue speed in msg/time-unit for the requested queue
      *
      * Note: The values are only given from local memory and therefore only for queue instances
-     *       managed by the corresonding Redisques instance
+     *       managed by the corresonding Redisques instance.
      *
-     * @param queueName The queue name for which we want to retrieve the measured pace
+     * @param queueName The queue name for which we want to retrieve the measured speed
      *
-     * @return The latest message pace (msg/ time-unit) for the given queue name
+     * @return The latest queue speed (msg/ time-unit) for the given queue name
      */
-    private long getQueuePace(String queueName) {
-        Long pace = queueMessagePace.get(queueName);
-        if (pace != null) {
-            return pace.longValue();
+    private long getQueueSpeed(String queueName) {
+        Long speed = queueMessageSpeed.get(queueName);
+        if (speed != null) {
+            return speed.longValue();
         }
         return 0;
     }
@@ -321,7 +330,7 @@ public class QueueStatisticsCollector {
         private long failures;
         private long backpressureTime;
         private long slowdownTime;
-        private long pace;
+        private long speed;
 
         QueueStatistic(String queueName) {
             this.queueName = queueName;
@@ -359,12 +368,12 @@ public class QueueStatisticsCollector {
             this.slowdownTime = 0;
         }
 
-        void setMessagePace(Long pace) {
-            if (pace != null && pace >= 0) {
-                this.pace = pace;
+        void setMessageSpeed(Long speed) {
+            if (speed != null && speed >= 0) {
+                this.speed = speed;
                 return;
             }
-            this.pace = 0;
+            this.speed = 0;
         }
 
         JsonObject getAsJsonObject() {
@@ -374,7 +383,7 @@ public class QueueStatisticsCollector {
                 .put(STATISTIC_QUEUE_FAILURES, failures)
                 .put(STATISTIC_QUEUE_BACKPRESSURE, backpressureTime)
                 .put(STATISTIC_QUEUE_SLOWDOWN, slowdownTime)
-                .put(STATISTIC_QUEUE_PACE, pace);
+                .put(STATISTIC_QUEUE_SPEED, speed);
         }
     }
 
@@ -418,7 +427,7 @@ public class QueueStatisticsCollector {
             for (int i = 0; i < queues.size(); i++) {
                 QueueStatistic qs = new QueueStatistic(queues.get(i));
                 qs.setSize(queueListLength.get(i));
-                qs.setMessagePace(getQueuePace(qs.queueName));
+                qs.setMessageSpeed(getQueueSpeed(qs.queueName));
                 statisticsMap.put(qs.queueName, qs);
             }
             // now retrieve all available failure statistics from Redis and merge them
@@ -459,26 +468,26 @@ public class QueueStatisticsCollector {
     }
 
     /**
-     * Retrieve the summarized queue pace for the requested queues.
+     * Retrieve the summarized queue speed for the requested queues.
      *
-     * Note: This method only treats queue pace values from the current redisques instance. There
+     * Note: This method only treats queue speed values from the current redisques instance. There
      * is no persistent storage of these values due to performance reasons yet.
      *
      * @param event  The event on which we will answer finally
-     * @param queues The queues for which we are interested in the overall pace/time-unit
+     * @param queues The queues for which we are interested in the overall speed
      */
-    public void getQueuesPace(Message<JsonObject> event, final List<String> queues) {
+    public void getQueuesSpeed(Message<JsonObject> event, final List<String> queues) {
         if (queues == null || queues.isEmpty()) {
             log.debug("No matching filtered queues given");
-            event.reply(new JsonObject().put(STATUS, OK).put(STATISTIC_QUEUE_PACE, 0L));
+            event.reply(new JsonObject().put(STATUS, OK).put(STATISTIC_QUEUE_SPEED, 0L));
             return;
         }
-        // loop over all queues and summarize the currently available pace values
-        long pace = 0;
+        // loop over all queues and summarize the currently available speed values
+        long speed = 0;
         for (String queue: queues) {
-            pace = pace + getQueuePace(queue);
+            speed = speed + getQueueSpeed(queue);
         }
-        event.reply(new JsonObject().put(STATUS, OK).put(STATISTIC_QUEUE_PACE, pace));
+        event.reply(new JsonObject().put(STATUS, OK).put(STATISTIC_QUEUE_SPEED, speed));
     }
 
 }

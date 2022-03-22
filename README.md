@@ -612,14 +612,14 @@ Response Data
 ```
 
 
-#### getQueuesPace
+#### getQueuesSpeed
 
 Request Data
 ```
 {
-    "operation": "getQueuesPace",
+    "operation": "getQueuesSpeed",
     "payload": {
-        "filter": <str regex pattern to filter queues to retrieve statistics information (optional)>
+        "filter": <str regex pattern to filter queues to retrieve the cumulated speed (optional)>
     }
 }
 ```
@@ -627,8 +627,8 @@ Request Data
 Response Data
 ```
 {
-    "pace": <Long pace>
-    "unitMs": <Long ms>
+    "speed": <Long speed>
+    "unitSec": <Long seconds>
 }
 ```
 
@@ -976,21 +976,22 @@ The result will be a json object with the statistics information like the exampl
 }
 ```
 
-### Get queue pace
-The pace evaluation collects and calculates the pace of all queues matchting the given filter.
-To get the pace information use
-> GET /queuing/pace
+### Get queue speed
+The speed evaluation collects and calculates the cumulated speed of all queues matchting the given filter.
+To get the speed information use
+> GET /queuing/speed
 
 Available url parameters are:
-* _filter=<regex pattern>_: Filter the queues for which the summarized pace is evaluated
+* _filter=<regex pattern>_: Filter the queues for which the cumulated speed is evaluated
 
-The result will be a json object with the pace of the last measurement period calculated
-over all queues matching the given filter regex
+The result will be a json object with the speed of the last measurement period calculated
+over all queues matching the given filter regex. Additionally the used measurement time in seconds
+is returned (eg. 60 seconds by default)
 
 ```json
 {
-  "pace": 42,
-  "unitMs": 60000
+  "speed": 42,
+  "unitSec": 60
 }
 ```
 

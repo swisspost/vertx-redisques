@@ -163,7 +163,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
                    new QueueConfiguration().withPattern("stat.*").withRetryIntervals(1, 2, 3, 5)
                        .withEnqueueDelayMillisPerSize(5).withEnqueueMaxDelayMillis(100)
                 ))
-                .queueStatisticPaceTime(500)
+                .queueSpeedIntervalSec(4)
                 .build()
                 .asJsonObject();
 
@@ -2095,90 +2095,90 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
     }
 
     @Test
-    public void getQueuePaceEmptyFilter(TestContext context) throws Exception {
+    public void getQueueSpeedEmptyFilter(TestContext context) throws Exception {
         MessageConsumer consumer = registerQueueEventOkConsumer();
         flushAll();
         Async async = context.async(3);
-        eventBusSend(buildEnqueueOperation("pace_a", "item_a_1"), handler -> {
+        eventBusSend(buildEnqueueOperation("speed_a", "item_a_1"), handler -> {
             async.countDown();
         });
-        eventBusSend(buildEnqueueOperation("pace_a", "item_a_2"), handler -> {
+        eventBusSend(buildEnqueueOperation("speed_a", "item_a_2"), handler -> {
             async.countDown();
         });
-        eventBusSend(buildEnqueueOperation("pace_b", "item_b_1"), handler -> {
+        eventBusSend(buildEnqueueOperation("speed_b", "item_b_1"), handler -> {
             async.countDown();
         });
         async.awaitSuccess();
-        // If no filter is given, this would result in the pace over all queues known.
-        context.assertTrue(waitForQueuePace("",3));
+        // If no filter is given, this would result in the speed over all queues known.
+        context.assertTrue(waitForQueueSpeed("",3));
         consumer.unregister();
     }
 
     @Test
-    public void getQueuePaceNoMatchingFilter(TestContext context) throws Exception {
+    public void getQueueSpeedNoMatchingFilter(TestContext context) throws Exception {
         MessageConsumer consumer = registerQueueEventOkConsumer();
         flushAll();
         Async async = context.async();
-        eventBusSend(buildEnqueueOperation("pace_a", "item_a_1"), handler -> {
+        eventBusSend(buildEnqueueOperation("speed_a", "item_a_1"), handler -> {
             async.complete();
         });
         async.awaitSuccess();
-        // we should not get any pace for this other queue and end up in timeout therefore
-        context.assertFalse(waitForQueuePace("pace_b.*",1));
+        // we should not get any speed for this other queue and end up in timeout therefore
+        context.assertFalse(waitForQueueSpeed("speed_b.*",1));
         consumer.unregister();
     }
 
     @Test
-    public void getQueuePaceMatchingFilter(TestContext context) throws Exception {
+    public void getQueueSpeedMatchingFilter(TestContext context) throws Exception {
         MessageConsumer consumer = registerQueueEventOkConsumer();
         flushAll();
         Async async = context.async(2);
-        eventBusSend(buildEnqueueOperation("pace_a", "item_a_1"), handler -> {
+        eventBusSend(buildEnqueueOperation("speed_a", "item_a_1"), handler -> {
             async.countDown();
         });
-        eventBusSend(buildEnqueueOperation("pace_a", "item_a_2"), handler -> {
+        eventBusSend(buildEnqueueOperation("speed_a", "item_a_2"), handler -> {
             async.countDown();
         });
         async.awaitSuccess();
         // two messages must be captured
-        context.assertTrue(waitForQueuePace("pace_a.*",2));
+        context.assertTrue(waitForQueueSpeed("speed_a.*",2));
         consumer.unregister();
     }
 
     @Test
-    public void getQueuePaceMatchingPartlyFilter(TestContext context) throws Exception {
+    public void getQueueSpeedMatchingPartlyFilter(TestContext context) throws Exception {
         MessageConsumer consumer = registerQueueEventOkConsumer();
         flushAll();
         Async async = context.async(2);
-        eventBusSend(buildEnqueueOperation("pace_a", "item_a_1"), handler -> {
+        eventBusSend(buildEnqueueOperation("speed_a", "item_a_1"), handler -> {
             async.countDown();
         });
-        eventBusSend(buildEnqueueOperation("pace_b", "item_b_1"), handler -> {
+        eventBusSend(buildEnqueueOperation("speed_b", "item_b_1"), handler -> {
             async.countDown();
         });
         async.awaitSuccess();
-        context.assertTrue(waitForQueuePace("pace_a.*",1));
+        context.assertTrue(waitForQueueSpeed("speed_a.*",1));
         consumer.unregister();
     }
 
     /**
-     * Helper method to wait for a particular pace value for the given queue filter
+     * Helper method to wait for a particular speed value for the given queue filter
      * @param filter The queue filter name (regex) or empty if all
-     * @param pace The expected pace
-     * @return true if the expectation was fulfilled within one second
+     * @param speed The expected speed
+     * @return true if the expectation was fulfilled within max 5 seconds, else false
      */
-    private boolean waitForQueuePace(String filter, int pace) {
-        String url = "/queuing/pace";
+    private boolean waitForQueueSpeed(String filter, int speed) {
+        String url = "/queuing/speed";
         if (filter != null && !filter.isEmpty()){
             url = url + "?filter=" + filter;
         }
-        long maxWaitTime = System.currentTimeMillis() + 1000;
+        long maxWaitTime = System.currentTimeMillis() + 5000;
         while (true) {
             Integer response = given().when().get(url)
                 .then().assertThat()
                 .statusCode(200)
-                .extract().path("pace");
-            if(response!=null && response.equals(pace)){
+                .extract().path("speed");
+            if(response!=null && response.equals(speed)){
                 return true;
             }
             if (System.currentTimeMillis()>maxWaitTime){
