@@ -4,7 +4,43 @@ import static org.swisspush.redisques.util.HttpServerRequestUtil.decode;
 import static org.swisspush.redisques.util.HttpServerRequestUtil.encodePayload;
 import static org.swisspush.redisques.util.HttpServerRequestUtil.evaluateUrlParameterToBeEmptyOrTrue;
 import static org.swisspush.redisques.util.HttpServerRequestUtil.extractNonEmptyJsonArrayFromBody;
-import static org.swisspush.redisques.util.RedisquesAPI.*;
+import static org.swisspush.redisques.util.RedisquesAPI.BAD_INPUT;
+import static org.swisspush.redisques.util.RedisquesAPI.COUNT;
+import static org.swisspush.redisques.util.RedisquesAPI.ERROR_TYPE;
+import static org.swisspush.redisques.util.RedisquesAPI.FILTER;
+import static org.swisspush.redisques.util.RedisquesAPI.LIMIT;
+import static org.swisspush.redisques.util.RedisquesAPI.LOCKS;
+import static org.swisspush.redisques.util.RedisquesAPI.MESSAGE;
+import static org.swisspush.redisques.util.RedisquesAPI.MONITOR_QUEUE_SIZE;
+import static org.swisspush.redisques.util.RedisquesAPI.NO_SUCH_LOCK;
+import static org.swisspush.redisques.util.RedisquesAPI.OK;
+import static org.swisspush.redisques.util.RedisquesAPI.QUEUES;
+import static org.swisspush.redisques.util.RedisquesAPI.STATUS;
+import static org.swisspush.redisques.util.RedisquesAPI.VALUE;
+import static org.swisspush.redisques.util.RedisquesAPI.buildAddQueueItemOperation;
+import static org.swisspush.redisques.util.RedisquesAPI.buildBulkDeleteLocksOperation;
+import static org.swisspush.redisques.util.RedisquesAPI.buildBulkDeleteQueuesOperation;
+import static org.swisspush.redisques.util.RedisquesAPI.buildBulkPutLocksOperation;
+import static org.swisspush.redisques.util.RedisquesAPI.buildDeleteAllLocksOperation;
+import static org.swisspush.redisques.util.RedisquesAPI.buildDeleteAllQueueItemsOperation;
+import static org.swisspush.redisques.util.RedisquesAPI.buildDeleteLockOperation;
+import static org.swisspush.redisques.util.RedisquesAPI.buildDeleteQueueItemOperation;
+import static org.swisspush.redisques.util.RedisquesAPI.buildEnqueueOperation;
+import static org.swisspush.redisques.util.RedisquesAPI.buildGetAllLocksOperation;
+import static org.swisspush.redisques.util.RedisquesAPI.buildGetConfigurationOperation;
+import static org.swisspush.redisques.util.RedisquesAPI.buildGetLockOperation;
+import static org.swisspush.redisques.util.RedisquesAPI.buildGetQueueItemOperation;
+import static org.swisspush.redisques.util.RedisquesAPI.buildGetQueueItemsCountOperation;
+import static org.swisspush.redisques.util.RedisquesAPI.buildGetQueueItemsOperation;
+import static org.swisspush.redisques.util.RedisquesAPI.buildGetQueuesCountOperation;
+import static org.swisspush.redisques.util.RedisquesAPI.buildGetQueuesItemsCountOperation;
+import static org.swisspush.redisques.util.RedisquesAPI.buildGetQueuesOperation;
+import static org.swisspush.redisques.util.RedisquesAPI.buildGetQueuesStatisticsOperation;
+import static org.swisspush.redisques.util.RedisquesAPI.buildLockedEnqueueOperation;
+import static org.swisspush.redisques.util.RedisquesAPI.buildPutLockOperation;
+import static org.swisspush.redisques.util.RedisquesAPI.buildReplaceQueueItemOperation;
+import static org.swisspush.redisques.util.RedisquesAPI.buildSetConfigurationOperation;
+import static org.swisspush.redisques.util.RedisquesAPI.buildGetQueuesSpeedOperation;
 
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Handler;
@@ -26,6 +62,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
+import org.swisspush.redisques.util.RedisquesAPI;
 import org.swisspush.redisques.util.RedisquesConfiguration;
 import org.swisspush.redisques.util.Result;
 import org.swisspush.redisques.util.StatusCode;
@@ -54,6 +91,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     private final String redisquesAddress;
     private final String userHeader;
     private final boolean enableQueueNameDecoding;
+    private final int queueSpeedIntervalSec;
 
     public static void init(Vertx vertx, RedisquesConfiguration modConfig) {
         log.info("Enable http request handler: " + modConfig.getHttpRequestHandlerEnabled());
@@ -81,6 +119,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         this.redisquesAddress = modConfig.getAddress();
         this.userHeader = modConfig.getHttpRequestHandlerUserHeader();
         this.enableQueueNameDecoding = modConfig.getEnableQueueNameDecoding();
+        this.queueSpeedIntervalSec = modConfig.getQueueSpeedIntervalSec();
 
         final String prefix = modConfig.getHttpRequestHandlerPrefix();
 
@@ -108,6 +147,11 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
          * Get statistic information
          */
         router.get(prefix + "/statistics").handler(this::getQueuesStatistics);
+
+        /*
+         * Get queue speed information
+         */
+        router.get(prefix + "/speed").handler(this::getQueuesSpeed);
 
         /*
          * Enqueue or LockedEnqueue
@@ -849,8 +893,28 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
                     log.error(error);
                     respondWith(StatusCode.INTERNAL_SERVER_ERROR, error, ctx.request());
                 }
-
             });
     }
+
+    private void getQueuesSpeed(RoutingContext ctx) {
+        String filter = ctx.request().params().get(FILTER);
+        eventBus.request(redisquesAddress, buildGetQueuesSpeedOperation(filter),
+            (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
+                if (reply.succeeded() && reply.result().body().getString(RedisquesAPI.STATISTIC_QUEUE_SPEED) != null) {
+                    long speed = reply.result().body().getLong(RedisquesAPI.STATISTIC_QUEUE_SPEED);
+                    JsonObject resultObject = new JsonObject();
+                    resultObject.put(RedisquesAPI.STATISTIC_QUEUE_SPEED, speed);
+                    resultObject.put(RedisquesAPI.STATISTIC_QUEUE_SPEED_INTERVAL_UNIT, queueSpeedIntervalSec );
+                    jsonResponse(ctx.response(), resultObject);
+                } else {
+                    // there was no result, we as well return an empty result
+                    JsonObject resultObject = new JsonObject();
+                    resultObject.put(RedisquesAPI.STATISTIC_QUEUE_SPEED, 0L);
+                    jsonResponse(ctx.response(), resultObject);
+                }
+            });
+    }
+
+
 
 }

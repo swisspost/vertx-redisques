@@ -65,6 +65,7 @@ import org.swisspush.redisques.handler.GetQueueItemsHandler;
 import org.swisspush.redisques.handler.GetQueuesCountHandler;
 import org.swisspush.redisques.handler.GetQueuesHandler;
 import org.swisspush.redisques.handler.GetQueuesItemsCountHandler;
+import org.swisspush.redisques.handler.GetQueuesSpeedHandler;
 import org.swisspush.redisques.handler.GetQueuesStatisticsHandler;
 import org.swisspush.redisques.handler.PutLockHandler;
 import org.swisspush.redisques.handler.RedisquesHttpRequestHandler;
@@ -259,7 +260,7 @@ public class RedisQues extends AbstractVerticle {
         this.redisAPI = RedisAPI.api(redisClient);
         this.luaScriptManager = new LuaScriptManager(redisAPI);
         this.queueStatisticsCollector = new QueueStatisticsCollector(redisAPI, luaScriptManager,
-            queuesPrefix);
+            queuesPrefix, vertx, modConfig.getQueueSpeedIntervalSec());
 
         RedisquesHttpRequestHandler.init(vertx, modConfig);
 
@@ -368,6 +369,9 @@ public class RedisQues extends AbstractVerticle {
                 case getQueuesStatistics:
                     getQueuesStatistics(event);
                     break;
+                case getQueuesSpeed:
+                    getQueuesSpeed(event);
+                    break;
                 default:
                     unsupportedOperation(operation, event);
             }
@@ -411,7 +415,7 @@ public class RedisQues extends AbstractVerticle {
                     } else {
                         log.debug("RedisQues Removing queue " + queue + " from the list");
                         myQueues.remove(queue);
-                        queueStatisticsCollector.resetQueueStatistics(queue);
+                        queueStatisticsCollector.resetQueueFailureStatistics(queue);
                     }
                 });
             });
@@ -584,7 +588,7 @@ public class RedisQues extends AbstractVerticle {
                 // 1st: We don't, to keep backward compatibility
                 // 2nd: We don't, to may unlock below.
             }
-            queueStatisticsCollector.resetQueueStatistics(queue);
+            queueStatisticsCollector.resetQueueFailureStatistics(queue);
             if (unlock) {
                 redisAPI.hdel(Arrays.asList(locksKey, queue), unlockReply -> {
                     if (unlockReply.failed()) {
@@ -601,11 +605,11 @@ public class RedisQues extends AbstractVerticle {
 
     int updateQueueFailureCountAndGetRetryInterval(final String queueName, boolean sendSuccess) {
         if (sendSuccess) {
-            queueStatisticsCollector.resetQueueStatistics(queueName);
+            queueStatisticsCollector.queueMessageSuccess(queueName);
             return 0;
         } else {
             // update the failure count
-            long failureCount = queueStatisticsCollector.incrementQueueFailureCount(queueName);
+            long failureCount = queueStatisticsCollector.queueMessageFailed(queueName);
             // find a retry interval from the queue configurations
             QueueConfiguration queueConfiguration = findQueueConfiguration(queueName);
             if (queueConfiguration != null) {
@@ -1317,7 +1321,7 @@ public class RedisQues extends AbstractVerticle {
                         if (counter.decrementAndGet() == 0) {
                             removeOldQueues(limit);
                         }
-                        queueStatisticsCollector.resetQueueStatistics(queueName);
+                        queueStatisticsCollector.resetQueueFailureStatistics(queueName);
                     }
                 });
             }
@@ -1423,8 +1427,35 @@ public class RedisQues extends AbstractVerticle {
             event.reply(createErrorReply().put(ERROR_TYPE, BAD_INPUT)
                 .put(MESSAGE, filterPattern.getErr()));
         } else {
+            // retrieve all currently known queues from storage and pass this to the handler
             redisAPI.zrangebyscore(List.of(queuesKey, String.valueOf(getMaxAgeTimestamp()), "+inf"),
                 new GetQueuesStatisticsHandler(event, filterPattern.getOk(),
+                    queueStatisticsCollector));
+        }
+    }
+
+    /**
+     * Retrieve the summarized queue speed of the requested queues
+     * @param event
+     */
+    private void getQueuesSpeed(Message<JsonObject> event) {
+        Result<Optional<Pattern>, String> filterPattern = MessageUtil.extractFilterPattern(event);
+        getQueuesSpeed(event, filterPattern);
+    }
+
+    /**
+     * Retrieve the summarized queue speed of the requested queues filtered by the
+     * given filter pattern.
+     */
+    private void getQueuesSpeed(Message<JsonObject> event,
+        Result<Optional<Pattern>, String> filterPattern) {
+        if (filterPattern.isErr()) {
+            event.reply(createErrorReply().put(ERROR_TYPE, BAD_INPUT)
+                .put(MESSAGE, filterPattern.getErr()));
+        } else {
+            // retrieve all currently known queues from storage and pass this to the handler
+            redisAPI.zrangebyscore(List.of(queuesKey, String.valueOf(getMaxAgeTimestamp()), "+inf"),
+                new GetQueuesSpeedHandler(event, filterPattern.getOk(),
                     queueStatisticsCollector));
         }
     }
