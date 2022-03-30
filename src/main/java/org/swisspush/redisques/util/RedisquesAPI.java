@@ -41,7 +41,8 @@ public class RedisquesAPI {
     public static final String STATISTIC_QUEUE_FAILURES = "failures";
     public static final String STATISTIC_QUEUE_BACKPRESSURE = "backpressureTime";
     public static final String STATISTIC_QUEUE_SLOWDOWN = "slowdownTime";
-
+    public static final String STATISTIC_QUEUE_SPEED = "speed";
+    public static final String STATISTIC_QUEUE_SPEED_INTERVAL_UNIT= "unitMs";
 
     private static Logger log = LoggerFactory.getLogger(RedisquesAPI.class);
 
@@ -71,7 +72,8 @@ public class RedisquesAPI {
         getQueuesCount(null),
         getQueueItemsCount(null),
         getQueuesItemsCount(null),
-        getQueuesStatistics(null);
+        getQueuesStatistics(null),
+        getQueuesSpeed(null);
 
         private final String legacyName;
 
@@ -269,5 +271,27 @@ public class RedisquesAPI {
         }
         return buildGetQueuesStatisticsOperation();
     }
+
+    /**
+     *
+     * Retrieve total speed over all queues if no filter given
+     * @return The total speed overall
+     */
+    public static JsonObject buildGetQueuesSpeedOperation() {
+        return buildOperation(QueueOperation.getQueuesSpeed);
+    }
+
+    /**
+     * Retrieve speed for all the queues matching the given filter
+     * @param filterPattern The queues filter for which we would like to get the total speed
+     *      Filter pattern. Method handles {@code null} gracefully.
+     */
+    public static JsonObject buildGetQueuesSpeedOperation(String filterPattern) {
+        if (filterPattern != null) {
+            return buildOperation(QueueOperation.getQueuesSpeed, new JsonObject().put(FILTER, filterPattern));
+        }
+        return buildGetQueuesSpeedOperation();
+    }
+
 
 }

@@ -611,6 +611,28 @@ Response Data
 }
 ```
 
+
+#### getQueuesSpeed
+
+Request Data
+```
+{
+    "operation": "getQueuesSpeed",
+    "payload": {
+        "filter": <str regex pattern to filter queues to retrieve the cumulated speed (optional)>
+    }
+}
+```
+
+Response Data
+```
+{
+    "speed": <Long speed>
+    "unitSec": <Long seconds>
+}
+```
+
+
 ## RedisQues HTTP API
 RedisQues provides a HTTP API to modify queues, queue items and get information about queue counts and queue item counts.
 
@@ -953,6 +975,27 @@ The result will be a json object with the statistics information like the exampl
     ]    
 }
 ```
+
+### Get queue speed
+The speed evaluation collects and calculates the cumulated speed of all queues matchting the given filter.
+To get the speed information use
+> GET /queuing/speed
+
+Available url parameters are:
+* _filter=<regex pattern>_: Filter the queues for which the cumulated speed is evaluated
+
+The result will be a json object with the speed of the last measurement period calculated
+over all queues matching the given filter regex. Additionally the used measurement time in seconds
+is returned (eg. 60 seconds by default)
+
+```json
+{
+  "speed": 42,
+  "unitSec": 60
+}
+```
+
+
 
 ## Dependencies
 
