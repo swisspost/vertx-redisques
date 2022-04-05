@@ -20,6 +20,8 @@ import static org.swisspush.redisques.util.RedisquesAPI.REQUESTED_BY;
 import static org.swisspush.redisques.util.RedisquesAPI.buildEnqueueOperation;
 import static org.swisspush.redisques.util.RedisquesAPI.buildPutLockOperation;
 
+import com.sun.istack.NotNull;
+import com.sun.istack.Nullable;
 import io.restassured.RestAssured;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.DeploymentOptions;
@@ -2114,10 +2116,15 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
      *                              position=element
      * @oaram filter                The filter to be applied to the statistic queues request
      */
-    private void assertQueueState(TestContext context, String filter, Integer queuesSize,
-        Integer element,
-        String queueName, Integer queueSize, Integer queueFailures,
-        Integer queueSlowdownTime, Integer queueBackpressureTime) {
+    private void assertQueueState(@NotNull TestContext context,
+        @Nullable String filter,
+        @Nullable Integer queuesSize,
+        @Nullable Integer element,
+        @Nullable String queueName,
+        @Nullable Integer queueSize,
+        @Nullable Integer queueFailures,
+        @Nullable Integer queueSlowdownTime,
+        @Nullable Integer queueBackpressureTime) {
         long maxWaitTime = System.currentTimeMillis() + 5000;
         while (true) {
             StringBuilder failureState = new StringBuilder("Failures");
@@ -2202,7 +2209,8 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
      * @param speed  The expected speed
      * @return true if the expectation was fulfilled within max 5 seconds, else false
      */
-    private void assertQueueSpeed(TestContext context, String filter, int speed) {
+    private void assertQueueSpeed( @NotNull TestContext context,
+        @Nullable String filter, int speed) {
         String url = "/queuing/speed";
         if (filter != null && !filter.isEmpty()) {
             url = url + "?filter=" + filter;
