@@ -126,17 +126,17 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         /*
          * List endpoints
          */
-        router.get(prefix + "/").handler(this::listEndpoints);
+        router.get(prefix).handler(this::listEndpoints);
 
         /*
          * Get configuration
          */
-        router.get(prefix + "/configuration/").handler(this::getConfiguration);
+        router.get(prefix + "/configuration").handler(this::getConfiguration);
 
         /*
          * Set configuration
          */
-        router.post(prefix + "/configuration/").handler(this::setConfiguration);
+        router.post(prefix + "/configuration").handler(this::setConfiguration);
 
         /*
          * Get monitor information
@@ -166,7 +166,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         /*
          * List or count queues
          */
-        router.get(prefix + "/queues/").handler(this::listOrCountQueues);
+        router.get(prefix + "/queues").handler(this::listOrCountQueues);
 
         /*
          * List or count queue items
@@ -181,7 +181,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         /*
          * Bulk delete queues
          */
-        router.post(prefix + "/queues/").handler(this::bulkDeleteQueues);
+        router.post(prefix + "/queues").handler(this::bulkDeleteQueues);
 
         /*
          * Get single queue item
@@ -206,7 +206,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         /*
          * Get all locks
          */
-        router.get(prefix + "/locks/").handler(this::getAllLocks);
+        router.get(prefix + "/locks").handler(this::getAllLocks);
 
         /*
          * Add lock
@@ -221,12 +221,12 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         /*
          * Delete all locks
          */
-        router.delete(prefix + "/locks/").handler(this::deleteAllLocks);
+        router.delete(prefix + "/locks").handler(this::deleteAllLocks);
 
         /*
          * Bulk create / delete locks
          */
-        router.post(prefix + "/locks/").handler(this::bulkPutOrDeleteLocks);
+        router.post(prefix + "/locks").handler(this::bulkPutOrDeleteLocks);
 
         /*
          * Delete single lock
