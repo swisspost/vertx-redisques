@@ -3,7 +3,7 @@ package org.swisspush.redisques;
 import io.vertx.core.DeploymentOptions;
 import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonObject;
-import io.vertx.core.logging.LoggerFactory;
+import org.slf4j.LoggerFactory;
 import org.swisspush.redisques.util.RedisquesConfiguration;
 
 /**

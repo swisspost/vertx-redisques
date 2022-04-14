@@ -65,6 +65,16 @@
             <artifactId>vertx-web</artifactId>
             <version>${vertx.version}</version>
         </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+            <version>${slf4j.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-log4j12</artifactId>
+            <version>${slf4j.version}</version>
+        </dependency>
 
         <!-- TEST dependencies -->
         <dependency>
@@ -325,6 +335,7 @@
     </profiles>
     <properties>
         <vertx.version>4.2.1</vertx.version>
+        <slf4j.version>1.7.32</slf4j.version>
         <mockito.version>1.10.19</mockito.version>
         <junit.version>4.12</junit.version>
         <awaitility.version>4.0.2</awaitility.version>

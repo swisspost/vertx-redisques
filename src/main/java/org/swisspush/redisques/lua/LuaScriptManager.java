@@ -1,8 +1,8 @@
 package org.swisspush.redisques.lua;
 
 import io.vertx.core.Handler;
-import io.vertx.core.logging.Logger;
-import io.vertx.core.logging.LoggerFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import io.vertx.redis.client.RedisAPI;
 import io.vertx.redis.client.Response;
 import org.swisspush.redisques.util.RedisUtils;

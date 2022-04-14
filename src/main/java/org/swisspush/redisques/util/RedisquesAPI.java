@@ -2,8 +2,8 @@ package org.swisspush.redisques.util;
 
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
-import io.vertx.core.logging.Logger;
-import io.vertx.core.logging.LoggerFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Class RedisquesAPI listing the operations and response values which are supported in Redisques.
