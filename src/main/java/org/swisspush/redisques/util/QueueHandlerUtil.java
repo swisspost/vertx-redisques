@@ -1,7 +1,5 @@
 package org.swisspush.redisques.util;
 
-import io.vertx.core.logging.Logger;
-import io.vertx.core.logging.LoggerFactory;
 import io.vertx.redis.client.Response;
 import java.util.ArrayList;
 import java.util.List;
@@ -9,8 +7,6 @@ import java.util.Optional;
 import java.util.regex.Pattern;
 
 public class QueueHandlerUtil {
-
-    private static final Logger log = LoggerFactory.getLogger(QueueHandlerUtil.class);
 
     /**
      * Apply the given filter pattern to the given JsonArray containing the list of queues.

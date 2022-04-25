@@ -53,8 +53,8 @@ import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
-import io.vertx.core.logging.Logger;
-import io.vertx.core.logging.LoggerFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import io.vertx.ext.web.Router;
 import io.vertx.ext.web.RoutingContext;
 import java.nio.charset.StandardCharsets;
@@ -689,19 +689,20 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
 
     private void deleteQueueItem(RoutingContext ctx) {
         final HttpServerRequest request = ctx.request();
-        final String queue = part(request.path(), 2);
-        final int index = Integer.parseInt(lastPart(request.path()));
-        checkLocked(queue, request, event -> {
-            eventBus.request(redisquesAddress, buildDeleteQueueItemOperation(queue, index),
-                (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
-                    if (reply.failed()) {
-                        log.warn("Received failed message for deleteQueueItemOperation. Lets run into NullPointerException now", reply.cause());
-                        // IMO we should respond with 'HTTP 5xx'. But we don't, to keep backward compatibility.
-                        // Nevertheless. Lets run into NullPointerException by calling method below.
-                    }
-                    checkReply(reply.result(), request, StatusCode.NOT_FOUND);
-                }
-            );
+        decodedQueueNameOrRespondWithBadRequest(ctx, part(request.path(), 2)).ifPresent(queue -> {
+            final int index = Integer.parseInt(lastPart(request.path()));
+            checkLocked(queue, request, event -> {
+                eventBus.request(redisquesAddress, buildDeleteQueueItemOperation(queue, index),
+                        (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
+                            if (reply.failed()) {
+                                log.warn("Received failed message for deleteQueueItemOperation. Lets run into NullPointerException now", reply.cause());
+                                // IMO we should respond with 'HTTP 5xx'. But we don't, to keep backward compatibility.
+                                // Nevertheless. Lets run into NullPointerException by calling method below.
+                            }
+                            checkReply(reply.result(), request, StatusCode.NOT_FOUND);
+                        }
+                );
+            });
         });
     }
 
