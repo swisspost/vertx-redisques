@@ -187,7 +187,7 @@ public class QueueStatisticsCollector {
     private long getQueueSpeed(String queueName) {
         Long speed = queueMessageSpeed.get(queueName);
         if (speed != null) {
-            return speed.longValue();
+            return speed;
         }
         return 0;
     }
@@ -323,7 +323,7 @@ public class QueueStatisticsCollector {
     /**
      * An internally used class for statistics value storage per queue.
      */
-    private class QueueStatistic {
+    private static class QueueStatistic {
 
         private final String queueName;
         private long size;

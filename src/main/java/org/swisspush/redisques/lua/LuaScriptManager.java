@@ -82,7 +82,7 @@ public class LuaScriptManager {
                     String message = event.cause().getMessage();
                     if(message != null && message.startsWith("NOSCRIPT")) {
                         log.warn("Check script couldn't be found, reload it");
-                        log.warn("amount the script got loaded: " + String.valueOf(executionCounter));
+                        log.warn("amount the script got loaded: " + executionCounter);
                         if(executionCounter > 10) {
                             log.error("amount the script got loaded is higher than 10, we abort");
                         } else {
@@ -133,7 +133,7 @@ public class LuaScriptManager {
                     String message = event.cause().getMessage();
                     if(message != null && message.startsWith("NOSCRIPT")) {
                         log.warn("MultiListLength script couldn't be found, reload it");
-                        log.warn("amount the script got loaded: {}", String.valueOf(executionCounter));
+                        log.warn("amount the script got loaded: {}", executionCounter);
                         if(executionCounter > 10) {
                             log.error("amount the MultiListLength script got loaded is higher than 10, we abort");
                         } else {

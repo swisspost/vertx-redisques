@@ -7,7 +7,7 @@ import io.vertx.core.json.JsonObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 
 import static org.swisspush.redisques.util.RedisquesAPI.PAYLOAD;
 
@@ -21,7 +21,6 @@ public class HttpServerRequestUtil {
     private static final Logger log = LoggerFactory.getLogger(HttpServerRequestUtil.class);
     private static final String EMPTY = "";
     private static final String TRUE = "true";
-    private static final String UTF_8 = "UTF-8";
     private static final String HEADERS = "headers";
     private static final String PAYLOAD_OBJECT = "payloadObject";
     private static final String PAYLOAD_STRING = "payloadString";
@@ -92,7 +91,7 @@ public class HttpServerRequestUtil {
         }
 
         if (payloadString != null) {
-            object.put(PAYLOAD, payloadString.getBytes(Charset.forName(UTF_8)));
+            object.put(PAYLOAD, payloadString.getBytes(StandardCharsets.UTF_8));
             object.remove(PAYLOAD_STRING);
             object.remove(PAYLOAD_OBJECT);
         }
@@ -135,9 +134,9 @@ public class HttpServerRequestUtil {
             String value = header.getString(1);
             if (key.equalsIgnoreCase(CONTENT_TYPE) && (value.contains("text/") || value.contains(APPLICATION_JSON))) {
                 try {
-                    object.put(PAYLOAD_OBJECT, new JsonObject(new String(object.getBinary(PAYLOAD), Charset.forName(UTF_8))));
+                    object.put(PAYLOAD_OBJECT, new JsonObject(new String(object.getBinary(PAYLOAD), StandardCharsets.UTF_8)));
                 } catch (DecodeException e) {
-                    object.put(PAYLOAD_STRING, new String(object.getBinary(PAYLOAD), Charset.forName(UTF_8)));
+                    object.put(PAYLOAD_STRING, new String(object.getBinary(PAYLOAD), StandardCharsets.UTF_8));
                 }
                 object.remove(PAYLOAD);
                 break;
