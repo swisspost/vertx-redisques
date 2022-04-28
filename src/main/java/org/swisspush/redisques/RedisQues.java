@@ -31,15 +31,13 @@ import io.vertx.core.eventbus.Message;
 import io.vertx.core.eventbus.MessageConsumer;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
+import io.vertx.redis.client.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import io.vertx.redis.client.Command;
-import io.vertx.redis.client.RedisAPI;
-import io.vertx.redis.client.RedisOptions;
-import io.vertx.redis.client.Response;
 import io.vertx.redis.client.impl.RedisClient;
 import io.vertx.redis.client.impl.types.MultiType;
 import io.vertx.redis.client.impl.types.SimpleStringType;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -55,6 +53,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+
 import org.swisspush.redisques.handler.AddQueueItemHandler;
 import org.swisspush.redisques.handler.DeleteLockHandler;
 import org.swisspush.redisques.handler.GetAllLocksHandler;
@@ -159,20 +158,20 @@ public class RedisQues extends AbstractVerticle {
     private static final int MAX_AGE_MILLISECONDS = 120000; // 120 seconds
 
     private static final Set<String> ALLOWED_CONFIGURATION_VALUES = Stream.of("processorDelayMax")
-        .collect(Collectors.toSet());
+            .collect(Collectors.toSet());
 
     private LuaScriptManager luaScriptManager;
 
 
     private void redisSetWithOptions(String key, String value, boolean nx, int ex,
-        Handler<AsyncResult<Response>> handler) {
+                                     Handler<AsyncResult<Response>> handler) {
         JsonArray options = new JsonArray();
         options.add("EX").add(ex);
         if (nx) {
             options.add("NX");
         }
         redisAPI.send(Command.SET, RedisUtils.toPayload(key, value, options).toArray(new String[0]))
-            .onComplete(handler);
+                .onComplete(handler);
     }
 
     /**
@@ -187,7 +186,7 @@ public class RedisQues extends AbstractVerticle {
         }
         if (log.isDebugEnabled()) {
             log.debug(
-                "RedisQues Got registration request for queue {} from consumer: {}", queueName, uid);
+                    "RedisQues Got registration request for queue {} from consumer: {}", queueName, uid);
         }
         // Try to register for this queue
         redisSetWithOptions(consumersPrefix + queueName, uid, true, consumerLockTime, event -> {
@@ -215,7 +214,7 @@ public class RedisQues extends AbstractVerticle {
     }
 
     @Override
-    public void start() {
+    public void start(Promise<Void> promise) {
         final EventBus eb = vertx.eventBus();
         log.info("Started with UID " + uid);
 
@@ -251,26 +250,103 @@ public class RedisQues extends AbstractVerticle {
         httpRequestHandlerUserHeader = modConfig.getHttpRequestHandlerUserHeader();
         queueConfigurations = modConfig.getQueueConfigurations();
 
-        this.redisClient = new RedisClient(vertx, new RedisOptions()
-            .setConnectionString("redis://" + redisHost + ":" + redisPort)
-            .setPassword(redisAuth)
-            .setMaxPoolSize(redisMaxPoolSize)
-            .setMaxPoolWaiting(redisMaxWaitSize));
+        setupRedisAPI(redisHost, redisPort, redisAuth, redisMaxPoolSize, redisMaxWaitSize).onComplete(event -> {
+            if(event.succeeded()){
+                redisAPI = event.result();
+                initialize(modConfig);
+                promise.complete();
+            } else {
+                promise.fail(event.cause());
+            }
+        });
+    }
 
-        this.redisAPI = RedisAPI.api(redisClient);
+    private void initialize(RedisquesConfiguration modConfig) {
         this.luaScriptManager = new LuaScriptManager(redisAPI);
         this.queueStatisticsCollector = new QueueStatisticsCollector(redisAPI, luaScriptManager,
-            queuesPrefix, vertx, modConfig.getQueueSpeedIntervalSec());
+                queuesPrefix, vertx, modConfig.getQueueSpeedIntervalSec());
 
         RedisquesHttpRequestHandler.init(vertx, modConfig);
 
-        eb.consumer(configurationUpdatedAddress, (Handler<Message<JsonObject>>) event -> {
+        vertx.eventBus().consumer(configurationUpdatedAddress, (Handler<Message<JsonObject>>) event -> {
             log.info("Received configurations update");
             setConfigurationValues(event.body(), false);
         });
 
         // Handles operations
-        eb.consumer(address, (Handler<Message<JsonObject>>) event -> {
+        vertx.eventBus().consumer(address, operationsHandler());
+
+        // Handles registration requests
+        consumersMessageConsumer = vertx.eventBus().consumer(address + "-consumers", this::handleRegistrationRequest);
+
+        // Handles notifications
+        uidMessageConsumer = vertx.eventBus().consumer(uid, event -> {
+            final String queue = event.body();
+            if (queue == null) {
+                log.warn("Got event bus msg with empty body! uid={}  address={}  replyAddress={}", uid, event.address(), event.replyAddress());
+                // IMO we should 'fail()' here. But we don't, to keep backward compatibility.
+            }
+            log.debug("RedisQues got notification for queue '{}'", queue);
+            consume(queue);
+        });
+
+        registerActiveQueueRegistrationRefresh();
+        registerQueueCheck(modConfig);
+    }
+
+    private Future<RedisAPI> setupRedisAPI(String redisHost, Integer redisPort, String redisAuth,
+                                            int redisMaxPoolSize, int redisMaxWaitSize) {
+        Promise<RedisAPI> promise = Promise.promise();
+        Redis.createClient(vertx, new RedisOptions()
+                .setConnectionString("redis://" + redisHost + ":" + redisPort)
+                .setPassword((redisAuth == null ? "" : redisAuth))
+                .setMaxPoolSize(redisMaxPoolSize)
+                .setMaxPoolWaiting(redisMaxWaitSize)
+        ).connect(event -> {
+            if (event.failed()) {
+                promise.fail(event.cause());
+            } else {
+                promise.complete(RedisAPI.api(event.result()));
+            }
+        });
+
+        return promise.future();
+    }
+
+    private void registerActiveQueueRegistrationRefresh() {
+        // Periodic refresh of my registrations on active queues.
+        vertx.setPeriodic(refreshPeriod * 1000, event -> {
+            // Check if I am still the registered consumer
+            myQueues.entrySet().stream().filter(entry -> entry.getValue() == QueueState.CONSUMING).
+                    forEach(entry -> {
+                        final String queue = entry.getKey();
+                        // Check if I am still the registered consumer
+                        String consumerKey = consumersPrefix + queue;
+                        if (log.isTraceEnabled()) {
+                            log.trace("RedisQues refresh queues get: " + consumerKey);
+                        }
+                        redisAPI.get(consumerKey, getConsumerEvent -> {
+                            if (getConsumerEvent.failed()) {
+                                log.warn("Failed to get queue consumer for queue '{}'. But we'll continue anyway :)", queue, getConsumerEvent.cause());
+                                // We should return here. See: "https://softwareengineering.stackexchange.com/a/190535"
+                            }
+                            final String consumer = Objects.toString(getConsumerEvent.result(), "");
+                            if (uid.equals(consumer)) {
+                                log.debug("RedisQues Periodic consumer refresh for active queue " + queue);
+                                refreshRegistration(queue, null);
+                                updateTimestamp(queue, null);
+                            } else {
+                                log.debug("RedisQues Removing queue " + queue + " from the list");
+                                myQueues.remove(queue);
+                                queueStatisticsCollector.resetQueueFailureStatistics(queue);
+                            }
+                        });
+                    });
+        });
+    }
+
+    private Handler<Message<JsonObject>> operationsHandler() {
+        return event -> {
             final JsonObject body = event.body();
             if (null == body) {
                 log.warn("Got msg with empty body from event bus. We'll run directly in a NullPointerException now. address={}  replyAddress={} ", event.address(), event.replyAddress());
@@ -375,53 +451,7 @@ public class RedisQues extends AbstractVerticle {
                 default:
                     unsupportedOperation(operation, event);
             }
-        });
-
-        // Handles registration requests
-        consumersMessageConsumer = eb.consumer(address + "-consumers", this::handleRegistrationRequest);
-
-        // Handles notifications
-        uidMessageConsumer = eb.consumer(uid, event -> {
-            final String queue = event.body();
-            if (queue == null) {
-                log.warn("Got event bus msg with empty body! uid={}  address={}  replyAddress={}", uid, event.address(), event.replyAddress());
-                // IMO we should 'fail()' here. But we don't, to keep backward compatibility.
-            }
-            log.debug("RedisQues got notification for queue '{}'", queue);
-            consume(queue);
-        });
-
-        // Periodic refresh of my registrations on active queues.
-        vertx.setPeriodic(refreshPeriod * 1000, event -> {
-            // Check if I am still the registered consumer
-            myQueues.entrySet().stream().filter(entry -> entry.getValue() == QueueState.CONSUMING).
-                forEach(entry -> {
-                final String queue = entry.getKey();
-                // Check if I am still the registered consumer
-                String consumerKey = consumersPrefix + queue;
-                if (log.isTraceEnabled()) {
-                    log.trace("RedisQues refresh queues get: " + consumerKey);
-                }
-                redisAPI.get(consumerKey, getConsumerEvent -> {
-                    if (getConsumerEvent.failed()) {
-                        log.warn("Failed to get queue consumer for queue '{}'. But we'll continue anyway :)", queue, getConsumerEvent.cause());
-                        // We should return here. See: "https://softwareengineering.stackexchange.com/a/190535"
-                    }
-                    final String consumer = Objects.toString(getConsumerEvent.result(), "");
-                    if (uid.equals(consumer)) {
-                        log.debug("RedisQues Periodic consumer refresh for active queue " + queue);
-                        refreshRegistration(queue, null);
-                        updateTimestamp(queue, null);
-                    } else {
-                        log.debug("RedisQues Removing queue " + queue + " from the list");
-                        myQueues.remove(queue);
-                        queueStatisticsCollector.resetQueueFailureStatistics(queue);
-                    }
-                });
-            });
-        });
-
-        registerQueueCheck(modConfig);
+        };
     }
 
     private void enqueue(Message<JsonObject> event) {
@@ -522,7 +552,7 @@ public class RedisQues extends AbstractVerticle {
             event.reply(createErrorReply().put(ERROR_TYPE, BAD_INPUT).put(MESSAGE, filterPatternResult.getErr()));
         } else {
             redisAPI.zrangebyscore(
-                Arrays.asList(queuesKey, String.valueOf(getMaxAgeTimestamp()), "+inf"),
+                    Arrays.asList(queuesKey, String.valueOf(getMaxAgeTimestamp()), "+inf"),
                     new GetQueuesHandler(event, filterPatternResult.getOk(), countOnly));
         }
     }
@@ -615,7 +645,7 @@ public class RedisQues extends AbstractVerticle {
             if (queueConfiguration != null) {
                 int[] retryIntervals = queueConfiguration.getRetryIntervals();
                 if (retryIntervals != null && retryIntervals.length > 0) {
-                    int retryIntervalIndex = (int)(failureCount <= retryIntervals.length ? failureCount - 1 : retryIntervals.length - 1);
+                    int retryIntervalIndex = (int) (failureCount <= retryIntervals.length ? failureCount - 1 : retryIntervals.length - 1);
                     int retryTime = retryIntervals[retryIntervalIndex];
                     queueStatisticsCollector.setQueueSlowDownTime(queueName, retryTime);
                     return retryTime;
@@ -626,7 +656,7 @@ public class RedisQues extends AbstractVerticle {
         return refreshPeriod;
     }
 
-    private String buildQueueKey(String queue){
+    private String buildQueueKey(String queue) {
         return queuesPrefix + queue;
     }
 
@@ -1190,7 +1220,7 @@ public class RedisQues extends AbstractVerticle {
             // send the message to the consumer
             DeliveryOptions options = new DeliveryOptions().setSendTimeout(processorTimeout);
             eb.request(processorAddress, message, options, (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
-                Boolean success;
+                boolean success;
                 if (reply.succeeded()) {
                     success = OK.equals(reply.result().body().getString(STATUS));
                 } else {
@@ -1400,16 +1430,17 @@ public class RedisQues extends AbstractVerticle {
     private void getQueuesItemsCount(Message<JsonObject> event, Result<Optional<Pattern>, String> filterPatternResult) {
         if (filterPatternResult.isErr()) {
             event.reply(createErrorReply().put(ERROR_TYPE, BAD_INPUT)
-                .put(MESSAGE, filterPatternResult.getErr()));
+                    .put(MESSAGE, filterPatternResult.getErr()));
         } else {
             redisAPI.zrangebyscore(List.of(queuesKey, String.valueOf(getMaxAgeTimestamp()), "+inf"),
-                new GetQueuesItemsCountHandler(event, filterPatternResult.getOk(), luaScriptManager,
-                    queuesPrefix));
+                    new GetQueuesItemsCountHandler(event, filterPatternResult.getOk(), luaScriptManager,
+                            queuesPrefix));
         }
     }
 
     /**
      * Retrieve the queue statistics info of the requested queues
+     *
      * @param event
      */
     private void getQueuesStatistics(Message<JsonObject> event) {
@@ -1422,20 +1453,21 @@ public class RedisQues extends AbstractVerticle {
      * given filter pattern.
      */
     private void getQueuesStatistics(Message<JsonObject> event,
-            Result<Optional<Pattern>, String> filterPattern) {
+                                     Result<Optional<Pattern>, String> filterPattern) {
         if (filterPattern.isErr()) {
             event.reply(createErrorReply().put(ERROR_TYPE, BAD_INPUT)
-                .put(MESSAGE, filterPattern.getErr()));
+                    .put(MESSAGE, filterPattern.getErr()));
         } else {
             // retrieve all currently known queues from storage and pass this to the handler
             redisAPI.zrangebyscore(List.of(queuesKey, String.valueOf(getMaxAgeTimestamp()), "+inf"),
-                new GetQueuesStatisticsHandler(event, filterPattern.getOk(),
-                    queueStatisticsCollector));
+                    new GetQueuesStatisticsHandler(event, filterPattern.getOk(),
+                            queueStatisticsCollector));
         }
     }
 
     /**
      * Retrieve the summarized queue speed of the requested queues
+     *
      * @param event
      */
     private void getQueuesSpeed(Message<JsonObject> event) {
@@ -1448,15 +1480,15 @@ public class RedisQues extends AbstractVerticle {
      * given filter pattern.
      */
     private void getQueuesSpeed(Message<JsonObject> event,
-        Result<Optional<Pattern>, String> filterPattern) {
+                                Result<Optional<Pattern>, String> filterPattern) {
         if (filterPattern.isErr()) {
             event.reply(createErrorReply().put(ERROR_TYPE, BAD_INPUT)
-                .put(MESSAGE, filterPattern.getErr()));
+                    .put(MESSAGE, filterPattern.getErr()));
         } else {
             // retrieve all currently known queues from storage and pass this to the handler
             redisAPI.zrangebyscore(List.of(queuesKey, String.valueOf(getMaxAgeTimestamp()), "+inf"),
-                new GetQueuesSpeedHandler(event, filterPattern.getOk(),
-                    queueStatisticsCollector));
+                    new GetQueuesSpeedHandler(event, filterPattern.getOk(),
+                            queueStatisticsCollector));
         }
     }
 
