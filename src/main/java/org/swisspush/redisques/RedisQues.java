@@ -1271,9 +1271,9 @@ public class RedisQues extends AbstractVerticle {
         }
         String consumerKey = consumersPrefix + queueName;
         if (handler == null) {
-            redisAPI.expire(consumerKey, String.valueOf(consumerLockTime));
+            redisAPI.expire(List.of(consumerKey, String.valueOf(consumerLockTime)));
         } else {
-            redisAPI.expire(consumerKey, String.valueOf(consumerLockTime), handler);
+            redisAPI.expire(List.of(consumerKey, String.valueOf(consumerLockTime)), handler);
         }
     }
 
