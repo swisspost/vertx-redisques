@@ -42,7 +42,7 @@ public class RedisquesAPI {
     public static final String STATISTIC_QUEUE_BACKPRESSURE = "backpressureTime";
     public static final String STATISTIC_QUEUE_SLOWDOWN = "slowdownTime";
     public static final String STATISTIC_QUEUE_SPEED = "speed";
-    public static final String STATISTIC_QUEUE_SPEED_INTERVAL_UNIT= "unitMs";
+    public static final String STATISTIC_QUEUE_SPEED_INTERVAL_UNIT= "unitSec";
 
     private static Logger log = LoggerFactory.getLogger(RedisquesAPI.class);
 
