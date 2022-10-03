@@ -146,7 +146,8 @@ public class RedisQues extends AbstractVerticle {
     private String redisAuth;
     private String redisEncoding;
     private int redisMaxPoolSize;
-    private int redisMaxWaitSize;
+    private int redisMaxPoolWaitingSize;
+    private int redisMaxPipelineWaitingSize;
 
     private boolean httpRequestHandlerEnabled;
     private String httpRequestHandlerPrefix;
@@ -242,7 +243,8 @@ public class RedisQues extends AbstractVerticle {
         redisAuth = modConfig.getRedisAuth();
         redisEncoding = modConfig.getRedisEncoding();
         redisMaxPoolSize = modConfig.getMaxPoolSize();
-        redisMaxWaitSize = modConfig.getMaxWaitSize();
+        redisMaxPoolWaitingSize = modConfig.getMaxPoolWaitSize();
+        redisMaxPipelineWaitingSize = modConfig.getMaxPipelineWaitSize();
 
         httpRequestHandlerEnabled = modConfig.getHttpRequestHandlerEnabled();
         httpRequestHandlerPrefix = modConfig.getHttpRequestHandlerPrefix();
@@ -250,7 +252,7 @@ public class RedisQues extends AbstractVerticle {
         httpRequestHandlerUserHeader = modConfig.getHttpRequestHandlerUserHeader();
         queueConfigurations = modConfig.getQueueConfigurations();
 
-        setupRedisAPI(redisHost, redisPort, redisAuth, redisMaxPoolSize, redisMaxWaitSize).onComplete(event -> {
+        setupRedisAPI(redisHost, redisPort, redisAuth, redisMaxPoolSize, redisMaxPoolWaitingSize, redisMaxPipelineWaitingSize).onComplete(event -> {
             if(event.succeeded()){
                 redisAPI = event.result();
                 initialize(modConfig);
@@ -295,13 +297,14 @@ public class RedisQues extends AbstractVerticle {
     }
 
     private Future<RedisAPI> setupRedisAPI(String redisHost, Integer redisPort, String redisAuth,
-                                            int redisMaxPoolSize, int redisMaxWaitSize) {
+                                            int redisMaxPoolSize, int redisMaxPoolWaitingSize, int redisMaxPipelineWaitingSize) {
         Promise<RedisAPI> promise = Promise.promise();
         Redis.createClient(vertx, new RedisOptions()
                 .setConnectionString("redis://" + redisHost + ":" + redisPort)
                 .setPassword((redisAuth == null ? "" : redisAuth))
                 .setMaxPoolSize(redisMaxPoolSize)
-                .setMaxPoolWaiting(redisMaxWaitSize)
+                .setMaxPoolWaiting(redisMaxPoolWaitingSize)
+                .setMaxWaitingHandlers(redisMaxPipelineWaitingSize)
         ).connect(event -> {
             if (event.failed()) {
                 promise.fail(event.cause());
@@ -1072,7 +1075,7 @@ public class RedisQues extends AbstractVerticle {
                     }
                 } else {
                     // Somehow registration changed. Let's renotify.
-                    log.warn("Registration for queue " + queueName + " has changed to " + consumer);
+                    log.warn("Registration for queue " + queueName + " has chhas changed to " + consumer);
                     myQueues.remove(queueName);
                     notifyConsumer(queueName);
                 }
