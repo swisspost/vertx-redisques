@@ -34,7 +34,8 @@ public class RedisquesConfiguration {
     private List<QueueConfiguration> queueConfigurations;
     private boolean enableQueueNameDecoding;
     private int maxPoolSize;
-    private int maxWaitSize;
+    private int maxPoolWaitSize;
+    private int maxPipelineWaitSize;
     private int queueSpeedIntervalSec;
 
     private static final int DEFAULT_CHECK_INTERVAL = 60; // 60s
@@ -46,7 +47,8 @@ public class RedisquesConfiguration {
     // - https://groups.google.com/g/vertx/c/fe0RSWEfe8g
     // - https://vertx.io/docs/apidocs/io/vertx/redis/client/RedisOptions.html#setMaxPoolWaiting-int-
     // - https://stackoverflow.com/questions/59692663/vertx-java-httpclient-how-to-derive-maxpoolsize-and-maxwaitqueuesize-values-and
-    private static final int DEFAULT_REDIS_MAX_WAIT_SIZE = -1;
+    private static final int DEFAULT_REDIS_MAX_POOL_WAIT_SIZE = -1;
+    private static final int DEFAULT_REDIS_MAX_PIPELINE_WAIT_SIZE = 2048;
     private static final int DEFAULT_QUEUE_SPEED_INTERVAL_SEC = 60;
 
     public static final String PROP_ADDRESS = "address";
@@ -89,7 +91,8 @@ public class RedisquesConfiguration {
                 processorTimeout, processorDelayMax, httpRequestHandlerEnabled,
                 httpRequestHandlerPrefix, httpRequestHandlerPort,
                 httpRequestHandlerUserHeader, queueConfigurations,
-                enableQueueNameDecoding, DEFAULT_REDIS_MAX_POOL_SIZE, DEFAULT_REDIS_MAX_WAIT_SIZE,
+                enableQueueNameDecoding,
+                DEFAULT_REDIS_MAX_POOL_SIZE, DEFAULT_REDIS_MAX_POOL_WAIT_SIZE, DEFAULT_REDIS_MAX_PIPELINE_WAIT_SIZE,
                 DEFAULT_QUEUE_SPEED_INTERVAL_SEC);
     }
 
@@ -98,7 +101,8 @@ public class RedisquesConfiguration {
                                   int processorTimeout, long processorDelayMax, boolean httpRequestHandlerEnabled,
                                   String httpRequestHandlerPrefix, Integer httpRequestHandlerPort,
                                   String httpRequestHandlerUserHeader, List<QueueConfiguration> queueConfigurations,
-                                  boolean enableQueueNameDecoding, int maxPoolSize, int maxWaitSize,
+                                  boolean enableQueueNameDecoding,
+                                  int maxPoolSize, int maxPoolWaitSize, int maxPipelineWaitSize,
                                   int queueSpeedIntervalSec) {
         this.address = address;
         this.configurationUpdatedAddress = configurationUpdatedAddress;
@@ -110,7 +114,8 @@ public class RedisquesConfiguration {
         this.redisAuth = redisAuth;
         this.redisEncoding = redisEncoding;
         this.maxPoolSize = maxPoolSize;
-        this.maxWaitSize = maxWaitSize;
+        this.maxPoolWaitSize = maxPoolWaitSize;
+        this.maxPipelineWaitSize = maxPipelineWaitSize;
         Logger log = LoggerFactory.getLogger(RedisquesConfiguration.class);
 
         if (checkInterval > 0) {
@@ -144,13 +149,14 @@ public class RedisquesConfiguration {
 
     private RedisquesConfiguration(RedisquesConfigurationBuilder builder) {
         this(builder.address, builder.configurationUpdatedAddress, builder.redisPrefix,
-            builder.processorAddress, builder.refreshPeriod, builder.redisHost, builder.redisPort,
-            builder.redisAuth, builder.redisEncoding, builder.checkInterval,
-            builder.processorTimeout, builder.processorDelayMax, builder.httpRequestHandlerEnabled,
-            builder.httpRequestHandlerPrefix, builder.httpRequestHandlerPort,
-            builder.httpRequestHandlerUserHeader, builder.queueConfigurations,
-            builder.enableQueueNameDecoding, builder.maxPoolSize, builder.maxWaitSize,
-            builder.queueSpeedIntervalSec);
+                builder.processorAddress, builder.refreshPeriod, builder.redisHost, builder.redisPort,
+                builder.redisAuth, builder.redisEncoding, builder.checkInterval,
+                builder.processorTimeout, builder.processorDelayMax, builder.httpRequestHandlerEnabled,
+                builder.httpRequestHandlerPrefix, builder.httpRequestHandlerPort,
+                builder.httpRequestHandlerUserHeader, builder.queueConfigurations,
+                builder.enableQueueNameDecoding,
+                builder.maxPoolSize, builder.maxPoolWaitSize, builder.maxPipelineWaitSize,
+                builder.queueSpeedIntervalSec);
     }
 
     public JsonObject asJsonObject() {
@@ -328,12 +334,25 @@ public class RedisquesConfiguration {
         return redisEncoding;
     }
 
+    /**
+     * See {@link io.vertx.redis.client.RedisOptions#setMaxPoolSize(int)}
+     */
     public int getMaxPoolSize() {
         return maxPoolSize;
     }
 
-    public int getMaxWaitSize() {
-        return maxWaitSize;
+    /**
+     * See {@link io.vertx.redis.client.RedisOptions#setMaxPoolWaiting(int)}
+     */
+    public int getMaxPoolWaitSize() {
+        return maxPoolWaitSize;
+    }
+
+    /**
+     * See {@link io.vertx.redis.client.RedisOptions#setMaxWaitingHandlers(int)}
+     */
+    public int getMaxPipelineWaitSize() {
+        return maxPipelineWaitSize;
     }
 
     /**
@@ -380,7 +399,8 @@ public class RedisquesConfiguration {
         private List<QueueConfiguration> queueConfigurations;
         private boolean enableQueueNameDecoding;
         private int maxPoolSize;
-        private int maxWaitSize;
+        private int maxPoolWaitSize;
+        private int maxPipelineWaitSize;
         private int queueSpeedIntervalSec;
 
         public RedisquesConfigurationBuilder() {
@@ -402,7 +422,8 @@ public class RedisquesConfiguration {
             this.queueConfigurations = new LinkedList<>();
             this.enableQueueNameDecoding = true;
             this.maxPoolSize = DEFAULT_REDIS_MAX_POOL_SIZE;
-            this.maxWaitSize = DEFAULT_REDIS_MAX_WAIT_SIZE;
+            this.maxPoolWaitSize = DEFAULT_REDIS_MAX_POOL_WAIT_SIZE;
+            this.maxPipelineWaitSize = DEFAULT_REDIS_MAX_PIPELINE_WAIT_SIZE;
             this.queueSpeedIntervalSec = DEFAULT_QUEUE_SPEED_INTERVAL_SEC;
         }
 
@@ -501,8 +522,13 @@ public class RedisquesConfiguration {
             return this;
         }
 
-        public RedisquesConfigurationBuilder maxWaitSize(int maxWaitSize) {
-            this.maxWaitSize = maxWaitSize;
+        public RedisquesConfigurationBuilder maxPoolWaitSize(int maxWaitSize) {
+            this.maxPoolWaitSize = maxWaitSize;
+            return this;
+        }
+
+        public RedisquesConfigurationBuilder maxPipelineWaitSize(int maxWaitSize) {
+            this.maxPipelineWaitSize = maxWaitSize;
             return this;
         }
 
