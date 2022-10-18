@@ -70,6 +70,8 @@ public class RedisquesConfiguration {
     public static final String PROP_QUEUE_CONFIGURATIONS = "queueConfigurations";
     public static final String PROP_ENABLE_QUEUE_NAME_DECODING = "enableQueueNameDecoding";
     public static final String PROP_REDIS_MAX_POOL_SIZE = "maxPoolSize";
+    public static final String PROP_REDIS_MAX_POOL_WAITING_SIZE = "maxPoolWaitingSize";
+    public static final String PROP_REDIS_MAX_PIPELINE_WAITING_SIZE = "maxPipelineWaitingSize";
     public static final String PROP_QUEUE_SPEED_INTERVAL_SEC = "queueSpeedIntervalSec";
 
     /**
@@ -180,6 +182,8 @@ public class RedisquesConfiguration {
         obj.put(PROP_QUEUE_CONFIGURATIONS, new JsonArray(getQueueConfigurations().stream().map(QueueConfiguration::asJsonObject).collect(Collectors.toList())));
         obj.put(PROP_ENABLE_QUEUE_NAME_DECODING, getEnableQueueNameDecoding());
         obj.put(PROP_REDIS_MAX_POOL_SIZE, getMaxPoolSize());
+        obj.put(PROP_REDIS_MAX_POOL_WAITING_SIZE, getMaxPoolWaitSize());
+        obj.put(PROP_REDIS_MAX_PIPELINE_WAITING_SIZE, getMaxPipelineWaitSize());
         obj.put(PROP_QUEUE_SPEED_INTERVAL_SEC, getQueueSpeedIntervalSec());
         return obj;
     }
@@ -245,6 +249,12 @@ public class RedisquesConfiguration {
         }
         if (json.containsKey(PROP_REDIS_MAX_POOL_SIZE)) {
             builder.maxPoolSize(json.getInteger(PROP_REDIS_MAX_POOL_SIZE));
+        }
+        if (json.containsKey(PROP_REDIS_MAX_POOL_WAITING_SIZE)) {
+            builder.maxPoolWaitSize(json.getInteger(PROP_REDIS_MAX_POOL_WAITING_SIZE));
+        }
+        if (json.containsKey(PROP_REDIS_MAX_PIPELINE_WAITING_SIZE)) {
+            builder.maxPipelineWaitSize(json.getInteger(PROP_REDIS_MAX_PIPELINE_WAITING_SIZE));
         }
         if (json.containsKey(PROP_QUEUE_SPEED_INTERVAL_SEC)) {
             builder.queueSpeedIntervalSec(json.getInteger(PROP_QUEUE_SPEED_INTERVAL_SEC));
