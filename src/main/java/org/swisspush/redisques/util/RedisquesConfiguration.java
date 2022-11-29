@@ -23,7 +23,6 @@ public class RedisquesConfiguration {
     private String redisHost;
     private int redisPort;
     private String redisAuth;
-    private String redisEncoding;
     private int checkInterval;
     private int processorTimeout;
     private long processorDelayMax;
@@ -37,6 +36,7 @@ public class RedisquesConfiguration {
     private int maxPoolWaitSize;
     private int maxPipelineWaitSize;
     private int queueSpeedIntervalSec;
+    private int memoryUsageLimitPct;
 
     private static final int DEFAULT_CHECK_INTERVAL = 60; // 60s
     private static final long DEFAULT_PROCESSOR_DELAY_MAX = 0;
@@ -50,6 +50,7 @@ public class RedisquesConfiguration {
     private static final int DEFAULT_REDIS_MAX_POOL_WAIT_SIZE = -1;
     private static final int DEFAULT_REDIS_MAX_PIPELINE_WAIT_SIZE = 2048;
     private static final int DEFAULT_QUEUE_SPEED_INTERVAL_SEC = 60;
+    private static final int DEFAULT_MEMORY_USAGE_LIMIT_PCT = 100;
 
     public static final String PROP_ADDRESS = "address";
     public static final String PROP_CONFIGURATION_UPDATED_ADDRESS = "configuration-updated-address";
@@ -59,7 +60,6 @@ public class RedisquesConfiguration {
     public static final String PROP_REDIS_HOST = "redisHost";
     public static final String PROP_REDIS_PORT = "redisPort";
     public static final String PROP_REDIS_AUTH = "redisAuth";
-    public static final String PROP_REDIS_ENCODING = "redisEncoding";
     public static final String PROP_CHECK_INTERVAL = "checkInterval";
     public static final String PROP_PROCESSOR_TIMEOUT = "processorTimeout";
     public static final String PROP_PROCESSOR_DELAY_MAX = "processorDelayMax";
@@ -73,6 +73,7 @@ public class RedisquesConfiguration {
     public static final String PROP_REDIS_MAX_POOL_WAITING_SIZE = "maxPoolWaitingSize";
     public static final String PROP_REDIS_MAX_PIPELINE_WAITING_SIZE = "maxPipelineWaitingSize";
     public static final String PROP_QUEUE_SPEED_INTERVAL_SEC = "queueSpeedIntervalSec";
+    public static final String PROP_MEMORY_USAGE_LIMIT_PCT = "memoryUsageLimitPct";
 
     /**
      * Constructor with default values. Use the {@link RedisquesConfigurationBuilder} class
@@ -83,29 +84,29 @@ public class RedisquesConfiguration {
     }
 
     public RedisquesConfiguration(String address, String configurationUpdatedAddress, String redisPrefix, String processorAddress, int refreshPeriod,
-                                  String redisHost, int redisPort, String redisAuth, String redisEncoding, int checkInterval,
+                                  String redisHost, int redisPort, String redisAuth, int checkInterval,
                                   int processorTimeout, long processorDelayMax, boolean httpRequestHandlerEnabled,
                                   String httpRequestHandlerPrefix, Integer httpRequestHandlerPort,
                                   String httpRequestHandlerUserHeader, List<QueueConfiguration> queueConfigurations,
                                   boolean enableQueueNameDecoding) {
         this(address, configurationUpdatedAddress, redisPrefix, processorAddress, refreshPeriod,
-                redisHost, redisPort, redisAuth, redisEncoding, checkInterval,
+                redisHost, redisPort, redisAuth, checkInterval,
                 processorTimeout, processorDelayMax, httpRequestHandlerEnabled,
                 httpRequestHandlerPrefix, httpRequestHandlerPort,
                 httpRequestHandlerUserHeader, queueConfigurations,
                 enableQueueNameDecoding,
                 DEFAULT_REDIS_MAX_POOL_SIZE, DEFAULT_REDIS_MAX_POOL_WAIT_SIZE, DEFAULT_REDIS_MAX_PIPELINE_WAIT_SIZE,
-                DEFAULT_QUEUE_SPEED_INTERVAL_SEC);
+                DEFAULT_QUEUE_SPEED_INTERVAL_SEC, DEFAULT_MEMORY_USAGE_LIMIT_PCT);
     }
 
     public RedisquesConfiguration(String address, String configurationUpdatedAddress, String redisPrefix, String processorAddress, int refreshPeriod,
-                                  String redisHost, int redisPort, String redisAuth, String redisEncoding, int checkInterval,
+                                  String redisHost, int redisPort, String redisAuth, int checkInterval,
                                   int processorTimeout, long processorDelayMax, boolean httpRequestHandlerEnabled,
                                   String httpRequestHandlerPrefix, Integer httpRequestHandlerPort,
                                   String httpRequestHandlerUserHeader, List<QueueConfiguration> queueConfigurations,
                                   boolean enableQueueNameDecoding,
                                   int maxPoolSize, int maxPoolWaitSize, int maxPipelineWaitSize,
-                                  int queueSpeedIntervalSec) {
+                                  int queueSpeedIntervalSec, int memoryUsageLimitPct) {
         this.address = address;
         this.configurationUpdatedAddress = configurationUpdatedAddress;
         this.redisPrefix = redisPrefix;
@@ -114,7 +115,6 @@ public class RedisquesConfiguration {
         this.redisHost = redisHost;
         this.redisPort = redisPort;
         this.redisAuth = redisAuth;
-        this.redisEncoding = redisEncoding;
         this.maxPoolSize = maxPoolSize;
         this.maxPoolWaitSize = maxPoolWaitSize;
         this.maxPipelineWaitSize = maxPipelineWaitSize;
@@ -143,6 +143,13 @@ public class RedisquesConfiguration {
         this.queueConfigurations = queueConfigurations;
         this.enableQueueNameDecoding = enableQueueNameDecoding;
         this.queueSpeedIntervalSec = queueSpeedIntervalSec;
+
+        if(0 <= memoryUsageLimitPct && memoryUsageLimitPct <= 100){
+            this.memoryUsageLimitPct = memoryUsageLimitPct;
+        } else {
+            log.warn("Overridden memoryUsageLimitPct of " + memoryUsageLimitPct + " is not valid. Using default value of " + DEFAULT_MEMORY_USAGE_LIMIT_PCT + " instead.");
+            this.memoryUsageLimitPct = DEFAULT_MEMORY_USAGE_LIMIT_PCT;
+        }
     }
 
     public static RedisquesConfigurationBuilder with() {
@@ -152,13 +159,14 @@ public class RedisquesConfiguration {
     private RedisquesConfiguration(RedisquesConfigurationBuilder builder) {
         this(builder.address, builder.configurationUpdatedAddress, builder.redisPrefix,
                 builder.processorAddress, builder.refreshPeriod, builder.redisHost, builder.redisPort,
-                builder.redisAuth, builder.redisEncoding, builder.checkInterval,
+                builder.redisAuth, builder.checkInterval,
                 builder.processorTimeout, builder.processorDelayMax, builder.httpRequestHandlerEnabled,
                 builder.httpRequestHandlerPrefix, builder.httpRequestHandlerPort,
                 builder.httpRequestHandlerUserHeader, builder.queueConfigurations,
                 builder.enableQueueNameDecoding,
                 builder.maxPoolSize, builder.maxPoolWaitSize, builder.maxPipelineWaitSize,
-                builder.queueSpeedIntervalSec);
+                builder.queueSpeedIntervalSec,
+                builder.memoryUsageLimitPct);
     }
 
     public JsonObject asJsonObject() {
@@ -171,7 +179,6 @@ public class RedisquesConfiguration {
         obj.put(PROP_REDIS_HOST, getRedisHost());
         obj.put(PROP_REDIS_PORT, getRedisPort());
         obj.put(PROP_REDIS_AUTH, getRedisAuth());
-        obj.put(PROP_REDIS_ENCODING, getRedisEncoding());
         obj.put(PROP_CHECK_INTERVAL, getCheckInterval());
         obj.put(PROP_PROCESSOR_TIMEOUT, getProcessorTimeout());
         obj.put(PROP_PROCESSOR_DELAY_MAX, getProcessorDelayMax());
@@ -185,6 +192,7 @@ public class RedisquesConfiguration {
         obj.put(PROP_REDIS_MAX_POOL_WAITING_SIZE, getMaxPoolWaitSize());
         obj.put(PROP_REDIS_MAX_PIPELINE_WAITING_SIZE, getMaxPipelineWaitSize());
         obj.put(PROP_QUEUE_SPEED_INTERVAL_SEC, getQueueSpeedIntervalSec());
+        obj.put(PROP_MEMORY_USAGE_LIMIT_PCT, getMemoryUsageLimitPct());
         return obj;
     }
 
@@ -214,9 +222,6 @@ public class RedisquesConfiguration {
         if (json.containsKey(PROP_REDIS_AUTH)) {
             builder.redisAuth(json.getString(PROP_REDIS_AUTH));
         }
-        if (json.containsKey(PROP_REDIS_ENCODING)) {
-            builder.redisEncoding(json.getString(PROP_REDIS_ENCODING));
-        }
         if (json.containsKey(PROP_CHECK_INTERVAL)) {
             builder.checkInterval(json.getInteger(PROP_CHECK_INTERVAL));
         }
@@ -243,7 +248,7 @@ public class RedisquesConfiguration {
                     .getList().stream()
                     .map(jsonObject -> QueueConfiguration.fromJsonObject((JsonObject) jsonObject))
                     .collect(Collectors.toList()));
-        }
+    }
         if (json.containsKey(PROP_ENABLE_QUEUE_NAME_DECODING)) {
             builder.enableQueueNameDecoding(json.getBoolean(PROP_ENABLE_QUEUE_NAME_DECODING));
         }
@@ -258,6 +263,9 @@ public class RedisquesConfiguration {
         }
         if (json.containsKey(PROP_QUEUE_SPEED_INTERVAL_SEC)) {
             builder.queueSpeedIntervalSec(json.getInteger(PROP_QUEUE_SPEED_INTERVAL_SEC));
+        }
+        if(json.containsKey(PROP_MEMORY_USAGE_LIMIT_PCT)) {
+            builder.memoryUsageLimitPct(json.getInteger(PROP_MEMORY_USAGE_LIMIT_PCT));
         }
         return builder.build();
     }
@@ -340,10 +348,6 @@ public class RedisquesConfiguration {
         return ((checkInterval * 1000) / 2) + 500;
     }
 
-    public String getRedisEncoding() {
-        return redisEncoding;
-    }
-
     /**
      * See {@link io.vertx.redis.client.RedisOptions#setMaxPoolSize(int)}
      */
@@ -373,6 +377,10 @@ public class RedisquesConfiguration {
         return queueSpeedIntervalSec;
     }
 
+    public int getMemoryUsageLimitPct() {
+        return memoryUsageLimitPct;
+    }
+
     @Override
     public String toString() {
         return asJsonObject().toString();
@@ -398,7 +406,6 @@ public class RedisquesConfiguration {
         private String redisHost;
         private int redisPort;
         private String redisAuth;
-        private String redisEncoding;
         private int checkInterval;
         private int processorTimeout;
         private long processorDelayMax;
@@ -413,6 +420,8 @@ public class RedisquesConfiguration {
         private int maxPipelineWaitSize;
         private int queueSpeedIntervalSec;
 
+        private int memoryUsageLimitPct;
+
         public RedisquesConfigurationBuilder() {
             this.address = "redisques";
             this.configurationUpdatedAddress = "redisques-configuration-updated";
@@ -421,7 +430,6 @@ public class RedisquesConfiguration {
             this.refreshPeriod = 10;
             this.redisHost = "localhost";
             this.redisPort = 6379;
-            this.redisEncoding = "UTF-8";
             this.checkInterval = DEFAULT_CHECK_INTERVAL; //60s
             this.processorTimeout = 240000;
             this.processorDelayMax = 0;
@@ -435,6 +443,7 @@ public class RedisquesConfiguration {
             this.maxPoolWaitSize = DEFAULT_REDIS_MAX_POOL_WAIT_SIZE;
             this.maxPipelineWaitSize = DEFAULT_REDIS_MAX_PIPELINE_WAIT_SIZE;
             this.queueSpeedIntervalSec = DEFAULT_QUEUE_SPEED_INTERVAL_SEC;
+            this.memoryUsageLimitPct = DEFAULT_MEMORY_USAGE_LIMIT_PCT;
         }
 
         public RedisquesConfigurationBuilder address(String address) {
@@ -474,11 +483,6 @@ public class RedisquesConfiguration {
 
         public RedisquesConfigurationBuilder redisAuth(String redisAuth) {
             this.redisAuth = redisAuth;
-            return this;
-        }
-
-        public RedisquesConfigurationBuilder redisEncoding(String redisEncoding) {
-            this.redisEncoding = redisEncoding;
             return this;
         }
 
@@ -544,6 +548,11 @@ public class RedisquesConfiguration {
 
         public RedisquesConfigurationBuilder queueSpeedIntervalSec(int queueSpeedIntervalSec) {
             this.queueSpeedIntervalSec = queueSpeedIntervalSec;
+            return this;
+        }
+
+        public RedisquesConfigurationBuilder memoryUsageLimitPct(int memoryUsageLimitPct) {
+            this.memoryUsageLimitPct = memoryUsageLimitPct;
             return this;
         }
 

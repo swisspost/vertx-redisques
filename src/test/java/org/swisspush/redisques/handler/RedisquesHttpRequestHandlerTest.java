@@ -154,7 +154,6 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         JsonObject config = RedisquesConfiguration.with()
                 .address(getRedisquesAddress())
                 .processorAddress("processor-address")
-                .redisEncoding("ISO-8859-1")
                 .maxPoolSize(200)
                 .maxPoolWaitSize(-1)
                 .maxPipelineWaitSize(2048)
@@ -240,7 +239,6 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
                 .statusCode(200)
                 .body("any { it.key == 'redisHost' }", is(true)) // checks whether the property 'redisHost' exists. Ignoring the value
                 .body("any { it.key == 'redisPort' }", is(true))
-                .body("any { it.key == 'redisEncoding' }", is(true))
                 .body("any { it.key == 'redis-prefix' }", is(true))
                 .body("any { it.key == 'address' }", is(true))
                 .body("any { it.key == 'processor-address' }", is(true))

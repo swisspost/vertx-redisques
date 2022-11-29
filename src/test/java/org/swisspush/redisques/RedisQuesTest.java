@@ -36,7 +36,6 @@ public class RedisQuesTest extends AbstractTestCase {
 
         JsonObject config = RedisquesConfiguration.with()
                 .processorAddress(PROCESSOR_ADDRESS)
-                .redisEncoding("ISO-8859-1")
                 .refreshPeriod(2)
                 .queueConfigurations(Collections.singletonList(new QueueConfiguration()
                         .withPattern("queue.*")
@@ -79,17 +78,26 @@ public class RedisQuesTest extends AbstractTestCase {
             context.assertEquals(configuration.getString("redisHost"), "localhost");
             context.assertEquals(configuration.getInteger("redisPort"), 6379);
             context.assertEquals(configuration.getString("redis-prefix"), "redisques:");
-            context.assertEquals(configuration.getString("redisEncoding"), "ISO-8859-1");
+
+            context.assertEquals(configuration.getInteger("maxPoolSize"), 200);
+            context.assertEquals(configuration.getInteger("maxPoolWaitingSize"), -1);
+            context.assertEquals(configuration.getInteger("maxPipelineWaitingSize"), 2048);
 
             context.assertEquals(configuration.getInteger("checkInterval"), 60);
+            context.assertEquals(configuration.getInteger("queueSpeedIntervalSec"), 60);
+            context.assertEquals(configuration.getInteger("memoryUsageLimitPct"), 100);
             context.assertEquals(configuration.getInteger("refresh-period"), 2);
             context.assertEquals(configuration.getInteger("processorTimeout"), 240000);
             context.assertEquals(configuration.getLong("processorDelayMax"), 0L);
+            context.assertTrue(configuration.getBoolean("enableQueueNameDecoding"));
 
             context.assertFalse(configuration.getBoolean("httpRequestHandlerEnabled"));
             context.assertEquals(configuration.getInteger("httpRequestHandlerPort"), 7070);
             context.assertEquals(configuration.getString("httpRequestHandlerPrefix"), "/queuing");
             context.assertEquals(configuration.getString("httpRequestHandlerUserHeader"), "x-rp-usr");
+
+            context.assertEquals(1, configuration.getJsonArray("queueConfigurations").size());
+            context.assertEquals("queue.*", configuration.getJsonArray("queueConfigurations").getJsonObject(0).getString("pattern"));
 
             async.complete();
         });

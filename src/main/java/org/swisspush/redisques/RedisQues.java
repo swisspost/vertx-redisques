@@ -1,30 +1,6 @@
 package org.swisspush.redisques;
 
-import static org.swisspush.redisques.util.RedisquesAPI.BAD_INPUT;
-import static org.swisspush.redisques.util.RedisquesAPI.BUFFER;
-import static org.swisspush.redisques.util.RedisquesAPI.ERROR;
-import static org.swisspush.redisques.util.RedisquesAPI.ERROR_TYPE;
-import static org.swisspush.redisques.util.RedisquesAPI.INDEX;
-import static org.swisspush.redisques.util.RedisquesAPI.LIMIT;
-import static org.swisspush.redisques.util.RedisquesAPI.LOCKS;
-import static org.swisspush.redisques.util.RedisquesAPI.MESSAGE;
-import static org.swisspush.redisques.util.RedisquesAPI.OK;
-import static org.swisspush.redisques.util.RedisquesAPI.OPERATION;
-import static org.swisspush.redisques.util.RedisquesAPI.PAYLOAD;
-import static org.swisspush.redisques.util.RedisquesAPI.PROCESSOR_DELAY_MAX;
-import static org.swisspush.redisques.util.RedisquesAPI.QUEUENAME;
-import static org.swisspush.redisques.util.RedisquesAPI.QUEUES;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation;
-import static org.swisspush.redisques.util.RedisquesAPI.REQUESTED_BY;
-import static org.swisspush.redisques.util.RedisquesAPI.STATUS;
-import static org.swisspush.redisques.util.RedisquesAPI.UNLOCK;
-import static org.swisspush.redisques.util.RedisquesAPI.VALUE;
-
-import io.vertx.core.AbstractVerticle;
-import io.vertx.core.AsyncResult;
-import io.vertx.core.Future;
-import io.vertx.core.Handler;
-import io.vertx.core.Promise;
+import io.vertx.core.*;
 import io.vertx.core.eventbus.DeliveryOptions;
 import io.vertx.core.eventbus.EventBus;
 import io.vertx.core.eventbus.Message;
@@ -32,51 +8,21 @@ import io.vertx.core.eventbus.MessageConsumer;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.redis.client.*;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import io.vertx.redis.client.impl.RedisClient;
 import io.vertx.redis.client.impl.types.MultiType;
 import io.vertx.redis.client.impl.types.SimpleStringType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.swisspush.redisques.handler.*;
+import org.swisspush.redisques.lua.LuaScriptManager;
+import org.swisspush.redisques.util.*;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import org.swisspush.redisques.handler.AddQueueItemHandler;
-import org.swisspush.redisques.handler.DeleteLockHandler;
-import org.swisspush.redisques.handler.GetAllLocksHandler;
-import org.swisspush.redisques.handler.GetLockHandler;
-import org.swisspush.redisques.handler.GetQueueItemHandler;
-import org.swisspush.redisques.handler.GetQueueItemsCountHandler;
-import org.swisspush.redisques.handler.GetQueueItemsHandler;
-import org.swisspush.redisques.handler.GetQueuesCountHandler;
-import org.swisspush.redisques.handler.GetQueuesHandler;
-import org.swisspush.redisques.handler.GetQueuesItemsCountHandler;
-import org.swisspush.redisques.handler.GetQueuesSpeedHandler;
-import org.swisspush.redisques.handler.GetQueuesStatisticsHandler;
-import org.swisspush.redisques.handler.PutLockHandler;
-import org.swisspush.redisques.handler.RedisquesHttpRequestHandler;
-import org.swisspush.redisques.handler.ReplaceQueueItemHandler;
-import org.swisspush.redisques.lua.LuaScriptManager;
-import org.swisspush.redisques.util.MessageUtil;
-import org.swisspush.redisques.util.QueueConfiguration;
-import org.swisspush.redisques.util.QueueStatisticsCollector;
-import org.swisspush.redisques.util.RedisQuesTimer;
-import org.swisspush.redisques.util.RedisUtils;
-import org.swisspush.redisques.util.RedisquesConfiguration;
-import org.swisspush.redisques.util.Result;
+import static org.swisspush.redisques.util.RedisquesAPI.*;
 
 public class RedisQues extends AbstractVerticle {
 
@@ -108,9 +54,6 @@ public class RedisQues extends AbstractVerticle {
     private String address = "redisques";
 
     private String configurationUpdatedAddress = "redisques-configuration-updated";
-
-    // Address of the redis mod
-    private RedisClient redisClient;
 
     private RedisAPI redisAPI;
 
@@ -144,11 +87,12 @@ public class RedisQues extends AbstractVerticle {
     private String redisHost;
     private int redisPort;
     private String redisAuth;
-    private String redisEncoding;
     private int redisMaxPoolSize;
     private int redisMaxPoolWaitingSize;
     private int redisMaxPipelineWaitingSize;
-
+    private int memoryUsageLimitPct;
+    private int queueSpeedIntervalSec;
+    private boolean enableQueueNameDecoding;
     private boolean httpRequestHandlerEnabled;
     private String httpRequestHandlerPrefix;
     private int httpRequestHandlerPort;
@@ -236,12 +180,14 @@ public class RedisQues extends AbstractVerticle {
         checkInterval = modConfig.getCheckInterval();
         processorTimeout = modConfig.getProcessorTimeout();
         processorDelayMax = modConfig.getProcessorDelayMax();
+        memoryUsageLimitPct = modConfig.getMemoryUsageLimitPct();
+        queueSpeedIntervalSec = modConfig.getQueueSpeedIntervalSec();
+        enableQueueNameDecoding = modConfig.getEnableQueueNameDecoding();
         timer = new RedisQuesTimer(vertx);
 
         redisHost = modConfig.getRedisHost();
         redisPort = modConfig.getRedisPort();
         redisAuth = modConfig.getRedisAuth();
-        redisEncoding = modConfig.getRedisEncoding();
         redisMaxPoolSize = modConfig.getMaxPoolSize();
         redisMaxPoolWaitingSize = modConfig.getMaxPoolWaitSize();
         redisMaxPipelineWaitingSize = modConfig.getMaxPipelineWaitSize();
@@ -840,13 +786,13 @@ public class RedisQues extends AbstractVerticle {
     private void getConfiguration(Message<JsonObject> event) {
         JsonObject result = new JsonObject();
         result.put(RedisquesConfiguration.PROP_ADDRESS, address);
+        result.put(RedisquesConfiguration.PROP_CONFIGURATION_UPDATED_ADDRESS, configurationUpdatedAddress);
         result.put(RedisquesConfiguration.PROP_REDIS_PREFIX, redisPrefix);
         result.put(RedisquesConfiguration.PROP_PROCESSOR_ADDRESS, processorAddress);
         result.put(RedisquesConfiguration.PROP_REFRESH_PERIOD, refreshPeriod);
         result.put(RedisquesConfiguration.PROP_REDIS_HOST, redisHost);
         result.put(RedisquesConfiguration.PROP_REDIS_PORT, redisPort);
         result.put(RedisquesConfiguration.PROP_REDIS_AUTH, redisAuth);
-        result.put(RedisquesConfiguration.PROP_REDIS_ENCODING, redisEncoding);
         result.put(RedisquesConfiguration.PROP_CHECK_INTERVAL, checkInterval);
         result.put(RedisquesConfiguration.PROP_PROCESSOR_TIMEOUT, processorTimeout);
         result.put(RedisquesConfiguration.PROP_PROCESSOR_DELAY_MAX, processorDelayMax);
@@ -854,6 +800,20 @@ public class RedisQues extends AbstractVerticle {
         result.put(RedisquesConfiguration.PROP_HTTP_REQUEST_HANDLER_PREFIX, httpRequestHandlerPrefix);
         result.put(RedisquesConfiguration.PROP_HTTP_REQUEST_HANDLER_PORT, httpRequestHandlerPort);
         result.put(RedisquesConfiguration.PROP_HTTP_REQUEST_HANDLER_USER_HEADER, httpRequestHandlerUserHeader);
+
+        JsonArray queueConfigurationsArray = new JsonArray();
+        for (QueueConfiguration queueConfiguration : queueConfigurations) {
+            queueConfigurationsArray.add(queueConfiguration.asJsonObject());
+        }
+        result.put(RedisquesConfiguration.PROP_QUEUE_CONFIGURATIONS, queueConfigurationsArray);
+
+        result.put(RedisquesConfiguration.PROP_REDIS_MAX_POOL_SIZE, redisMaxPoolSize);
+        result.put(RedisquesConfiguration.PROP_REDIS_MAX_POOL_WAITING_SIZE, redisMaxPoolWaitingSize);
+        result.put(RedisquesConfiguration.PROP_REDIS_MAX_PIPELINE_WAITING_SIZE, redisMaxPipelineWaitingSize);
+        result.put(RedisquesConfiguration.PROP_ENABLE_QUEUE_NAME_DECODING, enableQueueNameDecoding);
+        result.put(RedisquesConfiguration.PROP_QUEUE_SPEED_INTERVAL_SEC, queueSpeedIntervalSec);
+        result.put(RedisquesConfiguration.PROP_MEMORY_USAGE_LIMIT_PCT, memoryUsageLimitPct);
+
         event.reply(createOkReply().put(VALUE, result));
     }
 

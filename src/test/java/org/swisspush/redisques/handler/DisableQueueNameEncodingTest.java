@@ -54,7 +54,6 @@ public class DisableQueueNameEncodingTest extends AbstractTestCase {
         JsonObject config = RedisquesConfiguration.with()
             .address(getRedisquesAddress())
             .processorAddress("processor-address")
-            .redisEncoding("ISO-8859-1")
             .refreshPeriod(2)
             .httpRequestHandlerEnabled(true)
             .httpRequestHandlerPort(7070)
