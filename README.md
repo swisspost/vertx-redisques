@@ -61,6 +61,7 @@ The following configuration values are available:
 | checkInterval                 | 60                              | The interval [s] to check timestamps of not-active / empty queues by executing **check** queue operation. _checkInterval_ value must be greater 0, otherwise the default is used.               |
 | queueSpeedIntervalSec         | 60                              | The interval [s] to check queue speed                                                                                                                                                           |
 | memoryUsageLimitPct           | 100                             | Percentage of the available system memory to be used by vertx-redisques. Only values between 0 and 100 are allowed. When the used memory ratio is higher than this limit, enqueues are rejected |
+| memoryUsageCheckIntervalSec   | 60                              | The interval [s] to check the current memory usage. _memoryUsageCheckIntervalSec_ value must be greater 0, otherwise the default is used.                                                       |
 | httpRequestHandlerEnabled     | false                           | Enable / disable the HTTP API                                                                                                                                                                   |
 | enableQueueNameDecoding       | true                            | Enable / disable the encoding of queue names when using the HTTP API                                                                                                                            |
 | httpRequestHandlerPrefix      | /queuing                        | The url prefix for all HTTP API endpoints                                                                                                                                                       |
@@ -702,7 +703,8 @@ The result will be a json object with the configuration values like the example 
   "maxPoolWaitingSize": -1,
   "maxPipelineWaitingSize": 2048,
   "queueSpeedIntervalSec": 60,
-  "memoryUsageLimitPct": 100
+  "memoryUsageLimitPct": 100,
+  "memoryUsageCheckIntervalSec": 60
 }
 ```
 

@@ -37,6 +37,7 @@ public class RedisquesConfiguration {
     private int maxPipelineWaitSize;
     private int queueSpeedIntervalSec;
     private int memoryUsageLimitPct;
+    private int memoryUsageCheckIntervalSec;
 
     private static final int DEFAULT_CHECK_INTERVAL = 60; // 60s
     private static final long DEFAULT_PROCESSOR_DELAY_MAX = 0;
@@ -51,6 +52,7 @@ public class RedisquesConfiguration {
     private static final int DEFAULT_REDIS_MAX_PIPELINE_WAIT_SIZE = 2048;
     private static final int DEFAULT_QUEUE_SPEED_INTERVAL_SEC = 60;
     private static final int DEFAULT_MEMORY_USAGE_LIMIT_PCT = 100;
+    private static final int DEFAULT_MEMORY_USAGE_CHECK_INTERVAL_SEC = 60;
 
     public static final String PROP_ADDRESS = "address";
     public static final String PROP_CONFIGURATION_UPDATED_ADDRESS = "configuration-updated-address";
@@ -74,6 +76,7 @@ public class RedisquesConfiguration {
     public static final String PROP_REDIS_MAX_PIPELINE_WAITING_SIZE = "maxPipelineWaitingSize";
     public static final String PROP_QUEUE_SPEED_INTERVAL_SEC = "queueSpeedIntervalSec";
     public static final String PROP_MEMORY_USAGE_LIMIT_PCT = "memoryUsageLimitPct";
+    public static final String PROP_MEMORY_USAGE_CHECK_INTERVAL_SEC = "memoryUsageCheckIntervalSec";
 
     /**
      * Constructor with default values. Use the {@link RedisquesConfigurationBuilder} class
@@ -96,7 +99,7 @@ public class RedisquesConfiguration {
                 httpRequestHandlerUserHeader, queueConfigurations,
                 enableQueueNameDecoding,
                 DEFAULT_REDIS_MAX_POOL_SIZE, DEFAULT_REDIS_MAX_POOL_WAIT_SIZE, DEFAULT_REDIS_MAX_PIPELINE_WAIT_SIZE,
-                DEFAULT_QUEUE_SPEED_INTERVAL_SEC, DEFAULT_MEMORY_USAGE_LIMIT_PCT);
+                DEFAULT_QUEUE_SPEED_INTERVAL_SEC, DEFAULT_MEMORY_USAGE_LIMIT_PCT, DEFAULT_MEMORY_USAGE_CHECK_INTERVAL_SEC);
     }
 
     public RedisquesConfiguration(String address, String configurationUpdatedAddress, String redisPrefix, String processorAddress, int refreshPeriod,
@@ -106,7 +109,7 @@ public class RedisquesConfiguration {
                                   String httpRequestHandlerUserHeader, List<QueueConfiguration> queueConfigurations,
                                   boolean enableQueueNameDecoding,
                                   int maxPoolSize, int maxPoolWaitSize, int maxPipelineWaitSize,
-                                  int queueSpeedIntervalSec, int memoryUsageLimitPct) {
+                                  int queueSpeedIntervalSec, int memoryUsageLimitPct, int memoryUsageCheckIntervalSec) {
         this.address = address;
         this.configurationUpdatedAddress = configurationUpdatedAddress;
         this.redisPrefix = redisPrefix;
@@ -123,7 +126,7 @@ public class RedisquesConfiguration {
         if (checkInterval > 0) {
             this.checkInterval = checkInterval;
         } else {
-            log.warn("Overridden checkInterval of " + checkInterval + "s is not valid. Using default value of " + DEFAULT_CHECK_INTERVAL + "s instead.");
+            log.warn("Overridden checkInterval of {}s is not valid. Using default value of {}s instead.", checkInterval, DEFAULT_CHECK_INTERVAL);
             this.checkInterval = DEFAULT_CHECK_INTERVAL;
         }
 
@@ -132,7 +135,7 @@ public class RedisquesConfiguration {
         if (processorDelayMax >= 0) {
             this.processorDelayMax = processorDelayMax;
         } else {
-            log.warn("Overridden processorDelayMax of " + processorDelayMax + " is not valid. Using default value of " + DEFAULT_PROCESSOR_DELAY_MAX + " instead.");
+            log.warn("Overridden processorDelayMax of {} is not valid. Using default value of {} instead.", processorDelayMax, DEFAULT_PROCESSOR_DELAY_MAX);
             this.processorDelayMax = DEFAULT_PROCESSOR_DELAY_MAX;
         }
 
@@ -144,10 +147,17 @@ public class RedisquesConfiguration {
         this.enableQueueNameDecoding = enableQueueNameDecoding;
         this.queueSpeedIntervalSec = queueSpeedIntervalSec;
 
+        if(memoryUsageCheckIntervalSec > 0) {
+            this.memoryUsageCheckIntervalSec = memoryUsageCheckIntervalSec;
+        } else {
+            log.warn("Overridden memoryUsageCheckIntervalSec of {}s is not valid. Using default value of {}s instead.", memoryUsageCheckIntervalSec, DEFAULT_MEMORY_USAGE_CHECK_INTERVAL_SEC);
+            this.memoryUsageCheckIntervalSec = DEFAULT_MEMORY_USAGE_CHECK_INTERVAL_SEC;
+        }
+
         if(0 <= memoryUsageLimitPct && memoryUsageLimitPct <= 100){
             this.memoryUsageLimitPct = memoryUsageLimitPct;
         } else {
-            log.warn("Overridden memoryUsageLimitPct of " + memoryUsageLimitPct + " is not valid. Using default value of " + DEFAULT_MEMORY_USAGE_LIMIT_PCT + " instead.");
+            log.warn("Overridden memoryUsageLimitPct of {} is not valid. Using default value of {} instead.", memoryUsageLimitPct, DEFAULT_MEMORY_USAGE_LIMIT_PCT);
             this.memoryUsageLimitPct = DEFAULT_MEMORY_USAGE_LIMIT_PCT;
         }
     }
@@ -166,7 +176,8 @@ public class RedisquesConfiguration {
                 builder.enableQueueNameDecoding,
                 builder.maxPoolSize, builder.maxPoolWaitSize, builder.maxPipelineWaitSize,
                 builder.queueSpeedIntervalSec,
-                builder.memoryUsageLimitPct);
+                builder.memoryUsageLimitPct,
+                builder.memoryUsageCheckIntervalSec);
     }
 
     public JsonObject asJsonObject() {
@@ -193,6 +204,7 @@ public class RedisquesConfiguration {
         obj.put(PROP_REDIS_MAX_PIPELINE_WAITING_SIZE, getMaxPipelineWaitSize());
         obj.put(PROP_QUEUE_SPEED_INTERVAL_SEC, getQueueSpeedIntervalSec());
         obj.put(PROP_MEMORY_USAGE_LIMIT_PCT, getMemoryUsageLimitPct());
+        obj.put(PROP_MEMORY_USAGE_CHECK_INTERVAL_SEC, getMemoryUsageCheckIntervalSec());
         return obj;
     }
 
@@ -266,6 +278,9 @@ public class RedisquesConfiguration {
         }
         if(json.containsKey(PROP_MEMORY_USAGE_LIMIT_PCT)) {
             builder.memoryUsageLimitPct(json.getInteger(PROP_MEMORY_USAGE_LIMIT_PCT));
+        }
+        if(json.containsKey(PROP_MEMORY_USAGE_CHECK_INTERVAL_SEC)) {
+            builder.memoryUsageCheckIntervalSec(json.getInteger(PROP_MEMORY_USAGE_CHECK_INTERVAL_SEC));
         }
         return builder.build();
     }
@@ -381,6 +396,10 @@ public class RedisquesConfiguration {
         return memoryUsageLimitPct;
     }
 
+    public int getMemoryUsageCheckIntervalSec() {
+        return memoryUsageCheckIntervalSec;
+    }
+
     @Override
     public String toString() {
         return asJsonObject().toString();
@@ -421,6 +440,7 @@ public class RedisquesConfiguration {
         private int queueSpeedIntervalSec;
 
         private int memoryUsageLimitPct;
+        private int memoryUsageCheckIntervalSec;
 
         public RedisquesConfigurationBuilder() {
             this.address = "redisques";
@@ -444,6 +464,7 @@ public class RedisquesConfiguration {
             this.maxPipelineWaitSize = DEFAULT_REDIS_MAX_PIPELINE_WAIT_SIZE;
             this.queueSpeedIntervalSec = DEFAULT_QUEUE_SPEED_INTERVAL_SEC;
             this.memoryUsageLimitPct = DEFAULT_MEMORY_USAGE_LIMIT_PCT;
+            this.memoryUsageCheckIntervalSec = DEFAULT_MEMORY_USAGE_CHECK_INTERVAL_SEC;
         }
 
         public RedisquesConfigurationBuilder address(String address) {
@@ -553,6 +574,11 @@ public class RedisquesConfiguration {
 
         public RedisquesConfigurationBuilder memoryUsageLimitPct(int memoryUsageLimitPct) {
             this.memoryUsageLimitPct = memoryUsageLimitPct;
+            return this;
+        }
+
+        public RedisquesConfigurationBuilder memoryUsageCheckIntervalSec(int memoryUsageCheckIntervalSec) {
+            this.memoryUsageCheckIntervalSec = memoryUsageCheckIntervalSec;
             return this;
         }
 
