@@ -41,19 +41,19 @@ public class DefaultMemoryUsageProvider implements MemoryUsageProvider {
 
             String memoryInfo = memoryInfoEvent.result().toString();
 
-            Long totalSystemMemory = totalSystemMemory(memoryInfo);
-            if (totalSystemMemory == null) {
+            Optional<Long> totalSystemMemory = totalSystemMemory(memoryInfo);
+            if (totalSystemMemory.isEmpty()) {
                 currentMemoryUsageOptional = Optional.empty();
                 return;
             }
 
-            Long usedMemory = usedMemory(memoryInfo);
-            if (usedMemory == null) {
+            Optional<Long> usedMemory = usedMemory(memoryInfo);
+            if (usedMemory.isEmpty()) {
                 currentMemoryUsageOptional = Optional.empty();
                 return;
             }
 
-            float currentMemoryUsagePercentage = ((float) usedMemory / totalSystemMemory) * 100;
+            float currentMemoryUsagePercentage = ((float) usedMemory.get() / totalSystemMemory.get()) * 100;
             if (currentMemoryUsagePercentage > MAX_PERCENTAGE) {
                 currentMemoryUsagePercentage = MAX_PERCENTAGE;
             } else if (currentMemoryUsagePercentage < MIN_PERCENTAGE) {
@@ -68,9 +68,8 @@ public class DefaultMemoryUsageProvider implements MemoryUsageProvider {
         });
     }
 
-
-    private Long totalSystemMemory(String memoryInfo) {
-        Long totalSystemMemory;
+    private Optional<Long> totalSystemMemory(String memoryInfo) {
+        long totalSystemMemory;
         try {
             Optional<String> totalSystemMemoryOpt = memoryInfo
                     .lines()
@@ -78,23 +77,23 @@ public class DefaultMemoryUsageProvider implements MemoryUsageProvider {
                     .findAny();
             if (totalSystemMemoryOpt.isEmpty()) {
                 log.warn("No 'total_system_memory' section received from redis. Unable to calculate the current memory usage");
-                return null;
+                return Optional.empty();
             }
             totalSystemMemory = Long.parseLong(totalSystemMemoryOpt.get().split(":")[1]);
             if (totalSystemMemory == 0L) {
                 log.warn("'total_system_memory' value 0 received from redis. Unable to calculate the current memory usage");
-                return null;
+                return Optional.empty();
             }
 
         } catch (NumberFormatException ex) {
             logPropertyWarning("total_system_memory", ex);
-            return null;
+            return Optional.empty();
         }
 
-        return totalSystemMemory;
+        return Optional.of(totalSystemMemory);
     }
 
-    private Long usedMemory(String memoryInfo) {
+    private Optional<Long> usedMemory(String memoryInfo) {
         try {
             Optional<String> usedMemoryOpt = memoryInfo
                     .lines()
@@ -102,12 +101,12 @@ public class DefaultMemoryUsageProvider implements MemoryUsageProvider {
                     .findAny();
             if (usedMemoryOpt.isEmpty()) {
                 log.warn("No 'used_memory' section received from redis. Unable to calculate the current memory usage");
-                return null;
+                return Optional.empty();
             }
-            return Long.parseLong(usedMemoryOpt.get().split(":")[1]);
+            return Optional.of(Long.parseLong(usedMemoryOpt.get().split(":")[1]));
         } catch (NumberFormatException ex) {
             logPropertyWarning("used_memory", ex);
-            return null;
+            return Optional.empty();
         }
     }
 
