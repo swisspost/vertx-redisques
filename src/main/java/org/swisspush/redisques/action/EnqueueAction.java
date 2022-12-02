@@ -5,6 +5,7 @@ import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonObject;
 import io.vertx.redis.client.RedisAPI;
 import org.slf4j.Logger;
+import org.swisspush.redisques.lua.LuaScriptManager;
 import org.swisspush.redisques.util.QueueConfiguration;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 
@@ -16,10 +17,10 @@ import static org.swisspush.redisques.util.RedisquesAPI.*;
 public class EnqueueAction extends AbstractQueueAction {
 
 
-    public EnqueueAction(Vertx vertx, RedisAPI redisAPI, String address, String queuesKey, String queuesPrefix,
-                         String consumersPrefix, List<QueueConfiguration> queueConfigurations,
-                         QueueStatisticsCollector queueStatisticsCollector, Logger log) {
-        super(vertx, redisAPI, address, queuesKey, queuesPrefix, consumersPrefix, queueConfigurations,
+    public EnqueueAction(Vertx vertx, LuaScriptManager luaScriptManager, RedisAPI redisAPI, String address, String queuesKey, String queuesPrefix,
+                                     String consumersPrefix, String locksKey, List<QueueConfiguration> queueConfigurations,
+                                     QueueStatisticsCollector queueStatisticsCollector, Logger log) {
+        super(vertx, luaScriptManager, redisAPI, address, queuesKey, queuesPrefix, consumersPrefix, locksKey, queueConfigurations,
                 queueStatisticsCollector, log);
     }
 

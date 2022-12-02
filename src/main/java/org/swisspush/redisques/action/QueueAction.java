@@ -9,6 +9,10 @@ import static org.swisspush.redisques.util.RedisquesAPI.TIMESTAMP;
 public interface QueueAction {
     void execute(Message<JsonObject> event);
 
+    static JsonObject createOkReply() {
+        return new JsonObject().put(STATUS, OK);
+    }
+
     static JsonObject createErrorReply() {
         return new JsonObject().put(STATUS, ERROR);
     }

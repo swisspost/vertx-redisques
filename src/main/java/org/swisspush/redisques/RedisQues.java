@@ -229,16 +229,50 @@ public class RedisQues extends AbstractVerticle {
             setConfigurationValues(event.body(), false);
         });
 
-        EnqueueAction enqueueAction = new EnqueueAction(vertx, redisAPI, address, queuesKey, queuesPrefix,
-                consumersPrefix, queueConfigurations, queueStatisticsCollector, log);
-        queueActions.put(enqueue, enqueueAction);
-
-        LockedEnqueueAction lockedEnqueueAction = new LockedEnqueueAction(vertx, redisAPI, address, queuesKey, queuesPrefix,
-                locksKey, consumersPrefix, queueConfigurations, queueStatisticsCollector, log);
-        queueActions.put(lockedEnqueue, lockedEnqueueAction);
-
-        queueActions.put(getLock, new GetLockAction(redisAPI, locksKey, log));
-        queueActions.put(putLock, new PutLockAction(redisAPI, locksKey));
+        queueActions.put(addQueueItem, new AddQueueItemAction(vertx, luaScriptManager, redisAPI, address, queuesKey, queuesPrefix,
+                consumersPrefix, locksKey, queueConfigurations, queueStatisticsCollector, log));
+        queueActions.put(deleteQueueItem, new DeleteQueueItemAction(vertx, luaScriptManager, redisAPI, address, queuesKey, queuesPrefix,
+                consumersPrefix, locksKey, queueConfigurations, queueStatisticsCollector, log));
+        queueActions.put(deleteAllQueueItems, new DeleteAllQueueItemsAction(vertx, luaScriptManager, redisAPI, address, queuesKey, queuesPrefix,
+                consumersPrefix, locksKey, queueConfigurations, queueStatisticsCollector, log));
+        queueActions.put(bulkDeleteQueues, new BulkDeleteQueuesAction(vertx, luaScriptManager, redisAPI, address, queuesKey, queuesPrefix,
+                consumersPrefix, locksKey, queueConfigurations, queueStatisticsCollector, log));
+        queueActions.put(replaceQueueItem, new ReplaceQueueItemAction(vertx, luaScriptManager, redisAPI, address, queuesKey, queuesPrefix,
+                consumersPrefix, locksKey, queueConfigurations, queueStatisticsCollector, log));
+        queueActions.put(getQueueItem, new GetQueueItemAction(vertx, luaScriptManager, redisAPI, address, queuesKey, queuesPrefix,
+                consumersPrefix, locksKey, queueConfigurations, queueStatisticsCollector, log));
+        queueActions.put(getQueueItems, new GetQueueItemsAction(vertx, luaScriptManager, redisAPI, address, queuesKey, queuesPrefix,
+                consumersPrefix, locksKey, queueConfigurations, queueStatisticsCollector, log));
+        queueActions.put(getQueues, new GetQueuesAction(vertx, luaScriptManager, redisAPI, address, queuesKey, queuesPrefix,
+                consumersPrefix, locksKey, queueConfigurations, queueStatisticsCollector, log));
+        queueActions.put(getQueuesCount, new GetQueuesCountAction(vertx, luaScriptManager, redisAPI, address, queuesKey, queuesPrefix,
+                consumersPrefix, locksKey, queueConfigurations, queueStatisticsCollector, log));
+        queueActions.put(getQueueItemsCount, new GetQueueItemsCountAction(vertx, luaScriptManager, redisAPI, address, queuesKey, queuesPrefix,
+                consumersPrefix, locksKey, queueConfigurations, queueStatisticsCollector, log));
+        queueActions.put(getQueuesItemsCount, new GetQueuesItemsCountAction(vertx, luaScriptManager, redisAPI, address, queuesKey, queuesPrefix,
+                consumersPrefix, locksKey, queueConfigurations, queueStatisticsCollector, log));
+        queueActions.put(enqueue, new EnqueueAction(vertx, luaScriptManager, redisAPI, address, queuesKey, queuesPrefix,
+                consumersPrefix, locksKey, queueConfigurations, queueStatisticsCollector, log));
+        queueActions.put(lockedEnqueue, new LockedEnqueueAction(vertx, luaScriptManager, redisAPI, address, queuesKey, queuesPrefix,
+                locksKey, consumersPrefix, queueConfigurations, queueStatisticsCollector, log));
+        queueActions.put(getLock, new GetLockAction(vertx, luaScriptManager, redisAPI, address, queuesKey, queuesPrefix,
+                consumersPrefix, locksKey, queueConfigurations, queueStatisticsCollector, log));
+        queueActions.put(putLock, new PutLockAction(vertx, luaScriptManager, redisAPI, address, queuesKey, queuesPrefix,
+                consumersPrefix, locksKey, queueConfigurations, queueStatisticsCollector, log));
+        queueActions.put(bulkPutLocks, new BulkPutLocksAction(vertx, luaScriptManager, redisAPI, address, queuesKey, queuesPrefix,
+                consumersPrefix, locksKey, queueConfigurations, queueStatisticsCollector, log));
+        queueActions.put(getAllLocks, new GetAllLocksAction(vertx, luaScriptManager, redisAPI, address, queuesKey, queuesPrefix,
+                consumersPrefix, locksKey, queueConfigurations, queueStatisticsCollector, log));
+        queueActions.put(deleteLock, new DeleteLockAction(vertx, luaScriptManager, redisAPI, address, queuesKey, queuesPrefix,
+                consumersPrefix, locksKey, queueConfigurations, queueStatisticsCollector, log));
+        queueActions.put(bulkDeleteLocks, new BulkDeleteLocksAction(vertx, luaScriptManager, redisAPI, address, queuesKey, queuesPrefix,
+                consumersPrefix, locksKey, queueConfigurations, queueStatisticsCollector, log));
+        queueActions.put(deleteAllLocks, new DeleteAllLocksAction(vertx, luaScriptManager, redisAPI, address, queuesKey, queuesPrefix,
+                consumersPrefix, locksKey, queueConfigurations, queueStatisticsCollector, log));
+        queueActions.put(getConfiguration, new GetConfigurationAction(address, redisPrefix, processorAddress, redisHost,
+        redisPort, redisAuth, redisEncoding, refreshPeriod, redisMaxPoolSize, redisMaxPoolWaitingSize, redisMaxPipelineWaitingSize,
+        checkInterval, processorTimeout, processorDelayMax, httpRequestHandlerEnabled, httpRequestHandlerPrefix,
+                httpRequestHandlerPort, httpRequestHandlerUserHeader, queueConfigurations));
 
         // Handles operations
         vertx.eventBus().consumer(address, operationsHandler());
@@ -341,58 +375,58 @@ public class RedisQues extends AbstractVerticle {
 //                                      case lockedEnqueue:
 //                    lockedEnqueue(event);
 //                    break;
-//                case getQueueItems:
+//                                      case getQueueItems:
 //                    getQueueItems(event);
 //                    break;
-//                case addQueueItem:
+//                                      case addQueueItem:
 //                    addQueueItem(event);
 //                    break;
-//                case deleteQueueItem:
+//                                      case deleteQueueItem:
 //                    deleteQueueItem(event);
 //                    break;
-//                case getQueueItem:
+//                                      case getQueueItem:
 //                    getQueueItem(event);
 //                    break;
-//                case replaceQueueItem:
+//                                      case replaceQueueItem:
 //                    replaceQueueItem(event);
 //                    break;
-//                case deleteAllQueueItems:
+//                                      case deleteAllQueueItems:
 //                    deleteAllQueueItems(event);
 //                    break;
-//                case bulkDeleteQueues:
+//                                      case bulkDeleteQueues:
 //                    bulkDeleteQueues(event);
 //                    break;
-//                case getAllLocks:
+//                                      case getAllLocks:
 //                    getAllLocks(event);
 //                    break;
-//                case putLock:
+//                                      case putLock:
 //                    putLock(event);
 //                    break;
-//                case bulkPutLocks:
+//                                      case bulkPutLocks:
 //                    bulkPutLocks(event);
 //                    break;
 //                                      case getLock:
 //                    redisAPI.hget(locksKey, body.getJsonObject(PAYLOAD).getString(QUEUENAME), new GetLockHandler(event));
 //                    break;
-//                case deleteLock:
+//                                      case deleteLock:
 //                    deleteLock(event);
 //                    break;
-//                case bulkDeleteLocks:
+//                                      case bulkDeleteLocks:
 //                    bulkDeleteLocks(event);
 //                    break;
-//                case deleteAllLocks:
+//                                      case deleteAllLocks:
 //                    deleteAllLocks(event);
 //                    break;
-//                case getQueueItemsCount:
+//                                      case getQueueItemsCount:
 //                    getQueueItemsCount(event);
 //                    break;
-//                case getQueuesItemsCount:
+//                                      case getQueuesItemsCount:
 //                    getQueuesItemsCount(event);
 //                    break;
-//                case getQueuesCount:
+//                                      case getQueuesCount:
 //                    getQueuesCount(event);
 //                    break;
-//                case getQueues:
+//                                      case getQueues:
 //                    getQueues(event, false);
 //                    break;
 //                case check:
@@ -407,7 +441,7 @@ public class RedisQues extends AbstractVerticle {
 //                        reply.put(STATUS, OK);
 //                    });
 //                    break;
-//                case getConfiguration:
+//                                      case getConfiguration:
 //                    getConfiguration(event);
 //                    break;
 //                case setConfiguration:

@@ -5,6 +5,7 @@ import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonObject;
 import io.vertx.redis.client.RedisAPI;
 import org.slf4j.Logger;
+import org.swisspush.redisques.lua.LuaScriptManager;
 import org.swisspush.redisques.util.QueueConfiguration;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 
@@ -18,11 +19,11 @@ public class LockedEnqueueAction extends EnqueueAction {
 
     private String locksKey;
 
-    public LockedEnqueueAction(Vertx vertx, RedisAPI redisAPI, String address, String queuesKey, String queuesPrefix,
-                               String locksKey, String consumersPrefix, List<QueueConfiguration> queueConfigurations,
-                               QueueStatisticsCollector queueStatisticsCollector, Logger log) {
-        super(vertx, redisAPI, address, queuesKey, queuesPrefix, consumersPrefix, queueConfigurations, queueStatisticsCollector, log);
-        this.locksKey = locksKey;
+    public LockedEnqueueAction(Vertx vertx, LuaScriptManager luaScriptManager, RedisAPI redisAPI, String address, String queuesKey, String queuesPrefix,
+                                     String consumersPrefix, String locksKey, List<QueueConfiguration> queueConfigurations,
+                                     QueueStatisticsCollector queueStatisticsCollector, Logger log) {
+        super(vertx, luaScriptManager, redisAPI, address, queuesKey, queuesPrefix, consumersPrefix, locksKey, queueConfigurations,
+                queueStatisticsCollector, log);
     }
 
     @Override

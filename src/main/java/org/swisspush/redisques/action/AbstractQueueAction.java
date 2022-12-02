@@ -9,9 +9,11 @@ import io.vertx.core.json.JsonObject;
 import io.vertx.redis.client.RedisAPI;
 import io.vertx.redis.client.Response;
 import org.slf4j.Logger;
+import org.swisspush.redisques.lua.LuaScriptManager;
 import org.swisspush.redisques.util.QueueConfiguration;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
@@ -20,42 +22,65 @@ import static org.swisspush.redisques.util.RedisquesAPI.*;
 
 public abstract class AbstractQueueAction implements QueueAction {
 
+    private static final int MAX_AGE_MILLISECONDS = 120000; // 120 seconds
+
+    protected LuaScriptManager luaScriptManager;
     protected RedisAPI redisAPI;
-
     protected Vertx vertx;
-
     protected Logger log;
-
     protected String address;
     protected String queuesKey;
     protected String queuesPrefix;
     protected String consumersPrefix;
-
+    protected String locksKey;
     protected List<QueueConfiguration> queueConfigurations;
-
     protected QueueStatisticsCollector queueStatisticsCollector;
 
-    public AbstractQueueAction(Vertx vertx, RedisAPI redisAPI, String address, String queuesKey,
-                               String queuesPrefix, String consumersPrefix, List<QueueConfiguration> queueConfigurations,
+    public AbstractQueueAction(Vertx vertx, LuaScriptManager luaScriptManager, RedisAPI redisAPI, String address, String queuesKey,
+                               String queuesPrefix, String consumersPrefix, String locksKey, List<QueueConfiguration> queueConfigurations,
                                QueueStatisticsCollector queueStatisticsCollector, Logger log) {
         this.vertx = vertx;
+        this.luaScriptManager = luaScriptManager;
         this.redisAPI = redisAPI;
         this.address = address;
         this.queuesKey = queuesKey;
         this.queuesPrefix = queuesPrefix;
         this.consumersPrefix = consumersPrefix;
+        this.locksKey = locksKey;
         this.queueConfigurations = queueConfigurations;
         this.queueStatisticsCollector = queueStatisticsCollector;
         this.log = log;
     }
 
-//    protected static JsonObject createOkReply() {
-//        return new JsonObject().put(STATUS, OK);
-//    }
+    protected long getMaxAgeTimestamp() {
+        return System.currentTimeMillis() - MAX_AGE_MILLISECONDS;
+    }
 
-//    protected static JsonObject createErrorReply() {
-//        return new JsonObject().put(STATUS, ERROR);
-//    }
+    protected String buildQueueKey(String queue) {
+        return queuesPrefix + queue;
+    }
+
+    protected List<String> buildQueueKeys(JsonArray queues) {
+        if (queues == null) {
+            return null;
+        }
+        final int size = queues.size();
+        List<String> queueKeys = new ArrayList<>(size);
+        for (int i = 0; i < size; i++) {
+            String queue = queues.getString(i);
+            queueKeys.add(buildQueueKey(queue));
+        }
+        return queueKeys;
+    }
+
+    protected boolean jsonArrayContainsStringsOnly(JsonArray array) {
+        for (Object obj : array) {
+            if (!(obj instanceof String)) {
+                return false;
+            }
+        }
+        return true;
+    }
 
     /**
      * find first matching Queue-Configuration
