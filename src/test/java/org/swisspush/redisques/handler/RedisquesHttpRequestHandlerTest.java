@@ -37,6 +37,7 @@ import io.vertx.ext.unit.junit.Timeout;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.After;
 import org.junit.Before;
@@ -46,9 +47,7 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.swisspush.redisques.AbstractTestCase;
 import org.swisspush.redisques.RedisQues;
-import org.swisspush.redisques.util.QueueConfiguration;
-import org.swisspush.redisques.util.RedisquesAPI;
-import org.swisspush.redisques.util.RedisquesConfiguration;
+import org.swisspush.redisques.util.*;
 import redis.clients.jedis.Jedis;
 
 /**
@@ -60,6 +59,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
     private static String deploymentId = "";
     private Vertx testVertx;
     private HttpServerRequest request;
+    private TestMemoryUsageProvider memoryUsageProvider;
 
     private final String queueItemValid = "{\n" +
             "  \"method\": \"PUT\",\n" +
@@ -154,8 +154,8 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         JsonObject config = RedisquesConfiguration.with()
                 .address(getRedisquesAddress())
                 .processorAddress("processor-address")
-                .redisEncoding("ISO-8859-1")
                 .maxPoolSize(200)
+                .memoryUsageLimitPercent(80)
                 .maxPoolWaitSize(-1)
                 .maxPipelineWaitSize(2048)
                 .refreshPeriod(2)
@@ -170,7 +170,8 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
                 .build()
                 .asJsonObject();
 
-        RedisQues redisQues = new RedisQues();
+        memoryUsageProvider = new TestMemoryUsageProvider(Optional.of(50));
+        RedisQues redisQues = new RedisQues(memoryUsageProvider);
 
         testVertx.deployVerticle(redisQues, new DeploymentOptions().setConfig(config), context.asyncAssertSuccess(event -> {
             deploymentId = event;
@@ -240,14 +241,22 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
                 .statusCode(200)
                 .body("any { it.key == 'redisHost' }", is(true)) // checks whether the property 'redisHost' exists. Ignoring the value
                 .body("any { it.key == 'redisPort' }", is(true))
-                .body("any { it.key == 'redisEncoding' }", is(true))
                 .body("any { it.key == 'redis-prefix' }", is(true))
                 .body("any { it.key == 'address' }", is(true))
+                .body("any { it.key == 'configuration-updated-address' }", is(true))
                 .body("any { it.key == 'processor-address' }", is(true))
                 .body("any { it.key == 'refresh-period' }", is(true))
                 .body("any { it.key == 'checkInterval' }", is(true))
                 .body("any { it.key == 'processorTimeout' }", is(true))
                 .body("any { it.key == 'processorDelayMax' }", is(true))
+                .body("any { it.key == 'queueConfigurations' }", is(true))
+                .body("any { it.key == 'enableQueueNameDecoding' }", is(true))
+                .body("any { it.key == 'maxPoolSize' }", is(true))
+                .body("any { it.key == 'maxPoolWaitingSize' }", is(true))
+                .body("any { it.key == 'maxPipelineWaitingSize' }", is(true))
+                .body("any { it.key == 'queueSpeedIntervalSec' }", is(true))
+                .body("any { it.key == 'memoryUsageLimitPercent' }", is(true))
+                .body("any { it.key == 'memoryUsageCheckIntervalSec' }", is(true))
                 .body("any { it.key == 'httpRequestHandlerEnabled' }", is(true))
                 .body("any { it.key == 'httpRequestHandlerPrefix' }", is(true))
                 .body("any { it.key == 'httpRequestHandlerPort' }", is(true))
@@ -477,6 +486,31 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
     }
 
     @Test
+    public void enqueueValidBodyWithMemoryLimitReached(TestContext context) {
+        Async async = context.async();
+        flushAll();
+        String queueName = "queue_" + currentTimeMillis();
+        assertKeyCount(context, getQueuesRedisKeyPrefix(), 0);
+        assertKeyCount(context, getQueuesRedisKeyPrefix() + queueName, 0);
+
+        memoryUsageProvider.setCurrentMemoryUsage(Optional.of(90));
+
+        given().body(queueItemValid).when().put("/queuing/enqueue/" + queueName + "/").then().assertThat().statusCode(507);
+        assertKeyCount(context, getQueuesRedisKeyPrefix(), 0);
+        assertKeyCount(context, getQueuesRedisKeyPrefix() + queueName, 0);
+
+        memoryUsageProvider.setCurrentMemoryUsage(Optional.of(30));
+
+        given().body(queueItemValid).when().put("/queuing/enqueue/" + queueName + "/").then().assertThat().statusCode(200);
+        assertKeyCount(context, getQueuesRedisKeyPrefix(), 1);
+        context.assertEquals(1L, jedis.llen(getQueuesRedisKeyPrefix() + queueName));
+
+        assertLockDoesNotExist(context, queueName);
+
+        async.complete();
+    }
+
+    @Test
     public void enqueueValidBodyEncoded(TestContext context) {
         Async async = context.async();
         flushAll();
@@ -533,6 +567,33 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         given().body(queueItemValid).when().put("/queuing/enqueue/" + queueName + "/?locked").then().assertThat().statusCode(200);
         assertKeyCount(context, getQueuesRedisKeyPrefix(), 1);
         context.assertEquals(2L, jedis.llen(getQueuesRedisKeyPrefix() + queueName));
+
+        async.complete();
+    }
+
+    @Test
+    public void lockedEnqueueValidBodyWithMemoryLimitReached(TestContext context) {
+        Async async = context.async();
+        flushAll();
+        String queueName = "queue_" + currentTimeMillis();
+        assertKeyCount(context, getQueuesRedisKeyPrefix(), 0);
+        assertKeyCount(context, getQueuesRedisKeyPrefix() + queueName, 0);
+        assertLockDoesNotExist(context, queueName);
+
+        memoryUsageProvider.setCurrentMemoryUsage(Optional.of(90));
+
+        given().body(queueItemValid).when().put("/queuing/enqueue/" + queueName + "/?locked").then().assertThat().statusCode(507);
+        assertKeyCount(context, getQueuesRedisKeyPrefix(), 0);
+        assertKeyCount(context, getQueuesRedisKeyPrefix() + queueName, 0);
+        assertLockDoesNotExist(context, queueName);
+
+        memoryUsageProvider.setCurrentMemoryUsage(Optional.of(60));
+
+        given().body(queueItemValid).when().put("/queuing/enqueue/" + queueName + "/?locked").then().assertThat().statusCode(200);
+        assertKeyCount(context, getQueuesRedisKeyPrefix(), 1);
+        context.assertEquals(1L, jedis.llen(getQueuesRedisKeyPrefix() + queueName));
+        assertLockExists(context, queueName);
+        assertLockContent(context, queueName, "Unknown");
 
         async.complete();
     }

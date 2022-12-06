@@ -12,9 +12,11 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.swisspush.redisques.util.QueueConfiguration;
 import org.swisspush.redisques.util.RedisquesConfiguration;
+import org.swisspush.redisques.util.TestMemoryUsageProvider;
 import redis.clients.jedis.Jedis;
 
 import java.util.Collections;
+import java.util.Optional;
 
 import static org.swisspush.redisques.util.RedisquesAPI.*;
 
@@ -26,9 +28,11 @@ import static org.swisspush.redisques.util.RedisquesAPI.*;
 public class RedisQuesTest extends AbstractTestCase {
 
     private RedisQues redisQues;
+
+    private TestMemoryUsageProvider memoryUsageProvider;
     
     @Rule
-    public Timeout rule = Timeout.seconds(5);
+    public Timeout rule = Timeout.seconds(50);
 
     @Before
     public void deployRedisques(TestContext context) {
@@ -36,8 +40,8 @@ public class RedisQuesTest extends AbstractTestCase {
 
         JsonObject config = RedisquesConfiguration.with()
                 .processorAddress(PROCESSOR_ADDRESS)
-                .redisEncoding("ISO-8859-1")
                 .refreshPeriod(2)
+                .memoryUsageLimitPercent(80)
                 .queueConfigurations(Collections.singletonList(new QueueConfiguration()
                         .withPattern("queue.*")
                         .withRetryIntervals(2, 7, 12, 17, 22, 27, 32, 37, 42, 47, 52))
@@ -45,7 +49,8 @@ public class RedisQuesTest extends AbstractTestCase {
                 .build()
                 .asJsonObject();
 
-        redisQues = new RedisQues();
+        memoryUsageProvider = new TestMemoryUsageProvider(Optional.of(50));
+        redisQues = new RedisQues(memoryUsageProvider);
         vertx.deployVerticle(redisQues, new DeploymentOptions().setConfig(config), context.asyncAssertSuccess(event -> {
             deploymentId = event;
             log.info("vert.x Deploy - " + redisQues.getClass().getSimpleName() + " was successful.");
@@ -79,17 +84,26 @@ public class RedisQuesTest extends AbstractTestCase {
             context.assertEquals(configuration.getString("redisHost"), "localhost");
             context.assertEquals(configuration.getInteger("redisPort"), 6379);
             context.assertEquals(configuration.getString("redis-prefix"), "redisques:");
-            context.assertEquals(configuration.getString("redisEncoding"), "ISO-8859-1");
+
+            context.assertEquals(configuration.getInteger("maxPoolSize"), 200);
+            context.assertEquals(configuration.getInteger("maxPoolWaitingSize"), -1);
+            context.assertEquals(configuration.getInteger("maxPipelineWaitingSize"), 2048);
 
             context.assertEquals(configuration.getInteger("checkInterval"), 60);
+            context.assertEquals(configuration.getInteger("queueSpeedIntervalSec"), 60);
+            context.assertEquals(configuration.getInteger("memoryUsageLimitPercent"), 80);
             context.assertEquals(configuration.getInteger("refresh-period"), 2);
             context.assertEquals(configuration.getInteger("processorTimeout"), 240000);
             context.assertEquals(configuration.getLong("processorDelayMax"), 0L);
+            context.assertTrue(configuration.getBoolean("enableQueueNameDecoding"));
 
             context.assertFalse(configuration.getBoolean("httpRequestHandlerEnabled"));
             context.assertEquals(configuration.getInteger("httpRequestHandlerPort"), 7070);
             context.assertEquals(configuration.getString("httpRequestHandlerPrefix"), "/queuing");
             context.assertEquals(configuration.getString("httpRequestHandlerUserHeader"), "x-rp-usr");
+
+            context.assertEquals(1, configuration.getJsonArray("queueConfigurations").size());
+            context.assertEquals("queue.*", configuration.getJsonArray("queueConfigurations").getJsonObject(0).getString("pattern"));
 
             async.complete();
         });
@@ -153,6 +167,29 @@ public class RedisQuesTest extends AbstractTestCase {
     }
 
     @Test
+    public void enqueueWithReachedMemoryUsageLimit(TestContext context) {
+        Async async = context.async();
+        flushAll();
+        assertKeyCount(context, getQueuesRedisKeyPrefix(), 0);
+        memoryUsageProvider.setCurrentMemoryUsage(Optional.of(90));
+        eventBusSend(buildEnqueueOperation("queueEnqueue", "helloEnqueue"), message -> {
+            context.assertEquals(ERROR, message.result().body().getString(STATUS));
+            context.assertEquals("memory usage limit reached", message.result().body().getString(MESSAGE));
+            assertKeyCount(context, getQueuesRedisKeyPrefix(), 0);
+
+            //reduce current memory usage below the limit
+            memoryUsageProvider.setCurrentMemoryUsage(Optional.of(50));
+
+            eventBusSend(buildEnqueueOperation("queueEnqueue", "helloEnqueue"), message2 -> {
+                context.assertEquals(OK, message2.result().body().getString(STATUS));
+                context.assertEquals("helloEnqueue", jedis.lindex(getQueuesRedisKeyPrefix() + "queueEnqueue", 0));
+                assertKeyCount(context, getQueuesRedisKeyPrefix(), 1);
+                async.complete();
+            });
+        });
+    }
+
+    @Test
     public void lockedEnqueue(TestContext context) {
         Async async = context.async();
         flushAll();
@@ -165,6 +202,34 @@ public class RedisQuesTest extends AbstractTestCase {
             assertKeyCount(context, getQueuesRedisKeyPrefix(), 1);
             assertKeyCount(context, getLocksRedisKey(), 1);
             async.complete();
+        });
+    }
+
+    @Test
+    public void lockedEnqueueWithReachedMemoryUsageLimit(TestContext context) {
+        Async async = context.async();
+        flushAll();
+        assertKeyCount(context, getQueuesRedisKeyPrefix(), 0);
+        memoryUsageProvider.setCurrentMemoryUsage(Optional.of(90));
+        eventBusSend(buildLockedEnqueueOperation("queueEnqueue", "helloEnqueue", "someuser"), message -> {
+            context.assertEquals(ERROR, message.result().body().getString(STATUS));
+            context.assertEquals("memory usage limit reached", message.result().body().getString(MESSAGE));
+            assertLockDoesNotExist(context, "queueEnqueue");
+            assertKeyCount(context, getQueuesRedisKeyPrefix(), 0);
+            assertKeyCount(context, getLocksRedisKey(), 0);
+
+            //reduce current memory usage below the limit
+            memoryUsageProvider.setCurrentMemoryUsage(Optional.of(50));
+
+            eventBusSend(buildLockedEnqueueOperation("queueEnqueue", "helloEnqueue", "someuser"), message2 -> {
+                context.assertEquals(OK, message2.result().body().getString(STATUS));
+                context.assertEquals("helloEnqueue", jedis.lindex(getQueuesRedisKeyPrefix() + "queueEnqueue", 0));
+                assertLockExists(context, "queueEnqueue");
+                assertLockContent(context, "queueEnqueue", "someuser");
+                assertKeyCount(context, getQueuesRedisKeyPrefix(), 1);
+                assertKeyCount(context, getLocksRedisKey(), 1);
+                async.complete();
+            });
         });
     }
 
@@ -248,7 +313,6 @@ public class RedisQuesTest extends AbstractTestCase {
                 context.assertEquals(OK, message.result().body().getString(STATUS));
                 asyncEnqueue.countDown();
             });
-
         }
         asyncEnqueue.awaitSuccess();
 
@@ -354,7 +418,6 @@ public class RedisQuesTest extends AbstractTestCase {
                 context.assertEquals(OK, message.result().body().getString(STATUS));
                 asyncEnqueue.countDown();
             });
-
         }
         asyncEnqueue.awaitSuccess();
 

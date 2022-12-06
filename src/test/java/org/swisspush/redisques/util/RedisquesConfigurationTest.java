@@ -31,7 +31,6 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getRefreshPeriod(), 10);
         testContext.assertEquals(config.getRedisHost(), "localhost");
         testContext.assertEquals(config.getRedisPort(), 6379);
-        testContext.assertEquals(config.getRedisEncoding(), "UTF-8");
         testContext.assertEquals(config.getCheckInterval(), 60);
         testContext.assertEquals(config.getProcessorTimeout(), 240000);
         testContext.assertEquals(config.getProcessorDelayMax(), 0L);
@@ -41,6 +40,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getHttpRequestHandlerUserHeader(), "x-rp-usr");
         testContext.assertEquals(config.getQueueConfigurations().size(), 0);
         testContext.assertEquals(config.getQueueSpeedIntervalSec(),60);
+        testContext.assertEquals(config.getMemoryUsageLimitPercent(),100);
     }
 
     @Test
@@ -62,13 +62,13 @@ public class RedisquesConfigurationTest {
                         new QueueConfiguration().withPattern("vehicle-.*").withRetryIntervals(10, 20, 30, 60)
                 ))
                 .queueSpeedIntervalSec(1)
+                .memoryUsageLimitPercent(80)
                 .build();
 
         // default values
         testContext.assertEquals(config.getRedisPrefix(), "redisques:");
         testContext.assertEquals(config.getProcessorAddress(), "redisques-processor");
         testContext.assertEquals(config.getRefreshPeriod(), 10);
-        testContext.assertEquals(config.getRedisEncoding(), "UTF-8");
 
         // overridden values
         testContext.assertEquals(config.getAddress(), "new_address");
@@ -83,6 +83,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getHttpRequestHandlerPort(), 7171);
         testContext.assertEquals(config.getHttpRequestHandlerUserHeader(), "x-custom-user-header");
         testContext.assertEquals(config.getQueueSpeedIntervalSec(), 1);
+        testContext.assertEquals(config.getMemoryUsageLimitPercent(), 80);
         // queue configurations
         testContext.assertEquals(config.getQueueConfigurations().size(), 1);
         QueueConfiguration queueConfiguration = config.getQueueConfigurations().get(0);
@@ -102,7 +103,6 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(json.getInteger(PROP_REFRESH_PERIOD), 10);
         testContext.assertEquals(json.getString(PROP_REDIS_HOST), "localhost");
         testContext.assertEquals(json.getInteger(PROP_REDIS_PORT), 6379);
-        testContext.assertEquals(json.getString(PROP_REDIS_ENCODING), "UTF-8");
         testContext.assertEquals(json.getInteger(PROP_CHECK_INTERVAL), 60);
         testContext.assertEquals(json.getInteger(PROP_PROCESSOR_TIMEOUT), 240000);
         testContext.assertEquals(json.getInteger(PROP_PROCESSOR_DELAY_MAX), 0);
@@ -112,6 +112,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(json.getString(PROP_HTTP_REQUEST_HANDLER_USER_HEADER), "x-rp-usr");
         testContext.assertEquals(json.getJsonArray(PROP_QUEUE_CONFIGURATIONS).getList().size(), 0);
         testContext.assertEquals(json.getInteger(PROP_QUEUE_SPEED_INTERVAL_SEC), 60);
+        testContext.assertEquals(json.getInteger(PROP_MEMORY_USAGE_LIMIT_PCT), 100);
     }
 
     @Test
@@ -131,6 +132,7 @@ public class RedisquesConfigurationTest {
                         new QueueConfiguration().withPattern("vehicle-.*").withRetryIntervals(10, 20, 30, 60)
                 ))
                 .queueSpeedIntervalSec(1)
+                .memoryUsageLimitPercent(55)
                 .build();
 
         JsonObject json = config.asJsonObject();
@@ -139,7 +141,6 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(json.getString(PROP_REDIS_PREFIX), "redisques:");
         testContext.assertEquals(json.getString(PROP_PROCESSOR_ADDRESS), "redisques-processor");
         testContext.assertEquals(json.getInteger(PROP_REFRESH_PERIOD), 10);
-        testContext.assertEquals(json.getString(PROP_REDIS_ENCODING), "UTF-8");
         testContext.assertFalse(json.getBoolean(PROP_HTTP_REQUEST_HANDLER_ENABLED));
         testContext.assertEquals(json.getString(PROP_HTTP_REQUEST_HANDLER_PREFIX), "/queuing");
 
@@ -154,6 +155,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(json.getInteger(PROP_HTTP_REQUEST_HANDLER_PORT), 7171);
         testContext.assertEquals(json.getString(PROP_HTTP_REQUEST_HANDLER_USER_HEADER), "x-custom-user-header");
         testContext.assertEquals(json.getInteger(PROP_QUEUE_SPEED_INTERVAL_SEC), 1);
+        testContext.assertEquals(json.getInteger(PROP_MEMORY_USAGE_LIMIT_PCT), 55);
 
         // queue configurations
         JsonArray queueConfigurationsJsonArray = json.getJsonArray(PROP_QUEUE_CONFIGURATIONS);
@@ -176,7 +178,6 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getRefreshPeriod(), 10);
         testContext.assertEquals(config.getRedisHost(), "localhost");
         testContext.assertEquals(config.getRedisPort(), 6379);
-        testContext.assertEquals(config.getRedisEncoding(), "UTF-8");
         testContext.assertEquals(config.getCheckInterval(), 60);
         testContext.assertEquals(config.getProcessorTimeout(), 240000);
         testContext.assertEquals(config.getProcessorDelayMax(), 0L);
@@ -186,6 +187,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getHttpRequestHandlerUserHeader(), "x-rp-usr");
         testContext.assertEquals(config.getQueueConfigurations().size(), 0);
         testContext.assertEquals(config.getQueueSpeedIntervalSec(), 60);
+        testContext.assertEquals(config.getMemoryUsageLimitPercent(), 100);
     }
 
     @Test
@@ -199,7 +201,6 @@ public class RedisquesConfigurationTest {
         json.put(PROP_REFRESH_PERIOD, 99);
         json.put(PROP_REDIS_HOST, "newredishost");
         json.put(PROP_REDIS_PORT, 4321);
-        json.put(PROP_REDIS_ENCODING, "new_encoding");
         json.put(PROP_CHECK_INTERVAL, 5);
         json.put(PROP_PROCESSOR_TIMEOUT, 30);
         json.put(PROP_PROCESSOR_DELAY_MAX, 99);
@@ -208,6 +209,7 @@ public class RedisquesConfigurationTest {
         json.put(PROP_HTTP_REQUEST_HANDLER_PORT, 7171);
         json.put(PROP_HTTP_REQUEST_HANDLER_USER_HEADER, "x-custom-user-header");
         json.put(PROP_QUEUE_SPEED_INTERVAL_SEC, 1);
+        json.put(PROP_MEMORY_USAGE_LIMIT_PCT, 75);
         json.put(PROP_QUEUE_CONFIGURATIONS, new JsonArray(Collections.singletonList(
                 new QueueConfiguration().withPattern("vehicle-.*")
                         .withRetryIntervals(10, 20, 30, 60)
@@ -222,7 +224,6 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getRefreshPeriod(), 99);
         testContext.assertEquals(config.getRedisHost(), "newredishost");
         testContext.assertEquals(config.getRedisPort(), 4321);
-        testContext.assertEquals(config.getRedisEncoding(), "new_encoding");
         testContext.assertEquals(config.getCheckInterval(), 5);
         testContext.assertEquals(config.getProcessorTimeout(), 30);
         testContext.assertEquals(config.getProcessorDelayMax(), 99L);
@@ -231,6 +232,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getHttpRequestHandlerPrefix(), "/queuing/test123");
         testContext.assertEquals(config.getHttpRequestHandlerUserHeader(), "x-custom-user-header");
         testContext.assertEquals(config.getQueueSpeedIntervalSec(), 1);
+        testContext.assertEquals(config.getMemoryUsageLimitPercent(), 75);
 
         // queue configurations
         testContext.assertEquals(config.getQueueConfigurations().size(), 1);
@@ -297,6 +299,16 @@ public class RedisquesConfigurationTest {
         config = fromJsonObject(json);
         testContext.assertEquals(5, config.getCheckInterval());
         testContext.assertEquals(add500ms(2500), config.getCheckIntervalTimerMs());
+    }
+
+    @Test
+    public void testMemoryUsageLimit(TestContext testContext) {
+        testContext.assertEquals(100, with().memoryUsageLimitPercent(-30).build().getMemoryUsageLimitPercent()); // negative values are not allowed
+        testContext.assertEquals(100, with().memoryUsageLimitPercent(150).build().getMemoryUsageLimitPercent()); // values over 100 are not allowed
+        testContext.assertEquals(0, with().memoryUsageLimitPercent(0).build().getMemoryUsageLimitPercent());
+        testContext.assertEquals(1, with().memoryUsageLimitPercent(1).build().getMemoryUsageLimitPercent());
+        testContext.assertEquals(99, with().memoryUsageLimitPercent(99).build().getMemoryUsageLimitPercent());
+        testContext.assertEquals(100, with().memoryUsageLimitPercent(100).build().getMemoryUsageLimitPercent());
     }
 
     private int add500ms(int interval) {
