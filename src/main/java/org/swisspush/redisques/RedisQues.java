@@ -273,6 +273,10 @@ public class RedisQues extends AbstractVerticle {
         redisPort, redisAuth, redisEncoding, refreshPeriod, redisMaxPoolSize, redisMaxPoolWaitingSize, redisMaxPipelineWaitingSize,
         checkInterval, processorTimeout, processorDelayMax, httpRequestHandlerEnabled, httpRequestHandlerPrefix,
                 httpRequestHandlerPort, httpRequestHandlerUserHeader, queueConfigurations));
+        queueActions.put(getQueuesSpeed, new GetQueuesSpeedAction(vertx, luaScriptManager, redisAPI, address, queuesKey, queuesPrefix,
+                consumersPrefix, locksKey, queueConfigurations, queueStatisticsCollector, log));
+        queueActions.put(getQueuesStatistics, new GetQueuesStatisticsAction(vertx, luaScriptManager, redisAPI, address, queuesKey, queuesPrefix,
+                consumersPrefix, locksKey, queueConfigurations, queueStatisticsCollector, log));
 
         // Handles operations
         vertx.eventBus().consumer(address, operationsHandler());
@@ -368,94 +372,23 @@ public class RedisQues extends AbstractVerticle {
             QueueAction action = queueActions.getOrDefault(queueOperation, unsupportedAction);
             action.execute(event);
 
-//            switch (queueOperation) {
-//                                      case enqueue:
-//                    enqueue(event);
-//                    break;
-//                                      case lockedEnqueue:
-//                    lockedEnqueue(event);
-//                    break;
-//                                      case getQueueItems:
-//                    getQueueItems(event);
-//                    break;
-//                                      case addQueueItem:
-//                    addQueueItem(event);
-//                    break;
-//                                      case deleteQueueItem:
-//                    deleteQueueItem(event);
-//                    break;
-//                                      case getQueueItem:
-//                    getQueueItem(event);
-//                    break;
-//                                      case replaceQueueItem:
-//                    replaceQueueItem(event);
-//                    break;
-//                                      case deleteAllQueueItems:
-//                    deleteAllQueueItems(event);
-//                    break;
-//                                      case bulkDeleteQueues:
-//                    bulkDeleteQueues(event);
-//                    break;
-//                                      case getAllLocks:
-//                    getAllLocks(event);
-//                    break;
-//                                      case putLock:
-//                    putLock(event);
-//                    break;
-//                                      case bulkPutLocks:
-//                    bulkPutLocks(event);
-//                    break;
-//                                      case getLock:
-//                    redisAPI.hget(locksKey, body.getJsonObject(PAYLOAD).getString(QUEUENAME), new GetLockHandler(event));
-//                    break;
-//                                      case deleteLock:
-//                    deleteLock(event);
-//                    break;
-//                                      case bulkDeleteLocks:
-//                    bulkDeleteLocks(event);
-//                    break;
-//                                      case deleteAllLocks:
-//                    deleteAllLocks(event);
-//                    break;
-//                                      case getQueueItemsCount:
-//                    getQueueItemsCount(event);
-//                    break;
-//                                      case getQueuesItemsCount:
-//                    getQueuesItemsCount(event);
-//                    break;
-//                                      case getQueuesCount:
-//                    getQueuesCount(event);
-//                    break;
-//                                      case getQueues:
-//                    getQueues(event, false);
-//                    break;
-//                case check:
+
+//TODO check:
 //                    checkQueues();
 //                    break;
-//                case reset:
+//TODO reset:
 //                    resetConsumers();
 //                    break;
-//                case stop:
+//TODO stop:
 //                    gracefulStop(event1 -> {
 //                        JsonObject reply = new JsonObject();
 //                        reply.put(STATUS, OK);
 //                    });
 //                    break;
-//                                      case getConfiguration:
-//                    getConfiguration(event);
-//                    break;
-//                case setConfiguration:
+
+//TODO setConfiguration:
 //                    setConfiguration(event);
 //                    break;
-//                case getQueuesStatistics:
-//                    getQueuesStatistics(event);
-//                    break;
-//                case getQueuesSpeed:
-//                    getQueuesSpeed(event);
-//                    break;
-//                default:
-//                    unsupportedOperation(operation, event);
-//            }
         };
     }
 
