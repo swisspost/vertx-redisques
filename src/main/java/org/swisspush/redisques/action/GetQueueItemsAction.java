@@ -51,7 +51,7 @@ public class GetQueueItemsAction extends AbstractQueueAction {
                 }
                 log.info("use limit parameter " + maxIndex);
             } catch (NumberFormatException ex) {
-                log.warn("Invalid limit parameter '" + limit + "' configured for max queue item count. Using default " + DEFAULT_MAX_QUEUEITEM_COUNT);
+                log.warn("Invalid limit parameter '{}' configured for max queue item count. Using default {}", limit, DEFAULT_MAX_QUEUEITEM_COUNT);
             }
         }
         return defaultMaxIndex;

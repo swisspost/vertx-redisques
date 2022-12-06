@@ -12,7 +12,6 @@ import org.swisspush.redisques.util.QueueConfiguration;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 import org.swisspush.redisques.util.Result;
 
-import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.regex.Pattern;
@@ -44,7 +43,7 @@ public class GetQueuesSpeedAction extends AbstractQueueAction {
     private void getQueuesSpeed(Message<JsonObject> event,
                                 Result<Optional<Pattern>, String> filterPattern) {
         if (filterPattern.isErr()) {
-            event.reply(QueueAction.createErrorReply().put(ERROR_TYPE, BAD_INPUT)
+            event.reply(createErrorReply().put(ERROR_TYPE, BAD_INPUT)
                     .put(MESSAGE, filterPattern.getErr()));
         } else {
             // retrieve all currently known queues from storage and pass this to the handler

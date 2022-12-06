@@ -6,6 +6,7 @@ import io.vertx.core.json.JsonObject;
 import io.vertx.redis.client.RedisAPI;
 import org.slf4j.Logger;
 import org.swisspush.redisques.lua.LuaScriptManager;
+import org.swisspush.redisques.util.MemoryUsageProvider;
 import org.swisspush.redisques.util.QueueConfiguration;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 
@@ -16,17 +17,27 @@ import static org.swisspush.redisques.util.RedisquesAPI.*;
 
 public class EnqueueAction extends AbstractQueueAction {
 
+    private MemoryUsageProvider memoryUsageProvider;
+    private int memoryUsageLimitPercent;
 
     public EnqueueAction(Vertx vertx, LuaScriptManager luaScriptManager, RedisAPI redisAPI, String address, String queuesKey, String queuesPrefix,
                                      String consumersPrefix, String locksKey, List<QueueConfiguration> queueConfigurations,
-                                     QueueStatisticsCollector queueStatisticsCollector, Logger log) {
+                                     QueueStatisticsCollector queueStatisticsCollector, Logger log, MemoryUsageProvider memoryUsageProvider, int memoryUsageLimitPercent) {
         super(vertx, luaScriptManager, redisAPI, address, queuesKey, queuesPrefix, consumersPrefix, locksKey, queueConfigurations,
                 queueStatisticsCollector, log);
+        this.memoryUsageProvider = memoryUsageProvider;
+        this.memoryUsageLimitPercent = memoryUsageLimitPercent;
     }
 
     @Override
     public void execute(Message<JsonObject> event) {
         String queueName = event.body().getJsonObject(PAYLOAD).getString(QUEUENAME);
+
+        if(isMemoryUsageLimitReached()) {
+            log.warn("Failed to enqueue into queue {} because the memory usage limit is reached", queueName);
+            event.reply(createErrorReply().put(MESSAGE, MEMORY_FULL));
+            return;
+        }
         updateTimestamp(queueName, null);
         String keyEnqueue = queuesPrefix + queueName;
         String valueEnqueue = event.body().getString(MESSAGE);
@@ -69,5 +80,12 @@ public class EnqueueAction extends AbstractQueueAction {
                 event.reply(reply);
             }
         });
+    }
+
+    protected boolean isMemoryUsageLimitReached() {
+        if(memoryUsageProvider.currentMemoryUsagePercentage().isEmpty()) {
+            return false;
+        }
+        return memoryUsageProvider.currentMemoryUsagePercentage().get() > memoryUsageLimitPercent;
     }
 }

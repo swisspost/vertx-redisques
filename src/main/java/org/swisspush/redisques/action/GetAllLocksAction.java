@@ -18,7 +18,7 @@ import java.util.regex.Pattern;
 
 import static org.swisspush.redisques.util.RedisquesAPI.*;
 
-public class GetAllLocksAction extends LockRelatedQueueAction {
+public class GetAllLocksAction extends AbstractQueueAction {
 
     public GetAllLocksAction(Vertx vertx, LuaScriptManager luaScriptManager, RedisAPI redisAPI, String address, String queuesKey, String queuesPrefix,
                                   String consumersPrefix, String locksKey, List<QueueConfiguration> queueConfigurations,
@@ -33,7 +33,7 @@ public class GetAllLocksAction extends LockRelatedQueueAction {
         if (result.isOk()) {
             redisAPI.hkeys(locksKey, new GetAllLocksHandler(event, result.getOk()));
         } else {
-            event.reply(QueueAction.createErrorReply().put(ERROR_TYPE, BAD_INPUT).put(MESSAGE, result.getErr()));
+            event.reply(createErrorReply().put(ERROR_TYPE, BAD_INPUT).put(MESSAGE, result.getErr()));
         }
     }
 }

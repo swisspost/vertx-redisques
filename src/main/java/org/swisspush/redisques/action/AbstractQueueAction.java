@@ -4,6 +4,7 @@ import io.vertx.core.AsyncResult;
 import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.EventBus;
+import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.redis.client.RedisAPI;
@@ -52,6 +53,14 @@ public abstract class AbstractQueueAction implements QueueAction {
         this.log = log;
     }
 
+    static JsonObject createOkReply() {
+        return new JsonObject().put(STATUS, OK);
+    }
+
+    static JsonObject createErrorReply() {
+        return new JsonObject().put(STATUS, ERROR);
+    }
+
     protected long getMaxAgeTimestamp() {
         return System.currentTimeMillis() - MAX_AGE_MILLISECONDS;
     }
@@ -81,6 +90,53 @@ public abstract class AbstractQueueAction implements QueueAction {
         }
         return true;
     }
+
+    protected JsonObject extractLockInfo(String requestedBy) {
+        if (requestedBy == null) {
+            return null;
+        }
+        JsonObject lockInfo = new JsonObject();
+        lockInfo.put(REQUESTED_BY, requestedBy);
+        lockInfo.put(TIMESTAMP, System.currentTimeMillis());
+        return lockInfo;
+    }
+
+    protected List<String> buildLocksItems(String locksKey, JsonArray lockNames, JsonObject lockInfo) {
+        List<String> list = new ArrayList<>();
+        list.add(locksKey);
+        String lockInfoStr = lockInfo.encode();
+        for (int i = 0; i < lockNames.size(); i++) {
+            String lock = lockNames.getString(i);
+            list.add(lock);
+            list.add(lockInfoStr);
+        }
+        return list;
+    }
+
+
+    protected void deleteLocks(Message<JsonObject> event, Response locks) {
+        if (locks == null || locks.size() == 0) {
+            event.reply(createOkReply().put(VALUE, 0));
+            return;
+        }
+
+        List<String> args = new ArrayList<>();
+        args.add(locksKey);
+        for (Response response : locks) {
+            args.add(response.toString());
+        }
+
+        redisAPI.hdel(args, delManyResult -> {
+            if (delManyResult.succeeded()) {
+                log.info("Successfully deleted {} locks", delManyResult.result());
+                event.reply(createOkReply().put(VALUE, delManyResult.result().toLong()));
+            } else {
+                log.warn("failed to delete locks. Message: {}", delManyResult.cause().getMessage());
+                event.reply(createErrorReply().put(MESSAGE, delManyResult.cause().getMessage()));
+            }
+        });
+    }
+
 
     /**
      * find first matching Queue-Configuration

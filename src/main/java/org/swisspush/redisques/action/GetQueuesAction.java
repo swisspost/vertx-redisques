@@ -36,7 +36,7 @@ public class GetQueuesAction extends AbstractQueueAction {
 
     protected void getQueues(Message<JsonObject> event, boolean countOnly, Result<Optional<Pattern>, String> filterPatternResult) {
         if (filterPatternResult.isErr()) {
-            event.reply(QueueAction.createErrorReply().put(ERROR_TYPE, BAD_INPUT).put(MESSAGE, filterPatternResult.getErr()));
+            event.reply(createErrorReply().put(ERROR_TYPE, BAD_INPUT).put(MESSAGE, filterPatternResult.getErr()));
         } else {
             redisAPI.zrangebyscore(
                     Arrays.asList(queuesKey, String.valueOf(getMaxAgeTimestamp()), "+inf"),

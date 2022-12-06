@@ -34,11 +34,11 @@ public class DeleteQueueItemAction extends AbstractQueueAction {
                         log.warn("Redis 'lrem' command failed. But will continue anyway.", replyLrem.cause());
                         // IMO we should 'fail()' here. But we don't, to keep backward compatibility.
                     }
-                    event.reply(QueueAction.createOkReply());
+                    event.reply(createOkReply());
                 });
             } else {
                 log.error("Failed to 'lset' while deleteQueueItem.", event1.cause());
-                event.reply(QueueAction.createErrorReply());
+                event.reply(createErrorReply());
             }
         });
     }

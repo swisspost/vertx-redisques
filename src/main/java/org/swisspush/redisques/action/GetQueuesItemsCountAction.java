@@ -18,6 +18,9 @@ import java.util.regex.Pattern;
 
 import static org.swisspush.redisques.util.RedisquesAPI.*;
 
+/**
+ * Retrieve the size of the queues matching the given filter pattern
+ */
 public class GetQueuesItemsCountAction extends AbstractQueueAction {
 
     public GetQueuesItemsCountAction(Vertx vertx, LuaScriptManager luaScriptManager, RedisAPI redisAPI, String address, String queuesKey, String queuesPrefix,
@@ -31,7 +34,7 @@ public class GetQueuesItemsCountAction extends AbstractQueueAction {
     public void execute(Message<JsonObject> event) {
         Result<Optional<Pattern>, String> filterPattern = MessageUtil.extractFilterPattern(event);
         if (filterPattern.isErr()) {
-            event.reply(QueueAction.createErrorReply().put(ERROR_TYPE, BAD_INPUT)
+            event.reply(createErrorReply().put(ERROR_TYPE, BAD_INPUT)
                     .put(MESSAGE, filterPattern.getErr()));
         } else {
             redisAPI.zrangebyscore(List.of(queuesKey, String.valueOf(getMaxAgeTimestamp()), "+inf"),

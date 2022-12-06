@@ -43,7 +43,7 @@ public class GetQueuesStatisticsAction extends AbstractQueueAction {
     private void getQueuesStatistics(Message<JsonObject> event,
                                      Result<Optional<Pattern>, String> filterPattern) {
         if (filterPattern.isErr()) {
-            event.reply(QueueAction.createErrorReply().put(ERROR_TYPE, BAD_INPUT)
+            event.reply(createErrorReply().put(ERROR_TYPE, BAD_INPUT)
                     .put(MESSAGE, filterPattern.getErr()));
         } else {
             // retrieve all currently known queues from storage and pass this to the handler

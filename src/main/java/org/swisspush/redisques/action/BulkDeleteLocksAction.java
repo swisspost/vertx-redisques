@@ -17,7 +17,7 @@ import java.util.List;
 
 import static org.swisspush.redisques.util.RedisquesAPI.*;
 
-public class BulkDeleteLocksAction extends LockDeletionRelatedQueueAction {
+public class BulkDeleteLocksAction extends AbstractQueueAction {
 
     public BulkDeleteLocksAction(Vertx vertx, LuaScriptManager luaScriptManager, RedisAPI redisAPI, String address, String queuesKey, String queuesPrefix,
                                   String consumersPrefix, String locksKey, List<QueueConfiguration> queueConfigurations,
@@ -37,7 +37,7 @@ public class BulkDeleteLocksAction extends LockDeletionRelatedQueueAction {
             }
             deleteLocks(event, locks);
         } else {
-            event.reply(QueueAction.createErrorReply().put(MESSAGE, "No locks to delete provided"));
+            event.reply(createErrorReply().put(MESSAGE, "No locks to delete provided"));
         }
     }
 }

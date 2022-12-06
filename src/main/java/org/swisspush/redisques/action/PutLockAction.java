@@ -15,7 +15,7 @@ import java.util.List;
 
 import static org.swisspush.redisques.util.RedisquesAPI.*;
 
-public class PutLockAction extends LockRelatedQueueAction {
+public class PutLockAction extends AbstractQueueAction {
 
     public PutLockAction(Vertx vertx, LuaScriptManager luaScriptManager, RedisAPI redisAPI, String address, String queuesKey, String queuesPrefix,
                                      String consumersPrefix, String locksKey, List<QueueConfiguration> queueConfigurations,
@@ -30,12 +30,12 @@ public class PutLockAction extends LockRelatedQueueAction {
         if (lockInfo != null) {
             JsonArray lockNames = new JsonArray().add(event.body().getJsonObject(PAYLOAD).getString(QUEUENAME));
             if (!jsonArrayContainsStringsOnly(lockNames)) {
-                event.reply(QueueAction.createErrorReply().put(ERROR_TYPE, BAD_INPUT).put(MESSAGE, "Lock must be a string value"));
+                event.reply(createErrorReply().put(ERROR_TYPE, BAD_INPUT).put(MESSAGE, "Lock must be a string value"));
                 return;
             }
             redisAPI.hmset(buildLocksItems(locksKey, lockNames, lockInfo), new PutLockHandler(event));
         } else {
-            event.reply(QueueAction.createErrorReply().put(MESSAGE, "Property '" + REQUESTED_BY + "' missing"));
+            event.reply(createErrorReply().put(MESSAGE, "Property '" + REQUESTED_BY + "' missing"));
         }
     }
 }

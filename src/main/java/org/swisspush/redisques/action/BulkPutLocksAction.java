@@ -14,9 +14,8 @@ import org.swisspush.redisques.util.QueueStatisticsCollector;
 import java.util.List;
 
 import static org.swisspush.redisques.util.RedisquesAPI.*;
-import static org.swisspush.redisques.util.RedisquesAPI.MESSAGE;
 
-public class BulkPutLocksAction extends LockRelatedQueueAction {
+public class BulkPutLocksAction extends AbstractQueueAction {
 
 
     public BulkPutLocksAction(Vertx vertx, LuaScriptManager luaScriptManager, RedisAPI redisAPI, String address, String queuesKey, String queuesPrefix,
@@ -30,18 +29,18 @@ public class BulkPutLocksAction extends LockRelatedQueueAction {
     public void execute(Message<JsonObject> event) {
         JsonArray locks = event.body().getJsonObject(PAYLOAD).getJsonArray(LOCKS);
         if (locks == null || locks.isEmpty()) {
-            event.reply(QueueAction.createErrorReply().put(MESSAGE, "No locks to put provided"));
+            event.reply(createErrorReply().put(MESSAGE, "No locks to put provided"));
             return;
         }
 
         JsonObject lockInfo = extractLockInfo(event.body().getJsonObject(PAYLOAD).getString(REQUESTED_BY));
         if (lockInfo == null) {
-            event.reply(QueueAction.createErrorReply().put(MESSAGE, "Property '" + REQUESTED_BY + "' missing"));
+            event.reply(createErrorReply().put(MESSAGE, "Property '" + REQUESTED_BY + "' missing"));
             return;
         }
 
         if (!jsonArrayContainsStringsOnly(locks)) {
-            event.reply(QueueAction.createErrorReply().put(ERROR_TYPE, BAD_INPUT).put(MESSAGE, "Locks must be string values"));
+            event.reply(createErrorReply().put(ERROR_TYPE, BAD_INPUT).put(MESSAGE, "Locks must be string values"));
             return;
         }
 

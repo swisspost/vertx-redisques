@@ -27,27 +27,27 @@ public class BulkDeleteQueuesAction extends AbstractQueueAction {
     public void execute(Message<JsonObject> event) {
         JsonArray queues = event.body().getJsonObject(PAYLOAD).getJsonArray(QUEUES);
         if (queues == null) {
-            event.reply(QueueAction.createErrorReply().put(MESSAGE, "No queues to delete provided"));
+            event.reply(createErrorReply().put(MESSAGE, "No queues to delete provided"));
             return;
         }
 
         if (queues.isEmpty()) {
-            event.reply(QueueAction.createOkReply().put(VALUE, 0));
+            event.reply(createOkReply().put(VALUE, 0));
             return;
         }
 
         if (!jsonArrayContainsStringsOnly(queues)) {
-            event.reply(QueueAction.createErrorReply().put(ERROR_TYPE, BAD_INPUT).put(MESSAGE, "Queues must be string values"));
+            event.reply(createErrorReply().put(ERROR_TYPE, BAD_INPUT).put(MESSAGE, "Queues must be string values"));
             return;
         }
 
         redisAPI.del(buildQueueKeys(queues), delManyReply -> {
             queueStatisticsCollector.resetQueueStatistics(queues);
             if (delManyReply.succeeded()) {
-                event.reply(QueueAction.createOkReply().put(VALUE, delManyReply.result().toLong()));
+                event.reply(createOkReply().put(VALUE, delManyReply.result().toLong()));
             } else {
                 log.error("Failed to bulkDeleteQueues", delManyReply.cause());
-                event.reply(QueueAction.createErrorReply());
+                event.reply(createErrorReply());
             }
         });
     }

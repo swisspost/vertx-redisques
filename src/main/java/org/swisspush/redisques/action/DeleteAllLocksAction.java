@@ -14,7 +14,7 @@ import java.util.List;
 
 import static org.swisspush.redisques.util.RedisquesAPI.MESSAGE;
 
-public class DeleteAllLocksAction extends LockDeletionRelatedQueueAction {
+public class DeleteAllLocksAction extends AbstractQueueAction {
 
     public DeleteAllLocksAction(Vertx vertx, LuaScriptManager luaScriptManager, RedisAPI redisAPI, String address, String queuesKey, String queuesPrefix,
                                   String consumersPrefix, String locksKey, List<QueueConfiguration> queueConfigurations,
@@ -30,8 +30,8 @@ public class DeleteAllLocksAction extends LockDeletionRelatedQueueAction {
                 Response locks = locksResult.result();
                 deleteLocks(event, locks);
             } else {
-                log.warn("failed to delete all locks. Message: " + locksResult.cause().getMessage());
-                event.reply(QueueAction.createErrorReply().put(MESSAGE, locksResult.cause().getMessage()));
+                log.warn("failed to delete all locks. Message: {}", locksResult.cause().getMessage());
+                event.reply(createErrorReply().put(MESSAGE, locksResult.cause().getMessage()));
             }
         });
     }

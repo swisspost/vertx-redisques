@@ -6,14 +6,12 @@ import io.vertx.core.json.JsonObject;
 import io.vertx.redis.client.RedisAPI;
 import org.slf4j.Logger;
 import org.swisspush.redisques.handler.GetQueuesCountHandler;
-import org.swisspush.redisques.handler.GetQueuesHandler;
 import org.swisspush.redisques.lua.LuaScriptManager;
 import org.swisspush.redisques.util.MessageUtil;
 import org.swisspush.redisques.util.QueueConfiguration;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 import org.swisspush.redisques.util.Result;
 
-import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.regex.Pattern;
@@ -33,7 +31,7 @@ public class GetQueuesCountAction extends GetQueuesAction {
     public void execute(Message<JsonObject> event) {
         Result<Optional<Pattern>, String> result = MessageUtil.extractFilterPattern(event);
         if (result.isErr()) {
-            event.reply(QueueAction.createErrorReply().put(ERROR_TYPE, BAD_INPUT).put(MESSAGE, result.getErr()));
+            event.reply(createErrorReply().put(ERROR_TYPE, BAD_INPUT).put(MESSAGE, result.getErr()));
             return;
         }
 

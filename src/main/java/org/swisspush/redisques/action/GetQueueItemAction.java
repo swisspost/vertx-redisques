@@ -10,7 +10,6 @@ import org.swisspush.redisques.lua.LuaScriptManager;
 import org.swisspush.redisques.util.QueueConfiguration;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 
-import java.util.Arrays;
 import java.util.List;
 
 import static org.swisspush.redisques.util.RedisquesAPI.*;

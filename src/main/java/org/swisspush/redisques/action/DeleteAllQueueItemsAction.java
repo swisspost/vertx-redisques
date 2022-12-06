@@ -7,7 +7,6 @@ import io.vertx.core.json.JsonObject;
 import io.vertx.redis.client.RedisAPI;
 import io.vertx.redis.client.Response;
 import org.slf4j.Logger;
-import org.swisspush.redisques.handler.AddQueueItemHandler;
 import org.swisspush.redisques.lua.LuaScriptManager;
 import org.swisspush.redisques.util.QueueConfiguration;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
@@ -56,10 +55,10 @@ public class DeleteAllQueueItemsAction extends AbstractQueueAction {
 
     private void handleDeleteQueueReply(Message<JsonObject> event, AsyncResult<Response> reply) {
         if (reply.succeeded()) {
-            event.reply(QueueAction.createOkReply().put(VALUE, reply.result().toLong()));
+            event.reply(createOkReply().put(VALUE, reply.result().toLong()));
         } else {
             log.error("Failed to replyResultGreaterThanZero", reply.cause());
-            event.reply(QueueAction.createErrorReply());
+            event.reply(createErrorReply());
         }
     }
 }

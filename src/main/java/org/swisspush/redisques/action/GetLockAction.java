@@ -16,7 +16,7 @@ import java.util.List;
 import static org.swisspush.redisques.util.RedisquesAPI.PAYLOAD;
 import static org.swisspush.redisques.util.RedisquesAPI.QUEUENAME;
 
-public class GetLockAction extends LockRelatedQueueAction {
+public class GetLockAction extends AbstractQueueAction {
 
     public GetLockAction(Vertx vertx, LuaScriptManager luaScriptManager, RedisAPI redisAPI, String address, String queuesKey, String queuesPrefix,
                                   String consumersPrefix, String locksKey, List<QueueConfiguration> queueConfigurations,
