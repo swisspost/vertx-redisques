@@ -99,7 +99,7 @@ public class RedisQues extends AbstractVerticle {
     private List<QueueConfiguration> queueConfigurations;
 
     private int memoryUsageCheckIntervalSec;
-    private int memoryUsageLimitPct;
+    private int memoryUsageLimitPercent;
     private MemoryUsageProvider memoryUsageProvider;
 
     private static final int DEFAULT_MAX_QUEUEITEM_COUNT = 49;
@@ -188,7 +188,7 @@ public class RedisQues extends AbstractVerticle {
         processorTimeout = modConfig.getProcessorTimeout();
         processorDelayMax = modConfig.getProcessorDelayMax();
         memoryUsageCheckIntervalSec = modConfig.getMemoryUsageCheckIntervalSec();
-        memoryUsageLimitPct = modConfig.getMemoryUsageLimitPct();
+        memoryUsageLimitPercent = modConfig.getMemoryUsageLimitPercent();
         queueSpeedIntervalSec = modConfig.getQueueSpeedIntervalSec();
         enableQueueNameDecoding = modConfig.getEnableQueueNameDecoding();
         timer = new RedisQuesTimer(vertx);
@@ -838,7 +838,7 @@ public class RedisQues extends AbstractVerticle {
         result.put(RedisquesConfiguration.PROP_ENABLE_QUEUE_NAME_DECODING, enableQueueNameDecoding);
         result.put(RedisquesConfiguration.PROP_QUEUE_SPEED_INTERVAL_SEC, queueSpeedIntervalSec);
         result.put(RedisquesConfiguration.PROP_MEMORY_USAGE_CHECK_INTERVAL_SEC, memoryUsageCheckIntervalSec);
-        result.put(RedisquesConfiguration.PROP_MEMORY_USAGE_LIMIT_PCT, memoryUsageLimitPct);
+        result.put(RedisquesConfiguration.PROP_MEMORY_USAGE_LIMIT_PCT, memoryUsageLimitPercent);
 
         event.reply(createOkReply().put(VALUE, result));
     }
@@ -1073,7 +1073,7 @@ public class RedisQues extends AbstractVerticle {
         if(memoryUsageProvider.currentMemoryUsage().isEmpty()) {
             return false;
         }
-        return memoryUsageProvider.currentMemoryUsage().get() > memoryUsageLimitPct;
+        return memoryUsageProvider.currentMemoryUsage().get() > memoryUsageLimitPercent;
     }
 
     private Future<Boolean> isQueueLocked(final String queue) {

@@ -41,7 +41,7 @@ public class RedisQuesTest extends AbstractTestCase {
         JsonObject config = RedisquesConfiguration.with()
                 .processorAddress(PROCESSOR_ADDRESS)
                 .refreshPeriod(2)
-                .memoryUsageLimitPct(80)
+                .memoryUsageLimitPercent(80)
                 .queueConfigurations(Collections.singletonList(new QueueConfiguration()
                         .withPattern("queue.*")
                         .withRetryIntervals(2, 7, 12, 17, 22, 27, 32, 37, 42, 47, 52))
@@ -91,7 +91,7 @@ public class RedisQuesTest extends AbstractTestCase {
 
             context.assertEquals(configuration.getInteger("checkInterval"), 60);
             context.assertEquals(configuration.getInteger("queueSpeedIntervalSec"), 60);
-            context.assertEquals(configuration.getInteger("memoryUsageLimitPct"), 80);
+            context.assertEquals(configuration.getInteger("memoryUsageLimitPercent"), 80);
             context.assertEquals(configuration.getInteger("refresh-period"), 2);
             context.assertEquals(configuration.getInteger("processorTimeout"), 240000);
             context.assertEquals(configuration.getLong("processorDelayMax"), 0L);

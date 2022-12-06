@@ -40,7 +40,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getHttpRequestHandlerUserHeader(), "x-rp-usr");
         testContext.assertEquals(config.getQueueConfigurations().size(), 0);
         testContext.assertEquals(config.getQueueSpeedIntervalSec(),60);
-        testContext.assertEquals(config.getMemoryUsageLimitPct(),100);
+        testContext.assertEquals(config.getMemoryUsageLimitPercent(),100);
     }
 
     @Test
@@ -62,7 +62,7 @@ public class RedisquesConfigurationTest {
                         new QueueConfiguration().withPattern("vehicle-.*").withRetryIntervals(10, 20, 30, 60)
                 ))
                 .queueSpeedIntervalSec(1)
-                .memoryUsageLimitPct(80)
+                .memoryUsageLimitPercent(80)
                 .build();
 
         // default values
@@ -83,7 +83,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getHttpRequestHandlerPort(), 7171);
         testContext.assertEquals(config.getHttpRequestHandlerUserHeader(), "x-custom-user-header");
         testContext.assertEquals(config.getQueueSpeedIntervalSec(), 1);
-        testContext.assertEquals(config.getMemoryUsageLimitPct(), 80);
+        testContext.assertEquals(config.getMemoryUsageLimitPercent(), 80);
         // queue configurations
         testContext.assertEquals(config.getQueueConfigurations().size(), 1);
         QueueConfiguration queueConfiguration = config.getQueueConfigurations().get(0);
@@ -132,7 +132,7 @@ public class RedisquesConfigurationTest {
                         new QueueConfiguration().withPattern("vehicle-.*").withRetryIntervals(10, 20, 30, 60)
                 ))
                 .queueSpeedIntervalSec(1)
-                .memoryUsageLimitPct(55)
+                .memoryUsageLimitPercent(55)
                 .build();
 
         JsonObject json = config.asJsonObject();
@@ -187,7 +187,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getHttpRequestHandlerUserHeader(), "x-rp-usr");
         testContext.assertEquals(config.getQueueConfigurations().size(), 0);
         testContext.assertEquals(config.getQueueSpeedIntervalSec(), 60);
-        testContext.assertEquals(config.getMemoryUsageLimitPct(), 100);
+        testContext.assertEquals(config.getMemoryUsageLimitPercent(), 100);
     }
 
     @Test
@@ -232,7 +232,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getHttpRequestHandlerPrefix(), "/queuing/test123");
         testContext.assertEquals(config.getHttpRequestHandlerUserHeader(), "x-custom-user-header");
         testContext.assertEquals(config.getQueueSpeedIntervalSec(), 1);
-        testContext.assertEquals(config.getMemoryUsageLimitPct(), 75);
+        testContext.assertEquals(config.getMemoryUsageLimitPercent(), 75);
 
         // queue configurations
         testContext.assertEquals(config.getQueueConfigurations().size(), 1);
@@ -303,12 +303,12 @@ public class RedisquesConfigurationTest {
 
     @Test
     public void testMemoryUsageLimit(TestContext testContext) {
-        testContext.assertEquals(100, with().memoryUsageLimitPct(-30).build().getMemoryUsageLimitPct()); // negative values are not allowed
-        testContext.assertEquals(100, with().memoryUsageLimitPct(150).build().getMemoryUsageLimitPct()); // values over 100 are not allowed
-        testContext.assertEquals(0, with().memoryUsageLimitPct(0).build().getMemoryUsageLimitPct());
-        testContext.assertEquals(1, with().memoryUsageLimitPct(1).build().getMemoryUsageLimitPct());
-        testContext.assertEquals(99, with().memoryUsageLimitPct(99).build().getMemoryUsageLimitPct());
-        testContext.assertEquals(100, with().memoryUsageLimitPct(100).build().getMemoryUsageLimitPct());
+        testContext.assertEquals(100, with().memoryUsageLimitPercent(-30).build().getMemoryUsageLimitPercent()); // negative values are not allowed
+        testContext.assertEquals(100, with().memoryUsageLimitPercent(150).build().getMemoryUsageLimitPercent()); // values over 100 are not allowed
+        testContext.assertEquals(0, with().memoryUsageLimitPercent(0).build().getMemoryUsageLimitPercent());
+        testContext.assertEquals(1, with().memoryUsageLimitPercent(1).build().getMemoryUsageLimitPercent());
+        testContext.assertEquals(99, with().memoryUsageLimitPercent(99).build().getMemoryUsageLimitPercent());
+        testContext.assertEquals(100, with().memoryUsageLimitPercent(100).build().getMemoryUsageLimitPercent());
     }
 
     private int add500ms(int interval) {
