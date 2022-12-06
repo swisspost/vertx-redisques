@@ -1,6 +1,6 @@
 # vertx-redisques
  
-[![Build Status](https://travis-ci.org/swisspush/vertx-redisques.svg?branch=master)](https://travis-ci.org/swisspush/vertx-redisques)
+![Build Status](https://github.com/swisspost/vertx-redisques/actions/workflows/maven.yml/badge.svg)
 [![codecov](https://codecov.io/gh/swisspush/vertx-redisques/branch/master/graph/badge.svg)](https://codecov.io/gh/swisspush/vertx-redisques)
 [![Maven Central](https://img.shields.io/maven-central/v/org.swisspush/redisques.svg)](http://search.maven.org/#artifactdetails|org.swisspush|redisques|2.2.0|)
 
@@ -44,22 +44,30 @@ If an instance dies, its queues will be assigned to other instances.
 
 The following configuration values are available:
 
-| Property | Default value | Description |
-|:--------- | :----------- | :----------- |
-| address | redisques | The eventbus address the redisques module is listening to |
-| configuration-updated-address | redisques-configuration-updated | The eventbus address the redisques module publishes the configuration updates to |
-| redis-prefix | redisques: | Prefix for redis keys holding queues and consumers |
-| processor-address | redisques-processor | Address of message processors |
-| refresh-period | 10 | The frequency [s] of consumers refreshing their subscriptions to consume |
-| processorDelayMax | 0 | The maximum delay [ms] to wait between queue items before notify the consumer |
-| redisHost | localhost | The host where redis is running on |
-| redisPort | 6379 | The port where redis is running on |
-| redisEncoding | UTF-8 | The encoding to use in redis |
-| checkInterval | 60 | The interval [s] to check timestamps of not-active / empty queues by executing **check** queue operation. _checkInterval_ value must be greater 0, otherwise the default is used. |
-| httpRequestHandlerEnabled | false | Enable / disable the HTTP API |
-| httpRequestHandlerPrefix | /queuing | The url prefix for all HTTP API endpoints |
-| httpRequestHandlerPort | 7070 | The port of the HTTP API |
-| httpRequestHandlerUserHeader | x-rp-usr | The name of the header property where the user information is provided. Used for the HTTP API  |
+| Property                      | Default value                   | Description                                                                                                                                                                                     |
+|:------------------------------|:--------------------------------|:------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| address                       | redisques                       | The eventbus address the redisques module is listening to                                                                                                                                       |
+| configuration-updated-address | redisques-configuration-updated | The eventbus address the redisques module publishes the configuration updates to                                                                                                                |
+| redis-prefix                  | redisques:                      | Prefix for redis keys holding queues and consumers                                                                                                                                              |
+| processor-address             | redisques-processor             | Address of message processors                                                                                                                                                                   |
+| refresh-period                | 10                              | The frequency [s] of consumers refreshing their subscriptions to consume                                                                                                                        |
+| processorDelayMax             | 0                               | The maximum delay [ms] to wait between queue items before notify the consumer                                                                                                                   |
+| redisHost                     | localhost                       | The host where redis is running on                                                                                                                                                              |
+| redisPort                     | 6379                            | The port where redis is running on                                                                                                                                                              |
+| redisAuth                     |                                 | The authentication key (password) to connect to redis                                                                                                                                           |
+| maxPoolSize                   | 200                             | The maximum size of the redis connection pool                                                                                                                                                   |
+| maxPoolWaitingSize            | -1                              | The maximum waiting requests for a connection from the pool                                                                                                                                     |
+| maxPipelineWaitingSize        | 2048                            | The maximum allowed queued waiting handlers                                                                                                                                                     |
+| checkInterval                 | 60                              | The interval [s] to check timestamps of not-active / empty queues by executing **check** queue operation. _checkInterval_ value must be greater 0, otherwise the default is used.               |
+| queueSpeedIntervalSec         | 60                              | The interval [s] to check queue speed                                                                                                                                                           |
+| memoryUsageLimitPercent       | 100                             | Percentage of the available system memory to be used by vertx-redisques. Only values between 0 and 100 are allowed. When the used memory ratio is higher than this limit, enqueues are rejected |
+| memoryUsageCheckIntervalSec   | 60                              | The interval [s] to check the current memory usage. _memoryUsageCheckIntervalSec_ value must be greater 0, otherwise the default is used.                                                       |
+| httpRequestHandlerEnabled     | false                           | Enable / disable the HTTP API                                                                                                                                                                   |
+| enableQueueNameDecoding       | true                            | Enable / disable the encoding of queue names when using the HTTP API                                                                                                                            |
+| httpRequestHandlerPrefix      | /queuing                        | The url prefix for all HTTP API endpoints                                                                                                                                                       |
+| httpRequestHandlerPort        | 7070                            | The port of the HTTP API                                                                                                                                                                        |
+| httpRequestHandlerUserHeader  | x-rp-usr                        | The name of the header property where the user information is provided. Used for the HTTP API                                                                                                   |
+| queueConfigurations           |                                 | Configure retry intervals and enqueue delaying for queue patterns                                                                                                                               |
 
 ### Configuration util
 
@@ -669,21 +677,34 @@ The result will be a json object with the configuration values like the example 
 
 ```json
 {
-    "redisHost": "localhost",
-    "checkInterval": 10,
-    "address": "redisques",
-    "configuration-updated-address": "redisques-configuration-updated",
-    "httpRequestHandlerEnabled": true,
-    "redis-prefix": "redisques:",
-    "processorTimeout": 240000,
-    "processorDelayMax": 0,
-    "refresh-period": 10,
-    "httpRequestHandlerPrefix": "/queuing",
-    "redisEncoding": "UTF-8",
-    "httpRequestHandlerPort": 7070,
-    "httpRequestHandlerUserHeader": "x-rp-usr",
-    "redisPort": 6379,
-    "processor-address": "redisques-processor"
+  "address": "redisques",
+  "configuration-updated-address": "redisques-configuration-updated",
+  "redis-prefix": "redisques:",
+  "processor-address": "processor-address",
+  "refresh-period": 2,
+  "redisHost": "localhost",
+  "redisPort": 6379,
+  "redisAuth": null,
+  "checkInterval": 60,
+  "processorTimeout": 240000,
+  "processorDelayMax": 0,
+  "httpRequestHandlerEnabled": false,
+  "httpRequestHandlerPrefix": "/queuing",
+  "httpRequestHandlerPort": 7070,
+  "httpRequestHandlerUserHeader": "x-rp-usr",
+  "queueConfigurations": [{
+    "pattern": "queue.*",
+    "retryIntervals": [2, 7, 12, 17, 22, 27, 32, 37, 42, 47, 52],
+    "enqueueDelayFactorMillis": 0.0,
+    "enqueueMaxDelayMillis": 0
+  }],
+  "enableQueueNameDecoding": true,
+  "maxPoolSize": 200,
+  "maxPoolWaitingSize": -1,
+  "maxPipelineWaitingSize": 2048,
+  "queueSpeedIntervalSec": 60,
+  "memoryUsageLimitPercent": 100,
+  "memoryUsageCheckIntervalSec": 60
 }
 ```
 

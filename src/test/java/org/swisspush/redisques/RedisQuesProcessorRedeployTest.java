@@ -40,7 +40,6 @@ public class RedisQuesProcessorRedeployTest extends AbstractTestCase {
         JsonObject config = RedisquesConfiguration.with()
                 .redisPrefix(CUSTOM_REDIS_KEY_PREFIX)
                 .processorAddress("processor-address")
-                .redisEncoding("ISO-8859-1")
                 .refreshPeriod(refreshPeriod)
                 .build()
                 .asJsonObject();

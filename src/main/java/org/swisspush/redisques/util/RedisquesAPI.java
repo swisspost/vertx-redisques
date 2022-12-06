@@ -22,6 +22,8 @@ public class RedisquesAPI {
     public static final String BUFFER = "buffer";
     public static final String STATUS = "status";
     public static final String MESSAGE = "message";
+
+    public static final String MEMORY_FULL = "memory usage limit reached";
     public static final String PAYLOAD = "payload";
     public static final String QUEUENAME = "queuename";
     public static final String FILTER = "filter";

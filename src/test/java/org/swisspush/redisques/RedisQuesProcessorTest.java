@@ -70,7 +70,6 @@ public class RedisQuesProcessorTest extends AbstractTestCase {
                 .address(getRedisquesAddress())
                 .redisPrefix(CUSTOM_REDIS_KEY_PREFIX)
                 .processorAddress("processor-address")
-                .redisEncoding("ISO-8859-1")
                 .refreshPeriod(2)
                 .processorTimeout(10)
                 .build()
