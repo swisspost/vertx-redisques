@@ -4,18 +4,18 @@ import java.util.Optional;
 
 public class TestMemoryUsageProvider implements MemoryUsageProvider {
 
-    private Optional<Float> currentMemoryUsage;
+    private Optional<Integer> currentMemoryUsagePercentage;
 
-    public TestMemoryUsageProvider(Optional<Float> currentMemoryUsage) {
-        this.currentMemoryUsage = currentMemoryUsage;
+    public TestMemoryUsageProvider(Optional<Integer> currentMemoryUsagePercentage) {
+        this.currentMemoryUsagePercentage = currentMemoryUsagePercentage;
     }
 
     @Override
-    public Optional<Float> currentMemoryUsage() {
-        return currentMemoryUsage;
+    public Optional<Integer> currentMemoryUsagePercentage() {
+        return currentMemoryUsagePercentage;
     }
 
-    public void setCurrentMemoryUsage(Optional<Float> currentMemoryUsage) {
-        this.currentMemoryUsage = currentMemoryUsage;
+    public void setCurrentMemoryUsage(Optional<Integer> currentMemoryUsagePercentage) {
+        this.currentMemoryUsagePercentage = currentMemoryUsagePercentage;
     }
 }

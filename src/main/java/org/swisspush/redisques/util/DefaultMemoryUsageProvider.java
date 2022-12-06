@@ -5,8 +5,6 @@ import io.vertx.redis.client.RedisAPI;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.util.Collections;
 import java.util.Optional;
 
@@ -16,10 +14,10 @@ public class DefaultMemoryUsageProvider implements MemoryUsageProvider {
 
     private RedisAPI redisAPI;
 
-    private Optional<Float> currentMemoryUsageOptional = Optional.empty();
+    private Optional<Integer> currentMemoryUsagePercentage = Optional.empty();
 
-    private static final float MAX_PERCENTAGE = 100.0f;
-    private static final float MIN_PERCENTAGE = 0.0f;
+    private static final int MAX_PERCENTAGE = 100;
+    private static final int MIN_PERCENTAGE = 0;
 
     public DefaultMemoryUsageProvider(RedisAPI redisAPI, Vertx vertx, int memoryUsageCheckIntervalSec) {
         this.redisAPI = redisAPI;
@@ -27,15 +25,15 @@ public class DefaultMemoryUsageProvider implements MemoryUsageProvider {
         vertx.setPeriodic(memoryUsageCheckIntervalSec * 1000L, event -> updateCurrentMemoryUsage());
     }
 
-    public Optional<Float> currentMemoryUsage() {
-        return currentMemoryUsageOptional;
+    public Optional<Integer> currentMemoryUsagePercentage() {
+        return currentMemoryUsagePercentage;
     }
 
     private void updateCurrentMemoryUsage() {
         redisAPI.info(Collections.singletonList("memory")).onComplete(memoryInfoEvent -> {
             if(memoryInfoEvent.failed()) {
                 log.error("Unable to get memory information from redis", memoryInfoEvent.cause());
-                currentMemoryUsageOptional = Optional.empty();
+                currentMemoryUsagePercentage = Optional.empty();
                 return;
             }
 
@@ -43,13 +41,13 @@ public class DefaultMemoryUsageProvider implements MemoryUsageProvider {
 
             Optional<Long> totalSystemMemory = totalSystemMemory(memoryInfo);
             if (totalSystemMemory.isEmpty()) {
-                currentMemoryUsageOptional = Optional.empty();
+                currentMemoryUsagePercentage = Optional.empty();
                 return;
             }
 
             Optional<Long> usedMemory = usedMemory(memoryInfo);
             if (usedMemory.isEmpty()) {
-                currentMemoryUsageOptional = Optional.empty();
+                currentMemoryUsagePercentage = Optional.empty();
                 return;
             }
 
@@ -59,12 +57,10 @@ public class DefaultMemoryUsageProvider implements MemoryUsageProvider {
             } else if (currentMemoryUsagePercentage < MIN_PERCENTAGE) {
                 currentMemoryUsagePercentage = MIN_PERCENTAGE;
             }
-            currentMemoryUsagePercentage = new BigDecimal(currentMemoryUsagePercentage)
-                    .setScale(2, RoundingMode.HALF_UP)
-                    .floatValue();
 
-            log.info("Current memory usage is {}%", currentMemoryUsagePercentage);
-            currentMemoryUsageOptional = Optional.of(currentMemoryUsagePercentage);
+            int roundedValue = Math.round(currentMemoryUsagePercentage);
+            log.info("Current memory usage is {}%", roundedValue);
+            this.currentMemoryUsagePercentage = Optional.of(roundedValue);
         });
     }
 

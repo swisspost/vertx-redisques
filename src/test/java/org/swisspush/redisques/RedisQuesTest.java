@@ -49,7 +49,7 @@ public class RedisQuesTest extends AbstractTestCase {
                 .build()
                 .asJsonObject();
 
-        memoryUsageProvider = new TestMemoryUsageProvider(Optional.of(50.0f));
+        memoryUsageProvider = new TestMemoryUsageProvider(Optional.of(50));
         redisQues = new RedisQues(memoryUsageProvider);
         vertx.deployVerticle(redisQues, new DeploymentOptions().setConfig(config), context.asyncAssertSuccess(event -> {
             deploymentId = event;
@@ -171,14 +171,14 @@ public class RedisQuesTest extends AbstractTestCase {
         Async async = context.async();
         flushAll();
         assertKeyCount(context, getQueuesRedisKeyPrefix(), 0);
-        memoryUsageProvider.setCurrentMemoryUsage(Optional.of(90.0f));
+        memoryUsageProvider.setCurrentMemoryUsage(Optional.of(90));
         eventBusSend(buildEnqueueOperation("queueEnqueue", "helloEnqueue"), message -> {
             context.assertEquals(ERROR, message.result().body().getString(STATUS));
             context.assertEquals("memory usage limit reached", message.result().body().getString(MESSAGE));
             assertKeyCount(context, getQueuesRedisKeyPrefix(), 0);
 
             //reduce current memory usage below the limit
-            memoryUsageProvider.setCurrentMemoryUsage(Optional.of(50.0f));
+            memoryUsageProvider.setCurrentMemoryUsage(Optional.of(50));
 
             eventBusSend(buildEnqueueOperation("queueEnqueue", "helloEnqueue"), message2 -> {
                 context.assertEquals(OK, message2.result().body().getString(STATUS));
@@ -210,7 +210,7 @@ public class RedisQuesTest extends AbstractTestCase {
         Async async = context.async();
         flushAll();
         assertKeyCount(context, getQueuesRedisKeyPrefix(), 0);
-        memoryUsageProvider.setCurrentMemoryUsage(Optional.of(90.0f));
+        memoryUsageProvider.setCurrentMemoryUsage(Optional.of(90));
         eventBusSend(buildLockedEnqueueOperation("queueEnqueue", "helloEnqueue", "someuser"), message -> {
             context.assertEquals(ERROR, message.result().body().getString(STATUS));
             context.assertEquals("memory usage limit reached", message.result().body().getString(MESSAGE));
@@ -219,7 +219,7 @@ public class RedisQuesTest extends AbstractTestCase {
             assertKeyCount(context, getLocksRedisKey(), 0);
 
             //reduce current memory usage below the limit
-            memoryUsageProvider.setCurrentMemoryUsage(Optional.of(50.0f));
+            memoryUsageProvider.setCurrentMemoryUsage(Optional.of(50));
 
             eventBusSend(buildLockedEnqueueOperation("queueEnqueue", "helloEnqueue", "someuser"), message2 -> {
                 context.assertEquals(OK, message2.result().body().getString(STATUS));
@@ -313,7 +313,6 @@ public class RedisQuesTest extends AbstractTestCase {
                 context.assertEquals(OK, message.result().body().getString(STATUS));
                 asyncEnqueue.countDown();
             });
-
         }
         asyncEnqueue.awaitSuccess();
 
@@ -419,7 +418,6 @@ public class RedisQuesTest extends AbstractTestCase {
                 context.assertEquals(OK, message.result().body().getString(STATUS));
                 asyncEnqueue.countDown();
             });
-
         }
         asyncEnqueue.awaitSuccess();
 

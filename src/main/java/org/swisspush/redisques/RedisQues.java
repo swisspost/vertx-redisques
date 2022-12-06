@@ -1070,10 +1070,10 @@ public class RedisQues extends AbstractVerticle {
     }
 
     private boolean isMemoryUsageLimitReached() {
-        if(memoryUsageProvider.currentMemoryUsage().isEmpty()) {
+        if(memoryUsageProvider.currentMemoryUsagePercentage().isEmpty()) {
             return false;
         }
-        return memoryUsageProvider.currentMemoryUsage().get() > memoryUsageLimitPercent;
+        return memoryUsageProvider.currentMemoryUsagePercentage().get() > memoryUsageLimitPercent;
     }
 
     private Future<Boolean> isQueueLocked(final String queue) {

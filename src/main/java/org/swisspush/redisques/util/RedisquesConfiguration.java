@@ -147,14 +147,14 @@ public class RedisquesConfiguration {
         this.enableQueueNameDecoding = enableQueueNameDecoding;
         this.queueSpeedIntervalSec = queueSpeedIntervalSec;
 
-        if(memoryUsageCheckIntervalSec > 0) {
+        if (memoryUsageCheckIntervalSec > 0) {
             this.memoryUsageCheckIntervalSec = memoryUsageCheckIntervalSec;
         } else {
             log.warn("Overridden memoryUsageCheckIntervalSec of {}s is not valid. Using default value of {}s instead.", memoryUsageCheckIntervalSec, DEFAULT_MEMORY_USAGE_CHECK_INTERVAL_SEC);
             this.memoryUsageCheckIntervalSec = DEFAULT_MEMORY_USAGE_CHECK_INTERVAL_SEC;
         }
 
-        if(0 <= memoryUsageLimitPercent && memoryUsageLimitPercent <= 100){
+        if (0 <= memoryUsageLimitPercent && memoryUsageLimitPercent <= 100) {
             this.memoryUsageLimitPercent = memoryUsageLimitPercent;
         } else {
             log.warn("Overridden memoryUsageLimitPercent of {} is not valid. Using default value of {} instead.", memoryUsageLimitPercent, DEFAULT_MEMORY_USAGE_LIMIT_PCT);
@@ -260,7 +260,7 @@ public class RedisquesConfiguration {
                     .getList().stream()
                     .map(jsonObject -> QueueConfiguration.fromJsonObject((JsonObject) jsonObject))
                     .collect(Collectors.toList()));
-    }
+        }
         if (json.containsKey(PROP_ENABLE_QUEUE_NAME_DECODING)) {
             builder.enableQueueNameDecoding(json.getBoolean(PROP_ENABLE_QUEUE_NAME_DECODING));
         }
@@ -276,10 +276,10 @@ public class RedisquesConfiguration {
         if (json.containsKey(PROP_QUEUE_SPEED_INTERVAL_SEC)) {
             builder.queueSpeedIntervalSec(json.getInteger(PROP_QUEUE_SPEED_INTERVAL_SEC));
         }
-        if(json.containsKey(PROP_MEMORY_USAGE_LIMIT_PCT)) {
+        if (json.containsKey(PROP_MEMORY_USAGE_LIMIT_PCT)) {
             builder.memoryUsageLimitPercent(json.getInteger(PROP_MEMORY_USAGE_LIMIT_PCT));
         }
-        if(json.containsKey(PROP_MEMORY_USAGE_CHECK_INTERVAL_SEC)) {
+        if (json.containsKey(PROP_MEMORY_USAGE_CHECK_INTERVAL_SEC)) {
             builder.memoryUsageCheckIntervalSec(json.getInteger(PROP_MEMORY_USAGE_CHECK_INTERVAL_SEC));
         }
         return builder.build();
@@ -386,6 +386,7 @@ public class RedisquesConfiguration {
 
     /**
      * Retrieves the interval time in seconds in which the queue speed is calculated
+     *
      * @return The speed interval time in seconds
      */
     public int getQueueSpeedIntervalSec() {

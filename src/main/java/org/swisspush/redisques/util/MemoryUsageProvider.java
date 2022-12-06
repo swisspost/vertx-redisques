@@ -4,5 +4,5 @@ import java.util.Optional;
 
 public interface MemoryUsageProvider {
 
-    Optional<Float> currentMemoryUsage();
+    Optional<Integer> currentMemoryUsagePercentage();
 }

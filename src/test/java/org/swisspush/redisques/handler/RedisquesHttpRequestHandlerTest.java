@@ -170,7 +170,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
                 .build()
                 .asJsonObject();
 
-        memoryUsageProvider = new TestMemoryUsageProvider(Optional.of(50.0f));
+        memoryUsageProvider = new TestMemoryUsageProvider(Optional.of(50));
         RedisQues redisQues = new RedisQues(memoryUsageProvider);
 
         testVertx.deployVerticle(redisQues, new DeploymentOptions().setConfig(config), context.asyncAssertSuccess(event -> {
@@ -493,13 +493,13 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         assertKeyCount(context, getQueuesRedisKeyPrefix(), 0);
         assertKeyCount(context, getQueuesRedisKeyPrefix() + queueName, 0);
 
-        memoryUsageProvider.setCurrentMemoryUsage(Optional.of(90.0f));
+        memoryUsageProvider.setCurrentMemoryUsage(Optional.of(90));
 
         given().body(queueItemValid).when().put("/queuing/enqueue/" + queueName + "/").then().assertThat().statusCode(507);
         assertKeyCount(context, getQueuesRedisKeyPrefix(), 0);
         assertKeyCount(context, getQueuesRedisKeyPrefix() + queueName, 0);
 
-        memoryUsageProvider.setCurrentMemoryUsage(Optional.of(30.0f));
+        memoryUsageProvider.setCurrentMemoryUsage(Optional.of(30));
 
         given().body(queueItemValid).when().put("/queuing/enqueue/" + queueName + "/").then().assertThat().statusCode(200);
         assertKeyCount(context, getQueuesRedisKeyPrefix(), 1);
@@ -580,14 +580,14 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         assertKeyCount(context, getQueuesRedisKeyPrefix() + queueName, 0);
         assertLockDoesNotExist(context, queueName);
 
-        memoryUsageProvider.setCurrentMemoryUsage(Optional.of(90.0f));
+        memoryUsageProvider.setCurrentMemoryUsage(Optional.of(90));
 
         given().body(queueItemValid).when().put("/queuing/enqueue/" + queueName + "/?locked").then().assertThat().statusCode(507);
         assertKeyCount(context, getQueuesRedisKeyPrefix(), 0);
         assertKeyCount(context, getQueuesRedisKeyPrefix() + queueName, 0);
         assertLockDoesNotExist(context, queueName);
 
-        memoryUsageProvider.setCurrentMemoryUsage(Optional.of(60.0f));
+        memoryUsageProvider.setCurrentMemoryUsage(Optional.of(60));
 
         given().body(queueItemValid).when().put("/queuing/enqueue/" + queueName + "/?locked").then().assertThat().statusCode(200);
         assertKeyCount(context, getQueuesRedisKeyPrefix(), 1);

@@ -112,7 +112,7 @@ public class DefaultMemoryUsageProviderTest {
                 .thenReturn(Future.failedFuture("Booooooooooooom"));
         memoryUsageProvider = new DefaultMemoryUsageProvider(redisAPI, vertx, 2);
 
-        context.assertFalse(memoryUsageProvider.currentMemoryUsage().isPresent());
+        context.assertFalse(memoryUsageProvider.currentMemoryUsagePercentage().isPresent());
     }
 
     @Test
@@ -121,7 +121,7 @@ public class DefaultMemoryUsageProviderTest {
                 .thenReturn(Future.succeededFuture(BulkType.create(Buffer.buffer(REDIS_INFO_50_NOVALUES), false)));
         memoryUsageProvider = new DefaultMemoryUsageProvider(redisAPI, vertx, 2);
 
-        context.assertFalse(memoryUsageProvider.currentMemoryUsage().isPresent());
+        context.assertFalse(memoryUsageProvider.currentMemoryUsagePercentage().isPresent());
     }
 
     @Test
@@ -130,9 +130,9 @@ public class DefaultMemoryUsageProviderTest {
                 .thenReturn(Future.succeededFuture(BulkType.create(Buffer.buffer(REDIS_INFO_50_PCT), false)));
         memoryUsageProvider = new DefaultMemoryUsageProvider(redisAPI, vertx, 2);
 
-        Optional<Float> currentMemoryUsageOpt = memoryUsageProvider.currentMemoryUsage();
-        context.assertTrue(currentMemoryUsageOpt.isPresent());
-        context.assertEquals(50.53f, currentMemoryUsageOpt.get());
+        Optional<Integer> currentMemoryUsagePercentage = memoryUsageProvider.currentMemoryUsagePercentage();
+        context.assertTrue(currentMemoryUsagePercentage.isPresent());
+        context.assertEquals(51, currentMemoryUsagePercentage.get());
     }
 
     @Test
@@ -141,9 +141,9 @@ public class DefaultMemoryUsageProviderTest {
                 .thenReturn(Future.succeededFuture(BulkType.create(Buffer.buffer(REDIS_INFO_0_PCT), false)));
         memoryUsageProvider = new DefaultMemoryUsageProvider(redisAPI, vertx, 2);
 
-        Optional<Float> currentMemoryUsageOpt = memoryUsageProvider.currentMemoryUsage();
-        context.assertTrue(currentMemoryUsageOpt.isPresent());
-        context.assertEquals(0.0f, currentMemoryUsageOpt.get());
+        Optional<Integer> currentMemoryUsagePercentage = memoryUsageProvider.currentMemoryUsagePercentage();
+        context.assertTrue(currentMemoryUsagePercentage.isPresent());
+        context.assertEquals(0, currentMemoryUsagePercentage.get());
     }
 
     @Test
@@ -152,9 +152,9 @@ public class DefaultMemoryUsageProviderTest {
                 .thenReturn(Future.succeededFuture(BulkType.create(Buffer.buffer(REDIS_INFO_100_PCT), false)));
         memoryUsageProvider = new DefaultMemoryUsageProvider(redisAPI, vertx, 2);
 
-        Optional<Float> currentMemoryUsageOpt = memoryUsageProvider.currentMemoryUsage();
-        context.assertTrue(currentMemoryUsageOpt.isPresent());
-        context.assertEquals(100.0f, currentMemoryUsageOpt.get());
+        Optional<Integer> currentMemoryUsagePercentage = memoryUsageProvider.currentMemoryUsagePercentage();
+        context.assertTrue(currentMemoryUsagePercentage.isPresent());
+        context.assertEquals(100, currentMemoryUsagePercentage.get());
     }
 
     @Test
@@ -164,15 +164,15 @@ public class DefaultMemoryUsageProviderTest {
                 .thenReturn(Future.succeededFuture(BulkType.create(Buffer.buffer(REDIS_INFO_100_PCT), false)));
         memoryUsageProvider = new DefaultMemoryUsageProvider(redisAPI, vertx, 2);
 
-        Optional<Float> currentMemoryUsageOpt = memoryUsageProvider.currentMemoryUsage();
-        context.assertTrue(currentMemoryUsageOpt.isPresent());
-        context.assertEquals(100.0f, currentMemoryUsageOpt.get());
+        Optional<Integer> currentMemoryUsagePercentage = memoryUsageProvider.currentMemoryUsagePercentage();
+        context.assertTrue(currentMemoryUsagePercentage.isPresent());
+        context.assertEquals(100, currentMemoryUsagePercentage.get());
 
         // simulate 50% memory usage
         when(redisAPI.info(eq(Collections.singletonList("memory"))))
                 .thenReturn(Future.succeededFuture(BulkType.create(Buffer.buffer(REDIS_INFO_50_PCT), false)));
 
         Awaitility.await().atMost(Duration.ofSeconds(3)).until(
-                () -> memoryUsageProvider.currentMemoryUsage().get().equals(50.53f), equalTo(true));
+                () -> memoryUsageProvider.currentMemoryUsagePercentage().get().equals(51), equalTo(true));
     }
 }
