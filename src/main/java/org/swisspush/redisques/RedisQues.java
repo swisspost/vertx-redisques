@@ -8,21 +8,20 @@ import io.vertx.core.eventbus.MessageConsumer;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.redis.client.*;
-import io.vertx.redis.client.impl.types.MultiType;
-import io.vertx.redis.client.impl.types.SimpleStringType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.swisspush.redisques.handler.*;
+import org.swisspush.redisques.action.*;
+import org.swisspush.redisques.handler.RedisquesHttpRequestHandler;
 import org.swisspush.redisques.lua.LuaScriptManager;
 import org.swisspush.redisques.util.*;
 
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static org.swisspush.redisques.util.RedisquesAPI.*;
+import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.*;
 
 public class RedisQues extends AbstractVerticle {
 
@@ -70,8 +69,6 @@ public class RedisQues extends AbstractVerticle {
     // Address of message processors
     private String processorAddress = "redisques-processor";
 
-    public static final String TIMESTAMP = "timestamp";
-
     // Consumers periodically refresh their subscription while they are consuming
     private int refreshPeriod;
     private int consumerLockTime;
@@ -97,18 +94,17 @@ public class RedisQues extends AbstractVerticle {
     private int httpRequestHandlerPort;
     private String httpRequestHandlerUserHeader;
     private List<QueueConfiguration> queueConfigurations;
-
     private int memoryUsageCheckIntervalSec;
     private int memoryUsageLimitPercent;
     private MemoryUsageProvider memoryUsageProvider;
-
-    private static final int DEFAULT_MAX_QUEUEITEM_COUNT = 49;
-    private static final int MAX_AGE_MILLISECONDS = 120000; // 120 seconds
+    private QueueActionFactory queueActionFactory;
 
     private static final Set<String> ALLOWED_CONFIGURATION_VALUES = Stream.of("processorDelayMax")
             .collect(Collectors.toSet());
 
     private LuaScriptManager luaScriptManager;
+
+    private Map<QueueOperation, QueueAction> queueActions = new HashMap<>();
 
     public RedisQues() {}
 
@@ -234,6 +230,33 @@ public class RedisQues extends AbstractVerticle {
             memoryUsageProvider = new DefaultMemoryUsageProvider(redisAPI, vertx, memoryUsageCheckIntervalSec);
         }
 
+        queueActionFactory = new QueueActionFactory(luaScriptManager, redisAPI, vertx, log,
+                address, queuesKey, queuesPrefix, consumersPrefix,
+                locksKey, queueConfigurations, queueStatisticsCollector, memoryUsageLimitPercent, memoryUsageProvider);
+
+        queueActions.put(addQueueItem, queueActionFactory.buildQueueAction(addQueueItem));
+        queueActions.put(deleteQueueItem, queueActionFactory.buildQueueAction(deleteQueueItem));
+        queueActions.put(deleteAllQueueItems, queueActionFactory.buildQueueAction(deleteAllQueueItems));
+        queueActions.put(bulkDeleteQueues, queueActionFactory.buildQueueAction(bulkDeleteQueues));
+        queueActions.put(replaceQueueItem, queueActionFactory.buildQueueAction(replaceQueueItem));
+        queueActions.put(getQueueItem, queueActionFactory.buildQueueAction(getQueueItem));
+        queueActions.put(getQueueItems, queueActionFactory.buildQueueAction(getQueueItems));
+        queueActions.put(getQueues, queueActionFactory.buildQueueAction(getQueues));
+        queueActions.put(getQueuesCount, queueActionFactory.buildQueueAction(getQueuesCount));
+        queueActions.put(getQueueItemsCount, queueActionFactory.buildQueueAction(getQueueItemsCount));
+        queueActions.put(getQueuesItemsCount, queueActionFactory.buildQueueAction(getQueuesItemsCount));
+        queueActions.put(enqueue, queueActionFactory.buildQueueAction(enqueue));
+        queueActions.put(lockedEnqueue, queueActionFactory.buildQueueAction(lockedEnqueue));
+        queueActions.put(getLock, queueActionFactory.buildQueueAction(getLock));
+        queueActions.put(putLock, queueActionFactory.buildQueueAction(putLock));
+        queueActions.put(bulkPutLocks, queueActionFactory.buildQueueAction(bulkPutLocks));
+        queueActions.put(getAllLocks, queueActionFactory.buildQueueAction(getAllLocks));
+        queueActions.put(deleteLock, queueActionFactory.buildQueueAction(deleteLock));
+        queueActions.put(bulkDeleteLocks, queueActionFactory.buildQueueAction(bulkDeleteLocks));
+        queueActions.put(deleteAllLocks, queueActionFactory.buildQueueAction(deleteAllLocks));
+        queueActions.put(getQueuesSpeed, queueActionFactory.buildQueueAction(getQueuesSpeed));
+        queueActions.put(getQueuesStatistics, queueActionFactory.buildQueueAction(getQueuesStatistics));
+
         // Handles operations
         vertx.eventBus().consumer(address, operationsHandler());
 
@@ -277,7 +300,7 @@ public class RedisQues extends AbstractVerticle {
 
     private void registerActiveQueueRegistrationRefresh() {
         // Periodic refresh of my registrations on active queues.
-        vertx.setPeriodic(refreshPeriod * 1000, event -> {
+        vertx.setPeriodic(refreshPeriod * 1000L, event -> {
             // Check if I am still the registered consumer
             myQueues.entrySet().stream().filter(entry -> entry.getValue() == QueueState.CONSUMING).
                     forEach(entry -> {
@@ -325,286 +348,32 @@ public class RedisQues extends AbstractVerticle {
                 return;
             }
 
+            // handle system operations
             switch (queueOperation) {
-                case enqueue:
-                    enqueue(event);
-                    break;
-                case lockedEnqueue:
-                    lockedEnqueue(event);
-                    break;
-                case getQueueItems:
-                    getQueueItems(event);
-                    break;
-                case addQueueItem:
-                    addQueueItem(event);
-                    break;
-                case deleteQueueItem:
-                    deleteQueueItem(event);
-                    break;
-                case getQueueItem:
-                    getQueueItem(event);
-                    break;
-                case replaceQueueItem:
-                    replaceQueueItem(event);
-                    break;
-                case deleteAllQueueItems:
-                    deleteAllQueueItems(event);
-                    break;
-                case bulkDeleteQueues:
-                    bulkDeleteQueues(event);
-                    break;
-                case getAllLocks:
-                    getAllLocks(event);
-                    break;
-                case putLock:
-                    putLock(event);
-                    break;
-                case bulkPutLocks:
-                    bulkPutLocks(event);
-                    break;
-                case getLock:
-                    redisAPI.hget(locksKey, body.getJsonObject(PAYLOAD).getString(QUEUENAME), new GetLockHandler(event));
-                    break;
-                case deleteLock:
-                    deleteLock(event);
-                    break;
-                case bulkDeleteLocks:
-                    bulkDeleteLocks(event);
-                    break;
-                case deleteAllLocks:
-                    deleteAllLocks(event);
-                    break;
-                case getQueueItemsCount:
-                    getQueueItemsCount(event);
-                    break;
-                case getQueuesItemsCount:
-                    getQueuesItemsCount(event);
-                    break;
-                case getQueuesCount:
-                    getQueuesCount(event);
-                    break;
-                case getQueues:
-                    getQueues(event, false);
-                    break;
                 case check:
                     checkQueues();
-                    break;
+                    return;
                 case reset:
                     resetConsumers();
-                    break;
+                    return;
                 case stop:
                     gracefulStop(event1 -> {
                         JsonObject reply = new JsonObject();
                         reply.put(STATUS, OK);
                     });
-                    break;
-                case getConfiguration:
-                    getConfiguration(event);
-                    break;
+                    return;
                 case setConfiguration:
                     setConfiguration(event);
-                    break;
-                case getQueuesStatistics:
-                    getQueuesStatistics(event);
-                    break;
-                case getQueuesSpeed:
-                    getQueuesSpeed(event);
-                    break;
-                default:
-                    unsupportedOperation(operation, event);
+                    return;
+                case getConfiguration:
+                    getConfiguration(event);
+                    return;
             }
+
+            // handle queue operations
+            QueueAction action = queueActions.getOrDefault(queueOperation, queueActionFactory.buildUnsupportedAction());
+            action.execute(event);
         };
-    }
-
-    private void enqueue(Message<JsonObject> event) {
-        String queueName = event.body().getJsonObject(PAYLOAD).getString(QUEUENAME);
-
-        if(isMemoryUsageLimitReached()) {
-            log.warn("Failed to enqueue into queue {} because the memory usage limit is reached", queueName);
-            event.reply(createErrorReply().put(MESSAGE, MEMORY_FULL));
-            return;
-        }
-        updateTimestamp(queueName, null);
-        String keyEnqueue = queuesPrefix + queueName;
-        String valueEnqueue = event.body().getString(MESSAGE);
-        redisAPI.rpush(Arrays.asList(keyEnqueue, valueEnqueue), event2 -> {
-            JsonObject reply = new JsonObject();
-            if (event2.succeeded()) {
-                if (log.isDebugEnabled()) {
-                    log.debug("RedisQues Enqueued message into queue {}", queueName);
-                }
-                long queueLength = event2.result().toLong();
-                notifyConsumer(queueName);
-                reply.put(STATUS, OK);
-                reply.put(MESSAGE, "enqueued");
-
-                // feature EN-queue slow-down (the larger the queue the longer we delay "OK" response)
-                long delayReplyMillis = 0;
-                QueueConfiguration queueConfiguration = findQueueConfiguration(queueName);
-                if (queueConfiguration != null) {
-                    float enqueueDelayFactorMillis = queueConfiguration.getEnqueueDelayFactorMillis();
-                    if (enqueueDelayFactorMillis > 0f) {
-                        // minus one as we need the queueLength _before_ our en-queue here
-                        delayReplyMillis = (long) ((queueLength - 1) * enqueueDelayFactorMillis);
-                        int max = queueConfiguration.getEnqueueMaxDelayMillis();
-                        if (max > 0 && delayReplyMillis > max) {
-                            delayReplyMillis = max;
-                        }
-                    }
-                }
-                if (delayReplyMillis > 0) {
-                    vertx.setTimer(delayReplyMillis, timeIsUp -> event.reply(reply));
-                } else {
-                    event.reply(reply);
-                }
-                queueStatisticsCollector.setQueueBackPressureTime(queueName, delayReplyMillis);
-            } else {
-                String message = "RedisQues QUEUE_ERROR: Error while enqueueing message into queue " + queueName;
-                log.error(message, event2.cause());
-                reply.put(STATUS, ERROR);
-                reply.put(MESSAGE, message);
-                event.reply(reply);
-            }
-        });
-    }
-
-    private void lockedEnqueue(Message<JsonObject> event) {
-        log.debug("RedisQues about to lockedEnqueue");
-        String queueName = event.body().getJsonObject(PAYLOAD).getString(QUEUENAME);
-        if(isMemoryUsageLimitReached()) {
-            log.warn("Failed to lockedEnqueue into queue {} because the memory usage limit is reached", queueName);
-            event.reply(createErrorReply().put(MESSAGE, MEMORY_FULL));
-            return;
-        }
-        JsonObject lockInfo = extractLockInfo(event.body().getJsonObject(PAYLOAD).getString(REQUESTED_BY));
-        if (lockInfo != null) {
-            redisAPI.hmset(Arrays.asList(locksKey, queueName, lockInfo.encode()),
-                    putLockResult -> {
-                        if (putLockResult.succeeded()) {
-                            log.debug("RedisQues lockedEnqueue locking successful, now going to enqueue");
-                            enqueue(event);
-                        } else {
-                            log.warn("RedisQues lockedEnqueue locking failed. Skip enqueue");
-                            event.reply(createErrorReply());
-                        }
-                    });
-        } else {
-            log.warn("RedisQues lockedEnqueue failed because property '{}' was missing", REQUESTED_BY);
-            event.reply(createErrorReply().put(MESSAGE, "Property '" + REQUESTED_BY + "' missing"));
-        }
-
-    }
-
-    private void addQueueItem(Message<JsonObject> event) {
-        String key1 = queuesPrefix + event.body().getJsonObject(PAYLOAD).getString(QUEUENAME);
-        String valueAddItem = event.body().getJsonObject(PAYLOAD).getString(BUFFER);
-        redisAPI.rpush(Arrays.asList(key1, valueAddItem), new AddQueueItemHandler(event));
-    }
-
-    private void getQueueItems(Message<JsonObject> event) {
-        String queueName = event.body().getJsonObject(PAYLOAD).getString(QUEUENAME);
-        String keyListRange = queuesPrefix + queueName;
-        int maxQueueItemCountIndex = getMaxQueueItemCountIndex(event.body().getJsonObject(PAYLOAD).getString(LIMIT));
-        redisAPI.llen(keyListRange, countReply -> {
-            Long queueItemCount = countReply.result().toLong();
-            if (countReply.succeeded() && queueItemCount != null) {
-                redisAPI.lrange(keyListRange, "0", String.valueOf(maxQueueItemCountIndex), new GetQueueItemsHandler(event, queueItemCount));
-            } else {
-                log.warn("Operation getQueueItems failed. But I'll not notify my caller :)", countReply.cause());
-                // IMO we should 'event.fail(countReply.cause())' here. But we don't, to keep backward compatibility.
-            }
-        });
-    }
-
-    private void getQueues(Message<JsonObject> event, boolean countOnly) {
-        Result<Optional<Pattern>, String> result = MessageUtil.extractFilterPattern(event);
-        getQueues(event, countOnly, result);
-    }
-
-    private void getQueues(Message<JsonObject> event, boolean countOnly, Result<Optional<Pattern>, String> filterPatternResult) {
-        if (filterPatternResult.isErr()) {
-            event.reply(createErrorReply().put(ERROR_TYPE, BAD_INPUT).put(MESSAGE, filterPatternResult.getErr()));
-        } else {
-            redisAPI.zrangebyscore(
-                    Arrays.asList(queuesKey, String.valueOf(getMaxAgeTimestamp()), "+inf"),
-                    new GetQueuesHandler(event, filterPatternResult.getOk(), countOnly));
-        }
-    }
-
-    private void getQueuesCount(Message<JsonObject> event) {
-        Result<Optional<Pattern>, String> result = MessageUtil.extractFilterPattern(event);
-        if (result.isErr()) {
-            event.reply(createErrorReply().put(ERROR_TYPE, BAD_INPUT).put(MESSAGE, result.getErr()));
-            return;
-        }
-
-        /*
-         * to filter values we have to use "getQueues" operation
-         */
-        if (result.getOk().isPresent()) {
-            getQueues(event, true, result);
-        } else {
-            redisAPI.zcount(queuesKey, String.valueOf(getMaxAgeTimestamp()), String.valueOf(Double.MAX_VALUE), new GetQueuesCountHandler(event));
-        }
-    }
-
-    private void getQueueItem(Message<JsonObject> event) {
-        String key = queuesPrefix + event.body().getJsonObject(PAYLOAD).getString(QUEUENAME);
-        int index = event.body().getJsonObject(PAYLOAD).getInteger(INDEX);
-        redisAPI.lindex(key, String.valueOf(index), new GetQueueItemHandler(event));
-    }
-
-    private void replaceQueueItem(Message<JsonObject> event) {
-        String keyReplaceItem = queuesPrefix + event.body().getJsonObject(PAYLOAD).getString(QUEUENAME);
-        int indexReplaceItem = event.body().getJsonObject(PAYLOAD).getInteger(INDEX);
-        String bufferReplaceItem = event.body().getJsonObject(PAYLOAD).getString(BUFFER);
-        redisAPI.lset(keyReplaceItem, String.valueOf(indexReplaceItem), bufferReplaceItem, new ReplaceQueueItemHandler(event));
-    }
-
-    private void deleteQueueItem(Message<JsonObject> event) {
-        String keyLset = queuesPrefix + event.body().getJsonObject(PAYLOAD).getString(QUEUENAME);
-        int indexLset = event.body().getJsonObject(PAYLOAD).getInteger(INDEX);
-        redisAPI.lset(keyLset, String.valueOf(indexLset), "TO_DELETE", event1 -> {
-            if (event1.succeeded()) {
-                String keyLrem = queuesPrefix + event.body().getJsonObject(PAYLOAD).getString(QUEUENAME);
-                redisAPI.lrem(keyLrem, "0", "TO_DELETE", replyLrem -> {
-                    if (replyLrem.failed()) {
-                        log.warn("Redis 'lrem' command failed. But will continue anyway.", replyLrem.cause());
-                        // IMO we should 'fail()' here. But we don't, to keep backward compatibility.
-                    }
-                    event.reply(createOkReply());
-                });
-            } else {
-                log.error("Failed to 'lset' while deleteQueueItem.", event1.cause());
-                event.reply(createErrorReply());
-            }
-        });
-    }
-
-    private void deleteAllQueueItems(Message<JsonObject> event) {
-        JsonObject payload = event.body().getJsonObject(PAYLOAD);
-        boolean unlock = payload.getBoolean(UNLOCK, false);
-        String queue = payload.getString(QUEUENAME);
-        redisAPI.del(Collections.singletonList(buildQueueKey(queue)), deleteReply -> {
-            if (deleteReply.failed()) {
-                log.warn("Failed to deleteAllQueueItems. But we'll continue anyway", deleteReply.cause());
-                // May we should 'fail()' here. But:
-                // 1st: We don't, to keep backward compatibility
-                // 2nd: We don't, to may unlock below.
-            }
-            queueStatisticsCollector.resetQueueFailureStatistics(queue);
-            if (unlock) {
-                redisAPI.hdel(Arrays.asList(locksKey, queue), unlockReply -> {
-                    if (unlockReply.failed()) {
-                        log.warn("Failed to unlock queue '{}'. Will continue anyway", queue, unlockReply.cause());
-                        // IMO we should 'fail()' here. But we don't, to keep backward compatibility.
-                    }
-                    handleDeleteQueueReply(event, deleteReply);
-                });
-            } else {
-                handleDeleteQueueReply(event, deleteReply);
-            }
-        });
     }
 
     int updateQueueFailureCountAndGetRetryInterval(final String queueName, boolean sendSuccess) {
@@ -628,184 +397,6 @@ public class RedisQues extends AbstractVerticle {
         }
 
         return refreshPeriod;
-    }
-
-    private String buildQueueKey(String queue) {
-        return queuesPrefix + queue;
-    }
-
-    private List<String> buildQueueKeys(JsonArray queues) {
-        if (queues == null) {
-            return null;
-        }
-        final int size = queues.size();
-        List<String> queueKeys = new ArrayList<>(size);
-        for (int i = 0; i < size; i++) {
-            String queue = queues.getString(i);
-            queueKeys.add(buildQueueKey(queue));
-        }
-        return queueKeys;
-    }
-
-    private void bulkDeleteQueues(Message<JsonObject> event) {
-        JsonArray queues = event.body().getJsonObject(PAYLOAD).getJsonArray(QUEUES);
-        if (queues == null) {
-            event.reply(createErrorReply().put(MESSAGE, "No queues to delete provided"));
-            return;
-        }
-
-        if (queues.isEmpty()) {
-            event.reply(createOkReply().put(VALUE, 0));
-            return;
-        }
-
-        if (!jsonArrayContainsStringsOnly(queues)) {
-            event.reply(createErrorReply().put(ERROR_TYPE, BAD_INPUT).put(MESSAGE, "Queues must be string values"));
-            return;
-        }
-
-        redisAPI.del(buildQueueKeys(queues), delManyReply -> {
-            queueStatisticsCollector.resetQueueStatistics(queues);
-            if (delManyReply.succeeded()) {
-                event.reply(createOkReply().put(VALUE, delManyReply.result().toLong()));
-            } else {
-                log.error("Failed to bulkDeleteQueues", delManyReply.cause());
-                event.reply(createErrorReply());
-            }
-        });
-    }
-
-    private void handleDeleteQueueReply(Message<JsonObject> event, AsyncResult<Response> reply) {
-        if (reply.succeeded()) {
-            event.reply(createOkReply().put(VALUE, reply.result().toLong()));
-        } else {
-            log.error("Failed to replyResultGreaterThanZero", reply.cause());
-            event.reply(createErrorReply());
-        }
-    }
-
-    private void getAllLocks(Message<JsonObject> event) {
-        Result<Optional<Pattern>, String> result = MessageUtil.extractFilterPattern(event);
-        if (result.isOk()) {
-            redisAPI.hkeys(locksKey, new GetAllLocksHandler(event, result.getOk()));
-        } else {
-            event.reply(createErrorReply().put(ERROR_TYPE, BAD_INPUT).put(MESSAGE, result.getErr()));
-        }
-    }
-
-    private void putLock(Message<JsonObject> event) {
-        JsonObject lockInfo = extractLockInfo(event.body().getJsonObject(PAYLOAD).getString(REQUESTED_BY));
-        if (lockInfo != null) {
-            JsonArray lockNames = new JsonArray().add(event.body().getJsonObject(PAYLOAD).getString(QUEUENAME));
-            if (!jsonArrayContainsStringsOnly(lockNames)) {
-                event.reply(createErrorReply().put(ERROR_TYPE, BAD_INPUT).put(MESSAGE, "Lock must be a string value"));
-                return;
-            }
-            redisAPI.hmset(buildLocksItems(locksKey, lockNames, lockInfo), new PutLockHandler(event));
-        } else {
-            event.reply(createErrorReply().put(MESSAGE, "Property '" + REQUESTED_BY + "' missing"));
-        }
-    }
-
-    private void bulkPutLocks(Message<JsonObject> event) {
-        JsonArray locks = event.body().getJsonObject(PAYLOAD).getJsonArray(LOCKS);
-        if (locks == null || locks.isEmpty()) {
-            event.reply(createErrorReply().put(MESSAGE, "No locks to put provided"));
-            return;
-        }
-
-        JsonObject lockInfo = extractLockInfo(event.body().getJsonObject(PAYLOAD).getString(REQUESTED_BY));
-        if (lockInfo == null) {
-            event.reply(createErrorReply().put(MESSAGE, "Property '" + REQUESTED_BY + "' missing"));
-            return;
-        }
-
-        if (!jsonArrayContainsStringsOnly(locks)) {
-            event.reply(createErrorReply().put(ERROR_TYPE, BAD_INPUT).put(MESSAGE, "Locks must be string values"));
-            return;
-        }
-
-        redisAPI.hmset(buildLocksItems(locksKey, locks, lockInfo), new PutLockHandler(event));
-    }
-
-    private List<String> buildLocksItems(String locksKey, JsonArray lockNames, JsonObject lockInfo) {
-        List<String> list = new ArrayList<>();
-        list.add(locksKey);
-        String lockInfoStr = lockInfo.encode();
-        for (int i = 0; i < lockNames.size(); i++) {
-            String lock = lockNames.getString(i);
-            list.add(lock);
-            list.add(lockInfoStr);
-        }
-        return list;
-    }
-
-    private void deleteLock(Message<JsonObject> event) {
-        String queueName = event.body().getJsonObject(PAYLOAD).getString(QUEUENAME);
-        redisAPI.exists(Collections.singletonList(queuesPrefix + queueName), event1 -> {
-            if (event1.succeeded() && event1.result() != null && event1.result().toInteger() == 1) {
-                notifyConsumer(queueName);
-            }
-            redisAPI.hdel(Arrays.asList(locksKey, queueName), new DeleteLockHandler(event));
-        });
-    }
-
-    private void bulkDeleteLocks(Message<JsonObject> event) {
-        JsonArray jsonArray = event.body().getJsonObject(PAYLOAD).getJsonArray(LOCKS);
-        if (jsonArray != null) {
-            MultiType locks = MultiType.create(jsonArray.size(), false);
-            for (int j = 0; j < jsonArray.size(); j++) {
-                Response response = SimpleStringType.create(jsonArray.getString(j));
-                locks.add(response);
-            }
-            deleteLocks(event, locks);
-        } else {
-            event.reply(createErrorReply().put(MESSAGE, "No locks to delete provided"));
-        }
-    }
-
-    private void deleteAllLocks(Message<JsonObject> event) {
-        redisAPI.hkeys(locksKey, locksResult -> {
-            if (locksResult.succeeded()) {
-                Response locks = locksResult.result();
-                deleteLocks(event, locks);
-            } else {
-                log.warn("failed to delete all locks. Message: {}", locksResult.cause().getMessage());
-                event.reply(createErrorReply().put(MESSAGE, locksResult.cause().getMessage()));
-            }
-        });
-    }
-
-    private void deleteLocks(Message<JsonObject> event, Response locks) {
-        if (locks == null || locks.size() == 0) {
-            event.reply(createOkReply().put(VALUE, 0));
-            return;
-        }
-
-        List<String> args = new ArrayList<>();
-        args.add(locksKey);
-        for (Response response : locks) {
-            args.add(response.toString());
-        }
-
-        redisAPI.hdel(args, delManyResult -> {
-            if (delManyResult.succeeded()) {
-                log.info("Successfully deleted {} locks", delManyResult.result());
-                event.reply(createOkReply().put(VALUE, delManyResult.result().toLong()));
-            } else {
-                log.warn("failed to delete locks. Message: {}", delManyResult.cause().getMessage());
-                event.reply(createErrorReply().put(MESSAGE, delManyResult.cause().getMessage()));
-            }
-        });
-    }
-
-    private boolean jsonArrayContainsStringsOnly(JsonArray array) {
-        for (Object obj : array) {
-            if (!(obj instanceof String)) {
-                return false;
-            }
-        }
-        return true;
     }
 
     private void getConfiguration(Message<JsonObject> event) {
@@ -904,10 +495,6 @@ public class RedisQues extends AbstractVerticle {
                 }));
     }
 
-    private long getMaxAgeTimestamp() {
-        return System.currentTimeMillis() - MAX_AGE_MILLISECONDS;
-    }
-
     private void unsupportedOperation(String operation, Message<JsonObject> event) {
         JsonObject reply = new JsonObject();
         String message = "QUEUE_ERROR: Unsupported operation received: " + operation;
@@ -915,16 +502,6 @@ public class RedisQues extends AbstractVerticle {
         reply.put(STATUS, ERROR);
         reply.put(MESSAGE, message);
         event.reply(reply);
-    }
-
-    private JsonObject extractLockInfo(String requestedBy) {
-        if (requestedBy == null) {
-            return null;
-        }
-        JsonObject lockInfo = new JsonObject();
-        lockInfo.put(REQUESTED_BY, requestedBy);
-        lockInfo.put(TIMESTAMP, System.currentTimeMillis());
-        return lockInfo;
     }
 
     @Override
@@ -1069,13 +646,6 @@ public class RedisQues extends AbstractVerticle {
         });
     }
 
-    private boolean isMemoryUsageLimitReached() {
-        if(memoryUsageProvider.currentMemoryUsagePercentage().isEmpty()) {
-            return false;
-        }
-        return memoryUsageProvider.currentMemoryUsagePercentage().get() > memoryUsageLimitPercent;
-    }
-
     private Future<Boolean> isQueueLocked(final String queue) {
         Promise<Boolean> promise = Promise.promise();
         redisAPI.hexists(locksKey, queue, event -> {
@@ -1184,7 +754,7 @@ public class RedisQues extends AbstractVerticle {
             log.trace("RedsQues reschedule after failure for queue: {}", queueName);
         }
 
-        vertx.setTimer(retryInSeconds * 1000, timerId -> {
+        vertx.setTimer(retryInSeconds * 1000L, timerId -> {
             if (log.isDebugEnabled()) {
                 log.debug("RedisQues re-notify the consumer of queue '{}' at {}",queueName, new Date(System.currentTimeMillis()));
             }
@@ -1299,7 +869,7 @@ public class RedisQues extends AbstractVerticle {
     private void checkQueues() {
         log.debug("Checking queues timestamps");
         // List all queues that look inactive (i.e. that have not been updated since 3 periods).
-        final long limit = System.currentTimeMillis() - 3 * refreshPeriod * 1000;
+        final long limit = System.currentTimeMillis() - 3L * refreshPeriod * 1000;
         redisAPI.zrangebyscore(Arrays.asList(queuesKey, "-inf", String.valueOf(limit)), answer -> {
             Response queues = answer.result();
             if (answer.failed() || queues == null) {
@@ -1373,22 +943,6 @@ public class RedisQues extends AbstractVerticle {
         });
     }
 
-    private int getMaxQueueItemCountIndex(String limit) {
-        int defaultMaxIndex = DEFAULT_MAX_QUEUEITEM_COUNT;
-        if (limit != null) {
-            try {
-                int maxIndex = Integer.parseInt(limit) - 1;
-                if (maxIndex >= 0) {
-                    defaultMaxIndex = maxIndex;
-                }
-                log.info("use limit parameter " + maxIndex);
-            } catch (NumberFormatException ex) {
-                log.warn("Invalid limit parameter '{}' configured for max queue item count. Using default {}", limit, DEFAULT_MAX_QUEUEITEM_COUNT);
-            }
-        }
-        return defaultMaxIndex;
-    }
-
     /**
      * find first matching Queue-Configuration
      *
@@ -1403,89 +957,4 @@ public class RedisQues extends AbstractVerticle {
         }
         return null;
     }
-
-    /**
-     * Retrieve the number of items of the requested queue
-     */
-    private void getQueueItemsCount(Message<JsonObject> event) {
-        String queue = event.body().getJsonObject(PAYLOAD).getString(QUEUENAME);
-        redisAPI.llen(queuesPrefix + queue, new GetQueueItemsCountHandler(event));
-    }
-
-    /**
-     * Retrieve the number of items of many queues
-     */
-    private void getQueuesItemsCount(Message<JsonObject> event) {
-        Result<Optional<Pattern>, String> filterPattern = MessageUtil.extractFilterPattern(event);
-        getQueuesItemsCount(event, filterPattern);
-    }
-
-    /**
-     * Retrieve the size of the queues matching the given filter pattern
-     */
-    private void getQueuesItemsCount(Message<JsonObject> event, Result<Optional<Pattern>, String> filterPatternResult) {
-        if (filterPatternResult.isErr()) {
-            event.reply(createErrorReply().put(ERROR_TYPE, BAD_INPUT)
-                    .put(MESSAGE, filterPatternResult.getErr()));
-        } else {
-            redisAPI.zrangebyscore(List.of(queuesKey, String.valueOf(getMaxAgeTimestamp()), "+inf"),
-                    new GetQueuesItemsCountHandler(event, filterPatternResult.getOk(), luaScriptManager,
-                            queuesPrefix));
-        }
-    }
-
-    /**
-     * Retrieve the queue statistics info of the requested queues
-     *
-     * @param event
-     */
-    private void getQueuesStatistics(Message<JsonObject> event) {
-        Result<Optional<Pattern>, String> filterPattern = MessageUtil.extractFilterPattern(event);
-        getQueuesStatistics(event, filterPattern);
-    }
-
-    /**
-     * Retrieve the queue statistics info of the requested queues filtered by the
-     * given filter pattern.
-     */
-    private void getQueuesStatistics(Message<JsonObject> event,
-                                     Result<Optional<Pattern>, String> filterPattern) {
-        if (filterPattern.isErr()) {
-            event.reply(createErrorReply().put(ERROR_TYPE, BAD_INPUT)
-                    .put(MESSAGE, filterPattern.getErr()));
-        } else {
-            // retrieve all currently known queues from storage and pass this to the handler
-            redisAPI.zrangebyscore(List.of(queuesKey, String.valueOf(getMaxAgeTimestamp()), "+inf"),
-                    new GetQueuesStatisticsHandler(event, filterPattern.getOk(),
-                            queueStatisticsCollector));
-        }
-    }
-
-    /**
-     * Retrieve the summarized queue speed of the requested queues
-     *
-     * @param event
-     */
-    private void getQueuesSpeed(Message<JsonObject> event) {
-        Result<Optional<Pattern>, String> filterPattern = MessageUtil.extractFilterPattern(event);
-        getQueuesSpeed(event, filterPattern);
-    }
-
-    /**
-     * Retrieve the summarized queue speed of the requested queues filtered by the
-     * given filter pattern.
-     */
-    private void getQueuesSpeed(Message<JsonObject> event,
-                                Result<Optional<Pattern>, String> filterPattern) {
-        if (filterPattern.isErr()) {
-            event.reply(createErrorReply().put(ERROR_TYPE, BAD_INPUT)
-                    .put(MESSAGE, filterPattern.getErr()));
-        } else {
-            // retrieve all currently known queues from storage and pass this to the handler
-            redisAPI.zrangebyscore(List.of(queuesKey, String.valueOf(getMaxAgeTimestamp()), "+inf"),
-                    new GetQueuesSpeedHandler(event, filterPattern.getOk(),
-                            queueStatisticsCollector));
-        }
-    }
-
 }
