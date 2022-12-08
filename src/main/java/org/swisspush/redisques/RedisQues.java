@@ -10,15 +10,13 @@ import io.vertx.core.json.JsonObject;
 import io.vertx.redis.client.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.swisspush.redisques.action.*;
+import org.swisspush.redisques.action.QueueAction;
 import org.swisspush.redisques.handler.RedisquesHttpRequestHandler;
 import org.swisspush.redisques.lua.LuaScriptManager;
 import org.swisspush.redisques.util.*;
 
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 import static org.swisspush.redisques.util.RedisquesAPI.*;
 import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.*;
@@ -48,16 +46,7 @@ public class RedisQues extends AbstractVerticle {
 
     // Configuration
 
-    // Address of this redisques. Also used as prefix for consumer broadcast
-    // address.
-    private String address = "redisques";
-
-    private String configurationUpdatedAddress = "redisques-configuration-updated";
-
     private RedisAPI redisAPI;
-
-    // Prefix for redis keys holding queues and consumers.
-    private String redisPrefix;
 
     // varia more specific prefixes
     private String queuesKey;
@@ -66,41 +55,12 @@ public class RedisQues extends AbstractVerticle {
     private String locksKey;
     private String queueCheckLastexecKey;
 
-    // Address of message processors
-    private String processorAddress = "redisques-processor";
-
-    // Consumers periodically refresh their subscription while they are consuming
-    private int refreshPeriod;
     private int consumerLockTime;
 
-    private int checkInterval;
-
-    // the time we wait for the processor to answer, before we cancel processing
-    private int processorTimeout = 240000;
-
-    private long processorDelayMax;
     private RedisQuesTimer timer;
-
-    private String redisHost;
-    private int redisPort;
-    private String redisAuth;
-    private int redisMaxPoolSize;
-    private int redisMaxPoolWaitingSize;
-    private int redisMaxPipelineWaitingSize;
-    private int queueSpeedIntervalSec;
-    private boolean enableQueueNameDecoding;
-    private boolean httpRequestHandlerEnabled;
-    private String httpRequestHandlerPrefix;
-    private int httpRequestHandlerPort;
-    private String httpRequestHandlerUserHeader;
-    private List<QueueConfiguration> queueConfigurations;
-    private int memoryUsageCheckIntervalSec;
-    private int memoryUsageLimitPercent;
     private MemoryUsageProvider memoryUsageProvider;
     private QueueActionFactory queueActionFactory;
-
-    private static final Set<String> ALLOWED_CONFIGURATION_VALUES = Stream.of("processorDelayMax")
-            .collect(Collectors.toSet());
+    private RedisquesConfigurationProvider configurationProvider;
 
     private LuaScriptManager luaScriptManager;
 
@@ -108,8 +68,9 @@ public class RedisQues extends AbstractVerticle {
 
     public RedisQues() {}
 
-    public RedisQues(MemoryUsageProvider memoryUsageProvider) {
+    public RedisQues(MemoryUsageProvider memoryUsageProvider, RedisquesConfigurationProvider configurationProvider) {
         this.memoryUsageProvider = memoryUsageProvider;
+        this.configurationProvider = configurationProvider;
     }
 
     private void redisSetWithOptions(String key, String value, boolean nx, int ex,
@@ -166,46 +127,24 @@ public class RedisQues extends AbstractVerticle {
     public void start(Promise<Void> promise) {
         log.info("Started with UID {}", uid);
 
-        RedisquesConfiguration modConfig = RedisquesConfiguration.fromJsonObject(config());
-        log.info("Starting Redisques module with configuration: {}", modConfig);
+        if(this.configurationProvider == null) {
+            this.configurationProvider = new DefaultRedisquesConfigurationProvider(vertx, config());
+        }
+        RedisquesConfiguration modConfig = configurationProvider.configuration();
+        log.info("Starting Redisques module with configuration: {}", configurationProvider.configuration());
 
-        address = modConfig.getAddress();
-        configurationUpdatedAddress = modConfig.getConfigurationUpdatedAddress();
-        redisPrefix = modConfig.getRedisPrefix(); // default: "redisques:"
-        queuesKey = redisPrefix + "queues";
-        queuesPrefix = redisPrefix + "queues:";
-        consumersPrefix = redisPrefix + "consumers:";
-        locksKey = redisPrefix + "locks";
-        queueCheckLastexecKey = redisPrefix + "check:lastexec";
-        processorAddress = modConfig.getProcessorAddress();
-        refreshPeriod = modConfig.getRefreshPeriod();
-        consumerLockTime = 2 * refreshPeriod; // lock is kept twice as long as its refresh interval -> never expires as long as the consumer ('we') are alive
-        checkInterval = modConfig.getCheckInterval();
-        processorTimeout = modConfig.getProcessorTimeout();
-        processorDelayMax = modConfig.getProcessorDelayMax();
-        memoryUsageCheckIntervalSec = modConfig.getMemoryUsageCheckIntervalSec();
-        memoryUsageLimitPercent = modConfig.getMemoryUsageLimitPercent();
-        queueSpeedIntervalSec = modConfig.getQueueSpeedIntervalSec();
-        enableQueueNameDecoding = modConfig.getEnableQueueNameDecoding();
+        queuesKey = modConfig.getRedisPrefix() + "queues";
+        queuesPrefix = modConfig.getRedisPrefix() + "queues:";
+        consumersPrefix = modConfig.getRedisPrefix() + "consumers:";
+        locksKey = modConfig.getRedisPrefix() + "locks";
+        queueCheckLastexecKey = modConfig.getRedisPrefix() + "check:lastexec";
+        consumerLockTime = 2 * modConfig.getRefreshPeriod(); // lock is kept twice as long as its refresh interval -> never expires as long as the consumer ('we') are alive
         timer = new RedisQuesTimer(vertx);
 
-        redisHost = modConfig.getRedisHost();
-        redisPort = modConfig.getRedisPort();
-        redisAuth = modConfig.getRedisAuth();
-        redisMaxPoolSize = modConfig.getMaxPoolSize();
-        redisMaxPoolWaitingSize = modConfig.getMaxPoolWaitSize();
-        redisMaxPipelineWaitingSize = modConfig.getMaxPipelineWaitSize();
-
-        httpRequestHandlerEnabled = modConfig.getHttpRequestHandlerEnabled();
-        httpRequestHandlerPrefix = modConfig.getHttpRequestHandlerPrefix();
-        httpRequestHandlerPort = modConfig.getHttpRequestHandlerPort();
-        httpRequestHandlerUserHeader = modConfig.getHttpRequestHandlerUserHeader();
-        queueConfigurations = modConfig.getQueueConfigurations();
-
-        setupRedisAPI(redisHost, redisPort, redisAuth, redisMaxPoolSize, redisMaxPoolWaitingSize, redisMaxPipelineWaitingSize).onComplete(event -> {
+        setupRedisAPI().onComplete(event -> {
             if(event.succeeded()){
                 redisAPI = event.result();
-                initialize(modConfig);
+                initialize();
                 promise.complete();
             } else {
                 promise.fail(event.cause());
@@ -213,26 +152,23 @@ public class RedisQues extends AbstractVerticle {
         });
     }
 
-    private void initialize(RedisquesConfiguration modConfig) {
+    private void initialize() {
+        RedisquesConfiguration configuration = configurationProvider.configuration();
         this.luaScriptManager = new LuaScriptManager(redisAPI);
         this.queueStatisticsCollector = new QueueStatisticsCollector(redisAPI, luaScriptManager,
-                queuesPrefix, vertx, modConfig.getQueueSpeedIntervalSec());
+                queuesPrefix, vertx, configuration.getQueueSpeedIntervalSec());
 
-        RedisquesHttpRequestHandler.init(vertx, modConfig);
-
-        vertx.eventBus().consumer(configurationUpdatedAddress, (Handler<Message<JsonObject>>) event -> {
-            log.info("Received configurations update");
-            setConfigurationValues(event.body(), false);
-        });
+        RedisquesHttpRequestHandler.init(vertx, configuration);
 
         // only initialize memoryUsageProvider when not provided in the constructor
         if(memoryUsageProvider == null) {
-            memoryUsageProvider = new DefaultMemoryUsageProvider(redisAPI, vertx, memoryUsageCheckIntervalSec);
+            memoryUsageProvider = new DefaultMemoryUsageProvider(redisAPI, vertx,
+                    configurationProvider.configuration().getMemoryUsageCheckIntervalSec());
         }
 
         queueActionFactory = new QueueActionFactory(luaScriptManager, redisAPI, vertx, log,
-                address, queuesKey, queuesPrefix, consumersPrefix,
-                locksKey, queueConfigurations, queueStatisticsCollector, memoryUsageLimitPercent, memoryUsageProvider);
+                queuesKey, queuesPrefix, consumersPrefix, locksKey, queueStatisticsCollector, memoryUsageProvider,
+                configurationProvider);
 
         queueActions.put(addQueueItem, queueActionFactory.buildQueueAction(addQueueItem));
         queueActions.put(deleteQueueItem, queueActionFactory.buildQueueAction(deleteQueueItem));
@@ -256,6 +192,10 @@ public class RedisQues extends AbstractVerticle {
         queueActions.put(deleteAllLocks, queueActionFactory.buildQueueAction(deleteAllLocks));
         queueActions.put(getQueuesSpeed, queueActionFactory.buildQueueAction(getQueuesSpeed));
         queueActions.put(getQueuesStatistics, queueActionFactory.buildQueueAction(getQueuesStatistics));
+        queueActions.put(setConfiguration, queueActionFactory.buildQueueAction(setConfiguration));
+        queueActions.put(getConfiguration, queueActionFactory.buildQueueAction(getConfiguration));
+
+        String address = configuration.getAddress();
 
         // Handles operations
         vertx.eventBus().consumer(address, operationsHandler());
@@ -275,11 +215,18 @@ public class RedisQues extends AbstractVerticle {
         });
 
         registerActiveQueueRegistrationRefresh();
-        registerQueueCheck(modConfig);
+        registerQueueCheck();
     }
 
-    private Future<RedisAPI> setupRedisAPI(String redisHost, Integer redisPort, String redisAuth,
-                                            int redisMaxPoolSize, int redisMaxPoolWaitingSize, int redisMaxPipelineWaitingSize) {
+    private Future<RedisAPI> setupRedisAPI() {
+        RedisquesConfiguration config = configurationProvider.configuration();
+        String redisHost = config.getRedisHost();
+        int redisPort = config.getRedisPort();
+        String redisAuth = config.getRedisAuth();
+        int redisMaxPoolSize = config.getMaxPoolSize();
+        int redisMaxPoolWaitingSize = config.getMaxPoolWaitSize();
+        int redisMaxPipelineWaitingSize = config.getMaxPipelineWaitSize();
+
         Promise<RedisAPI> promise = Promise.promise();
         Redis.createClient(vertx, new RedisOptions()
                 .setConnectionString("redis://" + redisHost + ":" + redisPort)
@@ -300,7 +247,7 @@ public class RedisQues extends AbstractVerticle {
 
     private void registerActiveQueueRegistrationRefresh() {
         // Periodic refresh of my registrations on active queues.
-        vertx.setPeriodic(refreshPeriod * 1000L, event -> {
+        vertx.setPeriodic(configurationProvider.configuration().getRefreshPeriod() * 1000L, event -> {
             // Check if I am still the registered consumer
             myQueues.entrySet().stream().filter(entry -> entry.getValue() == QueueState.CONSUMING).
                     forEach(entry -> {
@@ -362,12 +309,6 @@ public class RedisQues extends AbstractVerticle {
                         reply.put(STATUS, OK);
                     });
                     return;
-                case setConfiguration:
-                    setConfiguration(event);
-                    return;
-                case getConfiguration:
-                    getConfiguration(event);
-                    return;
             }
 
             // handle queue operations
@@ -396,98 +337,12 @@ public class RedisQues extends AbstractVerticle {
             }
         }
 
-        return refreshPeriod;
+        return configurationProvider.configuration().getRefreshPeriod();
     }
 
-    private void getConfiguration(Message<JsonObject> event) {
-        JsonObject result = new JsonObject();
-        result.put(RedisquesConfiguration.PROP_ADDRESS, address);
-        result.put(RedisquesConfiguration.PROP_CONFIGURATION_UPDATED_ADDRESS, configurationUpdatedAddress);
-        result.put(RedisquesConfiguration.PROP_REDIS_PREFIX, redisPrefix);
-        result.put(RedisquesConfiguration.PROP_PROCESSOR_ADDRESS, processorAddress);
-        result.put(RedisquesConfiguration.PROP_REFRESH_PERIOD, refreshPeriod);
-        result.put(RedisquesConfiguration.PROP_REDIS_HOST, redisHost);
-        result.put(RedisquesConfiguration.PROP_REDIS_PORT, redisPort);
-        result.put(RedisquesConfiguration.PROP_REDIS_AUTH, redisAuth);
-        result.put(RedisquesConfiguration.PROP_CHECK_INTERVAL, checkInterval);
-        result.put(RedisquesConfiguration.PROP_PROCESSOR_TIMEOUT, processorTimeout);
-        result.put(RedisquesConfiguration.PROP_PROCESSOR_DELAY_MAX, processorDelayMax);
-        result.put(RedisquesConfiguration.PROP_HTTP_REQUEST_HANDLER_ENABLED, httpRequestHandlerEnabled);
-        result.put(RedisquesConfiguration.PROP_HTTP_REQUEST_HANDLER_PREFIX, httpRequestHandlerPrefix);
-        result.put(RedisquesConfiguration.PROP_HTTP_REQUEST_HANDLER_PORT, httpRequestHandlerPort);
-        result.put(RedisquesConfiguration.PROP_HTTP_REQUEST_HANDLER_USER_HEADER, httpRequestHandlerUserHeader);
-
-        JsonArray queueConfigurationsArray = new JsonArray();
-        for (QueueConfiguration queueConfiguration : queueConfigurations) {
-            queueConfigurationsArray.add(queueConfiguration.asJsonObject());
-        }
-        result.put(RedisquesConfiguration.PROP_QUEUE_CONFIGURATIONS, queueConfigurationsArray);
-
-        result.put(RedisquesConfiguration.PROP_REDIS_MAX_POOL_SIZE, redisMaxPoolSize);
-        result.put(RedisquesConfiguration.PROP_REDIS_MAX_POOL_WAITING_SIZE, redisMaxPoolWaitingSize);
-        result.put(RedisquesConfiguration.PROP_REDIS_MAX_PIPELINE_WAITING_SIZE, redisMaxPipelineWaitingSize);
-        result.put(RedisquesConfiguration.PROP_ENABLE_QUEUE_NAME_DECODING, enableQueueNameDecoding);
-        result.put(RedisquesConfiguration.PROP_QUEUE_SPEED_INTERVAL_SEC, queueSpeedIntervalSec);
-        result.put(RedisquesConfiguration.PROP_MEMORY_USAGE_CHECK_INTERVAL_SEC, memoryUsageCheckIntervalSec);
-        result.put(RedisquesConfiguration.PROP_MEMORY_USAGE_LIMIT_PCT, memoryUsageLimitPercent);
-
-        event.reply(createOkReply().put(VALUE, result));
-    }
-
-    private void setConfiguration(Message<JsonObject> event) {
-        JsonObject configurationValues = event.body().getJsonObject(PAYLOAD);
-        setConfigurationValues(configurationValues, true).onComplete(setConfigurationValuesEvent -> {
-            if (setConfigurationValuesEvent.succeeded()) {
-                log.debug("About to publish the configuration updates to event bus address '{}'", configurationUpdatedAddress);
-                vertx.eventBus().publish(configurationUpdatedAddress, configurationValues);
-                event.reply(setConfigurationValuesEvent.result());
-            } else {
-                event.reply(createErrorReply().put(MESSAGE, setConfigurationValuesEvent.cause().getMessage()));
-            }
-        });
-    }
-
-    private Future<JsonObject> setConfigurationValues(JsonObject configurationValues, boolean validateOnly) {
-        Promise<JsonObject> promise = Promise.promise();
-
-        if (configurationValues != null) {
-            List<String> notAllowedConfigurationValues = findNotAllowedConfigurationValues(configurationValues.fieldNames());
-            if (notAllowedConfigurationValues.isEmpty()) {
-                try {
-                    Long processorDelayMaxValue = configurationValues.getLong(PROCESSOR_DELAY_MAX);
-                    if (processorDelayMaxValue == null) {
-                        promise.fail("Value for configuration property '" + PROCESSOR_DELAY_MAX + "' is missing");
-                        return promise.future();
-                    }
-                    if (!validateOnly) {
-                        this.processorDelayMax = processorDelayMaxValue;
-                        log.info("Updated configuration value of property '{}' to {}", PROCESSOR_DELAY_MAX, processorDelayMaxValue);
-                    }
-                    promise.complete(createOkReply());
-                } catch (ClassCastException ex) {
-                    promise.fail("Value for configuration property '" + PROCESSOR_DELAY_MAX + "' is not a number");
-                }
-            } else {
-                String notAllowedConfigurationValuesString = notAllowedConfigurationValues.toString();
-                promise.fail("Not supported configuration values received: " + notAllowedConfigurationValuesString);
-            }
-        } else {
-            promise.fail("Configuration values missing");
-        }
-
-        return promise.future();
-    }
-
-    private List<String> findNotAllowedConfigurationValues(Set<String> configurationValues) {
-        if (configurationValues == null) {
-            return Collections.emptyList();
-        }
-        return configurationValues.stream().filter(p -> !ALLOWED_CONFIGURATION_VALUES.contains(p)).collect(Collectors.toList());
-    }
-
-    private void registerQueueCheck(RedisquesConfiguration modConfig) {
-        vertx.setPeriodic(modConfig.getCheckIntervalTimerMs(), periodicEvent -> luaScriptManager.handleQueueCheck(queueCheckLastexecKey,
-                checkInterval, shouldCheck -> {
+    private void registerQueueCheck() {
+        vertx.setPeriodic(configurationProvider.configuration().getCheckIntervalTimerMs(), periodicEvent -> luaScriptManager.handleQueueCheck(queueCheckLastexecKey,
+                configurationProvider.configuration().getCheckInterval(), shouldCheck -> {
                     if (shouldCheck) {
                         log.info("periodic queue check is triggered now");
                         checkQueues();
@@ -766,6 +621,7 @@ public class RedisQues extends AbstractVerticle {
     }
 
     private void processMessageWithTimeout(final String queue, final String payload, final Handler<Boolean> handler) {
+        long processorDelayMax = configurationProvider.configuration().getProcessorDelayMax();
         if (processorDelayMax > 0) {
             log.info("About to process message for queue {} with a maximum delay of {}ms", queue, processorDelayMax);
         }
@@ -775,6 +631,7 @@ public class RedisQues extends AbstractVerticle {
                 // TODO: May we should call handler with failed state now.
                 return;
             }
+            String processorAddress = configurationProvider.configuration().getProcessorAddress();
             final EventBus eb = vertx.eventBus();
             JsonObject message = new JsonObject();
             message.put("queue", queue);
@@ -784,7 +641,7 @@ public class RedisQues extends AbstractVerticle {
             }
 
             // send the message to the consumer
-            DeliveryOptions options = new DeliveryOptions().setSendTimeout(processorTimeout);
+            DeliveryOptions options = new DeliveryOptions().setSendTimeout(configurationProvider.configuration().getProcessorTimeout());
             eb.request(processorAddress, message, options, (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
                 boolean success;
                 if (reply.succeeded()) {
@@ -822,7 +679,7 @@ public class RedisQues extends AbstractVerticle {
                 if (log.isDebugEnabled()) {
                     log.debug("RedisQues Sending registration request for queue {}", queueName);
                 }
-                eb.send(address + "-consumers", queueName);
+                eb.send(configurationProvider.configuration().getAddress() + "-consumers", queueName);
             } else {
                 // Notify the registered consumer
                 log.debug("RedisQues Notifying consumer {} to consume queue {}", consumer, queueName);
@@ -869,7 +726,7 @@ public class RedisQues extends AbstractVerticle {
     private void checkQueues() {
         log.debug("Checking queues timestamps");
         // List all queues that look inactive (i.e. that have not been updated since 3 periods).
-        final long limit = System.currentTimeMillis() - 3L * refreshPeriod * 1000;
+        final long limit = System.currentTimeMillis() - 3L * configurationProvider.configuration().getRefreshPeriod() * 1000;
         redisAPI.zrangebyscore(Arrays.asList(queuesKey, "-inf", String.valueOf(limit)), answer -> {
             Response queues = answer.result();
             if (answer.failed() || queues == null) {
@@ -924,14 +781,6 @@ public class RedisQues extends AbstractVerticle {
         });
     }
 
-    private static JsonObject createOkReply() {
-        return new JsonObject().put(STATUS, OK);
-    }
-
-    private static JsonObject createErrorReply() {
-        return new JsonObject().put(STATUS, ERROR);
-    }
-
     /**
      * Remove queues from the sorted set that are timestamped before a limit time.
      *
@@ -950,7 +799,7 @@ public class RedisQues extends AbstractVerticle {
      * @return null when no queueConfiguration's RegEx matches given queueName - else the QueueConfiguration
      */
     private QueueConfiguration findQueueConfiguration(String queueName) {
-        for (QueueConfiguration queueConfiguration : queueConfigurations) {
+        for (QueueConfiguration queueConfiguration : configurationProvider.configuration().getQueueConfigurations()) {
             if (queueConfiguration.compiledPattern().matcher(queueName).matches()) {
                 return queueConfiguration;
             }

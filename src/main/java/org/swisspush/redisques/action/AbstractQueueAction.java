@@ -53,11 +53,11 @@ public abstract class AbstractQueueAction implements QueueAction {
         this.log = log;
     }
 
-    static JsonObject createOkReply() {
+    public JsonObject createOkReply() {
         return new JsonObject().put(STATUS, OK);
     }
 
-    static JsonObject createErrorReply() {
+    public JsonObject createErrorReply() {
         return new JsonObject().put(STATUS, ERROR);
     }
 
