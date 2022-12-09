@@ -24,24 +24,27 @@ public class QueueActionFactory {
     private int memoryUsageLimitPercent;
     private MemoryUsageProvider memoryUsageProvider;
 
+    private RedisquesConfigurationProvider configurationProvider;
+
     public QueueActionFactory(LuaScriptManager luaScriptManager, RedisAPI redisAPI, Vertx vertx, Logger log,
-                              String address, String queuesKey, String queuesPrefix, String consumersPrefix,
-                              String locksKey, List<QueueConfiguration> queueConfigurations,
-                              QueueStatisticsCollector queueStatisticsCollector, int memoryUsageLimitPercent,
-                              MemoryUsageProvider memoryUsageProvider) {
+                              String queuesKey, String queuesPrefix, String consumersPrefix,
+                              String locksKey, QueueStatisticsCollector queueStatisticsCollector, MemoryUsageProvider memoryUsageProvider,
+                              RedisquesConfigurationProvider configurationProvider) {
         this.luaScriptManager = luaScriptManager;
         this.redisAPI = redisAPI;
         this.vertx = vertx;
         this.log = log;
-        this.address = address;
         this.queuesKey = queuesKey;
         this.queuesPrefix = queuesPrefix;
         this.consumersPrefix = consumersPrefix;
         this.locksKey = locksKey;
-        this.queueConfigurations = queueConfigurations;
         this.queueStatisticsCollector = queueStatisticsCollector;
-        this.memoryUsageLimitPercent = memoryUsageLimitPercent;
         this.memoryUsageProvider = memoryUsageProvider;
+        this.configurationProvider = configurationProvider;
+
+        this.address = configurationProvider.configuration().getAddress();
+        this.queueConfigurations = configurationProvider.configuration().getQueueConfigurations();
+        this.memoryUsageLimitPercent = configurationProvider.configuration().getMemoryUsageLimitPercent();
     }
 
     public QueueAction buildQueueAction(RedisquesAPI.QueueOperation queueOperation){
@@ -81,10 +84,12 @@ public class QueueActionFactory {
                         consumersPrefix, locksKey, queueConfigurations, queueStatisticsCollector, log);
             case enqueue:
                 return new EnqueueAction(vertx, luaScriptManager, redisAPI, address, queuesKey, queuesPrefix,
-                        consumersPrefix, locksKey, queueConfigurations, queueStatisticsCollector, log, memoryUsageProvider, memoryUsageLimitPercent);
+                        consumersPrefix, locksKey, queueConfigurations, queueStatisticsCollector, log, memoryUsageProvider,
+                        memoryUsageLimitPercent);
             case lockedEnqueue:
                 return new LockedEnqueueAction(vertx, luaScriptManager, redisAPI, address, queuesKey, queuesPrefix,
-                        consumersPrefix, locksKey, queueConfigurations, queueStatisticsCollector, log, memoryUsageProvider, memoryUsageLimitPercent);
+                        consumersPrefix, locksKey, queueConfigurations, queueStatisticsCollector, log, memoryUsageProvider,
+                        memoryUsageLimitPercent);
             case getLock:
                 return new GetLockAction(vertx, luaScriptManager, redisAPI, address, queuesKey, queuesPrefix,
                         consumersPrefix, locksKey, queueConfigurations, queueStatisticsCollector, log);
@@ -112,6 +117,10 @@ public class QueueActionFactory {
             case getQueuesStatistics:
                 return new GetQueuesStatisticsAction(vertx, luaScriptManager, redisAPI, address, queuesKey, queuesPrefix,
                         consumersPrefix, locksKey, queueConfigurations, queueStatisticsCollector, log);
+            case setConfiguration:
+                return new SetConfigurationAction(configurationProvider, log);
+            case getConfiguration:
+                return new GetConfigurationAction(configurationProvider);
             default:
                 return new UnsupportedAction(log);
         }
