@@ -107,7 +107,6 @@ public class DefaultMemoryUsageProvider implements MemoryUsageProvider {
     }
 
     private void logPropertyWarning(String property, Exception ex) {
-        log.warn("No or invalid '{}' value received from redis. Unable to calculate the current memory usage. " +
-                "Exception: {}", property, ex.toString());
+        log.warn("No or invalid '{}' value received from redis. Unable to calculate the current memory usage.", property, ex);
     }
 }

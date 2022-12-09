@@ -171,7 +171,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
                 .asJsonObject();
 
         memoryUsageProvider = new TestMemoryUsageProvider(Optional.of(50));
-        RedisQues redisQues = new RedisQues(memoryUsageProvider);
+        RedisQues redisQues = new RedisQues(memoryUsageProvider, new DefaultRedisquesConfigurationProvider(testVertx, config));
 
         testVertx.deployVerticle(redisQues, new DeploymentOptions().setConfig(config), context.asyncAssertSuccess(event -> {
             deploymentId = event;

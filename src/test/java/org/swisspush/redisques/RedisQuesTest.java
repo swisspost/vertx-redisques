@@ -10,6 +10,7 @@ import io.vertx.ext.unit.junit.Timeout;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
+import org.swisspush.redisques.util.DefaultRedisquesConfigurationProvider;
 import org.swisspush.redisques.util.QueueConfiguration;
 import org.swisspush.redisques.util.RedisquesConfiguration;
 import org.swisspush.redisques.util.TestMemoryUsageProvider;
@@ -50,7 +51,7 @@ public class RedisQuesTest extends AbstractTestCase {
                 .asJsonObject();
 
         memoryUsageProvider = new TestMemoryUsageProvider(Optional.of(50));
-        redisQues = new RedisQues(memoryUsageProvider);
+        redisQues = new RedisQues(memoryUsageProvider, new DefaultRedisquesConfigurationProvider(vertx, config));
         vertx.deployVerticle(redisQues, new DeploymentOptions().setConfig(config), context.asyncAssertSuccess(event -> {
             deploymentId = event;
             log.info("vert.x Deploy - " + redisQues.getClass().getSimpleName() + " was successful.");
