@@ -1023,6 +1023,3 @@ is returned (eg. 60 seconds by default)
 - Starting from version 2.6.x redisques requires **Java 11**.
 
 - Redisques versions greater than 01.00.17 depend on Vert.x v3.2.0 and therefore require Java 8.
-
-
-[![Bitdeli Badge](https://d2weczhvl823v0.cloudfront.net/lbovet/vertx-redisques/trend.png)](https://bitdeli.com/free "Bitdeli Badge")
