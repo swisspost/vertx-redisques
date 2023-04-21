@@ -1,7 +1,7 @@
 # vertx-redisques
  
 ![Build Status](https://github.com/swisspost/vertx-redisques/actions/workflows/maven.yml/badge.svg)
-[![codecov](https://codecov.io/gh/swisspush/vertx-redisques/branch/master/graph/badge.svg)](https://codecov.io/gh/swisspush/vertx-redisques)
+[![codecov](https://codecov.io/gh/swisspost/vertx-redisques/branch/master/graph/badge.svg?token=z0zQXWoqzB)](https://codecov.io/gh/swisspost/vertx-redisques)
 [![Maven Central](https://img.shields.io/maven-central/v/org.swisspush/redisques.svg)](http://search.maven.org/#artifactdetails|org.swisspush|redisques|2.2.0|)
 
 A highly scalable redis-persistent queuing system for vert.x.
@@ -1023,6 +1023,3 @@ is returned (eg. 60 seconds by default)
 - Starting from version 2.6.x redisques requires **Java 11**.
 
 - Redisques versions greater than 01.00.17 depend on Vert.x v3.2.0 and therefore require Java 8.
-
-
-[![Bitdeli Badge](https://d2weczhvl823v0.cloudfront.net/lbovet/vertx-redisques/trend.png)](https://bitdeli.com/free "Bitdeli Badge")
