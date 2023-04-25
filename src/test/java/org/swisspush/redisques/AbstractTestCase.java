@@ -69,13 +69,13 @@ public abstract class AbstractTestCase {
         }
     }
 
-    protected boolean delay(long ms) {
+    protected void delay(long ms) {
         try {
             Thread.sleep(ms);
         } catch (InterruptedException iex) {
-            return false;
+            Thread.currentThread().interrupt();
+            throw new RuntimeException(iex);
         }
-        return true;
     }
 
     @AfterClass
