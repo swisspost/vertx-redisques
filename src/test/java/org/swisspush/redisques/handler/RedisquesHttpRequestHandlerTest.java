@@ -160,7 +160,6 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
             deploymentId = event;
             log.info("vert.x Deploy - " + redisQues.getClass().getSimpleName() + " was successful.");
             jedis = new Jedis("localhost", 6379, 5000);
-            delay(1000);
             async.complete();
         }));
         async.awaitSuccess();

@@ -63,7 +63,6 @@ public class RedisquesAuthenticationHttpRequestHandlerTest extends AbstractTestC
             deploymentId = event;
             log.info("vert.x Deploy - " + redisQues.getClass().getSimpleName() + " was successful.");
             jedis = new Jedis("localhost", 6379, 5000);
-            delay(1000);
 
             // Access API
             when().get("/queuing/")
@@ -93,7 +92,6 @@ public class RedisquesAuthenticationHttpRequestHandlerTest extends AbstractTestC
             deploymentId = event;
             log.info("vert.x Deploy - " + redisQues.getClass().getSimpleName() + " was successful.");
             jedis = new Jedis("localhost", 6379, 5000);
-            delay(1000);
 
             // Access API
             when().get("/queuing/")
@@ -123,7 +121,6 @@ public class RedisquesAuthenticationHttpRequestHandlerTest extends AbstractTestC
             deploymentId = event;
             log.info("vert.x Deploy - " + redisQues.getClass().getSimpleName() + " was successful.");
             jedis = new Jedis("localhost", 6379, 5000);
-            delay(1000);
 
             // Access API
             when().get("/queuing/")
@@ -153,7 +150,6 @@ public class RedisquesAuthenticationHttpRequestHandlerTest extends AbstractTestC
             deploymentId = event;
             log.info("vert.x Deploy - " + redisQues.getClass().getSimpleName() + " was successful.");
             jedis = new Jedis("localhost", 6379, 5000);
-            delay(1000);
 
             // Access API
             when().get("/queuing/")
@@ -183,7 +179,6 @@ public class RedisquesAuthenticationHttpRequestHandlerTest extends AbstractTestC
             deploymentId = event;
             log.info("vert.x Deploy - " + redisQues.getClass().getSimpleName() + " was successful.");
             jedis = new Jedis("localhost", 6379, 5000);
-            delay(1000);
 
             // Access API
             when().get("/queuing/")
@@ -213,7 +208,6 @@ public class RedisquesAuthenticationHttpRequestHandlerTest extends AbstractTestC
             deploymentId = event;
             log.info("vert.x Deploy - " + redisQues.getClass().getSimpleName() + " was successful.");
             jedis = new Jedis("localhost", 6379, 5000);
-            delay(1000);
 
             // No Authentication added
             when().get("/queuing/")
