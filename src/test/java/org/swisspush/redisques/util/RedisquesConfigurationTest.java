@@ -35,7 +35,10 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getProcessorTimeout(), 240000);
         testContext.assertEquals(config.getProcessorDelayMax(), 0L);
         testContext.assertFalse(config.getHttpRequestHandlerEnabled());
+        testContext.assertFalse(config.getHttpRequestHandlerAuthenticationEnabled());
         testContext.assertEquals(config.getHttpRequestHandlerPrefix(), "/queuing");
+        testContext.assertNull(config.getHttpRequestHandlerUsername());
+        testContext.assertNull(config.getHttpRequestHandlerPassword());
         testContext.assertEquals(config.getHttpRequestHandlerPort(), 7070);
         testContext.assertEquals(config.getHttpRequestHandlerUserHeader(), "x-rp-usr");
         testContext.assertEquals(config.getQueueConfigurations().size(), 0);
@@ -55,7 +58,10 @@ public class RedisquesConfigurationTest {
                 .processorTimeout(10)
                 .processorDelayMax(50)
                 .httpRequestHandlerEnabled(true)
+                .httpRequestHandlerAuthenticationEnabled(true)
                 .httpRequestHandlerPrefix("/queuing/test")
+                .httpRequestHandlerUsername("foo")
+                .httpRequestHandlerPassword("bar")
                 .httpRequestHandlerPort(7171)
                 .httpRequestHandlerUserHeader("x-custom-user-header")
                 .queueConfigurations(Collections.singletonList(
@@ -79,7 +85,10 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getProcessorTimeout(), 10);
         testContext.assertEquals(config.getProcessorDelayMax(), 50L);
         testContext.assertTrue(config.getHttpRequestHandlerEnabled());
+        testContext.assertTrue(config.getHttpRequestHandlerAuthenticationEnabled());
         testContext.assertEquals(config.getHttpRequestHandlerPrefix(), "/queuing/test");
+        testContext.assertEquals(config.getHttpRequestHandlerUsername(), "foo");
+        testContext.assertEquals(config.getHttpRequestHandlerPassword(), "bar");
         testContext.assertEquals(config.getHttpRequestHandlerPort(), 7171);
         testContext.assertEquals(config.getHttpRequestHandlerUserHeader(), "x-custom-user-header");
         testContext.assertEquals(config.getQueueSpeedIntervalSec(), 1);
@@ -107,7 +116,10 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(json.getInteger(PROP_PROCESSOR_TIMEOUT), 240000);
         testContext.assertEquals(json.getInteger(PROP_PROCESSOR_DELAY_MAX), 0);
         testContext.assertFalse(json.getBoolean(PROP_HTTP_REQUEST_HANDLER_ENABLED));
+        testContext.assertFalse(json.getBoolean(PROP_HTTP_REQUEST_HANDLER_AUTH_ENABLED));
         testContext.assertEquals(json.getString(PROP_HTTP_REQUEST_HANDLER_PREFIX), "/queuing");
+        testContext.assertNull(json.getString(PROP_HTTP_REQUEST_HANDLER_USERNAME));
+        testContext.assertNull(json.getString(PROP_HTTP_REQUEST_HANDLER_PASSWORD));
         testContext.assertEquals(json.getInteger(PROP_HTTP_REQUEST_HANDLER_PORT), 7070);
         testContext.assertEquals(json.getString(PROP_HTTP_REQUEST_HANDLER_USER_HEADER), "x-rp-usr");
         testContext.assertEquals(json.getJsonArray(PROP_QUEUE_CONFIGURATIONS).getList().size(), 0);
@@ -127,6 +139,9 @@ public class RedisquesConfigurationTest {
                 .processorTimeout(20)
                 .processorDelayMax(50)
                 .httpRequestHandlerPort(7171)
+                .httpRequestHandlerAuthenticationEnabled(true)
+                .httpRequestHandlerUsername("foo")
+                .httpRequestHandlerPassword("bar")
                 .httpRequestHandlerUserHeader("x-custom-user-header")
                 .queueConfigurations(Collections.singletonList(
                         new QueueConfiguration().withPattern("vehicle-.*").withRetryIntervals(10, 20, 30, 60)
@@ -153,6 +168,9 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(json.getInteger(PROP_PROCESSOR_TIMEOUT), 20);
         testContext.assertEquals(json.getInteger(PROP_PROCESSOR_DELAY_MAX), 50);
         testContext.assertEquals(json.getInteger(PROP_HTTP_REQUEST_HANDLER_PORT), 7171);
+        testContext.assertEquals(json.getString(PROP_HTTP_REQUEST_HANDLER_USERNAME), "foo");
+        testContext.assertEquals(json.getString(PROP_HTTP_REQUEST_HANDLER_PASSWORD), "bar");
+        testContext.assertTrue(json.getBoolean(PROP_HTTP_REQUEST_HANDLER_AUTH_ENABLED));
         testContext.assertEquals(json.getString(PROP_HTTP_REQUEST_HANDLER_USER_HEADER), "x-custom-user-header");
         testContext.assertEquals(json.getInteger(PROP_QUEUE_SPEED_INTERVAL_SEC), 1);
         testContext.assertEquals(json.getInteger(PROP_MEMORY_USAGE_LIMIT_PCT), 55);
@@ -182,7 +200,10 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getProcessorTimeout(), 240000);
         testContext.assertEquals(config.getProcessorDelayMax(), 0L);
         testContext.assertFalse(config.getHttpRequestHandlerEnabled());
+        testContext.assertFalse(config.getHttpRequestHandlerAuthenticationEnabled());
         testContext.assertEquals(config.getHttpRequestHandlerPrefix(), "/queuing");
+        testContext.assertNull(config.getHttpRequestHandlerUsername());
+        testContext.assertNull(config.getHttpRequestHandlerPassword());
         testContext.assertEquals(config.getHttpRequestHandlerPort(), 7070);
         testContext.assertEquals(config.getHttpRequestHandlerUserHeader(), "x-rp-usr");
         testContext.assertEquals(config.getQueueConfigurations().size(), 0);
@@ -205,7 +226,10 @@ public class RedisquesConfigurationTest {
         json.put(PROP_PROCESSOR_TIMEOUT, 30);
         json.put(PROP_PROCESSOR_DELAY_MAX, 99);
         json.put(PROP_HTTP_REQUEST_HANDLER_ENABLED, Boolean.TRUE);
+        json.put(PROP_HTTP_REQUEST_HANDLER_AUTH_ENABLED, Boolean.TRUE);
         json.put(PROP_HTTP_REQUEST_HANDLER_PREFIX, "/queuing/test123");
+        json.put(PROP_HTTP_REQUEST_HANDLER_USERNAME, "foo");
+        json.put(PROP_HTTP_REQUEST_HANDLER_PASSWORD, "bar");
         json.put(PROP_HTTP_REQUEST_HANDLER_PORT, 7171);
         json.put(PROP_HTTP_REQUEST_HANDLER_USER_HEADER, "x-custom-user-header");
         json.put(PROP_QUEUE_SPEED_INTERVAL_SEC, 1);
@@ -228,8 +252,11 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getProcessorTimeout(), 30);
         testContext.assertEquals(config.getProcessorDelayMax(), 99L);
         testContext.assertTrue(config.getHttpRequestHandlerEnabled());
+        testContext.assertTrue(config.getHttpRequestHandlerAuthenticationEnabled());
         testContext.assertEquals(config.getHttpRequestHandlerPort(), 7171);
         testContext.assertEquals(config.getHttpRequestHandlerPrefix(), "/queuing/test123");
+        testContext.assertEquals(config.getHttpRequestHandlerUsername(), "foo");
+        testContext.assertEquals(config.getHttpRequestHandlerPassword(), "bar");
         testContext.assertEquals(config.getHttpRequestHandlerUserHeader(), "x-custom-user-header");
         testContext.assertEquals(config.getQueueSpeedIntervalSec(), 1);
         testContext.assertEquals(config.getMemoryUsageLimitPercent(), 75);

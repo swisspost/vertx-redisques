@@ -63,6 +63,9 @@ The following configuration values are available:
 | memoryUsageLimitPercent       | 100                             | Percentage of the available system memory to be used by vertx-redisques. Only values between 0 and 100 are allowed. When the used memory ratio is higher than this limit, enqueues are rejected |
 | memoryUsageCheckIntervalSec   | 60                              | The interval [s] to check the current memory usage. _memoryUsageCheckIntervalSec_ value must be greater 0, otherwise the default is used.                                                       |
 | httpRequestHandlerEnabled     | false                           | Enable / disable the HTTP API                                                                                                                                                                   |
+| httpRequestHandlerAuthenticationEnabled     | false             | Enable / disable authentication for the HTTP API                                                                                                                                                |
+| httpRequestHandlerUsername    |                                 | The username for the HTTP API authentication                                                                                                                                                    |
+| httpRequestHandlerPassword    |                                 | The password for the HTTP API authentication                                                                                                                                                    |
 | enableQueueNameDecoding       | true                            | Enable / disable the encoding of queue names when using the HTTP API                                                                                                                            |
 | httpRequestHandlerPrefix      | /queuing                        | The url prefix for all HTTP API endpoints                                                                                                                                                       |
 | httpRequestHandlerPort        | 7070                            | The port of the HTTP API                                                                                                                                                                        |
@@ -645,7 +648,8 @@ Response Data
 RedisQues provides a HTTP API to modify queues, queue items and get information about queue counts and queue item counts.
 
 ### Configuration
-To enable the HTTP API, the _httpRequestHandlerEnabled_ configuration property has to be set to _TRUE_.
+To enable the HTTP API, the _httpRequestHandlerEnabled_ configuration property has to be set to _TRUE_. When authentication for the HTTP API
+is enabled, an _Authorization_ request header (basic auth) has to be provided.
 
 For additional configuration options relating the HTTP API, see the [Configuration](#configuration) section.
 
