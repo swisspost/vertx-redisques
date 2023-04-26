@@ -1,25 +1,5 @@
 package org.swisspush.redisques.handler;
 
-import static io.restassured.RestAssured.given;
-import static io.restassured.RestAssured.when;
-import static java.lang.System.currentTimeMillis;
-import static org.hamcrest.CoreMatchers.containsString;
-import static org.hamcrest.CoreMatchers.equalTo;
-import static org.hamcrest.CoreMatchers.hasItem;
-import static org.hamcrest.CoreMatchers.hasItems;
-import static org.hamcrest.CoreMatchers.is;
-import static org.hamcrest.CoreMatchers.not;
-import static org.hamcrest.collection.IsEmptyCollection.empty;
-import static org.hamcrest.collection.IsEmptyCollection.emptyCollectionOf;
-import static org.hamcrest.number.OrderingComparison.greaterThanOrEqualTo;
-import static org.swisspush.redisques.util.RedisquesAPI.BULK_DELETE;
-import static org.swisspush.redisques.util.RedisquesAPI.COUNT;
-import static org.swisspush.redisques.util.RedisquesAPI.FILTER;
-import static org.swisspush.redisques.util.RedisquesAPI.LOCKS;
-import static org.swisspush.redisques.util.RedisquesAPI.REQUESTED_BY;
-import static org.swisspush.redisques.util.RedisquesAPI.buildEnqueueOperation;
-import static org.swisspush.redisques.util.RedisquesAPI.buildPutLockOperation;
-
 import com.sun.istack.NotNull;
 import com.sun.istack.Nullable;
 import io.restassured.RestAssured;
@@ -29,26 +9,30 @@ import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.eventbus.MessageConsumer;
-import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.json.JsonObject;
 import io.vertx.ext.unit.Async;
 import io.vertx.ext.unit.TestContext;
 import io.vertx.ext.unit.junit.Timeout;
+import org.junit.*;
+import org.swisspush.redisques.AbstractTestCase;
+import org.swisspush.redisques.RedisQues;
+import org.swisspush.redisques.util.*;
+import redis.clients.jedis.Jedis;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.Ignore;
-import org.junit.Rule;
-import org.junit.Test;
-import org.swisspush.redisques.AbstractTestCase;
-import org.swisspush.redisques.RedisQues;
-import org.swisspush.redisques.util.*;
-import redis.clients.jedis.Jedis;
+
+import static io.restassured.RestAssured.given;
+import static io.restassured.RestAssured.when;
+import static java.lang.System.currentTimeMillis;
+import static org.hamcrest.CoreMatchers.*;
+import static org.hamcrest.collection.IsEmptyCollection.empty;
+import static org.hamcrest.collection.IsEmptyCollection.emptyCollectionOf;
+import static org.hamcrest.number.OrderingComparison.greaterThanOrEqualTo;
+import static org.swisspush.redisques.util.RedisquesAPI.*;
 
 /**
  * Tests for the {@link RedisquesHttpRequestHandler} class
@@ -58,7 +42,6 @@ import redis.clients.jedis.Jedis;
 public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
     private static String deploymentId = "";
     private Vertx testVertx;
-    private HttpServerRequest request;
     private TestMemoryUsageProvider memoryUsageProvider;
 
     private final String queueItemValid = "{\n" +
@@ -2418,14 +2401,4 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         async.complete();
         flushAll();
     }
-
-    private boolean delay(long ms) {
-        try {
-            Thread.sleep(ms);
-        } catch (InterruptedException iex) {
-            return false;
-        }
-        return true;
-    }
-
 }
