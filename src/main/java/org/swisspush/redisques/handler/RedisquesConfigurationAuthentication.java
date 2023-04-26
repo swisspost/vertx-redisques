@@ -22,7 +22,7 @@ public class RedisquesConfigurationAuthentication implements AuthenticationProvi
 
     private final static Logger logger = Logger.getLogger(RedisquesConfigurationAuthentication.class.getName());
 
-    private static final String INVALID_USER = "invalid username/password";
+    private static final String INVALID_CREDENTIALS = "invalid username/password";
 
     private static class User {
         final String name;
@@ -62,13 +62,13 @@ public class RedisquesConfigurationAuthentication implements AuthenticationProvi
             authInfo.checkValid(null);
 
             if(user == null) {
-                resultHandler.handle(Future.failedFuture(INVALID_USER));
+                resultHandler.handle(Future.failedFuture(INVALID_CREDENTIALS));
             } else {
                 if (Objects.equals(user.name, authInfo.getUsername())
                         && Objects.equals(user.password, authInfo.getPassword())) {
                     resultHandler.handle(Future.succeededFuture(io.vertx.ext.auth.User.fromName(user.name)));
                 } else {
-                    resultHandler.handle(Future.failedFuture(INVALID_USER));
+                    resultHandler.handle(Future.failedFuture(INVALID_CREDENTIALS));
                 }
             }
         } catch (RuntimeException e) {
