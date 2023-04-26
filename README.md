@@ -4,7 +4,7 @@
 [![codecov](https://codecov.io/gh/swisspost/vertx-redisques/branch/master/graph/badge.svg?token=z0zQXWoqzB)](https://codecov.io/gh/swisspost/vertx-redisques)
 [![Maven Central](https://img.shields.io/maven-central/v/org.swisspush/redisques.svg)](http://search.maven.org/#artifactdetails|org.swisspush|redisques|2.2.0|)
 
-A highly scalable redis-persistent queuing system for vert.x.
+A highly scalable redis-persistent queuing system for vert.x
 
 ## Getting Started
 ### Install
