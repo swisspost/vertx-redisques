@@ -6,6 +6,7 @@ import static org.swisspush.redisques.util.HttpServerRequestUtil.evaluateUrlPara
 import static org.swisspush.redisques.util.HttpServerRequestUtil.extractNonEmptyJsonArrayFromBody;
 import static org.swisspush.redisques.util.RedisquesAPI.*;
 
+import io.netty.util.internal.StringUtil;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
@@ -17,6 +18,8 @@ import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
+import io.vertx.ext.auth.authentication.AuthenticationProvider;
+import io.vertx.ext.web.handler.BasicAuthHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import io.vertx.ext.web.Router;
@@ -39,12 +42,13 @@ import org.swisspush.redisques.util.StatusCode;
 public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
 
 
-    private static Logger log = LoggerFactory.getLogger(RedisquesHttpRequestHandler.class);
+    private static final Logger log = LoggerFactory.getLogger(RedisquesHttpRequestHandler.class);
 
     private Router router;
     private EventBus eventBus;
 
     private static final String APPLICATION_JSON = "application/json";
+    private static final String TEXT_PLAIN = "text/plain";
     private static final String CONTENT_TYPE = "content-type";
     private static final String LOCKED_PARAM = "locked";
     private static final String UNLOCK_PARAM = "unlock";
@@ -77,6 +81,19 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         }
     }
 
+    private Result<Boolean, String> checkHttpAuthenticationConfiguration(RedisquesConfiguration modConfig) {
+        if(modConfig.getHttpRequestHandlerAuthenticationEnabled()) {
+            if(StringUtil.isNullOrEmpty(modConfig.getHttpRequestHandlerUsername()) ||
+                    StringUtil.isNullOrEmpty(modConfig.getHttpRequestHandlerPassword())) {
+                String msg = "HTTP API authentication is enabled but username and/or password is missing";
+                log.warn(msg);
+                return Result.err(msg);
+            }
+            return Result.ok(true);
+        }
+        return Result.ok(false);
+    }
+
     private RedisquesHttpRequestHandler(Vertx vertx, RedisquesConfiguration modConfig) {
         this.router = Router.router(vertx);
         this.eventBus = vertx.eventBus();
@@ -86,6 +103,15 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         this.queueSpeedIntervalSec = modConfig.getQueueSpeedIntervalSec();
 
         final String prefix = modConfig.getHttpRequestHandlerPrefix();
+
+        Result<Boolean, String> result = checkHttpAuthenticationConfiguration(modConfig);
+        if(result.isErr()) {
+            router.route().handler(ctx -> respondWith(StatusCode.INTERNAL_SERVER_ERROR, result.getErr(), ctx.request()));
+        } else if (result.getOk()) {
+            AuthenticationProvider authProvider = new RedisquesConfigurationAuthentication(modConfig);
+            router.route().handler(BasicAuthHandler.create(authProvider));
+            log.info("Authentication enabled for HTTP API");
+        }
 
         /*
          * List endpoints
@@ -739,6 +765,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         log.info("Responding with status code " + statusCode + " and message: " + responseMessage);
         response.setStatusCode(statusCode.getStatusCode());
         response.setStatusMessage(statusCode.getStatusMessage());
+        response.putHeader(CONTENT_TYPE, TEXT_PLAIN);
         response.end(responseMessage);
     }
 
@@ -809,10 +836,6 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
             }
             return Integer.MAX_VALUE;
         }
-    }
-
-    private void sortResultMap(List<Map.Entry<String, Long>> input) {
-        input.sort((left, right) -> right.getValue().compareTo(left.getValue()));
     }
 
     private List<JsonObject> sortJsonQueueArrayBySize(List<JsonObject> queueList) {

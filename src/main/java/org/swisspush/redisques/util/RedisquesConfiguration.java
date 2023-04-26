@@ -27,7 +27,10 @@ public class RedisquesConfiguration {
     private int processorTimeout;
     private long processorDelayMax;
     private boolean httpRequestHandlerEnabled;
+    private boolean httpRequestHandlerAuthenticationEnabled;
     private String httpRequestHandlerPrefix;
+    private String httpRequestHandlerUsername;
+    private String httpRequestHandlerPassword;
     private Integer httpRequestHandlerPort;
     private String httpRequestHandlerUserHeader;
     private List<QueueConfiguration> queueConfigurations;
@@ -66,7 +69,10 @@ public class RedisquesConfiguration {
     public static final String PROP_PROCESSOR_TIMEOUT = "processorTimeout";
     public static final String PROP_PROCESSOR_DELAY_MAX = "processorDelayMax";
     public static final String PROP_HTTP_REQUEST_HANDLER_ENABLED = "httpRequestHandlerEnabled";
+    public static final String PROP_HTTP_REQUEST_HANDLER_AUTH_ENABLED = "httpRequestHandlerAuthenticationEnabled";
     public static final String PROP_HTTP_REQUEST_HANDLER_PREFIX = "httpRequestHandlerPrefix";
+    public static final String PROP_HTTP_REQUEST_HANDLER_USERNAME = "httpRequestHandlerUsername";
+    public static final String PROP_HTTP_REQUEST_HANDLER_PASSWORD = "httpRequestHandlerPassword";
     public static final String PROP_HTTP_REQUEST_HANDLER_PORT = "httpRequestHandlerPort";
     public static final String PROP_HTTP_REQUEST_HANDLER_USER_HEADER = "httpRequestHandlerUserHeader";
     public static final String PROP_QUEUE_CONFIGURATIONS = "queueConfigurations";
@@ -89,25 +95,26 @@ public class RedisquesConfiguration {
     public RedisquesConfiguration(String address, String configurationUpdatedAddress, String redisPrefix, String processorAddress, int refreshPeriod,
                                   String redisHost, int redisPort, String redisAuth, int checkInterval,
                                   int processorTimeout, long processorDelayMax, boolean httpRequestHandlerEnabled,
-                                  String httpRequestHandlerPrefix, Integer httpRequestHandlerPort,
-                                  String httpRequestHandlerUserHeader, List<QueueConfiguration> queueConfigurations,
-                                  boolean enableQueueNameDecoding) {
-        this(address, configurationUpdatedAddress, redisPrefix, processorAddress, refreshPeriod,
-                redisHost, redisPort, redisAuth, checkInterval,
-                processorTimeout, processorDelayMax, httpRequestHandlerEnabled,
-                httpRequestHandlerPrefix, httpRequestHandlerPort,
-                httpRequestHandlerUserHeader, queueConfigurations,
-                enableQueueNameDecoding,
-                DEFAULT_REDIS_MAX_POOL_SIZE, DEFAULT_REDIS_MAX_POOL_WAIT_SIZE, DEFAULT_REDIS_MAX_PIPELINE_WAIT_SIZE,
-                DEFAULT_QUEUE_SPEED_INTERVAL_SEC, DEFAULT_MEMORY_USAGE_LIMIT_PCT, DEFAULT_MEMORY_USAGE_CHECK_INTERVAL_SEC);
+                                  boolean httpRequestHandlerAuthenticationEnabled, String httpRequestHandlerPrefix,
+                                  String httpRequestHandlerUsername, String httpRequestHandlerPassword,
+                                  Integer httpRequestHandlerPort, String httpRequestHandlerUserHeader,
+                                  List<QueueConfiguration> queueConfigurations, boolean enableQueueNameDecoding) {
+        this(address, configurationUpdatedAddress, redisPrefix, processorAddress, refreshPeriod, redisHost, redisPort,
+                redisAuth, checkInterval, processorTimeout, processorDelayMax, httpRequestHandlerEnabled,
+                httpRequestHandlerAuthenticationEnabled, httpRequestHandlerPrefix, httpRequestHandlerUsername,
+                httpRequestHandlerPassword, httpRequestHandlerPort, httpRequestHandlerUserHeader, queueConfigurations,
+                enableQueueNameDecoding, DEFAULT_REDIS_MAX_POOL_SIZE, DEFAULT_REDIS_MAX_POOL_WAIT_SIZE,
+                DEFAULT_REDIS_MAX_PIPELINE_WAIT_SIZE, DEFAULT_QUEUE_SPEED_INTERVAL_SEC, DEFAULT_MEMORY_USAGE_LIMIT_PCT,
+                DEFAULT_MEMORY_USAGE_CHECK_INTERVAL_SEC);
     }
 
     public RedisquesConfiguration(String address, String configurationUpdatedAddress, String redisPrefix, String processorAddress, int refreshPeriod,
                                   String redisHost, int redisPort, String redisAuth, int checkInterval,
                                   int processorTimeout, long processorDelayMax, boolean httpRequestHandlerEnabled,
-                                  String httpRequestHandlerPrefix, Integer httpRequestHandlerPort,
-                                  String httpRequestHandlerUserHeader, List<QueueConfiguration> queueConfigurations,
-                                  boolean enableQueueNameDecoding,
+                                  boolean httpRequestHandlerAuthenticationEnabled, String httpRequestHandlerPrefix,
+                                  String httpRequestHandlerUsername, String httpRequestHandlerPassword,
+                                  Integer httpRequestHandlerPort, String httpRequestHandlerUserHeader,
+                                  List<QueueConfiguration> queueConfigurations, boolean enableQueueNameDecoding,
                                   int maxPoolSize, int maxPoolWaitSize, int maxPipelineWaitSize,
                                   int queueSpeedIntervalSec, int memoryUsageLimitPercent, int memoryUsageCheckIntervalSec) {
         this.address = address;
@@ -140,7 +147,10 @@ public class RedisquesConfiguration {
         }
 
         this.httpRequestHandlerEnabled = httpRequestHandlerEnabled;
+        this.httpRequestHandlerAuthenticationEnabled = httpRequestHandlerAuthenticationEnabled;
         this.httpRequestHandlerPrefix = httpRequestHandlerPrefix;
+        this.httpRequestHandlerUsername = httpRequestHandlerUsername;
+        this.httpRequestHandlerPassword = httpRequestHandlerPassword;
         this.httpRequestHandlerPort = httpRequestHandlerPort;
         this.httpRequestHandlerUserHeader = httpRequestHandlerUserHeader;
         this.queueConfigurations = queueConfigurations;
@@ -171,7 +181,8 @@ public class RedisquesConfiguration {
                 builder.processorAddress, builder.refreshPeriod, builder.redisHost, builder.redisPort,
                 builder.redisAuth, builder.checkInterval,
                 builder.processorTimeout, builder.processorDelayMax, builder.httpRequestHandlerEnabled,
-                builder.httpRequestHandlerPrefix, builder.httpRequestHandlerPort,
+                builder.httpRequestHandlerAuthenticationEnabled, builder.httpRequestHandlerPrefix,
+                builder.httpRequestHandlerUsername, builder.httpRequestHandlerPassword, builder.httpRequestHandlerPort,
                 builder.httpRequestHandlerUserHeader, builder.queueConfigurations,
                 builder.enableQueueNameDecoding,
                 builder.maxPoolSize, builder.maxPoolWaitSize, builder.maxPipelineWaitSize,
@@ -194,7 +205,10 @@ public class RedisquesConfiguration {
         obj.put(PROP_PROCESSOR_TIMEOUT, getProcessorTimeout());
         obj.put(PROP_PROCESSOR_DELAY_MAX, getProcessorDelayMax());
         obj.put(PROP_HTTP_REQUEST_HANDLER_ENABLED, getHttpRequestHandlerEnabled());
+        obj.put(PROP_HTTP_REQUEST_HANDLER_AUTH_ENABLED, getHttpRequestHandlerAuthenticationEnabled());
         obj.put(PROP_HTTP_REQUEST_HANDLER_PREFIX, getHttpRequestHandlerPrefix());
+        obj.put(PROP_HTTP_REQUEST_HANDLER_USERNAME, getHttpRequestHandlerUsername());
+        obj.put(PROP_HTTP_REQUEST_HANDLER_PASSWORD, getHttpRequestHandlerPassword());
         obj.put(PROP_HTTP_REQUEST_HANDLER_PORT, getHttpRequestHandlerPort());
         obj.put(PROP_HTTP_REQUEST_HANDLER_USER_HEADER, getHttpRequestHandlerUserHeader());
         obj.put(PROP_QUEUE_CONFIGURATIONS, new JsonArray(getQueueConfigurations().stream().map(QueueConfiguration::asJsonObject).collect(Collectors.toList())));
@@ -246,8 +260,17 @@ public class RedisquesConfiguration {
         if (json.containsKey(PROP_HTTP_REQUEST_HANDLER_ENABLED)) {
             builder.httpRequestHandlerEnabled(json.getBoolean(PROP_HTTP_REQUEST_HANDLER_ENABLED));
         }
+        if(json.containsKey(PROP_HTTP_REQUEST_HANDLER_AUTH_ENABLED)) {
+            builder.httpRequestHandlerAuthenticationEnabled(json.getBoolean(PROP_HTTP_REQUEST_HANDLER_AUTH_ENABLED));
+        }
         if (json.containsKey(PROP_HTTP_REQUEST_HANDLER_PREFIX)) {
             builder.httpRequestHandlerPrefix(json.getString(PROP_HTTP_REQUEST_HANDLER_PREFIX));
+        }
+        if(json.containsKey(PROP_HTTP_REQUEST_HANDLER_USERNAME)) {
+            builder.httpRequestHandlerUsername(json.getString(PROP_HTTP_REQUEST_HANDLER_USERNAME));
+        }
+        if(json.containsKey(PROP_HTTP_REQUEST_HANDLER_PASSWORD)) {
+            builder.httpRequestHandlerPassword(json.getString(PROP_HTTP_REQUEST_HANDLER_PASSWORD));
         }
         if (json.containsKey(PROP_HTTP_REQUEST_HANDLER_PORT)) {
             builder.httpRequestHandlerPort(json.getInteger(PROP_HTTP_REQUEST_HANDLER_PORT));
@@ -333,8 +356,20 @@ public class RedisquesConfiguration {
         return httpRequestHandlerEnabled;
     }
 
+    public boolean getHttpRequestHandlerAuthenticationEnabled() {
+        return httpRequestHandlerAuthenticationEnabled;
+    }
+
     public String getHttpRequestHandlerPrefix() {
         return httpRequestHandlerPrefix;
+    }
+
+    public String getHttpRequestHandlerUsername() {
+        return httpRequestHandlerUsername;
+    }
+
+    public String getHttpRequestHandlerPassword() {
+        return httpRequestHandlerPassword;
     }
 
     public Integer getHttpRequestHandlerPort() {
@@ -430,7 +465,10 @@ public class RedisquesConfiguration {
         private int processorTimeout;
         private long processorDelayMax;
         private boolean httpRequestHandlerEnabled;
+        private boolean httpRequestHandlerAuthenticationEnabled;
         private String httpRequestHandlerPrefix;
+        private String httpRequestHandlerUsername;
+        private String httpRequestHandlerPassword;
         private Integer httpRequestHandlerPort;
         private String httpRequestHandlerUserHeader;
         private List<QueueConfiguration> queueConfigurations;
@@ -455,7 +493,10 @@ public class RedisquesConfiguration {
             this.processorTimeout = 240000;
             this.processorDelayMax = 0;
             this.httpRequestHandlerEnabled = false;
+            this.httpRequestHandlerAuthenticationEnabled = false;
             this.httpRequestHandlerPrefix = "/queuing";
+            this.httpRequestHandlerUsername = null;
+            this.httpRequestHandlerPassword = null;
             this.httpRequestHandlerPort = 7070;
             this.httpRequestHandlerUserHeader = "x-rp-usr";
             this.queueConfigurations = new LinkedList<>();
@@ -528,8 +569,23 @@ public class RedisquesConfiguration {
             return this;
         }
 
+        public RedisquesConfigurationBuilder httpRequestHandlerAuthenticationEnabled(boolean httpRequestHandlerAuthenticationEnabled) {
+            this.httpRequestHandlerAuthenticationEnabled = httpRequestHandlerAuthenticationEnabled;
+            return this;
+        }
+
         public RedisquesConfigurationBuilder httpRequestHandlerPrefix(String httpRequestHandlerPrefix) {
             this.httpRequestHandlerPrefix = httpRequestHandlerPrefix;
+            return this;
+        }
+
+        public RedisquesConfigurationBuilder httpRequestHandlerUsername(String httpRequestHandlerUsername) {
+            this.httpRequestHandlerUsername = httpRequestHandlerUsername;
+            return this;
+        }
+
+        public RedisquesConfigurationBuilder httpRequestHandlerPassword(String httpRequestHandlerPassword) {
+            this.httpRequestHandlerPassword = httpRequestHandlerPassword;
             return this;
         }
 

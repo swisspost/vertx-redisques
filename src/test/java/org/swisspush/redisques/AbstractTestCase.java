@@ -69,6 +69,15 @@ public abstract class AbstractTestCase {
         }
     }
 
+    protected void delay(long ms) {
+        try {
+            Thread.sleep(ms);
+        } catch (InterruptedException iex) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException(iex);
+        }
+    }
+
     @AfterClass
     public static void stopRedis(TestContext context) {
         jedis.close();
