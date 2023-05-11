@@ -81,4 +81,39 @@ public class HttpServerRequestUtilTest {
         context.assertTrue(result.isErr());
         context.assertEquals("no array called 'locks' found", result.getErr());
     }
+
+    @Test
+    public void testBase64Decoder(TestContext context){
+        String testDataUrlEncoded =  "{\n" +
+                "  \"headers\": [\n" +
+                "    [\n" +
+                "      \"Content-Type\",\n" +
+                "      \"application/json\"\n" +
+                "    ],\n" +
+                "    [\n" +
+                "      \"Accept-Charset\",\n" +
+                "      \"utf-8, iso-8859-1, utf-16, *;q=0.7\"\n" +
+                "    ]\n" +
+                "  ],\n" +
+                "  \"queueTimestamp\": 1477983671291,\n" +
+                "   \"payload\": \"5rWL6K-V\"\n" +
+                "}";
+        String testDataEncoded =  "{\n" +
+                "  \"headers\": [\n" +
+                "    [\n" +
+                "      \"Content-Type\",\n" +
+                "      \"application/json\"\n" +
+                "    ],\n" +
+                "    [\n" +
+                "      \"Accept-Charset\",\n" +
+                "      \"utf-8, iso-8859-1, utf-16, *;q=0.7\"\n" +
+                "    ]\n" +
+                "  ],\n" +
+                "  \"queueTimestamp\": 1477983671291,\n" +
+                "   \"payload\": \"5rWL6K+V\"\n" +
+                "}";
+        String decodedUrlPayload = HttpServerRequestUtil.decode(testDataUrlEncoded);
+        String decodedPayload = HttpServerRequestUtil.decode(testDataEncoded);
+        context.assertEquals(decodedUrlPayload, decodedPayload);
+    }
 }
