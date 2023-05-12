@@ -4,6 +4,7 @@ import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.json.DecodeException;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
+import org.apache.commons.codec.binary.Base64;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -27,6 +28,7 @@ public class HttpServerRequestUtil {
     private static final String CONTENT_LENGTH = "Content-Length";
     private static final String CONTENT_TYPE = "content-type";
     private static final String APPLICATION_JSON = "application/json";
+    private static final Base64 apacheDecoder = new Base64();
 
     /**
      * Evaluates whether the provided request contains the provided url parameter and the value is either an empty
@@ -134,9 +136,9 @@ public class HttpServerRequestUtil {
             String value = header.getString(1);
             if (key.equalsIgnoreCase(CONTENT_TYPE) && (value.contains("text/") || value.contains(APPLICATION_JSON))) {
                 try {
-                    object.put(PAYLOAD_OBJECT, new JsonObject(new String(object.getBinary(PAYLOAD), StandardCharsets.UTF_8)));
+                    object.put(PAYLOAD_OBJECT, new JsonObject(new String(apacheDecoder.decode(object.getString(PAYLOAD)), StandardCharsets.UTF_8)));
                 } catch (DecodeException e) {
-                    object.put(PAYLOAD_STRING, new String(object.getBinary(PAYLOAD), StandardCharsets.UTF_8));
+                    object.put(PAYLOAD_STRING, new String(apacheDecoder.decode(object.getString(PAYLOAD)), StandardCharsets.UTF_8));
                 }
                 object.remove(PAYLOAD);
                 break;
