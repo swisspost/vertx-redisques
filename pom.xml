@@ -387,12 +387,12 @@
         <vertx-redis-client.version>4.3.3</vertx-redis-client.version>
         <slf4j.version>1.7.32</slf4j.version>
         <mockito.version>1.10.19</mockito.version>
-        <junit.version>4.12</junit.version>
+        <junit.version>4.13.2</junit.version>
         <awaitility.version>4.0.2</awaitility.version>
         <jedis.version>3.7.0</jedis.version>
         <rest-assured.version>4.3.0</rest-assured.version>
         <commons-coded.version>1.9</commons-coded.version>
-        <jackson-databind.version>2.13.0</jackson-databind.version>
+        <jackson-databind.version>2.15.0</jackson-databind.version>
         <project.build.sourceEncoding>UTF8</project.build.sourceEncoding>
         <sonatypeOssDistMgmtSnapshotsUrl>
             https://oss.sonatype.org/content/repositories/snapshots/
