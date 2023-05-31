@@ -13,7 +13,7 @@ import io.vertx.redis.client.Response;
  * @author baldim, https://github.com/mcweba [Marc-Andre Weber]
  */
 public class ReplaceQueueItemHandler implements Handler<AsyncResult<Response>> {
-    private Message<JsonObject> event;
+    private final Message<JsonObject> event;
 
     public ReplaceQueueItemHandler(Message<JsonObject> event) {
         this.event = event;

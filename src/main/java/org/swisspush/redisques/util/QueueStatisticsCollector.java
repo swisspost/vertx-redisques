@@ -1,35 +1,22 @@
 package org.swisspush.redisques.util;
 
-import static org.swisspush.redisques.util.RedisquesAPI.ERROR;
-import static org.swisspush.redisques.util.RedisquesAPI.MONITOR_QUEUE_NAME;
-import static org.swisspush.redisques.util.RedisquesAPI.MONITOR_QUEUE_SIZE;
-import static org.swisspush.redisques.util.RedisquesAPI.OK;
-import static org.swisspush.redisques.util.RedisquesAPI.QUEUENAME;
-import static org.swisspush.redisques.util.RedisquesAPI.STATISTIC_QUEUE_BACKPRESSURE;
-import static org.swisspush.redisques.util.RedisquesAPI.STATISTIC_QUEUE_FAILURES;
-import static org.swisspush.redisques.util.RedisquesAPI.STATISTIC_QUEUE_SLOWDOWN;
-import static org.swisspush.redisques.util.RedisquesAPI.STATISTIC_QUEUE_SPEED;
-import static org.swisspush.redisques.util.RedisquesAPI.STATUS;
-
 import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
+import io.vertx.redis.client.Response;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import io.vertx.redis.client.RedisAPI;
-import io.vertx.redis.client.Response;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
+import org.swisspush.redisques.lua.LuaScriptManager;
+
+import java.util.*;
 import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
-import org.swisspush.redisques.lua.LuaScriptManager;
+
+import static org.swisspush.redisques.util.RedisquesAPI.*;
 
 /**
  * Class StatisticsCollector helps collecting statistics information about queue handling and
@@ -60,14 +47,14 @@ public class QueueStatisticsCollector {
     private final Map<String, Long> queueSlowDownTime = new HashMap<>();
     private final ConcurrentMap<String, AtomicLong> queueMessageSpeedCtr = new ConcurrentHashMap<>();
     private volatile Map<String, Long> queueMessageSpeed = new HashMap<>();
-    private final RedisAPI redisAPI;
+    private final RedisAPIProvider redisAPIProvider;
     private final LuaScriptManager luaScriptManager;
     private final String queuePrefix;
     private final Vertx vertx;
 
-    public QueueStatisticsCollector(RedisAPI redisAPI, LuaScriptManager luaScriptManager,
-            String queuePrefix, Vertx vertx, int speedIntervalSec) {
-        this.redisAPI = redisAPI;
+    public QueueStatisticsCollector(RedisAPIProvider redisAPIProvider, LuaScriptManager luaScriptManager,
+                                    String queuePrefix, Vertx vertx, int speedIntervalSec) {
+        this.redisAPIProvider = redisAPIProvider;
         this.luaScriptManager = luaScriptManager;
         this.queuePrefix = queuePrefix;
         this.vertx = vertx;
@@ -77,27 +64,27 @@ public class QueueStatisticsCollector {
     /**
      * This scheduled task collects and calculates the queue speed per queue in the local system
      * within the past time interval.
-     *
+     * <p>
      * NOTE: The speed values are held in memory only due to performance reasons. We don't want to
      * store regularly a lot of values (all queues) for speed statistics only.
      * This would no more work properly of course if there are multiple Redisques instances deployed.
      * In such case, the client interested in such values must query each instance for itself.
-     *
+     * <p>
      * By default, the speed interval is configured to 1 Minute (60'000ms) currently.
      */
-    private void speedStatisticsScheduler(int speedIntervalSec){
+    private void speedStatisticsScheduler(int speedIntervalSec) {
         if (speedIntervalSec <= 0) {
             // no speed statistics required
             log.debug("No speed statistics required");
             return;
         }
-        vertx.setPeriodic(speedIntervalSec * 1000, timerId -> {
+        vertx.setPeriodic(speedIntervalSec * 1000L, timerId -> {
             log.debug("Schedule statistics queue speed collection");
             // remember the accumulated message counter as speed value for the previous
             // speed measurement interval
             Map<String, Long> newQueueMessageSpeed = new HashMap<>();
-            Iterator<Entry<String,AtomicLong>> itr = queueMessageSpeedCtr.entrySet().iterator();
-            while(itr.hasNext()){
+            Iterator<Entry<String, AtomicLong>> itr = queueMessageSpeedCtr.entrySet().iterator();
+            while (itr.hasNext()) {
                 Entry<String, AtomicLong> entry = itr.next();
                 if (entry.getValue().longValue() > 0) {
                     // The ctr was incremented within the previous speed measurement interval.
@@ -124,7 +111,7 @@ public class QueueStatisticsCollector {
     /**
      * Does reset all failure statistics values of the given queue. In memory but as well the persisted
      * ones in redis.
-     *
+     * <p>
      * Note: The reset is only executed on the persisted statistics data if there is really
      * a need for.
      *
@@ -134,17 +121,18 @@ public class QueueStatisticsCollector {
         AtomicLong failureCount = queueFailureCount.remove(queueName);
         queueSlowDownTime.remove(queueName);
         queueBackpressureTime.remove(queueName);
-        if (failureCount != null && failureCount.get()>0) {
-          // there was a real failure before, therefore we will execute this
-          // cleanup as well on Redis itself as we would like to do redis operations
-          // only if necessary of course.
-          updateStatisticsInRedis(queueName);
+        if (failureCount != null && failureCount.get() > 0) {
+            // there was a real failure before, therefore we will execute this
+            // cleanup as well on Redis itself as we would like to do redis operations
+            // only if necessary of course.
+            updateStatisticsInRedis(queueName);
         }
     }
 
     /**
      * Does reset all failure statistics values of all given queues. In memory but as well the persisted
      * ones in redis.
+     *
      * @param queues The list of queue names for which the statistic values must be reset.
      */
     public void resetQueueStatistics(JsonArray queues) {
@@ -176,12 +164,11 @@ public class QueueStatisticsCollector {
 
     /**
      * Retrieves the current queue speed in msg/time-unit for the requested queue
-     *
+     * <p>
      * Note: The values are only given from local memory and therefore only for queue instances
-     *       managed by the corresonding Redisques instance.
+     * managed by the corresonding Redisques instance.
      *
      * @param queueName The queue name for which we want to retrieve the measured speed
-     *
      * @return The latest queue speed (msg/ time-unit) for the given queue name
      */
     private long getQueueSpeed(String queueName) {
@@ -195,7 +182,7 @@ public class QueueStatisticsCollector {
     /**
      * Signals a failed message distribution on the given queue.
      * Increments the failure counter for the given queue by 1.
-     *
+     * <p>
      * Note: There is explicitely no decrement operation foreseen because once a queue
      * is operable again, it will reset the failure counter immediately to 0. Therefore only the
      * reset operation is needed in general.
@@ -216,7 +203,7 @@ public class QueueStatisticsCollector {
     /**
      * Retrieves the current failure count we have in memory for this redisques instance (there
      * might be more than one in use).
-     *
+     * <p>
      * Note: Because each queue is associated resp. registered with a certain redisques instance, it
      * is valid to read this value just from our own memory only and no redis interaction takes
      * place.
@@ -235,8 +222,9 @@ public class QueueStatisticsCollector {
     /**
      * Set the statistics backpressure time to the given value. Note that this is done in memory
      * but as well persisted on redis.
+     *
      * @param queueName The name of the queue for which the value must be set.
-     * @param time The backpressure time in ms
+     * @param time      The backpressure time in ms
      */
     public void setQueueBackPressureTime(String queueName, long time) {
         if (time > 0) {
@@ -244,7 +232,7 @@ public class QueueStatisticsCollector {
             updateStatisticsInRedis(queueName);
         } else {
             Long lastTime = queueBackpressureTime.remove(queueName);
-            if (lastTime!=null){
+            if (lastTime != null) {
                 updateStatisticsInRedis(queueName);
             }
         }
@@ -252,7 +240,7 @@ public class QueueStatisticsCollector {
 
     /**
      * Retrieves the current used backpressure time we have in memory for this redisques instance.
-     *
+     * <p>
      * Note: Because each queue is associated resp. registered with a certain redisques instance, it
      * is valid to read this value just from our own memory only and no redis interaction takes
      * place.
@@ -267,8 +255,9 @@ public class QueueStatisticsCollector {
     /**
      * Set the statistics slowdown time to the given value. Note that this is done in memory
      * but as well persisted on redis.
+     *
      * @param queueName The name of the queue for which the value must be set.
-     * @param time The slowdown time in ms
+     * @param time      The slowdown time in ms
      */
     public void setQueueSlowDownTime(String queueName, long time) {
         if (time > 0) {
@@ -276,7 +265,7 @@ public class QueueStatisticsCollector {
             updateStatisticsInRedis(queueName);
         } else {
             Long lastTime = queueSlowDownTime.remove(queueName);
-            if (lastTime!=null){
+            if (lastTime != null) {
                 updateStatisticsInRedis(queueName);
             }
         }
@@ -284,7 +273,7 @@ public class QueueStatisticsCollector {
 
     /**
      * Retrieves the current used slowdown time we have in memory for this redisques instance.
-     *
+     * <p>
      * Note: Because each queue is associated resp. registered with a certain redisques instance, it
      * is valid to read this value just from our own memory only and no redis interaction takes
      * place.
@@ -312,11 +301,14 @@ public class QueueStatisticsCollector {
             obj.put(QUEUE_FAILURES, failures);
             obj.put(QUEUE_SLOWDOWNTIME, slowDownTime);
             obj.put(QUEUE_BACKPRESSURE, backpressureTime);
-            redisAPI.hset(List.of(STATSKEY, queueName, obj.toString()), emptyHandler -> {
-            });
+            redisAPIProvider.redisAPI().onSuccess(redisAPI -> redisAPI.hset(List.of(STATSKEY, queueName, obj.toString()),
+                    emptyHandler -> {
+                    }));
         } else {
-            redisAPI.hdel(List.of(STATSKEY, queueName), emptyHandler -> {
-            });
+            redisAPIProvider.redisAPI().onSuccess(redisAPI -> redisAPI.hdel(List.of(STATSKEY, queueName),
+                    emptyHandler -> {
+                    }));
+
         }
     }
 
@@ -378,18 +370,18 @@ public class QueueStatisticsCollector {
 
         JsonObject getAsJsonObject() {
             return new JsonObject()
-                .put(MONITOR_QUEUE_NAME, queueName)
-                .put(MONITOR_QUEUE_SIZE, size)
-                .put(STATISTIC_QUEUE_FAILURES, failures)
-                .put(STATISTIC_QUEUE_BACKPRESSURE, backpressureTime)
-                .put(STATISTIC_QUEUE_SLOWDOWN, slowdownTime)
-                .put(STATISTIC_QUEUE_SPEED, speed);
+                    .put(MONITOR_QUEUE_NAME, queueName)
+                    .put(MONITOR_QUEUE_SIZE, size)
+                    .put(STATISTIC_QUEUE_FAILURES, failures)
+                    .put(STATISTIC_QUEUE_BACKPRESSURE, backpressureTime)
+                    .put(STATISTIC_QUEUE_SLOWDOWN, slowdownTime)
+                    .put(STATISTIC_QUEUE_SPEED, speed);
         }
     }
 
     /**
      * Retrieve the queue statistics for the requested queues.
-     *
+     * <p>
      * Note: This operation does interact with Redis to retrieve the values for the statistics
      * for all queues requested (independent of the redisques instance for which the queues are
      * registered). Therefore this method must be used with care and not be called too often!
@@ -409,7 +401,7 @@ public class QueueStatisticsCollector {
         //       the size of the returned queues must be equal in any case and has the same
         //       order as the requested queues.
         List<String> queueKeys = queues.stream().map(queue -> queuePrefix + queue).collect(
-            Collectors.toList());
+                Collectors.toList());
         luaScriptManager.handleMultiListLength(queueKeys, queueListLength -> {
             if (queueListLength == null) {
                 log.error("Unexepected queue MultiListLength result null");
@@ -418,7 +410,7 @@ public class QueueStatisticsCollector {
             }
             if (queueListLength.size() != queues.size()) {
                 log.error("Unexpected queue MultiListLength result with unequal size {} : {}",
-                    queues.size(), queueListLength.size());
+                        queues.size(), queueListLength.size());
                 event.reply(new JsonObject().put(STATUS, ERROR));
                 return;
             }
@@ -432,7 +424,7 @@ public class QueueStatisticsCollector {
             }
             // now retrieve all available failure statistics from Redis and merge them
             // together with the previous populated common queue statistics map
-            redisAPI.hvals(STATSKEY, statisticsSet -> {
+            redisAPIProvider.redisAPI().onSuccess(redisAPI -> redisAPI.hvals(STATSKEY, statisticsSet -> {
                 if (statisticsSet == null) {
                     log.error("Unexepected statistics queue evaluation result result null");
                     event.reply(new JsonObject().put(STATUS, ERROR));
@@ -441,7 +433,7 @@ public class QueueStatisticsCollector {
                 // put the received statistics data to the former prepared statistics objects
                 // per queue
                 Iterator<Response> itr = statisticsSet.result().iterator();
-                while (itr.hasNext()){
+                while (itr.hasNext()) {
                     JsonObject jObj = new JsonObject(itr.next().toString());
                     String queueName = jObj.getString(RedisquesAPI.QUEUENAME);
                     QueueStatistic queueStatistic = statisticsMap.get(queueName);
@@ -455,21 +447,21 @@ public class QueueStatisticsCollector {
                 // build the final resulting statistics list from the former merged queue
                 // values from various sources
                 JsonArray result = new JsonArray();
-                for (String queueName: queues) {
+                for (String queueName : queues) {
                     QueueStatistic stats = statisticsMap.get(queueName);
                     if (stats != null) {
                         result.add(stats.getAsJsonObject());
                     }
                 }
                 event.reply(new JsonObject().put(RedisquesAPI.STATUS, RedisquesAPI.OK)
-                    .put(RedisquesAPI.QUEUES, result));
-            });
+                        .put(RedisquesAPI.QUEUES, result));
+            }));
         });
     }
 
     /**
      * Retrieve the summarized queue speed for the requested queues.
-     *
+     * <p>
      * Note: This method only treats queue speed values from the current redisques instance. There
      * is no persistent storage of these values due to performance reasons yet.
      *
@@ -484,7 +476,7 @@ public class QueueStatisticsCollector {
         }
         // loop over all queues and summarize the currently available speed values
         long speed = 0;
-        for (String queue: queues) {
+        for (String queue : queues) {
             speed = speed + getQueueSpeed(queue);
         }
         event.reply(new JsonObject().put(STATUS, OK).put(STATISTIC_QUEUE_SPEED, speed));

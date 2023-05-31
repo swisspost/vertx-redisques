@@ -13,7 +13,7 @@ import java.util.Optional;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import org.swisspush.redisques.lua.LuaScriptManager;
-import org.swisspush.redisques.util.QueueHandlerUtil;
+import org.swisspush.redisques.util.HandlerUtil;
 import org.swisspush.redisques.util.RedisquesAPI;
 
 import static org.swisspush.redisques.util.RedisquesAPI.*;
@@ -41,9 +41,9 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
     @Override
     public void handle(AsyncResult<Response> handleQueues) {
         if (handleQueues.succeeded()) {
-            List<String> queues = QueueHandlerUtil.filterQueues(handleQueues.result(),
+            List<String> queues = HandlerUtil.filterByPattern(handleQueues.result(),
                 filterPattern);
-            if (queues == null || queues.isEmpty()) {
+            if (queues.isEmpty()) {
                 log.debug("Queue count evaluation with empty queues");
                 event.reply(new JsonObject().put(STATUS, OK).put(QUEUES, new JsonArray()));
                 return;

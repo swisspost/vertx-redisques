@@ -4,12 +4,12 @@ import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
-import io.vertx.redis.client.RedisAPI;
 import org.slf4j.Logger;
 import org.swisspush.redisques.handler.PutLockHandler;
 import org.swisspush.redisques.lua.LuaScriptManager;
 import org.swisspush.redisques.util.QueueConfiguration;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
+import org.swisspush.redisques.util.RedisAPIProvider;
 
 import java.util.List;
 
@@ -18,10 +18,10 @@ import static org.swisspush.redisques.util.RedisquesAPI.*;
 public class BulkPutLocksAction extends AbstractQueueAction {
 
 
-    public BulkPutLocksAction(Vertx vertx, LuaScriptManager luaScriptManager, RedisAPI redisAPI, String address, String queuesKey, String queuesPrefix,
-                                  String consumersPrefix, String locksKey, List<QueueConfiguration> queueConfigurations,
-                                  QueueStatisticsCollector queueStatisticsCollector, Logger log) {
-        super(vertx, luaScriptManager, redisAPI, address, queuesKey, queuesPrefix, consumersPrefix, locksKey, queueConfigurations,
+    public BulkPutLocksAction(Vertx vertx, LuaScriptManager luaScriptManager, RedisAPIProvider redisAPIProvider, String address, String queuesKey, String queuesPrefix,
+                              String consumersPrefix, String locksKey, List<QueueConfiguration> queueConfigurations,
+                              QueueStatisticsCollector queueStatisticsCollector, Logger log) {
+        super(vertx, luaScriptManager, redisAPIProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey, queueConfigurations,
                 queueStatisticsCollector, log);
     }
 
@@ -44,6 +44,7 @@ public class BulkPutLocksAction extends AbstractQueueAction {
             return;
         }
 
-        redisAPI.hmset(buildLocksItems(locksKey, locks, lockInfo), new PutLockHandler(event));
+        redisAPIProvider.redisAPI().onSuccess(redisAPI ->
+                redisAPI.hmset(buildLocksItems(locksKey, locks, lockInfo), new PutLockHandler(event)));
     }
 }

@@ -14,7 +14,7 @@ import static org.swisspush.redisques.util.RedisquesAPI.*;
  * @author https://github.com/mcweba [Marc-Andre Weber]
  */
 public class GetQueuesCountHandler implements Handler<AsyncResult<Response>> {
-    private Message<JsonObject> event;
+    private final Message<JsonObject> event;
 
     public GetQueuesCountHandler(Message<JsonObject> event) {
         this.event = event;

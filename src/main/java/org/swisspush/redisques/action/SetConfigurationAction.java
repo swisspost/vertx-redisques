@@ -10,8 +10,8 @@ import static org.swisspush.redisques.util.RedisquesAPI.*;
 
 public class SetConfigurationAction implements QueueAction {
 
-    protected Logger log;
-    private RedisquesConfigurationProvider configurationProvider;
+    protected final Logger log;
+    private final RedisquesConfigurationProvider configurationProvider;
 
     public SetConfigurationAction(RedisquesConfigurationProvider configurationProvider, Logger log) {
         this.configurationProvider = configurationProvider;

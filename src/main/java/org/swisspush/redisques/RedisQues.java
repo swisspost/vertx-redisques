@@ -46,7 +46,7 @@ public class RedisQues extends AbstractVerticle {
 
     // Configuration
 
-    private RedisAPI redisAPI;
+    private RedisAPIProvider redisAPIProvider;
 
     // varia more specific prefixes
     private String queuesKey;
@@ -66,7 +66,8 @@ public class RedisQues extends AbstractVerticle {
 
     private Map<QueueOperation, QueueAction> queueActions = new HashMap<>();
 
-    public RedisQues() {}
+    public RedisQues() {
+    }
 
     public RedisQues(MemoryUsageProvider memoryUsageProvider, RedisquesConfigurationProvider configurationProvider) {
         this.memoryUsageProvider = memoryUsageProvider;
@@ -80,8 +81,9 @@ public class RedisQues extends AbstractVerticle {
         if (nx) {
             options.add("NX");
         }
-        redisAPI.send(Command.SET, RedisUtils.toPayload(key, value, options).toArray(new String[0]))
-                .onComplete(handler);
+        redisAPIProvider.redisAPI().onSuccess(redisAPI -> redisAPI.send(
+                        Command.SET, RedisUtils.toPayload(key, value, options).toArray(new String[0]))
+                .onComplete(handler));
     }
 
     /**
@@ -141,9 +143,10 @@ public class RedisQues extends AbstractVerticle {
         consumerLockTime = 2 * modConfig.getRefreshPeriod(); // lock is kept twice as long as its refresh interval -> never expires as long as the consumer ('we') are alive
         timer = new RedisQuesTimer(vertx);
 
-        setupRedisAPI().onComplete(event -> {
+        redisAPIProvider = new RedisAPIProvider(vertx, modConfig);
+
+        redisAPIProvider.redisAPI().onComplete(event -> {
             if (event.succeeded()) {
-                redisAPI = event.result();
                 initialize();
                 promise.complete();
             } else {
@@ -154,19 +157,19 @@ public class RedisQues extends AbstractVerticle {
 
     private void initialize() {
         RedisquesConfiguration configuration = configurationProvider.configuration();
-        this.luaScriptManager = new LuaScriptManager(redisAPI);
-        this.queueStatisticsCollector = new QueueStatisticsCollector(redisAPI, luaScriptManager,
+        this.luaScriptManager = new LuaScriptManager(redisAPIProvider);
+        this.queueStatisticsCollector = new QueueStatisticsCollector(redisAPIProvider, luaScriptManager,
                 queuesPrefix, vertx, configuration.getQueueSpeedIntervalSec());
 
         RedisquesHttpRequestHandler.init(vertx, configuration);
 
         // only initialize memoryUsageProvider when not provided in the constructor
         if (memoryUsageProvider == null) {
-            memoryUsageProvider = new DefaultMemoryUsageProvider(redisAPI, vertx,
+            memoryUsageProvider = new DefaultMemoryUsageProvider(redisAPIProvider, vertx,
                     configurationProvider.configuration().getMemoryUsageCheckIntervalSec());
         }
 
-        queueActionFactory = new QueueActionFactory(luaScriptManager, redisAPI, vertx, log,
+        queueActionFactory = new QueueActionFactory(luaScriptManager, redisAPIProvider, vertx, log,
                 queuesKey, queuesPrefix, consumersPrefix, locksKey, queueStatisticsCollector, memoryUsageProvider,
                 configurationProvider);
 
@@ -218,33 +221,6 @@ public class RedisQues extends AbstractVerticle {
         registerQueueCheck();
     }
 
-    private Future<RedisAPI> setupRedisAPI() {
-        RedisquesConfiguration config = configurationProvider.configuration();
-        String redisHost = config.getRedisHost();
-        int redisPort = config.getRedisPort();
-        String redisAuth = config.getRedisAuth();
-        int redisMaxPoolSize = config.getMaxPoolSize();
-        int redisMaxPoolWaitingSize = config.getMaxPoolWaitSize();
-        int redisMaxPipelineWaitingSize = config.getMaxPipelineWaitSize();
-
-        Promise<RedisAPI> promise = Promise.promise();
-        Redis.createClient(vertx, new RedisOptions()
-                .setConnectionString("redis://" + redisHost + ":" + redisPort)
-                .setPassword((redisAuth == null ? "" : redisAuth))
-                .setMaxPoolSize(redisMaxPoolSize)
-                .setMaxPoolWaiting(redisMaxPoolWaitingSize)
-                .setMaxWaitingHandlers(redisMaxPipelineWaitingSize)
-        ).connect(event -> {
-            if (event.failed()) {
-                promise.fail(event.cause());
-            } else {
-                promise.complete(RedisAPI.api(event.result()));
-            }
-        });
-
-        return promise.future();
-    }
-
     private void registerActiveQueueRegistrationRefresh() {
         // Periodic refresh of my registrations on active queues.
         vertx.setPeriodic(configurationProvider.configuration().getRefreshPeriod() * 1000L, event -> {
@@ -257,7 +233,7 @@ public class RedisQues extends AbstractVerticle {
                         if (log.isTraceEnabled()) {
                             log.trace("RedisQues refresh queues get: {}", consumerKey);
                         }
-                        redisAPI.get(consumerKey, getConsumerEvent -> {
+                        redisAPIProvider.redisAPI().onSuccess(redisAPI -> redisAPI.get(consumerKey, getConsumerEvent -> {
                             if (getConsumerEvent.failed()) {
                                 log.warn("Failed to get queue consumer for queue '{}'. But we'll continue anyway :)", queue, getConsumerEvent.cause());
                                 // We should return here. See: "https://softwareengineering.stackexchange.com/a/190535"
@@ -272,7 +248,7 @@ public class RedisQues extends AbstractVerticle {
                                 myQueues.remove(queue);
                                 queueStatisticsCollector.resetQueueFailureStatistics(queue);
                             }
-                        });
+                        }));
                     });
         });
     }
@@ -396,7 +372,7 @@ public class RedisQues extends AbstractVerticle {
                     if (log.isTraceEnabled()) {
                         log.trace("RedisQues unregister consumers get: {}", consumerKey);
                     }
-                    redisAPI.get(consumerKey, getEvent -> {
+                    redisAPIProvider.redisAPI().onSuccess(redisAPI -> redisAPI.get(consumerKey, getEvent -> {
                         if (getEvent.failed()) {
                             log.warn("Failed to retrieve consumer '{}'.", consumerKey, getEvent.cause());
                             // IMO we should 'fail()' here. But we don't, to keep backward compatibility.
@@ -410,7 +386,7 @@ public class RedisQues extends AbstractVerticle {
                             myQueues.remove(queue);
                         }
                         promise.complete();
-                    });
+                    }));
                 });
             } else {
                 promise.complete();
@@ -430,7 +406,7 @@ public class RedisQues extends AbstractVerticle {
         if (log.isTraceEnabled()) {
             log.trace("RedisQues reset consumers keys: {}", keysPattern);
         }
-        redisAPI.keys(keysPattern, keysResult -> {
+        redisAPIProvider.redisAPI().onSuccess(redisAPI -> redisAPI.keys(keysPattern, keysResult -> {
             if (keysResult.failed() || keysResult.result() == null) {
                 log.error("Unable to get redis keys of consumers", keysResult.cause());
                 return;
@@ -452,7 +428,7 @@ public class RedisQues extends AbstractVerticle {
                     log.error("Unable to delete redis keys of consumers");
                 }
             });
-        });
+        }));
     }
 
     private Future<Void> consume(final String queueName) {
@@ -470,7 +446,7 @@ public class RedisQues extends AbstractVerticle {
             if (log.isTraceEnabled()) {
                 log.trace("RedisQues consume get: {}", consumerKey);
             }
-            redisAPI.get(consumerKey, event1 -> {
+            redisAPIProvider.redisAPI().onSuccess(redisAPI -> redisAPI.get(consumerKey, event1 -> {
                 if (event1.failed()) {
                     log.error("Unable to get consumer for queue " + queueName, event1.cause());
                     return;
@@ -509,14 +485,14 @@ public class RedisQues extends AbstractVerticle {
                     myQueues.remove(queueName);
                     notifyConsumer(queueName).onComplete(notifyConsumerEvent -> promise.complete());
                 }
-            });
+            }));
         });
         return promise.future();
     }
 
     private Future<Boolean> isQueueLocked(final String queue) {
         final Promise<Boolean> promise = Promise.promise();
-        redisAPI.hexists(locksKey, queue, event -> {
+        redisAPIProvider.redisAPI().onSuccess(redisAPI -> redisAPI.hexists(locksKey, queue, event -> {
             if (event.failed()) {
                 log.warn("Failed to check if queue '{}' is locked. Assume no.", queue, event.cause());
                 // TODO:  Is it correct, to assume a queue is not locked in case our query failed?
@@ -527,7 +503,7 @@ public class RedisQues extends AbstractVerticle {
             } else {
                 promise.complete(event.result().toInteger() == 1);
             }
-        });
+        }));
         return promise.future();
     }
 
@@ -548,7 +524,7 @@ public class RedisQues extends AbstractVerticle {
             }
             boolean locked = lockAnswer.result();
             if (!locked) {
-                redisAPI.lindex(queueKey, "0", answer -> {
+                redisAPIProvider.redisAPI().onSuccess(redisAPI -> redisAPI.lindex(queueKey, "0", answer -> {
                     if (answer.failed()) {
                         log.error("Failed to peek queue '{}'", queueName, answer.cause());
                         // We should return here. See: "https://softwareengineering.stackexchange.com/a/190535"
@@ -620,7 +596,7 @@ public class RedisQues extends AbstractVerticle {
                         myQueues.put(queueName, QueueState.READY);
                         promise.complete();
                     }
-                });
+                }));
             } else {
                 if (log.isDebugEnabled()) {
                     log.debug("Got a request to consume from locked queue {}", queueName);
@@ -693,7 +669,7 @@ public class RedisQues extends AbstractVerticle {
         if (log.isTraceEnabled()) {
             log.trace("RedisQues notify consumer get: {}", key);
         }
-        redisAPI.get(key, event -> {
+        redisAPIProvider.redisAPI().onSuccess(redisAPI -> redisAPI.get(key, event -> {
             if (event.failed()) {
                 log.warn("Failed to get consumer for queue '{}'", queueName, event.cause());
                 // We should return here. See: "https://softwareengineering.stackexchange.com/a/190535"
@@ -715,7 +691,7 @@ public class RedisQues extends AbstractVerticle {
                 eb.send(consumer, queueName);
                 promise.complete();
             }
-        });
+        }));
         return promise.future();
     }
 
@@ -727,7 +703,8 @@ public class RedisQues extends AbstractVerticle {
         if (handler == null) {
             throw new RuntimeException("Handler must be set");
         } else {
-            redisAPI.expire(List.of(consumerKey, String.valueOf(consumerLockTime)), handler);
+            redisAPIProvider.redisAPI().onSuccess(redisAPI ->
+                    redisAPI.expire(List.of(consumerKey, String.valueOf(consumerLockTime)), handler));
         }
     }
 
@@ -742,11 +719,13 @@ public class RedisQues extends AbstractVerticle {
         if (log.isTraceEnabled()) {
             log.trace("RedisQues update timestamp for queue: {} to: {}", queueName, ts);
         }
-        if (handler == null) {
-            redisAPI.zadd(Arrays.asList(queuesKey, String.valueOf(ts), queueName));
-        } else {
-            redisAPI.zadd(Arrays.asList(queuesKey, String.valueOf(ts), queueName), handler);
-        }
+        redisAPIProvider.redisAPI().onSuccess(redisAPI -> {
+            if (handler == null) {
+                redisAPI.zadd(Arrays.asList(queuesKey, String.valueOf(ts), queueName));
+            } else {
+                redisAPI.zadd(Arrays.asList(queuesKey, String.valueOf(ts), queueName), handler);
+            }
+        });
     }
 
     /**
@@ -759,7 +738,7 @@ public class RedisQues extends AbstractVerticle {
         log.debug("Checking queues timestamps");
         // List all queues that look inactive (i.e. that have not been updated since 3 periods).
         final long limit = System.currentTimeMillis() - 3L * configurationProvider.configuration().getRefreshPeriod() * 1000;
-        redisAPI.zrangebyscore(Arrays.asList(queuesKey, "-inf", String.valueOf(limit)), answer -> {
+        redisAPIProvider.redisAPI().onSuccess(redisAPI -> redisAPI.zrangebyscore(Arrays.asList(queuesKey, "-inf", String.valueOf(limit)), answer -> {
             Response queues = answer.result();
             if (answer.failed() || queues == null) {
                 log.error("RedisQues is unable to get list of queues", answer.cause());
@@ -827,7 +806,7 @@ public class RedisQues extends AbstractVerticle {
                 });
             }
             CompositeFuture.all(futureList).onComplete(event1 -> result.complete());
-        });
+        }));
         return result.future();
     }
 
@@ -839,7 +818,8 @@ public class RedisQues extends AbstractVerticle {
     private Future<Void> removeOldQueues(long limit) {
         final Promise<Void> promise = Promise.promise();
         log.debug("Cleaning old queues");
-        redisAPI.zremrangebyscore(queuesKey, "-inf", String.valueOf(limit), event -> promise.complete());
+        redisAPIProvider.redisAPI().onSuccess(redisAPI -> redisAPI.zremrangebyscore(queuesKey, "-inf", String.valueOf(limit),
+                event -> promise.complete()));
         return promise.future();
     }
 

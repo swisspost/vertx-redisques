@@ -13,7 +13,7 @@ import io.vertx.redis.client.Response;
  * @author baldim
  */
 public class PutLockHandler implements Handler<AsyncResult<Response>> {
-    private Message<JsonObject> event;
+    private final Message<JsonObject> event;
 
     public PutLockHandler(Message<JsonObject> event) {
         this.event = event;

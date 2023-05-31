@@ -11,7 +11,7 @@ import io.vertx.redis.client.Response;
 import java.util.List;
 import java.util.Optional;
 import java.util.regex.Pattern;
-import org.swisspush.redisques.util.QueueHandlerUtil;
+import org.swisspush.redisques.util.HandlerUtil;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 
 /**
@@ -36,8 +36,8 @@ public class GetQueuesSpeedHandler implements Handler<AsyncResult<Response>> {
     public void handle(AsyncResult<Response> handleQueues) {
         if (handleQueues.succeeded()) {
             // apply the given filter in order to have only the queues for which we ar interested
-            List<String> queues = QueueHandlerUtil
-                .filterQueues(handleQueues.result(), filterPattern);
+            List<String> queues = HandlerUtil
+                .filterByPattern(handleQueues.result(), filterPattern);
             queueStatisticsCollector.getQueuesSpeed(event, queues);
         } else {
             event.reply(new JsonObject().put(STATUS, ERROR));

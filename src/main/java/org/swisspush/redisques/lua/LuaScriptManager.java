@@ -1,10 +1,10 @@
 package org.swisspush.redisques.lua;
 
 import io.vertx.core.Handler;
+import io.vertx.redis.client.Response;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import io.vertx.redis.client.RedisAPI;
-import io.vertx.redis.client.Response;
+import org.swisspush.redisques.util.RedisAPIProvider;
 import org.swisspush.redisques.util.RedisUtils;
 
 import java.util.*;
@@ -16,19 +16,19 @@ import java.util.*;
  */
 public class LuaScriptManager {
 
-    private RedisAPI redisAPI;
+    private RedisAPIProvider redisAPIProvider;
     private Map<LuaScript,LuaScriptState> luaScripts = new HashMap<>();
     private Logger log = LoggerFactory.getLogger(LuaScriptManager.class);
 
-    public LuaScriptManager(RedisAPI redisAPI){
-        this.redisAPI = redisAPI;
+    public LuaScriptManager(RedisAPIProvider redisAPIProvider){
+        this.redisAPIProvider = redisAPIProvider;
 
-        LuaScriptState luaGetScriptState = new LuaScriptState(LuaScript.CHECK, redisAPI);
+        LuaScriptState luaGetScriptState = new LuaScriptState(LuaScript.CHECK, redisAPIProvider);
         luaGetScriptState.loadLuaScript(new RedisCommandDoNothing(), 0);
         luaScripts.put(LuaScript.CHECK, luaGetScriptState);
 
         // load the MultiListLength Lua Script
-        LuaScriptState luaMllenScriptState = new LuaScriptState(LuaScript.MLLEN, redisAPI);
+        LuaScriptState luaMllenScriptState = new LuaScriptState(LuaScript.MLLEN, redisAPIProvider);
         luaMllenScriptState.loadLuaScript(new RedisCommandDoNothing(), 0);
         luaScripts.put(LuaScript.MLLEN, luaMllenScriptState);
     }
@@ -51,7 +51,7 @@ public class LuaScriptManager {
                 String.valueOf(System.currentTimeMillis()),
                 String.valueOf(checkInterval)
         );
-        executeRedisCommand(new Check(keys, arguments, redisAPI, handler), 0);
+        executeRedisCommand(new Check(keys, arguments, redisAPIProvider, handler), 0);
     }
 
     private class Check implements RedisCommand {
@@ -59,19 +59,19 @@ public class LuaScriptManager {
         private List<String> keys;
         private List<String> arguments;
         private Handler<Boolean> handler;
-        private RedisAPI redisAPI;
+        private RedisAPIProvider redisAPIProvider;
 
-        public Check(List<String> keys, List<String> arguments, RedisAPI redisAPI, final Handler<Boolean> handler) {
+        public Check(List<String> keys, List<String> arguments, RedisAPIProvider redisAPIProvider, final Handler<Boolean> handler) {
             this.keys = keys;
             this.arguments = arguments;
-            this.redisAPI = redisAPI;
+            this.redisAPIProvider = redisAPIProvider;
             this.handler = handler;
         }
 
         @Override
         public void exec(int executionCounter) {
             List<String> args= RedisUtils.toPayload(luaScripts.get(LuaScript.CHECK).getSha(), keys.size(), keys, arguments);
-            redisAPI.evalsha(args, event -> {
+            redisAPIProvider.redisAPI().onSuccess(redisAPI -> redisAPI.evalsha(args, event -> {
                 if(event.succeeded()){
                     Long value = event.result().toLong();
                     if (log.isTraceEnabled()) {
@@ -86,30 +86,30 @@ public class LuaScriptManager {
                         if(executionCounter > 10) {
                             log.error("amount the script got loaded is higher than 10, we abort");
                         } else {
-                            luaScripts.get(LuaScript.CHECK).loadLuaScript(new Check(keys, arguments, redisAPI, handler), executionCounter);
+                            luaScripts.get(LuaScript.CHECK).loadLuaScript(new Check(keys, arguments, redisAPIProvider, handler), executionCounter);
                         }
                     } else {
                         log.error("Check request failed.", event.cause());
                     }
                 }
-            });
+            }));
         }
     }
 
 
     public void handleMultiListLength(List<String> keys, Handler<List<Long>> handler){
-        executeRedisCommand(new MultiListLength(keys, redisAPI, handler), 0);
+        executeRedisCommand(new MultiListLength(keys, redisAPIProvider, handler), 0);
     }
 
     private class MultiListLength implements RedisCommand {
 
         private List<String> keys;
         private Handler<List<Long>> handler;
-        private RedisAPI redisAPI;
+        private RedisAPIProvider redisAPIProvider;
 
-        public MultiListLength(List<String> keys, RedisAPI redisAPI, final Handler<List<Long>> handler) {
+        public MultiListLength(List<String> keys, RedisAPIProvider redisAPIProvider, final Handler<List<Long>> handler) {
             this.keys = keys;
-            this.redisAPI = redisAPI;
+            this.redisAPIProvider = redisAPIProvider;
             this.handler = handler;
         }
 
@@ -121,12 +121,12 @@ public class LuaScriptManager {
             }
             List<String> args= RedisUtils.toPayload(luaScripts.get(LuaScript.MLLEN).getSha(),
                 keys.size(), keys);
-            redisAPI.evalsha(args, event -> {
+            redisAPIProvider.redisAPI().onSuccess(redisAPI -> redisAPI.evalsha(args, event -> {
                 if(event.succeeded()){
                     List<Long> res = new ArrayList<>();
                     Iterator <Response> itr = event.result().iterator();
                     while (itr.hasNext()){
-                      res.add(itr.next().toLong());
+                        res.add(itr.next().toLong());
                     }
                     handler.handle(res);
                 } else {
@@ -137,14 +137,14 @@ public class LuaScriptManager {
                         if(executionCounter > 10) {
                             log.error("amount the MultiListLength script got loaded is higher than 10, we abort");
                         } else {
-                            luaScripts.get(LuaScript.MLLEN).loadLuaScript(new MultiListLength(keys, redisAPI, handler), executionCounter);
+                            luaScripts.get(LuaScript.MLLEN).loadLuaScript(new MultiListLength(keys, redisAPIProvider, handler), executionCounter);
                         }
                     } else {
                         log.error("ListLength request failed.", event.cause());
                     }
                     event.failed();
                 }
-            });
+            }));
         }
     }
 

@@ -14,7 +14,7 @@ import static org.swisspush.redisques.util.RedisquesAPI.*;
  * @author baldim, https://github.com/mcweba [Marc-Andre Weber]
  */
 public class AddQueueItemHandler implements Handler<AsyncResult<Response>> {
-    private Message<JsonObject> event;
+    private final Message<JsonObject> event;
 
     public AddQueueItemHandler(Message<JsonObject> event) {
         this.event = event;

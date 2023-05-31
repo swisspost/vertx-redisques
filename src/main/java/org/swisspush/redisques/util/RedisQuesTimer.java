@@ -15,9 +15,9 @@ import java.util.Random;
  */
 public class RedisQuesTimer {
     private final Vertx vertx;
-    private Random random;
+    private final Random random;
 
-    private Logger log = LoggerFactory.getLogger(RedisQuesTimer.class);
+    private final Logger log = LoggerFactory.getLogger(RedisQuesTimer.class);
 
     public RedisQuesTimer(Vertx vertx) {
         this.vertx = vertx;

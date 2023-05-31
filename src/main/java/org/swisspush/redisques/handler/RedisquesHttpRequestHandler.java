@@ -1,11 +1,5 @@
 package org.swisspush.redisques.handler;
 
-import static org.swisspush.redisques.util.HttpServerRequestUtil.decode;
-import static org.swisspush.redisques.util.HttpServerRequestUtil.encodePayload;
-import static org.swisspush.redisques.util.HttpServerRequestUtil.evaluateUrlParameterToBeEmptyOrTrue;
-import static org.swisspush.redisques.util.HttpServerRequestUtil.extractNonEmptyJsonArrayFromBody;
-import static org.swisspush.redisques.util.RedisquesAPI.*;
-
 import io.netty.util.internal.StringUtil;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Handler;
@@ -19,20 +13,23 @@ import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.ext.auth.authentication.AuthenticationProvider;
+import io.vertx.ext.web.Router;
+import io.vertx.ext.web.RoutingContext;
 import io.vertx.ext.web.handler.BasicAuthHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import io.vertx.ext.web.Router;
-import io.vertx.ext.web.RoutingContext;
-import java.nio.charset.StandardCharsets;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.stream.Collectors;
 import org.swisspush.redisques.util.RedisquesAPI;
 import org.swisspush.redisques.util.RedisquesConfiguration;
 import org.swisspush.redisques.util.Result;
 import org.swisspush.redisques.util.StatusCode;
+
+import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.Optional;
+import java.util.stream.Collectors;
+
+import static org.swisspush.redisques.util.HttpServerRequestUtil.*;
+import static org.swisspush.redisques.util.RedisquesAPI.*;
 
 /**
  * Handler class for HTTP requests providing access to Redisques over HTTP.
@@ -44,8 +41,8 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
 
     private static final Logger log = LoggerFactory.getLogger(RedisquesHttpRequestHandler.class);
 
-    private Router router;
-    private EventBus eventBus;
+    private final Router router;
+    private final EventBus eventBus;
 
     private static final String APPLICATION_JSON = "application/json";
     private static final String TEXT_PLAIN = "text/plain";
@@ -595,7 +592,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
                     List<Object> list = replyBody.getJsonArray(VALUE).getList();
                     JsonArray items = new JsonArray();
                     for (Object item : list.toArray()) {
-                        items.add((String) item);
+                        items.add(item);
                     }
                     JsonObject result = new JsonObject().put(queue, items);
                     jsonResponse(ctx.response(), result);

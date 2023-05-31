@@ -4,12 +4,12 @@ import io.vertx.core.AsyncResult;
 import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonObject;
-import io.vertx.redis.client.RedisAPI;
 import io.vertx.redis.client.Response;
 import org.slf4j.Logger;
 import org.swisspush.redisques.lua.LuaScriptManager;
 import org.swisspush.redisques.util.QueueConfiguration;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
+import org.swisspush.redisques.util.RedisAPIProvider;
 
 import java.util.Arrays;
 import java.util.Collections;
@@ -19,10 +19,10 @@ import static org.swisspush.redisques.util.RedisquesAPI.*;
 
 public class DeleteAllQueueItemsAction extends AbstractQueueAction {
 
-    public DeleteAllQueueItemsAction(Vertx vertx, LuaScriptManager luaScriptManager, RedisAPI redisAPI, String address, String queuesKey, String queuesPrefix,
+    public DeleteAllQueueItemsAction(Vertx vertx, LuaScriptManager luaScriptManager, RedisAPIProvider redisAPIProvider, String address, String queuesKey, String queuesPrefix,
                                      String consumersPrefix, String locksKey, List<QueueConfiguration> queueConfigurations,
                                      QueueStatisticsCollector queueStatisticsCollector, Logger log) {
-        super(vertx, luaScriptManager, redisAPI, address, queuesKey, queuesPrefix, consumersPrefix, locksKey, queueConfigurations,
+        super(vertx, luaScriptManager, redisAPIProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey, queueConfigurations,
                 queueStatisticsCollector, log);
     }
 
@@ -31,26 +31,27 @@ public class DeleteAllQueueItemsAction extends AbstractQueueAction {
         JsonObject payload = event.body().getJsonObject(PAYLOAD);
         boolean unlock = payload.getBoolean(UNLOCK, false);
         String queue = payload.getString(QUEUENAME);
-        redisAPI.del(Collections.singletonList(buildQueueKey(queue)), deleteReply -> {
-            if (deleteReply.failed()) {
-                log.warn("Failed to deleteAllQueueItems. But we'll continue anyway", deleteReply.cause());
-                // May we should 'fail()' here. But:
-                // 1st: We don't, to keep backward compatibility
-                // 2nd: We don't, to may unlock below.
-            }
-            queueStatisticsCollector.resetQueueFailureStatistics(queue);
-            if (unlock) {
-                redisAPI.hdel(Arrays.asList(locksKey, queue), unlockReply -> {
-                    if (unlockReply.failed()) {
-                        log.warn("Failed to unlock queue '{}'. Will continue anyway", queue, unlockReply.cause());
-                        // IMO we should 'fail()' here. But we don't, to keep backward compatibility.
+        redisAPIProvider.redisAPI().onSuccess(redisAPI -> redisAPI.del(Collections.singletonList(buildQueueKey(queue)),
+                deleteReply -> {
+                    if (deleteReply.failed()) {
+                        log.warn("Failed to deleteAllQueueItems. But we'll continue anyway", deleteReply.cause());
+                        // May we should 'fail()' here. But:
+                        // 1st: We don't, to keep backward compatibility
+                        // 2nd: We don't, to may unlock below.
                     }
-                    handleDeleteQueueReply(event, deleteReply);
-                });
-            } else {
-                handleDeleteQueueReply(event, deleteReply);
-            }
-        });
+                    queueStatisticsCollector.resetQueueFailureStatistics(queue);
+                    if (unlock) {
+                        redisAPI.hdel(Arrays.asList(locksKey, queue), unlockReply -> {
+                            if (unlockReply.failed()) {
+                                log.warn("Failed to unlock queue '{}'. Will continue anyway", queue, unlockReply.cause());
+                                // IMO we should 'fail()' here. But we don't, to keep backward compatibility.
+                            }
+                            handleDeleteQueueReply(event, deleteReply);
+                        });
+                    } else {
+                        handleDeleteQueueReply(event, deleteReply);
+                    }
+                }));
     }
 
     private void handleDeleteQueueReply(Message<JsonObject> event, AsyncResult<Response> reply) {

@@ -6,8 +6,8 @@ import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.redis.client.Response;
+import org.swisspush.redisques.util.HandlerUtil;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.regex.Pattern;
@@ -19,9 +19,9 @@ import static org.swisspush.redisques.util.RedisquesAPI.*;
  */
 public class GetQueuesHandler implements Handler<AsyncResult<Response>> {
 
-    private Message<JsonObject> event;
-    private Optional<Pattern> filterPattern;
-    private boolean countOnly;
+    private final Message<JsonObject> event;
+    private final Optional<Pattern> filterPattern;
+    private final boolean countOnly;
 
     public GetQueuesHandler(Message<JsonObject> event, Optional<Pattern> filterPattern, boolean countOnly) {
         this.event = event;
@@ -34,23 +34,8 @@ public class GetQueuesHandler implements Handler<AsyncResult<Response>> {
         if(reply.succeeded()){
             JsonObject jsonRes = new JsonObject();
             Response queues = reply.result();
-            if(filterPattern.isPresent()){
-                Pattern pattern = filterPattern.get();
-                JsonArray filteredQueues = new JsonArray();
-                for (int i = 0; i < queues.size(); i++) {
-                    String queue = queues.get(i).toString();
-                    if(pattern.matcher(queue).find()){
-                        filteredQueues.add(queue);
-                    }
-                }
-                jsonRes.put(QUEUES, filteredQueues);
-            } else {
-                List<String> arrayQueues = new ArrayList<>();
-                for (Response response : queues) {
-                    arrayQueues.add(response.toString());
-                }
-                jsonRes.put(QUEUES, arrayQueues);
-            }
+            List<String> filteredQueues = HandlerUtil.filterByPattern(queues, filterPattern);
+            jsonRes.put(QUEUES, new JsonArray(filteredQueues));
             if(countOnly){
                 event.reply(new JsonObject().put(STATUS, OK).put(VALUE, jsonRes.getJsonArray(QUEUES).size()));
             } else {
