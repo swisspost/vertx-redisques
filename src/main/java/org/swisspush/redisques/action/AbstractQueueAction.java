@@ -1,7 +1,6 @@
 package org.swisspush.redisques.action;
 
-import io.vertx.core.AsyncResult;
-import io.vertx.core.Handler;
+import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.EventBus;
 import io.vertx.core.eventbus.Message;
@@ -144,19 +143,12 @@ public abstract class AbstractQueueAction implements QueueAction {
         }
         return null;
     }
-
-    protected void updateTimestamp(final String queueName, Handler<AsyncResult<Response>> handler) {
+    protected Future<Response> updateTimestamp(final String queueName) {
         long ts = System.currentTimeMillis();
         if (log.isTraceEnabled()) {
             log.trace("RedisQues update timestamp for queue: {} to: {}", queueName, ts);
         }
-        redisAPIProvider.redisAPI().onSuccess(redisAPI -> {
-            if (handler == null) {
-                redisAPI.zadd(Arrays.asList(queuesKey, String.valueOf(ts), queueName));
-            } else {
-                redisAPI.zadd(Arrays.asList(queuesKey, String.valueOf(ts), queueName), handler);
-            }
-        });
+        return redisAPIProvider.redisAPI().compose(redisAPI -> redisAPI.zadd(Arrays.asList(queuesKey, String.valueOf(ts), queueName)));
     }
 
     protected void notifyConsumer(final String queueName) {
