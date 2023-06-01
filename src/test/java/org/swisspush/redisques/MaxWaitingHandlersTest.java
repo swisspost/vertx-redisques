@@ -12,6 +12,8 @@ import io.vertx.redis.client.*;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -26,6 +28,8 @@ import java.util.stream.IntStream;
  */
 @RunWith(VertxUnitRunner.class)
 public class MaxWaitingHandlersTest {
+
+    protected static Logger log = LoggerFactory.getLogger(MaxWaitingHandlersTest.class);
 
     @Rule
     public RunTestOnContext rule = new RunTestOnContext();
@@ -52,7 +56,7 @@ public class MaxWaitingHandlersTest {
                         Promise<Response> p = Promise.promise();
                         vertx.setTimer(1, timerId -> redisApi.set(Arrays.asList("foo", "bar"), p));
                         futures.add(p.future().map(res -> {
-                            System.out.println("SUCCESS " + cnt.incrementAndGet());
+                            log.info("SUCCESS {}", cnt.incrementAndGet());
                             return null;
                         }));
                     });
@@ -92,7 +96,7 @@ public class MaxWaitingHandlersTest {
                         Promise<Response> p = Promise.promise();
                         vertx.setTimer(1, timerId -> redisApi.set(Arrays.asList("foo", "bar"), p));
                         futures.add(p.future().map(res -> {
-                            System.out.println("SUCCESS " + cnt.incrementAndGet());
+                            log.info("SUCCESS {}", cnt.incrementAndGet());
                             return null;
                         }));
                     });

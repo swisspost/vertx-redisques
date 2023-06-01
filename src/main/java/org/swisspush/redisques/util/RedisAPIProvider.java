@@ -24,7 +24,7 @@ public class RedisAPIProvider {
     private RedisAPI redisAPI;
 
     private Redis redis;
-    private final AtomicBoolean CONNECTING = new AtomicBoolean();
+    private final AtomicBoolean connecting = new AtomicBoolean();
     private RedisConnection client;
 
     private static final Logger log = LoggerFactory.getLogger(RedisAPIProvider.class);
@@ -69,7 +69,7 @@ public class RedisAPIProvider {
                 .setMaxPoolWaiting(redisMaxPoolWaitingSize)
                 .setMaxWaitingHandlers(redisMaxPipelineWaitingSize);
 
-        if (CONNECTING.compareAndSet(false, true)) {
+        if (connecting.compareAndSet(false, true)) {
             redis = Redis.createClient(vertx, redisOptions);
             redis
                     .connect()
@@ -95,10 +95,10 @@ public class RedisAPIProvider {
                         // allow further processing
                         redisAPI = RedisAPI.api(conn);
                         promise.complete(redisAPI);
-                        CONNECTING.set(false);
+                        connecting.set(false);
                     }).onFailure(t -> {
                         promise.fail(t);
-                        CONNECTING.set(false);
+                        connecting.set(false);
                     });
         } else {
             promise.complete(redisAPI);
@@ -117,7 +117,7 @@ public class RedisAPIProvider {
             doReconnect(retry);
         } else if (retry > redisReconnectAttempts) {
             log.warn("Not reconnecting anymore since max reconnect attempts ({}) are reached", redisReconnectAttempts);
-            CONNECTING.set(false);
+            connecting.set(false);
         } else {
             doReconnect(retry);
         }
