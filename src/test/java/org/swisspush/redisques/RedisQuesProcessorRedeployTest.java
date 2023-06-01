@@ -61,7 +61,7 @@ public class RedisQuesProcessorRedeployTest extends AbstractTestCase {
      *  We have to rely onto the check function of RediesQues.
      */
     @Test
-    public void notActiveQueueActivatedThroughCheckAfterRedeploy(TestContext context) throws Exception {
+    public void notActiveQueueActivatedThroughCheckAfterRedeploy(TestContext context) {
         Async async = context.async();
         flushAll();
 

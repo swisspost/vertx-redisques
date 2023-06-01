@@ -84,7 +84,7 @@ public class RedisQuesProcessorTest extends AbstractTestCase {
     }
 
     @Test
-    public void test10Queues(TestContext context) throws Exception {
+    public void test10Queues(TestContext context) {
 
         final Map<String, MessageDigest> signatures = new HashMap<>();
 
@@ -192,7 +192,7 @@ public class RedisQuesProcessorTest extends AbstractTestCase {
     }
 
     @Test
-    public void enqueueWithQueueProcessor(TestContext context) throws Exception {
+    public void enqueueWithQueueProcessor(TestContext context) {
         Async async = context.async();
         flushAll();
         queueProcessor.handler(message -> {
@@ -225,7 +225,7 @@ public class RedisQuesProcessorTest extends AbstractTestCase {
     }
 
     @Test
-    public void enqueueWithQueueProcessorFirstProcessFails(TestContext context) throws Exception {
+    public void enqueueWithQueueProcessorFirstProcessFails(TestContext context) {
         Async async = context.async();
         flushAll();
 
@@ -275,7 +275,7 @@ public class RedisQuesProcessorTest extends AbstractTestCase {
     }
 
     @Test
-    public void enqueueWithQueueProcessorFirstProcessNoResponse(TestContext context) throws Exception {
+    public void enqueueWithQueueProcessorFirstProcessNoResponse(TestContext context) {
         Async async = context.async();
         flushAll();
 
@@ -319,7 +319,7 @@ public class RedisQuesProcessorTest extends AbstractTestCase {
     }
 
     @Test
-    public void queueProcessorShouldBeNotifiedWithNonLockedQueue(TestContext context) throws Exception {
+    public void queueProcessorShouldBeNotifiedWithNonLockedQueue(TestContext context) {
         Async async = context.async();
         flushAll();
 
@@ -345,7 +345,7 @@ public class RedisQuesProcessorTest extends AbstractTestCase {
 
 
     @Test
-    public void queueProcessorShouldNotBeNotNotifiedWithLockedQueue(TestContext context) throws Exception {
+    public void queueProcessorShouldNotBeNotNotifiedWithLockedQueue(TestContext context) {
         Async async = context.async();
         flushAll();
 
@@ -365,7 +365,7 @@ public class RedisQuesProcessorTest extends AbstractTestCase {
     }
 
     @Test
-    public void queueProcessorShouldHaveBeenNotifiedImmediatelyAfterQueueUnlock(TestContext context) throws Exception {
+    public void queueProcessorShouldHaveBeenNotifiedImmediatelyAfterQueueUnlock(TestContext context) {
         Async async = context.async();
         flushAll();
 

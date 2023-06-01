@@ -145,9 +145,9 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
                 .httpRequestHandlerEnabled(true)
                 .httpRequestHandlerPort(7070)
                 .queueConfigurations(List.of(
-                   new QueueConfiguration().withPattern("queue_1").withRetryIntervals(1, 2, 3, 5),
-                   new QueueConfiguration().withPattern("stat.*").withRetryIntervals(1, 2, 3, 5)
-                       .withEnqueueDelayMillisPerSize(5).withEnqueueMaxDelayMillis(100)
+                        new QueueConfiguration().withPattern("queue_1").withRetryIntervals(1, 2, 3, 5),
+                        new QueueConfiguration().withPattern("stat.*").withRetryIntervals(1, 2, 3, 5)
+                                .withEnqueueDelayMillisPerSize(5).withEnqueueMaxDelayMillis(100)
                 ))
                 .queueSpeedIntervalSec(4)
                 .build()
@@ -185,16 +185,15 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
     /**
      * Helper method to register an eventbus queue message handler which consumes just all
      * queue messages properly.
-     *
+     * <p>
      * Note: don't forget to unregister the given MessageConsumer after test completion. Else this
      * might influence other tests later.
      *
      * @return The MessageConsumer used for later unregistration of the consumer.
      */
-    private MessageConsumer registerQueueEventOkConsumer(){
-        return testVertx.eventBus().consumer("processor-address", handler ->{
-                handler.reply(new JsonObject().put(RedisquesAPI.STATUS, RedisquesAPI.OK));
-            }
+    private MessageConsumer registerQueueEventOkConsumer() {
+        return testVertx.eventBus().consumer("processor-address",
+                handler -> handler.reply(new JsonObject().put(RedisquesAPI.STATUS, RedisquesAPI.OK))
         );
     }
 
@@ -1420,7 +1419,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
                             .when().post("/queuing/locks/")
                             .then().assertThat()
                             .statusCode(200); // not 400 any more vertx 4 convert any number in request into String
-                          //  .body(containsString("Locks must be string values"));
+                    //  .body(containsString("Locks must be string values"));
 
                     assertLockExists(context, "queue1");
                     assertLockExists(context, "queue2");
@@ -1974,53 +1973,53 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
     }
 
     @Test
-    public void getStatisticsEmpty(TestContext context) throws Exception {
+    public void getStatisticsEmpty(TestContext context) {
         flushAll();
         assertQueueState(context, null, 0, null,
-            null, null, null, null,
-            null);
+                null, null, null, null,
+                null);
     }
 
     @Test
-    public void getStatisticsFailures(TestContext context) throws Exception {
+    public void getStatisticsFailures(TestContext context) {
         flushAll();
 
         // Check normal send with missing message consumer -> 1 failure immediately
         Async async1 = context.async();
         eventBusSend(buildEnqueueOperation("stat_a", "item_a_1"), handler -> {
             assertQueueState(context, null, 1, 0,
-                "stat_a", 1, 1, null,
-                null);
+                    "stat_a", 1, 1, null,
+                    null);
             async1.complete();
         });
         async1.awaitSuccess();
         Async async2 = context.async();
         eventBusSend(buildEnqueueOperation("stat_a", "item_a_2"), handler -> {
             assertQueueState(context, null, 1, 0,
-                "stat_a", 2, 2, null,
-                null);
+                    "stat_a", 2, 2, null,
+                    null);
             async2.complete();
         });
         async2.awaitSuccess();
     }
 
     @Test(timeout = 10000L)
-    public void getStatisticsSlowDown(TestContext context) throws Exception {
+    public void getStatisticsSlowDown(TestContext context) {
         Async async = context.async();
         flushAll();
 
         // Test increasing slowDown Time within 5 seconds
         eventBusSend(buildEnqueueOperation("stat_b", "item_b_1"), handler -> {
             assertQueueState(context, null, 1, 0,
-                "stat_b", 1, 1, 1,
-                null);
+                    "stat_b", 1, 1, 1,
+                    null);
             async.complete();
         });
         async.awaitSuccess(8000);
     }
 
     @Test(timeout = 10000L)
-    public void getStatisticsBackpressure(TestContext context) throws Exception {
+    public void getStatisticsBackpressure(TestContext context) {
         flushAll();
 
         // Test increasing backPressure Time
@@ -2028,8 +2027,8 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         Async async1 = context.async();
         eventBusSend(buildEnqueueOperation("stat_c", "item_c_1"), handler -> {
             assertQueueState(context, null, 1, 0,
-                "stat_c", 1, null, null,
-                0);
+                    "stat_c", 1, null, null,
+                    0);
             async1.complete();
         });
         async1.awaitSuccess();
@@ -2037,8 +2036,8 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         Async async2 = context.async();
         eventBusSend(buildEnqueueOperation("stat_c", "item_c_2"), h1 -> {
             assertQueueState(context, null, 1, 0,
-                "stat_c", 2, null, null,
-                5);
+                    "stat_c", 2, null, null,
+                    5);
             async2.complete();
         });
         async2.awaitSuccess();
@@ -2046,15 +2045,15 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         Async async3 = context.async();
         eventBusSend(buildEnqueueOperation("stat_c", "item_c_3"), h1 -> {
             assertQueueState(context, null, 1, 0,
-                "stat_c", 3, null, null,
-                10);
+                    "stat_c", 3, null, null,
+                    10);
             async3.complete();
         });
         async3.awaitSuccess(8000);
     }
 
     @Test
-    public void getStatisticsFilter(TestContext context) throws Exception {
+    public void getStatisticsFilter(TestContext context) {
         Async async = context.async();
         flushAll();
         // Test retrieve statistics with queue filter
@@ -2064,11 +2063,11 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
             eventBusSend(buildEnqueueOperation("stat_" + i, "item_1_stat_" + i), handler -> {
                 if (loopCtr.getAndIncrement() >= loopLimit - 1) {
                     assertQueueState(context, "stat_[1-5]", 5, null,
-                        null, null, null, null,
-                        null);
+                            null, null, null, null,
+                            null);
                     assertQueueState(context, "stat_1", 1, 0,
-                        "stat_1", null, null, null,
-                        null);
+                            "stat_1", null, null, null,
+                            null);
                     async.complete();
                 }
             });
@@ -2077,19 +2076,13 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
     }
 
     @Test
-    public void getQueueSpeedEmptyFilter(TestContext context) throws Exception {
+    public void getQueueSpeedEmptyFilter(TestContext context) {
         MessageConsumer consumer = registerQueueEventOkConsumer();
         flushAll();
         Async async = context.async(3);
-        eventBusSend(buildEnqueueOperation("speed_a", "item_a_1"), handler -> {
-            async.countDown();
-        });
-        eventBusSend(buildEnqueueOperation("speed_a", "item_a_2"), handler -> {
-            async.countDown();
-        });
-        eventBusSend(buildEnqueueOperation("speed_b", "item_b_1"), handler -> {
-            async.countDown();
-        });
+        eventBusSend(buildEnqueueOperation("speed_a", "item_a_1"), handler -> async.countDown());
+        eventBusSend(buildEnqueueOperation("speed_a", "item_a_2"), handler -> async.countDown());
+        eventBusSend(buildEnqueueOperation("speed_b", "item_b_1"), handler -> async.countDown());
         async.awaitSuccess();
         // If no filter is given, this would result in the speed over all queues known.
         assertQueueSpeed(context, "", 3);
@@ -2097,13 +2090,11 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
     }
 
     @Test
-    public void getQueueSpeedNoMatchingFilter(TestContext context) throws Exception {
+    public void getQueueSpeedNoMatchingFilter(TestContext context) {
         MessageConsumer consumer = registerQueueEventOkConsumer();
         flushAll();
         Async async = context.async();
-        eventBusSend(buildEnqueueOperation("speed_a", "item_a_1"), handler -> {
-            async.complete();
-        });
+        eventBusSend(buildEnqueueOperation("speed_a", "item_a_1"), handler -> async.complete());
         async.awaitSuccess();
         // we should not get any speed for this other queue and end up in timeout therefore
         assertQueueSpeed(context, "speed_b.*", 0);
@@ -2111,16 +2102,12 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
     }
 
     @Test
-    public void getQueueSpeedMatchingFilter(TestContext context) throws Exception {
+    public void getQueueSpeedMatchingFilter(TestContext context) {
         MessageConsumer consumer = registerQueueEventOkConsumer();
         flushAll();
         Async async = context.async(2);
-        eventBusSend(buildEnqueueOperation("speed_a", "item_a_1"), handler -> {
-            async.countDown();
-        });
-        eventBusSend(buildEnqueueOperation("speed_a", "item_a_2"), handler -> {
-            async.countDown();
-        });
+        eventBusSend(buildEnqueueOperation("speed_a", "item_a_1"), handler -> async.countDown());
+        eventBusSend(buildEnqueueOperation("speed_a", "item_a_2"), handler -> async.countDown());
         async.awaitSuccess();
         // two messages must be captured
         assertQueueSpeed(context, "speed_a.*", 2);
@@ -2128,16 +2115,12 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
     }
 
     @Test
-    public void getQueueSpeedMatchingPartlyFilter(TestContext context) throws Exception {
+    public void getQueueSpeedMatchingPartlyFilter(TestContext context) {
         MessageConsumer consumer = registerQueueEventOkConsumer();
         flushAll();
         Async async = context.async(2);
-        eventBusSend(buildEnqueueOperation("speed_a", "item_a_1"), handler -> {
-            async.countDown();
-        });
-        eventBusSend(buildEnqueueOperation("speed_b", "item_b_1"), handler -> {
-            async.countDown();
-        });
+        eventBusSend(buildEnqueueOperation("speed_a", "item_a_1"), handler -> async.countDown());
+        eventBusSend(buildEnqueueOperation("speed_b", "item_b_1"), handler -> async.countDown());
         async.awaitSuccess();
         assertQueueSpeed(context, "speed_a.*", 1);
         consumer.unregister();
@@ -2162,14 +2145,14 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
      * @oaram filter                The filter to be applied to the statistic queues request
      */
     private void assertQueueState(@NotNull TestContext context,
-        @Nullable String filter,
-        @Nullable Integer queuesSize,
-        @Nullable Integer element,
-        @Nullable String queueName,
-        @Nullable Integer queueSize,
-        @Nullable Integer queueFailures,
-        @Nullable Integer queueSlowdownTime,
-        @Nullable Integer queueBackpressureTime) {
+                                  @Nullable String filter,
+                                  @Nullable Integer queuesSize,
+                                  @Nullable Integer element,
+                                  @Nullable String queueName,
+                                  @Nullable Integer queueSize,
+                                  @Nullable Integer queueFailures,
+                                  @Nullable Integer queueSlowdownTime,
+                                  @Nullable Integer queueBackpressureTime) {
         long maxWaitTime = System.currentTimeMillis() + 5000;
         while (true) {
             StringBuilder failureState = new StringBuilder("Failures");
@@ -2178,13 +2161,13 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
                 url = url + "?filter=" + filter;
             }
             ArrayList<HashMap<String, Object>> response = when().get(url)
-                .then()
-                .assertThat().statusCode(200)
-                .extract().path("queues");
+                    .then()
+                    .assertThat().statusCode(200)
+                    .extract().path("queues");
             boolean success = true;
             // check the number of queues statistics we have
             if (queuesSize != null &&
-                response.size() != queuesSize) {
+                    response.size() != queuesSize) {
                 success = false;
                 failureState.append("/queuesSize:" + response.size());
             }
@@ -2226,7 +2209,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
                 // check the queue backpressure time
                 if (queueBackpressureTime != null) {
                     Integer backpressureTime = (Integer) response.get(element)
-                        .get("backpressureTime");
+                            .get("backpressureTime");
                     if (!queueBackpressureTime.equals(backpressureTime)) {
                         success = false;
                         failureState.append("/backpressureTime:" + backpressureTime);
@@ -2254,8 +2237,8 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
      * @param speed  The expected speed
      * @return true if the expectation was fulfilled within max 5 seconds, else false
      */
-    private void assertQueueSpeed( @NotNull TestContext context,
-        @Nullable String filter, int speed) {
+    private void assertQueueSpeed(@NotNull TestContext context,
+                                  @Nullable String filter, int speed) {
         String url = "/queuing/speed";
         if (filter != null && !filter.isEmpty()) {
             url = url + "?filter=" + filter;
@@ -2264,9 +2247,9 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         while (true) {
             boolean success = true;
             Integer response = given().when().get(url)
-                .then().assertThat()
-                .statusCode(200)
-                .extract().path("speed");
+                    .then().assertThat()
+                    .statusCode(200)
+                    .extract().path("speed");
             if (response == null || !response.equals(speed)) {
                 success = false;
             }
@@ -2298,7 +2281,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         {
             long timestamp = System.currentTimeMillis();
             response = given().when().get("/queuing/statistics").then().assertThat().statusCode(200)
-                .extract().path("queues");
+                    .extract().path("queues");
             assert (response.size() == 0);
             long statisticsTime = System.currentTimeMillis() - timestamp;
             System.out.println("Statistics initial time:" + statisticsTime);
@@ -2308,7 +2291,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
             // on first time within Redis. Second one is much faster.
             long timestamp = System.currentTimeMillis();
             response = given().when().get("/queuing/statistics").then().assertThat()
-                .statusCode(200).extract().path("queues");
+                    .statusCode(200).extract().path("queues");
             assert (response.size() == 0);
             statisticsReferenceTime = System.currentTimeMillis() - timestamp;
             System.out.println("Statistics reference time=" + statisticsReferenceTime);
@@ -2317,7 +2300,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         {
             long timestamp = System.currentTimeMillis();
             response = given().when().get("/queuing/monitor").then().assertThat()
-                .statusCode(200).extract().path("queues");
+                    .statusCode(200).extract().path("queues");
             assert (response.size() == 0);
             long monitorTime = System.currentTimeMillis() - timestamp;
             System.out.println("Monitoring empty initial time=" + monitorTime);
@@ -2326,7 +2309,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         {
             long timestamp = System.currentTimeMillis();
             response = given().when().get("/queuing/monitor").then().assertThat()
-                .statusCode(200).extract().path("queues");
+                    .statusCode(200).extract().path("queues");
             assert (response.size() == 0);
             monitoringReferenceTime = System.currentTimeMillis() - timestamp;
             System.out.println("Monitoring reference time=" + monitoringReferenceTime);
@@ -2339,12 +2322,12 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
             final AtomicInteger ctr = new AtomicInteger(0);
             while (ctr.get() < 1000) {
                 eventBusSend(buildEnqueueOperation("queue_" + ctr, "item"),
-                    emptyHandler -> {
-                        ctr.incrementAndGet();
-                        synchronized (ctr) {
-                            ctr.notifyAll();
-                        }
-                    });
+                        emptyHandler -> {
+                            ctr.incrementAndGet();
+                            synchronized (ctr) {
+                                ctr.notifyAll();
+                            }
+                        });
                 synchronized (ctr) {
                     ctr.wait();
                 }
@@ -2358,7 +2341,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         {   // first run to warm up the system
             long timestamp = System.currentTimeMillis();
             response = given().when().get("/queuing/monitor").then().assertThat()
-                .statusCode(200).extract().path("queues");
+                    .statusCode(200).extract().path("queues");
             assert (response.size() == 1000);
             long monitorTime = System.currentTimeMillis() - timestamp;
             System.out.println("Monitoring initial time=" + monitorTime);
@@ -2367,7 +2350,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         {   // redo a second time in order to have any caching/optimizing stuff in place
             long timestamp = System.currentTimeMillis();
             response = given().when().get("/queuing/monitor").then().assertThat()
-                .statusCode(200).extract().path("queues");
+                    .statusCode(200).extract().path("queues");
             assert (response.size() == 1000);
             long monitorTime = System.currentTimeMillis() - timestamp;
             System.out.println("Monitoring time=" + monitorTime);
@@ -2380,7 +2363,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         {   // first run to warm up the system
             long timestamp = System.currentTimeMillis();
             response = given().when().get("/queuing/statistics").then().assertThat()
-                .statusCode(200).extract().path("queues");
+                    .statusCode(200).extract().path("queues");
             assert (response.size() == 1000);
             long statisticsTime = System.currentTimeMillis() - timestamp;
             System.out.println("Statistics initial time=" + statisticsTime);
@@ -2389,7 +2372,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         {   // redo a second time in order to have any caching/optimizing stuff in place
             long timestamp = System.currentTimeMillis();
             response = given().when().get("/queuing/statistics").then().assertThat()
-                .statusCode(200).extract().path("queues");
+                    .statusCode(200).extract().path("queues");
             assert (response.size() == 1000);
             long statisticsTime = System.currentTimeMillis() - timestamp;
             System.out.println("Statistics time=" + statisticsTime);

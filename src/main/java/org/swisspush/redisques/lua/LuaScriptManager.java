@@ -124,9 +124,8 @@ public class LuaScriptManager {
             redisAPIProvider.redisAPI().onSuccess(redisAPI -> redisAPI.evalsha(args, event -> {
                 if(event.succeeded()){
                     List<Long> res = new ArrayList<>();
-                    Iterator <Response> itr = event.result().iterator();
-                    while (itr.hasNext()){
-                        res.add(itr.next().toLong());
+                    for (Response response : event.result()) {
+                        res.add(response.toLong());
                     }
                     handler.handle(res);
                 } else {

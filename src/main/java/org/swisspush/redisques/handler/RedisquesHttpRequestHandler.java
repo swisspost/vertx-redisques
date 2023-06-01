@@ -79,8 +79,8 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     }
 
     private Result<Boolean, String> checkHttpAuthenticationConfiguration(RedisquesConfiguration modConfig) {
-        if(modConfig.getHttpRequestHandlerAuthenticationEnabled()) {
-            if(StringUtil.isNullOrEmpty(modConfig.getHttpRequestHandlerUsername()) ||
+        if (modConfig.getHttpRequestHandlerAuthenticationEnabled()) {
+            if (StringUtil.isNullOrEmpty(modConfig.getHttpRequestHandlerUsername()) ||
                     StringUtil.isNullOrEmpty(modConfig.getHttpRequestHandlerPassword())) {
                 String msg = "HTTP API authentication is enabled but username and/or password is missing";
                 log.warn(msg);
@@ -102,7 +102,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         final String prefix = modConfig.getHttpRequestHandlerPrefix();
 
         Result<Boolean, String> result = checkHttpAuthenticationConfiguration(modConfig);
-        if(result.isErr()) {
+        if (result.isErr()) {
             router.route().handler(ctx -> respondWith(StatusCode.INTERNAL_SERVER_ERROR, result.getErr(), ctx.request()));
         } else if (result.getOk()) {
             AuthenticationProvider authProvider = new RedisquesConfigurationAuthentication(modConfig);
@@ -431,38 +431,38 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
 
     private void getQueueItemsCount(RoutingContext ctx) {
         decodedQueueNameOrRespondWithBadRequest(ctx, lastPart(ctx.request().path())).ifPresent(queue ->
-            eventBus.request(redisquesAddress, buildGetQueueItemsCountOperation(queue),
-                    (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
-                if (reply.failed()) {
-                    log.warn("Failed to getQueueItemsCount", reply.cause());
-                    // Continue, only to keep backward compatibility.
-                }
-                if (reply.succeeded() && OK.equals(reply.result().body().getString(STATUS))) {
-                    JsonObject result = new JsonObject();
-                    result.put(COUNT, reply.result().body().getLong(VALUE));
-                    jsonResponse(ctx.response(), result);
-                } else {
-                    respondWith(StatusCode.INTERNAL_SERVER_ERROR, "Error gathering count of active queue items", ctx.request());
-                }
-            })
+                eventBus.request(redisquesAddress, buildGetQueueItemsCountOperation(queue),
+                        (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
+                            if (reply.failed()) {
+                                log.warn("Failed to getQueueItemsCount", reply.cause());
+                                // Continue, only to keep backward compatibility.
+                            }
+                            if (reply.succeeded() && OK.equals(reply.result().body().getString(STATUS))) {
+                                JsonObject result = new JsonObject();
+                                result.put(COUNT, reply.result().body().getLong(VALUE));
+                                jsonResponse(ctx.response(), result);
+                            } else {
+                                respondWith(StatusCode.INTERNAL_SERVER_ERROR, "Error gathering count of active queue items", ctx.request());
+                            }
+                        })
         );
     }
 
     private void getConfiguration(RoutingContext ctx) {
         eventBus.request(redisquesAddress, buildGetConfigurationOperation(),
                 (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
-            if (reply.failed()) {
-                log.warn("Failed to getConfiguration.", reply.cause());
-                // Continue, only to keep backward compatibility.
-            }
-            if (reply.succeeded() && OK.equals(reply.result().body().getString(STATUS))) {
-                jsonResponse(ctx.response(), reply.result().body().getJsonObject(VALUE));
-            } else {
-                String error = "Error gathering configuration";
-                log.error(error);
-                respondWith(StatusCode.INTERNAL_SERVER_ERROR, error, ctx.request());
-            }
-        });
+                    if (reply.failed()) {
+                        log.warn("Failed to getConfiguration.", reply.cause());
+                        // Continue, only to keep backward compatibility.
+                    }
+                    if (reply.succeeded() && OK.equals(reply.result().body().getString(STATUS))) {
+                        jsonResponse(ctx.response(), reply.result().body().getJsonObject(VALUE));
+                    } else {
+                        String error = "Error gathering configuration";
+                        log.error(error);
+                        respondWith(StatusCode.INTERNAL_SERVER_ERROR, error, ctx.request());
+                    }
+                });
     }
 
     private void setConfiguration(RoutingContext ctx) {
@@ -495,7 +495,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         eventBus.request(redisquesAddress, buildGetQueuesItemsCountOperation(filter), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
             if (reply.succeeded() && OK.equals(reply.result().body().getString(STATUS))) {
                 JsonArray queuesArray = reply.result().body().getJsonArray(QUEUES);
-                if (queuesArray!=null && !queuesArray.isEmpty()) {
+                if (queuesArray != null && !queuesArray.isEmpty()) {
                     List<JsonObject> queuesList = queuesArray.getList();
                     queuesList = sortJsonQueueArrayBySize(queuesList);
                     if (!emptyQueues) {
@@ -520,7 +520,6 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
             }
         });
     }
-
 
 
     private void listOrCountQueues(RoutingContext ctx) {
@@ -678,18 +677,17 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         final HttpServerRequest request = ctx.request();
         decodedQueueNameOrRespondWithBadRequest(ctx, part(request.path(), 2)).ifPresent(queue -> {
             final int index = Integer.parseInt(lastPart(request.path()));
-            checkLocked(queue, request, event -> {
-                eventBus.request(redisquesAddress, buildDeleteQueueItemOperation(queue, index),
-                        (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
-                            if (reply.failed()) {
-                                log.warn("Received failed message for deleteQueueItemOperation. Lets run into NullPointerException now", reply.cause());
-                                // IMO we should respond with 'HTTP 5xx'. But we don't, to keep backward compatibility.
-                                // Nevertheless. Lets run into NullPointerException by calling method below.
+            checkLocked(queue, request, event ->
+                    eventBus.request(redisquesAddress, buildDeleteQueueItemOperation(queue, index),
+                            (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
+                                if (reply.failed()) {
+                                    log.warn("Received failed message for deleteQueueItemOperation. Lets run into NullPointerException now", reply.cause());
+                                    // IMO we should respond with 'HTTP 5xx'. But we don't, to keep backward compatibility.
+                                    // Nevertheless. Lets run into NullPointerException by calling method below.
+                                }
+                                checkReply(reply.result(), request, StatusCode.NOT_FOUND);
                             }
-                            checkReply(reply.result(), request, StatusCode.NOT_FOUND);
-                        }
-                );
-            });
+                    ));
         });
     }
 
@@ -705,7 +703,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
             }
 
             final long deletedQueueCount = reply.result().body().getLong(VALUE);
-            if(deletedQueueCount == 0){
+            if (deletedQueueCount == 0) {
                 respondWith(StatusCode.NOT_FOUND, request);
             } else {
                 respondWith(StatusCode.OK, request);
@@ -812,7 +810,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         final HttpServerResponse response = request.response();
         if (OK.equals(reply.body().getString(STATUS))) {
             response.end();
-        } else if(MEMORY_FULL.equals(reply.body().getString(MESSAGE))){
+        } else if (MEMORY_FULL.equals(reply.body().getString(MESSAGE))) {
             response.setStatusCode(StatusCode.INSUFFICIENT_STORAGE.getStatusCode());
             response.setStatusMessage(StatusCode.INSUFFICIENT_STORAGE.getStatusMessage());
             response.end(StatusCode.INSUFFICIENT_STORAGE.getStatusMessage());
@@ -842,9 +840,9 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
 
     private List<JsonObject> filterJsonQueueArrayNotEmpty(List<JsonObject> queueList) {
         return queueList.stream()
-            .filter(
-                queue -> queue.getLong(MONITOR_QUEUE_SIZE) > 0)
-            .collect(Collectors.toList());
+                .filter(
+                        queue -> queue.getLong(MONITOR_QUEUE_SIZE) > 0)
+                .collect(Collectors.toList());
     }
 
     private List<JsonObject> limitJsonQueueArray(List<JsonObject> queueList, int limit) {
@@ -856,54 +854,53 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         final int limit = extractLimit(ctx);
         String filter = ctx.request().params().get(FILTER);
         eventBus.request(redisquesAddress, buildGetQueuesStatisticsOperation(filter),
-            (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
-                if (reply.succeeded() && OK.equals(reply.result().body().getString(STATUS))) {
-                    JsonArray queuesArray = reply.result().body().getJsonArray(QUEUES);
-                    if (queuesArray!=null && !queuesArray.isEmpty()) {
-                        List<JsonObject> queuesList = queuesArray.getList();
-                        queuesList = sortJsonQueueArrayBySize(queuesList);
-                        if (!emptyQueues) {
-                            queuesList = filterJsonQueueArrayNotEmpty(queuesList);
+                (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
+                    if (reply.succeeded() && OK.equals(reply.result().body().getString(STATUS))) {
+                        JsonArray queuesArray = reply.result().body().getJsonArray(QUEUES);
+                        if (queuesArray != null && !queuesArray.isEmpty()) {
+                            List<JsonObject> queuesList = queuesArray.getList();
+                            queuesList = sortJsonQueueArrayBySize(queuesList);
+                            if (!emptyQueues) {
+                                queuesList = filterJsonQueueArrayNotEmpty(queuesList);
+                            }
+                            if (limit > 0) {
+                                queuesList = limitJsonQueueArray(queuesList, limit);
+                            }
+                            JsonObject resultObject = new JsonObject();
+                            resultObject.put(QUEUES, queuesList);
+                            jsonResponse(ctx.response(), resultObject);
+                        } else {
+                            // there was no result, we as well return an empty result
+                            JsonObject resultObject = new JsonObject();
+                            resultObject.put(QUEUES, new JsonArray());
+                            jsonResponse(ctx.response(), resultObject);
                         }
-                        if (limit > 0) {
-                            queuesList = limitJsonQueueArray(queuesList, limit);
-                        }
-                        JsonObject resultObject = new JsonObject();
-                        resultObject.put(QUEUES, queuesList);
-                        jsonResponse(ctx.response(), resultObject);
                     } else {
-                        // there was no result, we as well return an empty result
-                        JsonObject resultObject = new JsonObject();
-                        resultObject.put(QUEUES, new JsonArray());
-                        jsonResponse(ctx.response(), resultObject);
+                        String error = "Error gathering names of active queues";
+                        log.error(error);
+                        respondWith(StatusCode.INTERNAL_SERVER_ERROR, error, ctx.request());
                     }
-                } else {
-                    String error = "Error gathering names of active queues";
-                    log.error(error);
-                    respondWith(StatusCode.INTERNAL_SERVER_ERROR, error, ctx.request());
-                }
-            });
+                });
     }
 
     private void getQueuesSpeed(RoutingContext ctx) {
         String filter = ctx.request().params().get(FILTER);
         eventBus.request(redisquesAddress, buildGetQueuesSpeedOperation(filter),
-            (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
-                if (reply.succeeded() && reply.result().body().getString(RedisquesAPI.STATISTIC_QUEUE_SPEED) != null) {
-                    long speed = reply.result().body().getLong(RedisquesAPI.STATISTIC_QUEUE_SPEED);
-                    JsonObject resultObject = new JsonObject();
-                    resultObject.put(RedisquesAPI.STATISTIC_QUEUE_SPEED, speed);
-                    resultObject.put(RedisquesAPI.STATISTIC_QUEUE_SPEED_INTERVAL_UNIT, queueSpeedIntervalSec );
-                    jsonResponse(ctx.response(), resultObject);
-                } else {
-                    // there was no result, we as well return an empty result
-                    JsonObject resultObject = new JsonObject();
-                    resultObject.put(RedisquesAPI.STATISTIC_QUEUE_SPEED, 0L);
-                    jsonResponse(ctx.response(), resultObject);
-                }
-            });
+                (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
+                    if (reply.succeeded() && reply.result().body().getString(RedisquesAPI.STATISTIC_QUEUE_SPEED) != null) {
+                        long speed = reply.result().body().getLong(RedisquesAPI.STATISTIC_QUEUE_SPEED);
+                        JsonObject resultObject = new JsonObject();
+                        resultObject.put(RedisquesAPI.STATISTIC_QUEUE_SPEED, speed);
+                        resultObject.put(RedisquesAPI.STATISTIC_QUEUE_SPEED_INTERVAL_UNIT, queueSpeedIntervalSec);
+                        jsonResponse(ctx.response(), resultObject);
+                    } else {
+                        // there was no result, we as well return an empty result
+                        JsonObject resultObject = new JsonObject();
+                        resultObject.put(RedisquesAPI.STATISTIC_QUEUE_SPEED, 0L);
+                        jsonResponse(ctx.response(), resultObject);
+                    }
+                });
     }
-
 
 
 }

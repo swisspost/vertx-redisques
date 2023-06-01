@@ -97,14 +97,14 @@ public class RedisquesAPITest {
     }
 
     @Test
-    public void testBuildEnqueueOperation(TestContext context) throws Exception {
+    public void testBuildEnqueueOperation(TestContext context) {
         JsonObject operation = RedisquesAPI.buildEnqueueOperation("my_queue_name", "my_queue_value");
         JsonObject expected = buildExpectedJsonObject("enqueue", new JsonObject().put(QUEUENAME, "my_queue_name"), "my_queue_value");
         context.assertEquals(expected, operation);
     }
 
     @Test
-    public void testBuildLockedEnqueueOperation(TestContext context) throws Exception {
+    public void testBuildLockedEnqueueOperation(TestContext context) {
         JsonObject operation = RedisquesAPI.buildLockedEnqueueOperation("my_queue_name", "my_queue_value", "lockUser");
         JsonObject expected = buildExpectedJsonObject("lockedEnqueue",
                 new JsonObject().put(QUEUENAME, "my_queue_name").put(REQUESTED_BY, "lockUser"), "my_queue_value");
@@ -112,7 +112,7 @@ public class RedisquesAPITest {
     }
 
     @Test
-    public void testBuildGetQueueItemsOperation(TestContext context) throws Exception {
+    public void testBuildGetQueueItemsOperation(TestContext context) {
         JsonObject operation = RedisquesAPI.buildGetQueueItemsOperation("my_queue_name", "99");
         JsonObject expected = buildExpectedJsonObject("getQueueItems", new JsonObject()
                 .put(QUEUENAME, "my_queue_name")
@@ -121,7 +121,7 @@ public class RedisquesAPITest {
     }
 
     @Test
-    public void testBuildAddQueueItemOperation(TestContext context) throws Exception {
+    public void testBuildAddQueueItemOperation(TestContext context) {
         JsonObject operation = RedisquesAPI.buildAddQueueItemOperation("my_queue_name", "buffer_value");
         JsonObject expected = buildExpectedJsonObject("addQueueItem", new JsonObject()
                 .put(QUEUENAME, "my_queue_name")
@@ -130,7 +130,7 @@ public class RedisquesAPITest {
     }
 
     @Test
-    public void testBuildGetQueueItemOperation(TestContext context) throws Exception {
+    public void testBuildGetQueueItemOperation(TestContext context) {
         JsonObject operation = RedisquesAPI.buildGetQueueItemOperation("my_queue_name", 22);
         JsonObject expected = buildExpectedJsonObject("getQueueItem", new JsonObject()
                 .put(QUEUENAME, "my_queue_name")
@@ -139,7 +139,7 @@ public class RedisquesAPITest {
     }
 
     @Test
-    public void testBuildReplaceQueueItemOperation(TestContext context) throws Exception {
+    public void testBuildReplaceQueueItemOperation(TestContext context) {
         JsonObject operation = RedisquesAPI.buildReplaceQueueItemOperation("my_queue_name", 22, "buffer_value");
         JsonObject expected = buildExpectedJsonObject("replaceQueueItem", new JsonObject()
                 .put(QUEUENAME, "my_queue_name")
@@ -149,7 +149,7 @@ public class RedisquesAPITest {
     }
 
     @Test
-    public void testBuildDeleteQueueItemOperation(TestContext context) throws Exception {
+    public void testBuildDeleteQueueItemOperation(TestContext context) {
         JsonObject operation = RedisquesAPI.buildDeleteQueueItemOperation("my_queue_name", 11);
         JsonObject expected = buildExpectedJsonObject("deleteQueueItem", new JsonObject()
                 .put(QUEUENAME, "my_queue_name")
@@ -158,7 +158,7 @@ public class RedisquesAPITest {
     }
 
     @Test
-    public void testBuildDeleteAllQueueItemsOperation(TestContext context) throws Exception {
+    public void testBuildDeleteAllQueueItemsOperation(TestContext context) {
         JsonObject operation = RedisquesAPI.buildDeleteAllQueueItemsOperation("my_queue_name");
         JsonObject expected = buildExpectedJsonObject("deleteAllQueueItems", new JsonObject()
                 .put(QUEUENAME, "my_queue_name").put(UNLOCK, false));
@@ -176,7 +176,7 @@ public class RedisquesAPITest {
     }
 
     @Test
-    public void testBuildBulkDeleteQueuesOperation(TestContext context) throws Exception {
+    public void testBuildBulkDeleteQueuesOperation(TestContext context) {
         JsonObject operation = RedisquesAPI.buildBulkDeleteQueuesOperation(new JsonArray().add("q_1").add("q_2"));
         JsonObject expected = buildExpectedJsonObject("bulkDeleteQueues", new JsonObject()
                 .put(QUEUES, new JsonArray().add("q_1").add("q_2")));
@@ -184,7 +184,7 @@ public class RedisquesAPITest {
     }
 
     @Test
-    public void testBuildGetQueuesOperation(TestContext context) throws Exception {
+    public void testBuildGetQueuesOperation(TestContext context) {
         JsonObject operation = RedisquesAPI.buildGetQueuesOperation();
         context.assertEquals(buildExpectedJsonObject("getQueues"), operation);
 
@@ -195,7 +195,7 @@ public class RedisquesAPITest {
     }
 
     @Test
-    public void testBuildGetQueuesCountOperation(TestContext context) throws Exception {
+    public void testBuildGetQueuesCountOperation(TestContext context) {
         JsonObject operation = RedisquesAPI.buildGetQueuesCountOperation();
         context.assertEquals(buildExpectedJsonObject("getQueuesCount"), operation);
 
@@ -206,7 +206,7 @@ public class RedisquesAPITest {
     }
 
     @Test
-    public void testBuildGetQueueItemsCountOperation(TestContext context) throws Exception {
+    public void testBuildGetQueueItemsCountOperation(TestContext context) {
         JsonObject operation = RedisquesAPI.buildGetQueueItemsCountOperation("my_queue_name");
         JsonObject expected = buildExpectedJsonObject("getQueueItemsCount", new JsonObject()
                 .put(QUEUENAME, "my_queue_name"));
@@ -214,7 +214,7 @@ public class RedisquesAPITest {
     }
 
     @Test
-    public void testBuildGetLockOperation(TestContext context) throws Exception {
+    public void testBuildGetLockOperation(TestContext context) {
         JsonObject operation = RedisquesAPI.buildGetLockOperation("my_queue_name");
         JsonObject expected = buildExpectedJsonObject("getLock", new JsonObject()
                 .put(QUEUENAME, "my_queue_name"));
@@ -222,7 +222,7 @@ public class RedisquesAPITest {
     }
 
     @Test
-    public void testBuildDeleteLockOperation(TestContext context) throws Exception {
+    public void testBuildDeleteLockOperation(TestContext context) {
         JsonObject operation = RedisquesAPI.buildDeleteLockOperation("my_queue_name");
         JsonObject expected = buildExpectedJsonObject("deleteLock", new JsonObject()
                 .put(QUEUENAME, "my_queue_name"));
@@ -230,13 +230,13 @@ public class RedisquesAPITest {
     }
 
     @Test
-    public void testBuildDeleteAllLocksOperation(TestContext context) throws Exception {
+    public void testBuildDeleteAllLocksOperation(TestContext context) {
         JsonObject operation = RedisquesAPI.buildDeleteAllLocksOperation();
         context.assertEquals(buildExpectedJsonObject("deleteAllLocks"), operation);
     }
 
     @Test
-    public void testBuildBulkDeleteLocksOperation(TestContext context) throws Exception {
+    public void testBuildBulkDeleteLocksOperation(TestContext context) {
         JsonObject operation = RedisquesAPI.buildBulkDeleteLocksOperation(new JsonArray().add("lock_1").add("lock_2").add("lock_3"));
 
         JsonObject expected = buildExpectedJsonObject("bulkDeleteLocks", new JsonObject()
@@ -246,7 +246,7 @@ public class RedisquesAPITest {
 
 
     @Test
-    public void testBuildPutLockOperation(TestContext context) throws Exception {
+    public void testBuildPutLockOperation(TestContext context) {
         JsonObject operation = RedisquesAPI.buildPutLockOperation("my_queue_name", "request_user");
         JsonObject expected = buildExpectedJsonObject("putLock", new JsonObject()
                 .put(QUEUENAME, "my_queue_name")
@@ -255,7 +255,7 @@ public class RedisquesAPITest {
     }
 
     @Test
-    public void testBuildBulkPutLocksOperation(TestContext context) throws Exception {
+    public void testBuildBulkPutLocksOperation(TestContext context) {
         JsonObject operation = RedisquesAPI.buildBulkPutLocksOperation(new JsonArray().add("lock_1").add("lock_2").add("lock_3"), "request_user");
 
         JsonObject expected = buildExpectedJsonObject("bulkPutLocks", new JsonObject()
@@ -265,7 +265,7 @@ public class RedisquesAPITest {
     }
 
     @Test
-    public void testBuildGetAllLocksOperation(TestContext context) throws Exception {
+    public void testBuildGetAllLocksOperation(TestContext context) {
         JsonObject operation = RedisquesAPI.buildGetAllLocksOperation();
         context.assertEquals(buildExpectedJsonObject("getAllLocks"), operation);
 
@@ -276,19 +276,19 @@ public class RedisquesAPITest {
     }
 
     @Test
-    public void testBuildCheckOperation(TestContext context) throws Exception {
+    public void testBuildCheckOperation(TestContext context) {
         JsonObject operation = RedisquesAPI.buildCheckOperation();
         context.assertEquals(buildExpectedJsonObject("check"), operation);
     }
 
     @Test
-    public void testBuildGetConfigurationOperation(TestContext context) throws Exception {
+    public void testBuildGetConfigurationOperation(TestContext context) {
         JsonObject operation = RedisquesAPI.buildGetConfigurationOperation();
         context.assertEquals(buildExpectedJsonObject("getConfiguration"), operation);
     }
 
     @Test
-    public void testBuildSetConfigurationOperation(TestContext context) throws Exception {
+    public void testBuildSetConfigurationOperation(TestContext context) {
         JsonObject operation = RedisquesAPI.buildSetConfigurationOperation(new JsonObject().put(PROCESSOR_DELAY_MAX, 99));
         JsonObject expected = buildExpectedJsonObject("setConfiguration", new JsonObject()
                 .put(PROCESSOR_DELAY_MAX, 99));
@@ -296,7 +296,7 @@ public class RedisquesAPITest {
     }
 
     @Test
-    public void testBuildGetQueuesStatisticsOperation(TestContext context) throws Exception {
+    public void testBuildGetQueuesStatisticsOperation(TestContext context) {
 
         JsonObject operation = RedisquesAPI.buildGetQueuesStatisticsOperation();
         context.assertEquals(buildExpectedJsonObject("getQueuesStatistics"), operation);

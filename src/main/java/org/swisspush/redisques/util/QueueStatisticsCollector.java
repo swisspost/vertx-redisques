@@ -140,7 +140,6 @@ public class QueueStatisticsCollector {
             return;
         }
         final int size = queues.size();
-        List<String> queueKeys = new ArrayList<>(size);
         for (int i = 0; i < size; i++) {
             resetQueueFailureStatistics(queues.getString(i));
         }
@@ -432,9 +431,8 @@ public class QueueStatisticsCollector {
                 }
                 // put the received statistics data to the former prepared statistics objects
                 // per queue
-                Iterator<Response> itr = statisticsSet.result().iterator();
-                while (itr.hasNext()) {
-                    JsonObject jObj = new JsonObject(itr.next().toString());
+                for (Response response : statisticsSet.result()) {
+                    JsonObject jObj = new JsonObject(response.toString());
                     String queueName = jObj.getString(RedisquesAPI.QUEUENAME);
                     QueueStatistic queueStatistic = statisticsMap.get(queueName);
                     if (queueStatistic != null) {

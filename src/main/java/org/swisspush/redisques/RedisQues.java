@@ -341,14 +341,13 @@ public class RedisQues extends AbstractVerticle {
     }
 
     private void gracefulStop(final Handler<Void> doneHandler) {
-        consumersMessageConsumer.unregister(event -> uidMessageConsumer.unregister(unregisterEvent -> {
-            unregisterConsumers(false).onComplete(unregisterConsumersEvent -> {
-                stoppedHandler = doneHandler;
-                if (myQueues.keySet().isEmpty()) {
-                    doneHandler.handle(null);
-                }
-            });
-        }));
+        consumersMessageConsumer.unregister(event -> uidMessageConsumer.unregister(unregisterEvent ->
+                unregisterConsumers(false).onComplete(unregisterConsumersEvent -> {
+                    stoppedHandler = doneHandler;
+                    if (myQueues.keySet().isEmpty()) {
+                        doneHandler.handle(null);
+                    }
+                })));
     }
 
     private Future<Void> unregisterConsumers(boolean force) {

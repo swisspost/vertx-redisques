@@ -50,9 +50,7 @@ public class MaxWaitingHandlersTest {
                     List<Future> futures = new ArrayList<>();
                     IntStream.range(0, 100).forEach(i -> {
                         Promise<Response> p = Promise.promise();
-                        vertx.setTimer(1, timerId -> {
-                            redisApi.set(Arrays.asList("foo", "bar"), p);
-                        });
+                        vertx.setTimer(1, timerId -> redisApi.set(Arrays.asList("foo", "bar"), p));
                         futures.add(p.future().map(res -> {
                             System.out.println("SUCCESS " + cnt.incrementAndGet());
                             return null;
@@ -92,9 +90,7 @@ public class MaxWaitingHandlersTest {
                     List<Future> futures = new ArrayList<>();
                     IntStream.range(0, 100).forEach(i -> {
                         Promise<Response> p = Promise.promise();
-                        vertx.setTimer(1, timerId -> {
-                            redisApi.set(Arrays.asList("foo", "bar"), p);
-                        });
+                        vertx.setTimer(1, timerId -> redisApi.set(Arrays.asList("foo", "bar"), p));
                         futures.add(p.future().map(res -> {
                             System.out.println("SUCCESS " + cnt.incrementAndGet());
                             return null;
