@@ -8,7 +8,7 @@ import org.swisspush.redisques.handler.AddQueueItemHandler;
 import org.swisspush.redisques.lua.LuaScriptManager;
 import org.swisspush.redisques.util.QueueConfiguration;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
-import org.swisspush.redisques.util.RedisAPIProvider;
+import org.swisspush.redisques.util.RedisProvider;
 
 import java.util.Arrays;
 import java.util.List;
@@ -17,10 +17,10 @@ import static org.swisspush.redisques.util.RedisquesAPI.*;
 
 public class AddQueueItemAction extends AbstractQueueAction {
 
-    public AddQueueItemAction(Vertx vertx, LuaScriptManager luaScriptManager, RedisAPIProvider redisAPIProvider, String address, String queuesKey, String queuesPrefix,
+    public AddQueueItemAction(Vertx vertx, LuaScriptManager luaScriptManager, RedisProvider redisProvider, String address, String queuesKey, String queuesPrefix,
                               String consumersPrefix, String locksKey, List<QueueConfiguration> queueConfigurations,
                               QueueStatisticsCollector queueStatisticsCollector, Logger log) {
-        super(vertx, luaScriptManager, redisAPIProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey, queueConfigurations,
+        super(vertx, luaScriptManager, redisProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey, queueConfigurations,
                 queueStatisticsCollector, log);
     }
 
@@ -28,7 +28,8 @@ public class AddQueueItemAction extends AbstractQueueAction {
     public void execute(Message<JsonObject> event) {
         String key1 = queuesPrefix + event.body().getJsonObject(PAYLOAD).getString(QUEUENAME);
         String valueAddItem = event.body().getJsonObject(PAYLOAD).getString(BUFFER);
-        redisAPIProvider.redisAPI().onSuccess(
-                redisAPI -> redisAPI.rpush(Arrays.asList(key1, valueAddItem), new AddQueueItemHandler(event)));
+        redisProvider.redis().onSuccess(
+                        redisAPI -> redisAPI.rpush(Arrays.asList(key1, valueAddItem), new AddQueueItemHandler(event)))
+                .onFailure(replyErrorMessageHandler(event));
     }
 }

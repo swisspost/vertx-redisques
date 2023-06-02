@@ -9,7 +9,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.swisspush.redisques.lua.LuaScriptManager;
 
-import java.util.*;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
 import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -47,14 +50,14 @@ public class QueueStatisticsCollector {
     private final Map<String, Long> queueSlowDownTime = new HashMap<>();
     private final ConcurrentMap<String, AtomicLong> queueMessageSpeedCtr = new ConcurrentHashMap<>();
     private volatile Map<String, Long> queueMessageSpeed = new HashMap<>();
-    private final RedisAPIProvider redisAPIProvider;
+    private final RedisProvider redisProvider;
     private final LuaScriptManager luaScriptManager;
     private final String queuePrefix;
     private final Vertx vertx;
 
-    public QueueStatisticsCollector(RedisAPIProvider redisAPIProvider, LuaScriptManager luaScriptManager,
+    public QueueStatisticsCollector(RedisProvider redisProvider, LuaScriptManager luaScriptManager,
                                     String queuePrefix, Vertx vertx, int speedIntervalSec) {
-        this.redisAPIProvider = redisAPIProvider;
+        this.redisProvider = redisProvider;
         this.luaScriptManager = luaScriptManager;
         this.queuePrefix = queuePrefix;
         this.vertx = vertx;
@@ -300,13 +303,13 @@ public class QueueStatisticsCollector {
             obj.put(QUEUE_FAILURES, failures);
             obj.put(QUEUE_SLOWDOWNTIME, slowDownTime);
             obj.put(QUEUE_BACKPRESSURE, backpressureTime);
-            redisAPIProvider.redisAPI().onSuccess(redisAPI -> redisAPI.hset(List.of(STATSKEY, queueName, obj.toString()),
+            redisProvider.redis().onSuccess(redisAPI -> redisAPI.hset(List.of(STATSKEY, queueName, obj.toString()),
                     emptyHandler -> {
-                    }));
+                    })).onFailure(event -> log.error("Redis: Error in updateStatisticsInRedis", event));
         } else {
-            redisAPIProvider.redisAPI().onSuccess(redisAPI -> redisAPI.hdel(List.of(STATSKEY, queueName),
+            redisProvider.redis().onSuccess(redisAPI -> redisAPI.hdel(List.of(STATSKEY, queueName),
                     emptyHandler -> {
-                    }));
+                    })).onFailure(event -> log.error("Redis: Error in updateStatisticsInRedis", event));
 
         }
     }
@@ -423,9 +426,9 @@ public class QueueStatisticsCollector {
             }
             // now retrieve all available failure statistics from Redis and merge them
             // together with the previous populated common queue statistics map
-            redisAPIProvider.redisAPI().onSuccess(redisAPI -> redisAPI.hvals(STATSKEY, statisticsSet -> {
+            redisProvider.redis().onSuccess(redisAPI -> redisAPI.hvals(STATSKEY, statisticsSet -> {
                 if (statisticsSet == null) {
-                    log.error("Unexepected statistics queue evaluation result result null");
+                    log.error("Unexpected statistics queue evaluation result result null");
                     event.reply(new JsonObject().put(STATUS, ERROR));
                     return;
                 }
@@ -453,7 +456,10 @@ public class QueueStatisticsCollector {
                 }
                 event.reply(new JsonObject().put(RedisquesAPI.STATUS, RedisquesAPI.OK)
                         .put(RedisquesAPI.QUEUES, result));
-            }));
+            })).onFailure(throwable -> {
+                log.error("Redis: Error in getQueueStatistics", throwable);
+                event.reply(new JsonObject().put(STATUS, ERROR));
+            });
         });
     }
 

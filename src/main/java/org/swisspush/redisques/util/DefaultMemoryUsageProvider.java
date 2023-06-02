@@ -11,15 +11,15 @@ public class DefaultMemoryUsageProvider implements MemoryUsageProvider {
 
     private final Logger log = LoggerFactory.getLogger(DefaultMemoryUsageProvider.class);
 
-    private final RedisAPIProvider redisAPIProvider;
+    private final RedisProvider redisProvider;
 
     private Optional<Integer> currentMemoryUsagePercentageOpt = Optional.empty();
 
     private static final int MAX_PERCENTAGE = 100;
     private static final int MIN_PERCENTAGE = 0;
 
-    public DefaultMemoryUsageProvider(RedisAPIProvider redisAPIProvider, Vertx vertx, int memoryUsageCheckIntervalSec) {
-        this.redisAPIProvider = redisAPIProvider;
+    public DefaultMemoryUsageProvider(RedisProvider redisProvider, Vertx vertx, int memoryUsageCheckIntervalSec) {
+        this.redisProvider = redisProvider;
         updateCurrentMemoryUsage();
         vertx.setPeriodic(memoryUsageCheckIntervalSec * 1000L, event -> updateCurrentMemoryUsage());
     }
@@ -29,7 +29,7 @@ public class DefaultMemoryUsageProvider implements MemoryUsageProvider {
     }
 
     private void updateCurrentMemoryUsage() {
-        redisAPIProvider.redisAPI().onSuccess(redisAPI -> redisAPI.info(Collections.singletonList("memory"))
+        redisProvider.redis().onSuccess(redisAPI -> redisAPI.info(Collections.singletonList("memory"))
                 .onComplete(memoryInfoEvent -> {
                     if (memoryInfoEvent.failed()) {
                         log.error("Unable to get memory information from redis", memoryInfoEvent.cause());
@@ -61,7 +61,10 @@ public class DefaultMemoryUsageProvider implements MemoryUsageProvider {
                     int roundedValue = Math.round(currentMemoryUsagePercentage);
                     log.info("Current memory usage is {}%", roundedValue);
                     currentMemoryUsagePercentageOpt = Optional.of(roundedValue);
-                }));
+                })).onFailure(event -> {
+                    log.error("Redis: Unable to get memory information from redis", event);
+                    currentMemoryUsagePercentageOpt = Optional.empty();
+                });
     }
 
     private Optional<Long> totalSystemMemory(String memoryInfo) {

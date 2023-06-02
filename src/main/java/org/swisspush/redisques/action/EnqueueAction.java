@@ -8,7 +8,7 @@ import org.swisspush.redisques.lua.LuaScriptManager;
 import org.swisspush.redisques.util.MemoryUsageProvider;
 import org.swisspush.redisques.util.QueueConfiguration;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
-import org.swisspush.redisques.util.RedisAPIProvider;
+import org.swisspush.redisques.util.RedisProvider;
 
 import java.util.Arrays;
 import java.util.List;
@@ -20,10 +20,10 @@ public class EnqueueAction extends AbstractQueueAction {
     private final MemoryUsageProvider memoryUsageProvider;
     private final int memoryUsageLimitPercent;
 
-    public EnqueueAction(Vertx vertx, LuaScriptManager luaScriptManager, RedisAPIProvider redisAPIProvider, String address, String queuesKey, String queuesPrefix,
+    public EnqueueAction(Vertx vertx, LuaScriptManager luaScriptManager, RedisProvider redisProvider, String address, String queuesKey, String queuesPrefix,
                          String consumersPrefix, String locksKey, List<QueueConfiguration> queueConfigurations,
                          QueueStatisticsCollector queueStatisticsCollector, Logger log, MemoryUsageProvider memoryUsageProvider, int memoryUsageLimitPercent) {
-        super(vertx, luaScriptManager, redisAPIProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey, queueConfigurations,
+        super(vertx, luaScriptManager, redisProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey, queueConfigurations,
                 queueStatisticsCollector, log);
         this.memoryUsageProvider = memoryUsageProvider;
         this.memoryUsageLimitPercent = memoryUsageLimitPercent;
@@ -46,7 +46,7 @@ public class EnqueueAction extends AbstractQueueAction {
             String keyEnqueue = queuesPrefix + queueName;
             String valueEnqueue = event.body().getString(MESSAGE);
 
-            redisAPIProvider.redisAPI().onSuccess(redisAPI -> redisAPI.rpush(Arrays.asList(keyEnqueue, valueEnqueue)).onComplete(enqueueEvent -> {
+            redisProvider.redis().onSuccess(redisAPI -> redisAPI.rpush(Arrays.asList(keyEnqueue, valueEnqueue)).onComplete(enqueueEvent -> {
                 JsonObject reply = new JsonObject();
                 if (enqueueEvent.succeeded()) {
                     if (log.isDebugEnabled()) {
@@ -80,7 +80,7 @@ public class EnqueueAction extends AbstractQueueAction {
                 } else {
                     replyError(event, queueName, enqueueEvent.cause());
                 }
-            }));
+            })).onFailure(throwable -> replyError(event, queueName, throwable));
         });
     }
 

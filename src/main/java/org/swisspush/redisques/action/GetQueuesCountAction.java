@@ -16,10 +16,10 @@ import static org.swisspush.redisques.util.RedisquesAPI.*;
 
 public class GetQueuesCountAction extends GetQueuesAction {
 
-    public GetQueuesCountAction(Vertx vertx, LuaScriptManager luaScriptManager, RedisAPIProvider redisAPIProvider, String address, String queuesKey, String queuesPrefix,
+    public GetQueuesCountAction(Vertx vertx, LuaScriptManager luaScriptManager, RedisProvider redisProvider, String address, String queuesKey, String queuesPrefix,
                                 String consumersPrefix, String locksKey, List<QueueConfiguration> queueConfigurations,
                                 QueueStatisticsCollector queueStatisticsCollector, Logger log) {
-        super(vertx, luaScriptManager, redisAPIProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey, queueConfigurations,
+        super(vertx, luaScriptManager, redisProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey, queueConfigurations,
                 queueStatisticsCollector, log);
     }
 
@@ -37,8 +37,9 @@ public class GetQueuesCountAction extends GetQueuesAction {
         if (result.getOk().isPresent()) {
             getQueues(event, true, result);
         } else {
-            redisAPIProvider.redisAPI().onSuccess(redisAPI -> redisAPI.zcount(queuesKey, String.valueOf(getMaxAgeTimestamp()),
-                    String.valueOf(Double.MAX_VALUE), new GetQueuesCountHandler(event)));
+            redisProvider.redis().onSuccess(redisAPI -> redisAPI.zcount(queuesKey, String.valueOf(getMaxAgeTimestamp()),
+                            String.valueOf(Double.MAX_VALUE), new GetQueuesCountHandler(event)))
+                    .onFailure(replyErrorMessageHandler(event));
         }
     }
 }

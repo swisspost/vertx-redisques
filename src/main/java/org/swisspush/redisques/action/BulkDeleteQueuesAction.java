@@ -8,7 +8,7 @@ import org.slf4j.Logger;
 import org.swisspush.redisques.lua.LuaScriptManager;
 import org.swisspush.redisques.util.QueueConfiguration;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
-import org.swisspush.redisques.util.RedisAPIProvider;
+import org.swisspush.redisques.util.RedisProvider;
 
 import java.util.List;
 
@@ -16,10 +16,10 @@ import static org.swisspush.redisques.util.RedisquesAPI.*;
 
 public class BulkDeleteQueuesAction extends AbstractQueueAction {
 
-    public BulkDeleteQueuesAction(Vertx vertx, LuaScriptManager luaScriptManager, RedisAPIProvider redisAPIProvider, String address, String queuesKey, String queuesPrefix,
+    public BulkDeleteQueuesAction(Vertx vertx, LuaScriptManager luaScriptManager, RedisProvider redisProvider, String address, String queuesKey, String queuesPrefix,
                                   String consumersPrefix, String locksKey, List<QueueConfiguration> queueConfigurations,
                                   QueueStatisticsCollector queueStatisticsCollector, Logger log) {
-        super(vertx, luaScriptManager, redisAPIProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey, queueConfigurations,
+        super(vertx, luaScriptManager, redisProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey, queueConfigurations,
                 queueStatisticsCollector, log);
     }
 
@@ -40,14 +40,15 @@ public class BulkDeleteQueuesAction extends AbstractQueueAction {
             event.reply(createErrorReply().put(ERROR_TYPE, BAD_INPUT).put(MESSAGE, "Queues must be string values"));
             return;
         }
-        redisAPIProvider.redisAPI().onSuccess(redisAPI -> redisAPI.del(buildQueueKeys(queues), delManyReply -> {
-            queueStatisticsCollector.resetQueueStatistics(queues);
-            if (delManyReply.succeeded()) {
-                event.reply(createOkReply().put(VALUE, delManyReply.result().toLong()));
-            } else {
-                log.error("Failed to bulkDeleteQueues", delManyReply.cause());
-                event.reply(createErrorReply());
-            }
-        }));
+        redisProvider.redis().onSuccess(redisAPI -> redisAPI.del(buildQueueKeys(queues), delManyReply -> {
+                    queueStatisticsCollector.resetQueueStatistics(queues);
+                    if (delManyReply.succeeded()) {
+                        event.reply(createOkReply().put(VALUE, delManyReply.result().toLong()));
+                    } else {
+                        log.error("Failed to bulkDeleteQueues", delManyReply.cause());
+                        event.reply(createErrorReply());
+                    }
+                }))
+                .onFailure(replyErrorMessageHandler(event));
     }
 }

@@ -8,7 +8,7 @@ import org.swisspush.redisques.lua.LuaScriptManager;
 import org.swisspush.redisques.util.MemoryUsageProvider;
 import org.swisspush.redisques.util.QueueConfiguration;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
-import org.swisspush.redisques.util.RedisAPIProvider;
+import org.swisspush.redisques.util.RedisProvider;
 
 import java.util.Arrays;
 import java.util.List;
@@ -17,12 +17,12 @@ import static org.swisspush.redisques.util.RedisquesAPI.*;
 
 public class LockedEnqueueAction extends EnqueueAction {
 
-    public LockedEnqueueAction(Vertx vertx, LuaScriptManager luaScriptManager, RedisAPIProvider redisAPIProvider,
+    public LockedEnqueueAction(Vertx vertx, LuaScriptManager luaScriptManager, RedisProvider redisProvider,
                                String address, String queuesKey, String queuesPrefix,
                                String consumersPrefix, String locksKey, List<QueueConfiguration> queueConfigurations,
                                QueueStatisticsCollector queueStatisticsCollector, Logger log,
                                MemoryUsageProvider memoryUsageProvider, int memoryUsageLimitPercent) {
-        super(vertx, luaScriptManager, redisAPIProvider, address, queuesKey, queuesPrefix, consumersPrefix,
+        super(vertx, luaScriptManager, redisProvider, address, queuesKey, queuesPrefix, consumersPrefix,
                 locksKey, queueConfigurations, queueStatisticsCollector, log, memoryUsageProvider, memoryUsageLimitPercent);
     }
 
@@ -37,16 +37,20 @@ public class LockedEnqueueAction extends EnqueueAction {
         }
         JsonObject lockInfo = extractLockInfo(event.body().getJsonObject(PAYLOAD).getString(REQUESTED_BY));
         if (lockInfo != null) {
-            redisAPIProvider.redisAPI().onSuccess(redisAPI -> redisAPI.hmset(Arrays.asList(locksKey, queueName, lockInfo.encode()),
-                    putLockResult -> {
-                        if (putLockResult.succeeded()) {
-                            log.debug("RedisQues lockedEnqueue locking successful, now going to enqueue");
-                            enqueueActionExecute(event);
-                        } else {
-                            log.warn("RedisQues lockedEnqueue locking failed. Skip enqueue");
-                            event.reply(createErrorReply());
-                        }
-                    }));
+            redisProvider.redis().onSuccess(redisAPI -> redisAPI.hmset(Arrays.asList(locksKey, queueName, lockInfo.encode()),
+                            putLockResult -> {
+                                if (putLockResult.succeeded()) {
+                                    log.debug("RedisQues lockedEnqueue locking successful, now going to enqueue");
+                                    enqueueActionExecute(event);
+                                } else {
+                                    log.warn("RedisQues lockedEnqueue locking failed. Skip enqueue");
+                                    event.reply(createErrorReply());
+                                }
+                            }))
+                    .onFailure(throwable -> {
+                        log.warn("Redis: RedisQues lockedEnqueue locking failed. Skip enqueue");
+                        event.reply(createErrorReply());
+                    });
         } else {
             log.warn("RedisQues lockedEnqueue failed because property '{}' was missing", REQUESTED_BY);
             event.reply(createErrorReply().put(MESSAGE, "Property '" + REQUESTED_BY + "' missing"));

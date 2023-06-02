@@ -17,7 +17,7 @@ import org.slf4j.Logger;
 import org.swisspush.redisques.lua.LuaScriptManager;
 import org.swisspush.redisques.util.MemoryUsageProvider;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
-import org.swisspush.redisques.util.RedisAPIProvider;
+import org.swisspush.redisques.util.RedisProvider;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -35,7 +35,7 @@ import static org.mockito.Mockito.*;
 public class EnqueueActionTest {
 
     private RedisAPI redisAPI;
-    private RedisAPIProvider redisAPIProvider;
+    private RedisProvider redisProvider;
 
     private Vertx vertx;
 
@@ -47,8 +47,8 @@ public class EnqueueActionTest {
     @Before
     public void setup(TestContext context) {
         redisAPI = Mockito.mock(RedisAPI.class);
-        redisAPIProvider = Mockito.mock(RedisAPIProvider.class);
-        when(redisAPIProvider.redisAPI()).thenReturn(Future.succeededFuture(redisAPI));
+        redisProvider = Mockito.mock(RedisProvider.class);
+        when(redisProvider.redis()).thenReturn(Future.succeededFuture(redisAPI));
 
         memoryUsageProvider = Mockito.mock(MemoryUsageProvider.class);
         when(memoryUsageProvider.currentMemoryUsagePercentage()).thenReturn(Optional.empty());
@@ -56,7 +56,7 @@ public class EnqueueActionTest {
 
         message = Mockito.mock(Message.class);
 
-        action = new EnqueueAction(vertx, Mockito.mock(LuaScriptManager.class), redisAPIProvider,
+        action = new EnqueueAction(vertx, Mockito.mock(LuaScriptManager.class), redisProvider,
                 "addr", "q-", "prefix-", "c-", "l-",
                 new ArrayList<>(), Mockito.mock(QueueStatisticsCollector.class), Mockito.mock(Logger.class), memoryUsageProvider, 80);
     }

@@ -19,10 +19,10 @@ import static org.swisspush.redisques.util.RedisquesAPI.*;
  */
 public class GetQueuesItemsCountAction extends AbstractQueueAction {
 
-    public GetQueuesItemsCountAction(Vertx vertx, LuaScriptManager luaScriptManager, RedisAPIProvider redisAPIProvider, String address, String queuesKey, String queuesPrefix,
+    public GetQueuesItemsCountAction(Vertx vertx, LuaScriptManager luaScriptManager, RedisProvider redisProvider, String address, String queuesKey, String queuesPrefix,
                                      String consumersPrefix, String locksKey, List<QueueConfiguration> queueConfigurations,
                                      QueueStatisticsCollector queueStatisticsCollector, Logger log) {
-        super(vertx, luaScriptManager, redisAPIProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey, queueConfigurations,
+        super(vertx, luaScriptManager, redisProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey, queueConfigurations,
                 queueStatisticsCollector, log);
     }
 
@@ -33,10 +33,11 @@ public class GetQueuesItemsCountAction extends AbstractQueueAction {
             event.reply(createErrorReply().put(ERROR_TYPE, BAD_INPUT)
                     .put(MESSAGE, filterPattern.getErr()));
         } else {
-            redisAPIProvider.redisAPI().onSuccess(redisAPI -> redisAPI.zrangebyscore(List.of(queuesKey,
-                            String.valueOf(getMaxAgeTimestamp()), "+inf"),
-                    new GetQueuesItemsCountHandler(event, filterPattern.getOk(), luaScriptManager,
-                            queuesPrefix)));
+            redisProvider.redis().onSuccess(redisAPI -> redisAPI.zrangebyscore(List.of(queuesKey,
+                                    String.valueOf(getMaxAgeTimestamp()), "+inf"),
+                            new GetQueuesItemsCountHandler(event, filterPattern.getOk(), luaScriptManager,
+                                    queuesPrefix)))
+                    .onFailure(replyErrorMessageHandler(event));
         }
     }
 }

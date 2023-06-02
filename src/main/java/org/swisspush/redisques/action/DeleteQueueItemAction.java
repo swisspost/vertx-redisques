@@ -7,7 +7,7 @@ import org.slf4j.Logger;
 import org.swisspush.redisques.lua.LuaScriptManager;
 import org.swisspush.redisques.util.QueueConfiguration;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
-import org.swisspush.redisques.util.RedisAPIProvider;
+import org.swisspush.redisques.util.RedisProvider;
 
 import java.util.List;
 
@@ -15,10 +15,10 @@ import static org.swisspush.redisques.util.RedisquesAPI.*;
 
 public class DeleteQueueItemAction extends AbstractQueueAction {
 
-    public DeleteQueueItemAction(Vertx vertx, LuaScriptManager luaScriptManager, RedisAPIProvider redisAPIProvider, String address, String queuesKey, String queuesPrefix,
+    public DeleteQueueItemAction(Vertx vertx, LuaScriptManager luaScriptManager, RedisProvider redisProvider, String address, String queuesKey, String queuesPrefix,
                                  String consumersPrefix, String locksKey, List<QueueConfiguration> queueConfigurations,
                                  QueueStatisticsCollector queueStatisticsCollector, Logger log) {
-        super(vertx, luaScriptManager, redisAPIProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey, queueConfigurations,
+        super(vertx, luaScriptManager, redisProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey, queueConfigurations,
                 queueStatisticsCollector, log);
     }
 
@@ -26,7 +26,7 @@ public class DeleteQueueItemAction extends AbstractQueueAction {
     public void execute(Message<JsonObject> event) {
         String keyLset = queuesPrefix + event.body().getJsonObject(PAYLOAD).getString(QUEUENAME);
         int indexLset = event.body().getJsonObject(PAYLOAD).getInteger(INDEX);
-        redisAPIProvider.redisAPI().onSuccess(redisAPI -> redisAPI.lset(keyLset, String.valueOf(indexLset), "TO_DELETE",
+        redisProvider.redis().onSuccess(redisAPI -> redisAPI.lset(keyLset, String.valueOf(indexLset), "TO_DELETE",
                 event1 -> {
                     if (event1.succeeded()) {
                         String keyLrem = queuesPrefix + event.body().getJsonObject(PAYLOAD).getString(QUEUENAME);
@@ -41,6 +41,9 @@ public class DeleteQueueItemAction extends AbstractQueueAction {
                         log.error("Failed to 'lset' while deleteQueueItem.", event1.cause());
                         event.reply(createErrorReply());
                     }
-                }));
+                })).onFailure(throwable -> {
+                    log.error("Redis: Failed to deleteQueueItem.", throwable);
+                    event.reply(createErrorReply());
+                });
     }
 }

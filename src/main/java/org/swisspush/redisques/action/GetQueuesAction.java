@@ -17,10 +17,10 @@ import static org.swisspush.redisques.util.RedisquesAPI.*;
 
 public class GetQueuesAction extends AbstractQueueAction {
 
-    public GetQueuesAction(Vertx vertx, LuaScriptManager luaScriptManager, RedisAPIProvider redisAPIProvider, String address, String queuesKey, String queuesPrefix,
+    public GetQueuesAction(Vertx vertx, LuaScriptManager luaScriptManager, RedisProvider redisProvider, String address, String queuesKey, String queuesPrefix,
                            String consumersPrefix, String locksKey, List<QueueConfiguration> queueConfigurations,
                            QueueStatisticsCollector queueStatisticsCollector, Logger log) {
-        super(vertx, luaScriptManager, redisAPIProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey, queueConfigurations,
+        super(vertx, luaScriptManager, redisProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey, queueConfigurations,
                 queueStatisticsCollector, log);
     }
 
@@ -34,9 +34,10 @@ public class GetQueuesAction extends AbstractQueueAction {
         if (filterPatternResult.isErr()) {
             event.reply(createErrorReply().put(ERROR_TYPE, BAD_INPUT).put(MESSAGE, filterPatternResult.getErr()));
         } else {
-            redisAPIProvider.redisAPI().onSuccess(redisAPI -> redisAPI.zrangebyscore(
-                    Arrays.asList(queuesKey, String.valueOf(getMaxAgeTimestamp()), "+inf"),
-                    new GetQueuesHandler(event, filterPatternResult.getOk(), countOnly)));
+            redisProvider.redis().onSuccess(redisAPI -> redisAPI.zrangebyscore(
+                            Arrays.asList(queuesKey, String.valueOf(getMaxAgeTimestamp()), "+inf"),
+                            new GetQueuesHandler(event, filterPatternResult.getOk(), countOnly)))
+                    .onFailure(replyErrorMessageHandler(event));
         }
     }
 }

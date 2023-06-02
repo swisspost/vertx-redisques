@@ -19,10 +19,10 @@ import static org.swisspush.redisques.util.RedisquesAPI.*;
  */
 public class GetQueuesStatisticsAction extends AbstractQueueAction {
 
-    public GetQueuesStatisticsAction(Vertx vertx, LuaScriptManager luaScriptManager, RedisAPIProvider redisAPIProvider, String address, String queuesKey, String queuesPrefix,
+    public GetQueuesStatisticsAction(Vertx vertx, LuaScriptManager luaScriptManager, RedisProvider redisProvider, String address, String queuesKey, String queuesPrefix,
                                      String consumersPrefix, String locksKey, List<QueueConfiguration> queueConfigurations,
                                      QueueStatisticsCollector queueStatisticsCollector, Logger log) {
-        super(vertx, luaScriptManager, redisAPIProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey, queueConfigurations,
+        super(vertx, luaScriptManager, redisProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey, queueConfigurations,
                 queueStatisticsCollector, log);
     }
 
@@ -42,12 +42,13 @@ public class GetQueuesStatisticsAction extends AbstractQueueAction {
             event.reply(createErrorReply().put(ERROR_TYPE, BAD_INPUT)
                     .put(MESSAGE, filterPattern.getErr()));
         } else {
-            redisAPIProvider.redisAPI().onSuccess(redisAPI -> {
-                // retrieve all currently known queues from storage and pass this to the handler
-                redisAPI.zrangebyscore(List.of(queuesKey, String.valueOf(getMaxAgeTimestamp()), "+inf"),
-                        new GetQueuesStatisticsHandler(event, filterPattern.getOk(),
-                                queueStatisticsCollector));
-            });
+            redisProvider.redis().onSuccess(redisAPI -> {
+                        // retrieve all currently known queues from storage and pass this to the handler
+                        redisAPI.zrangebyscore(List.of(queuesKey, String.valueOf(getMaxAgeTimestamp()), "+inf"),
+                                new GetQueuesStatisticsHandler(event, filterPattern.getOk(),
+                                        queueStatisticsCollector));
+                    })
+                    .onFailure(replyErrorMessageHandler(event));
 
         }
     }

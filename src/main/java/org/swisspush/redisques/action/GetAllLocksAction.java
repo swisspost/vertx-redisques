@@ -16,10 +16,10 @@ import static org.swisspush.redisques.util.RedisquesAPI.*;
 
 public class GetAllLocksAction extends AbstractQueueAction {
 
-    public GetAllLocksAction(Vertx vertx, LuaScriptManager luaScriptManager, RedisAPIProvider redisAPIProvider, String address, String queuesKey, String queuesPrefix,
+    public GetAllLocksAction(Vertx vertx, LuaScriptManager luaScriptManager, RedisProvider redisProvider, String address, String queuesKey, String queuesPrefix,
                              String consumersPrefix, String locksKey, List<QueueConfiguration> queueConfigurations,
                              QueueStatisticsCollector queueStatisticsCollector, Logger log) {
-        super(vertx, luaScriptManager, redisAPIProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey, queueConfigurations,
+        super(vertx, luaScriptManager, redisProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey, queueConfigurations,
                 queueStatisticsCollector, log);
     }
 
@@ -27,7 +27,7 @@ public class GetAllLocksAction extends AbstractQueueAction {
     public void execute(Message<JsonObject> event) {
         Result<Optional<Pattern>, String> result = MessageUtil.extractFilterPattern(event);
         if (result.isOk()) {
-            redisAPIProvider.redisAPI().onSuccess(redisAPI -> redisAPI.hkeys(locksKey, new GetAllLocksHandler(event, result.getOk())));
+            redisProvider.redis().onSuccess(redisAPI -> redisAPI.hkeys(locksKey, new GetAllLocksHandler(event, result.getOk()))).onFailure(replyErrorMessageHandler(event));
         } else {
             event.reply(createErrorReply().put(ERROR_TYPE, BAD_INPUT).put(MESSAGE, result.getErr()));
         }

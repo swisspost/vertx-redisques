@@ -9,7 +9,7 @@ import org.swisspush.redisques.handler.PutLockHandler;
 import org.swisspush.redisques.lua.LuaScriptManager;
 import org.swisspush.redisques.util.QueueConfiguration;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
-import org.swisspush.redisques.util.RedisAPIProvider;
+import org.swisspush.redisques.util.RedisProvider;
 
 import java.util.List;
 
@@ -17,10 +17,10 @@ import static org.swisspush.redisques.util.RedisquesAPI.*;
 
 public class PutLockAction extends AbstractQueueAction {
 
-    public PutLockAction(Vertx vertx, LuaScriptManager luaScriptManager, RedisAPIProvider redisAPIProvider, String address, String queuesKey, String queuesPrefix,
+    public PutLockAction(Vertx vertx, LuaScriptManager luaScriptManager, RedisProvider redisProvider, String address, String queuesKey, String queuesPrefix,
                          String consumersPrefix, String locksKey, List<QueueConfiguration> queueConfigurations,
                          QueueStatisticsCollector queueStatisticsCollector, Logger log) {
-        super(vertx, luaScriptManager, redisAPIProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey, queueConfigurations,
+        super(vertx, luaScriptManager, redisProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey, queueConfigurations,
                 queueStatisticsCollector, log);
     }
 
@@ -33,8 +33,9 @@ public class PutLockAction extends AbstractQueueAction {
                 event.reply(createErrorReply().put(ERROR_TYPE, BAD_INPUT).put(MESSAGE, "Lock must be a string value"));
                 return;
             }
-            redisAPIProvider.redisAPI().onSuccess(redisAPI ->
-                    redisAPI.hmset(buildLocksItems(locksKey, lockNames, lockInfo), new PutLockHandler(event)));
+            redisProvider.redis().onSuccess(redisAPI ->
+                            redisAPI.hmset(buildLocksItems(locksKey, lockNames, lockInfo), new PutLockHandler(event)))
+                    .onFailure(replyErrorMessageHandler(event));
         } else {
             event.reply(createErrorReply().put(MESSAGE, "Property '" + REQUESTED_BY + "' missing"));
         }

@@ -9,7 +9,7 @@ import org.slf4j.Logger;
 import org.swisspush.redisques.lua.LuaScriptManager;
 import org.swisspush.redisques.util.QueueConfiguration;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
-import org.swisspush.redisques.util.RedisAPIProvider;
+import org.swisspush.redisques.util.RedisProvider;
 
 import java.util.Arrays;
 import java.util.Collections;
@@ -19,10 +19,10 @@ import static org.swisspush.redisques.util.RedisquesAPI.*;
 
 public class DeleteAllQueueItemsAction extends AbstractQueueAction {
 
-    public DeleteAllQueueItemsAction(Vertx vertx, LuaScriptManager luaScriptManager, RedisAPIProvider redisAPIProvider, String address, String queuesKey, String queuesPrefix,
+    public DeleteAllQueueItemsAction(Vertx vertx, LuaScriptManager luaScriptManager, RedisProvider redisProvider, String address, String queuesKey, String queuesPrefix,
                                      String consumersPrefix, String locksKey, List<QueueConfiguration> queueConfigurations,
                                      QueueStatisticsCollector queueStatisticsCollector, Logger log) {
-        super(vertx, luaScriptManager, redisAPIProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey, queueConfigurations,
+        super(vertx, luaScriptManager, redisProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey, queueConfigurations,
                 queueStatisticsCollector, log);
     }
 
@@ -31,7 +31,7 @@ public class DeleteAllQueueItemsAction extends AbstractQueueAction {
         JsonObject payload = event.body().getJsonObject(PAYLOAD);
         boolean unlock = payload.getBoolean(UNLOCK, false);
         String queue = payload.getString(QUEUENAME);
-        redisAPIProvider.redisAPI().onSuccess(redisAPI -> redisAPI.del(Collections.singletonList(buildQueueKey(queue)),
+        redisProvider.redis().onSuccess(redisAPI -> redisAPI.del(Collections.singletonList(buildQueueKey(queue)),
                 deleteReply -> {
                     if (deleteReply.failed()) {
                         log.warn("Failed to deleteAllQueueItems. But we'll continue anyway", deleteReply.cause());
@@ -51,7 +51,10 @@ public class DeleteAllQueueItemsAction extends AbstractQueueAction {
                     } else {
                         handleDeleteQueueReply(event, deleteReply);
                     }
-                }));
+                })).onFailure(throwable -> {
+                    log.error("Redis: Failed to delete all queue items", throwable);
+                    event.reply(createErrorReply());
+                });
     }
 
     private void handleDeleteQueueReply(Message<JsonObject> event, AsyncResult<Response> reply) {

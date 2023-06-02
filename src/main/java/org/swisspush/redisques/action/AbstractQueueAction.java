@@ -1,6 +1,7 @@
 package org.swisspush.redisques.action;
 
 import io.vertx.core.Future;
+import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.EventBus;
 import io.vertx.core.eventbus.Message;
@@ -11,7 +12,7 @@ import org.slf4j.Logger;
 import org.swisspush.redisques.lua.LuaScriptManager;
 import org.swisspush.redisques.util.QueueConfiguration;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
-import org.swisspush.redisques.util.RedisAPIProvider;
+import org.swisspush.redisques.util.RedisProvider;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -25,7 +26,7 @@ public abstract class AbstractQueueAction implements QueueAction {
     private static final int MAX_AGE_MILLISECONDS = 120000; // 120 seconds
 
     protected final LuaScriptManager luaScriptManager;
-    protected final RedisAPIProvider redisAPIProvider;
+    protected final RedisProvider redisProvider;
     protected final Vertx vertx;
     protected final Logger log;
     protected final String address;
@@ -36,12 +37,12 @@ public abstract class AbstractQueueAction implements QueueAction {
     protected final List<QueueConfiguration> queueConfigurations;
     protected final QueueStatisticsCollector queueStatisticsCollector;
 
-    public AbstractQueueAction(Vertx vertx, LuaScriptManager luaScriptManager, RedisAPIProvider redisAPIProvider, String address, String queuesKey,
+    public AbstractQueueAction(Vertx vertx, LuaScriptManager luaScriptManager, RedisProvider redisProvider, String address, String queuesKey,
                                String queuesPrefix, String consumersPrefix, String locksKey, List<QueueConfiguration> queueConfigurations,
                                QueueStatisticsCollector queueStatisticsCollector, Logger log) {
         this.vertx = vertx;
         this.luaScriptManager = luaScriptManager;
-        this.redisAPIProvider = redisAPIProvider;
+        this.redisProvider = redisProvider;
         this.address = address;
         this.queuesKey = queuesKey;
         this.queuesPrefix = queuesPrefix;
@@ -50,6 +51,10 @@ public abstract class AbstractQueueAction implements QueueAction {
         this.queueConfigurations = queueConfigurations;
         this.queueStatisticsCollector = queueStatisticsCollector;
         this.log = log;
+    }
+
+    protected Handler<Throwable> replyErrorMessageHandler(Message<JsonObject> event) {
+        return throwable -> event.reply(new JsonObject().put(STATUS, ERROR));
     }
 
     protected long getMaxAgeTimestamp() {
@@ -117,7 +122,7 @@ public abstract class AbstractQueueAction implements QueueAction {
             args.add(response.toString());
         }
 
-        redisAPIProvider.redisAPI().onSuccess(redisAPI -> redisAPI.hdel(args, delManyResult -> {
+        redisProvider.redis().onSuccess(redisAPI -> redisAPI.hdel(args, delManyResult -> {
             if (delManyResult.succeeded()) {
                 log.info("Successfully deleted {} locks", delManyResult.result());
                 event.reply(createOkReply().put(VALUE, delManyResult.result().toLong()));
@@ -125,7 +130,10 @@ public abstract class AbstractQueueAction implements QueueAction {
                 log.warn("failed to delete locks. Message: {}", delManyResult.cause().getMessage());
                 event.reply(createErrorReply().put(MESSAGE, delManyResult.cause().getMessage()));
             }
-        }));
+        })).onFailure(throwable -> {
+            log.warn("Redis: failed to delete locks. Message: {}", throwable.getMessage());
+            event.reply(createErrorReply().put(MESSAGE, throwable.getMessage()));
+        });
     }
 
 
@@ -148,7 +156,7 @@ public abstract class AbstractQueueAction implements QueueAction {
         if (log.isTraceEnabled()) {
             log.trace("RedisQues update timestamp for queue: {} to: {}", queueName, ts);
         }
-        return redisAPIProvider.redisAPI().compose(redisAPI -> redisAPI.zadd(Arrays.asList(queuesKey, String.valueOf(ts), queueName)));
+        return redisProvider.redis().compose(redisAPI -> redisAPI.zadd(Arrays.asList(queuesKey, String.valueOf(ts), queueName)));
     }
 
     protected void notifyConsumer(final String queueName) {
@@ -160,7 +168,7 @@ public abstract class AbstractQueueAction implements QueueAction {
         if (log.isTraceEnabled()) {
             log.trace("RedisQues notify consumer get: {}", key);
         }
-        redisAPIProvider.redisAPI().onSuccess(redisAPI -> redisAPI.get(key, event -> {
+        redisProvider.redis().onSuccess(redisAPI -> redisAPI.get(key, event -> {
             if (event.failed()) {
                 log.warn("Failed to get consumer for queue '{}'", queueName, event.cause());
                 // We should return here. See: "https://softwareengineering.stackexchange.com/a/190535"
@@ -180,6 +188,9 @@ public abstract class AbstractQueueAction implements QueueAction {
                 log.debug("RedisQues Notifying consumer {} to consume queue {}", consumer, queueName);
                 eb.send(consumer, queueName);
             }
-        }));
+        })).onFailure(event -> {
+            log.warn("Redis: Failed to get consumer for queue '{}'", queueName, event);
+            // We should return here. See: "https://softwareengineering.stackexchange.com/a/190535"
+        });
     }
 }
