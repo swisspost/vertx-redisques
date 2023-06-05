@@ -1,13 +1,11 @@
 package org.swisspush.redisques.util;
 
-import io.vertx.core.Future;
-import io.vertx.core.Promise;
-import io.vertx.core.Vertx;
+import io.vertx.core.*;
 import io.vertx.redis.client.Redis;
 import io.vertx.redis.client.RedisAPI;
 import io.vertx.redis.client.RedisOptions;
 
-import java.util.function.Function;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Default implementation for a Provider for {@link RedisAPI}
@@ -21,16 +19,11 @@ public class DefaultRedisProvider implements RedisProvider {
 
     private RedisAPI redisAPI;
 
+    private final AtomicReference<Promise<RedisAPI>> connectPromiseRef = new AtomicReference<>();
+
     public DefaultRedisProvider(Vertx vertx, RedisquesConfigurationProvider configurationProvider) {
         this.vertx = vertx;
         this.configurationProvider = configurationProvider;
-        setupRedisAPI().onComplete(event -> {
-            if(event.succeeded()) {
-                redisAPI = event.result();
-            } else {
-                redisAPI = null;
-            }
-        });
     }
 
     @Override
@@ -38,15 +31,32 @@ public class DefaultRedisProvider implements RedisProvider {
         if(redisAPI != null) {
             return Future.succeededFuture(redisAPI);
         } else {
-            return Future.failedFuture("Not yet ready");
+            return setupRedisClient();
         }
     }
 
-    public Future<Void> initialize() {
-        return setupRedisAPI().compose(redisAPI -> Future.succeededFuture());
+    private Future<RedisAPI> setupRedisClient(){
+        Promise<RedisAPI> currentPromise = Promise.promise();
+        Promise<RedisAPI> masterPromise = connectPromiseRef.accumulateAndGet(
+                currentPromise, (oldVal, newVal) -> (oldVal != null) ? oldVal : newVal);
+        if( currentPromise == masterPromise ){
+            // Our promise is THE promise. So WE have to resolve it.
+            connectToRedis().onComplete(event -> {
+                if(event.failed()) {
+                    currentPromise.fail(event.cause());
+                } else {
+                    connectPromiseRef.getAndSet(null);
+                    redisAPI = event.result();
+                    currentPromise.complete(redisAPI);
+                }
+            });
+        }
+
+        // Always return master promise (even if we didn't create it ourselves)
+        return masterPromise.future();
     }
 
-    private Future<RedisAPI> setupRedisAPI() {
+    private Future<RedisAPI> connectToRedis() {
         RedisquesConfiguration config = configurationProvider.configuration();
         String redisHost = config.getRedisHost();
         int redisPort = config.getRedisPort();

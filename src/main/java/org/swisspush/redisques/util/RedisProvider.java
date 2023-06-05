@@ -10,7 +10,5 @@ import io.vertx.redis.client.RedisAPI;
  */
 public interface RedisProvider {
 
-    Future<Void> initialize();
-
     Future<RedisAPI> redis();
 }
