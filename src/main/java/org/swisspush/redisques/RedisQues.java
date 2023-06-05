@@ -23,6 +23,36 @@ import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.*;
 
 public class RedisQues extends AbstractVerticle {
 
+    public static class RedisQuesBuilder {
+
+        private MemoryUsageProvider memoryUsageProvider;
+        private RedisquesConfigurationProvider configurationProvider;
+        private RedisProvider redisProvider;
+
+        RedisQuesBuilder() {
+            // PackagePrivate, as clients should use "RedisQuesBuilder.builder()" and not this class here directly.
+        }
+
+        public RedisQuesBuilder withMemoryUsageProvider(MemoryUsageProvider memoryUsageProvider) {
+            this.memoryUsageProvider = memoryUsageProvider;
+            return this;
+        }
+
+        public RedisQuesBuilder withRedisquesRedisquesConfigurationProvider(RedisquesConfigurationProvider configurationProvider) {
+            this.configurationProvider = configurationProvider;
+            return this;
+        }
+
+        public RedisQuesBuilder withRedisProvider(RedisProvider redisProvider) {
+            this.redisProvider = redisProvider;
+            return this;
+        }
+
+        public RedisQues build() {
+            return new RedisQues(memoryUsageProvider, configurationProvider, redisProvider);
+        }
+    }
+
     // State of each queue. Consuming means there is a message being processed.
     private enum QueueState {
         READY, CONSUMING
@@ -69,9 +99,15 @@ public class RedisQues extends AbstractVerticle {
     public RedisQues() {
     }
 
-    public RedisQues(MemoryUsageProvider memoryUsageProvider, RedisquesConfigurationProvider configurationProvider) {
+    public RedisQues(MemoryUsageProvider memoryUsageProvider, RedisquesConfigurationProvider configurationProvider,
+                     RedisProvider redisProvider) {
         this.memoryUsageProvider = memoryUsageProvider;
         this.configurationProvider = configurationProvider;
+        this.redisProvider = redisProvider;
+    }
+
+    public static RedisQuesBuilder builder() {
+        return new RedisQuesBuilder();
     }
 
     private void redisSetWithOptions(String key, String value, boolean nx, int ex,
