@@ -145,15 +145,16 @@ public class RedisQues extends AbstractVerticle {
 
         if (redisProvider == null) {
             redisProvider = new DefaultRedisProvider(vertx, configurationProvider);
-            redisProvider.initialize().onComplete(initEvent -> {
-                if (initEvent.succeeded()) {
-                    initialize();
-                    promise.complete();
-                } else {
-                    promise.fail(initEvent.cause());
-                }
-            });
         }
+
+        redisProvider.redis().onComplete(event -> {
+            if(event.succeeded()) {
+                initialize();
+                promise.complete();
+            } else {
+                promise.fail(event.cause());
+            }
+        });
     }
 
     private void initialize() {
