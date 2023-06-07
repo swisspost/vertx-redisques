@@ -8,7 +8,7 @@ import static org.swisspush.redisques.util.RedisquesAPI.*;
 
 public class UnsupportedAction implements QueueAction {
 
-    protected Logger log;
+    protected final Logger log;
 
     public UnsupportedAction(Logger log) {
         this.log = log;

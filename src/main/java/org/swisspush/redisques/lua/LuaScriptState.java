@@ -1,9 +1,9 @@
 package org.swisspush.redisques.lua;
 
+import org.apache.commons.codec.digest.DigestUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import io.vertx.redis.client.RedisAPI;
-import org.apache.commons.codec.digest.DigestUtils;
+import org.swisspush.redisques.util.RedisProvider;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -25,13 +25,13 @@ public class LuaScriptState {
      */
     private String sha;
 
-    private RedisAPI redisAPI;
+    private RedisProvider redisProvider;
 
     private Logger log = LoggerFactory.getLogger(LuaScriptState.class);
 
-    public LuaScriptState(LuaScript luaScriptType, RedisAPI redisAPI) {
+    public LuaScriptState(LuaScript luaScriptType, RedisProvider redisProvider) {
         this.luaScriptType = luaScriptType;
-        this.redisAPI = redisAPI;
+        this.redisProvider = redisProvider;
         this.composeLuaScript(luaScriptType);
         this.loadLuaScript(new RedisCommandDoNothing(), 0);
     }
@@ -87,7 +87,7 @@ public class LuaScriptState {
         final int executionCounterIncr = ++executionCounter;
 
         // check first if the lua script already exists in the store
-        redisAPI.script(Arrays.asList("exists", this.sha), resultArray -> {
+        redisProvider.redis().onSuccess(redisAPI -> redisAPI.script(Arrays.asList("exists", sha), resultArray -> {
             if (resultArray.failed()) {
                 log.error("Error checking whether lua script exists", resultArray.cause());
                 return;
@@ -114,7 +114,7 @@ public class LuaScriptState {
                     redisCommand.exec(executionCounterIncr);
                 });
             }
-        });
+        })).onFailure(throwable -> log.error("Redis: Error checking whether lua script exists", throwable));
     }
 
     public String getScript() {

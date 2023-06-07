@@ -11,7 +11,7 @@ import io.vertx.redis.client.Response;
 import java.util.List;
 import java.util.Optional;
 import java.util.regex.Pattern;
-import org.swisspush.redisques.util.QueueHandlerUtil;
+import org.swisspush.redisques.util.HandlerUtil;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 
 /**
@@ -35,8 +35,8 @@ public class GetQueuesStatisticsHandler implements Handler<AsyncResult<Response>
     @Override
     public void handle(AsyncResult<Response> handleQueues) {
         if (handleQueues.succeeded()) {
-            List<String> queues = QueueHandlerUtil
-                .filterQueues(handleQueues.result(), filterPattern);
+            List<String> queues = HandlerUtil
+                .filterByPattern(handleQueues.result(), filterPattern);
             queueStatisticsCollector.getQueueStatistics(event, queues);
         } else {
             event.reply(new JsonObject().put(STATUS, ERROR));

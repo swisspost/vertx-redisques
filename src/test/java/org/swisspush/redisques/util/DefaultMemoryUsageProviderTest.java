@@ -32,6 +32,7 @@ public class DefaultMemoryUsageProviderTest {
 
     private DefaultMemoryUsageProvider memoryUsageProvider;
     private RedisAPI redisAPI;
+    private RedisProvider redisProvider;
 
     private Vertx vertx;
 
@@ -103,6 +104,9 @@ public class DefaultMemoryUsageProviderTest {
     @Before
     public void setup(TestContext context) {
         redisAPI = Mockito.mock(RedisAPI.class);
+        redisProvider = Mockito.mock(RedisProvider.class);
+        when(redisProvider.redis()).thenReturn(Future.succeededFuture(redisAPI));
+
         vertx = Vertx.vertx();
     }
 
@@ -110,7 +114,7 @@ public class DefaultMemoryUsageProviderTest {
     public void testCurrentMemoryUsageError(TestContext context) {
         when(redisAPI.info(eq(Collections.singletonList("memory"))))
                 .thenReturn(Future.failedFuture("Booooooooooooom"));
-        memoryUsageProvider = new DefaultMemoryUsageProvider(redisAPI, vertx, 2);
+        memoryUsageProvider = new DefaultMemoryUsageProvider(redisProvider, vertx, 2);
 
         context.assertFalse(memoryUsageProvider.currentMemoryUsagePercentage().isPresent());
     }
@@ -119,7 +123,7 @@ public class DefaultMemoryUsageProviderTest {
     public void testCurrentMemoryUsageNoValues(TestContext context){
         when(redisAPI.info(eq(Collections.singletonList("memory"))))
                 .thenReturn(Future.succeededFuture(BulkType.create(Buffer.buffer(REDIS_INFO_50_NOVALUES), false)));
-        memoryUsageProvider = new DefaultMemoryUsageProvider(redisAPI, vertx, 2);
+        memoryUsageProvider = new DefaultMemoryUsageProvider(redisProvider, vertx, 2);
 
         context.assertFalse(memoryUsageProvider.currentMemoryUsagePercentage().isPresent());
     }
@@ -128,7 +132,7 @@ public class DefaultMemoryUsageProviderTest {
     public void testCurrentMemoryUsage50Pct(TestContext context){
         when(redisAPI.info(eq(Collections.singletonList("memory"))))
                 .thenReturn(Future.succeededFuture(BulkType.create(Buffer.buffer(REDIS_INFO_50_PCT), false)));
-        memoryUsageProvider = new DefaultMemoryUsageProvider(redisAPI, vertx, 2);
+        memoryUsageProvider = new DefaultMemoryUsageProvider(redisProvider, vertx, 2);
 
         Optional<Integer> currentMemoryUsagePercentage = memoryUsageProvider.currentMemoryUsagePercentage();
         context.assertTrue(currentMemoryUsagePercentage.isPresent());
@@ -139,7 +143,7 @@ public class DefaultMemoryUsageProviderTest {
     public void testCurrentMemoryUsage0Pct(TestContext context){
         when(redisAPI.info(eq(Collections.singletonList("memory"))))
                 .thenReturn(Future.succeededFuture(BulkType.create(Buffer.buffer(REDIS_INFO_0_PCT), false)));
-        memoryUsageProvider = new DefaultMemoryUsageProvider(redisAPI, vertx, 2);
+        memoryUsageProvider = new DefaultMemoryUsageProvider(redisProvider, vertx, 2);
 
         Optional<Integer> currentMemoryUsagePercentage = memoryUsageProvider.currentMemoryUsagePercentage();
         context.assertTrue(currentMemoryUsagePercentage.isPresent());
@@ -150,7 +154,7 @@ public class DefaultMemoryUsageProviderTest {
     public void testCurrentMemoryUsage100Pct(TestContext context){
         when(redisAPI.info(eq(Collections.singletonList("memory"))))
                 .thenReturn(Future.succeededFuture(BulkType.create(Buffer.buffer(REDIS_INFO_100_PCT), false)));
-        memoryUsageProvider = new DefaultMemoryUsageProvider(redisAPI, vertx, 2);
+        memoryUsageProvider = new DefaultMemoryUsageProvider(redisProvider, vertx, 2);
 
         Optional<Integer> currentMemoryUsagePercentage = memoryUsageProvider.currentMemoryUsagePercentage();
         context.assertTrue(currentMemoryUsagePercentage.isPresent());
@@ -162,7 +166,7 @@ public class DefaultMemoryUsageProviderTest {
         // simulate 100% memory usage
         when(redisAPI.info(eq(Collections.singletonList("memory"))))
                 .thenReturn(Future.succeededFuture(BulkType.create(Buffer.buffer(REDIS_INFO_100_PCT), false)));
-        memoryUsageProvider = new DefaultMemoryUsageProvider(redisAPI, vertx, 2);
+        memoryUsageProvider = new DefaultMemoryUsageProvider(redisProvider, vertx, 2);
 
         Optional<Integer> currentMemoryUsagePercentage = memoryUsageProvider.currentMemoryUsagePercentage();
         context.assertTrue(currentMemoryUsagePercentage.isPresent());

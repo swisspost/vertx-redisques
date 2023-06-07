@@ -288,7 +288,6 @@ public class RedisquesConfigurationTest {
 
     @Test
     public void testCleanupInterval(TestContext testContext) {
-        int additional = 500;
         RedisquesConfiguration config = with().checkInterval(5).build();
         testContext.assertEquals(5, config.getCheckInterval());
         testContext.assertEquals(add500ms(2500), config.getCheckIntervalTimerMs());

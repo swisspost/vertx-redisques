@@ -46,7 +46,7 @@ public class RedisquesAPI {
     public static final String STATISTIC_QUEUE_SPEED = "speed";
     public static final String STATISTIC_QUEUE_SPEED_INTERVAL_UNIT= "unitSec";
 
-    private static Logger log = LoggerFactory.getLogger(RedisquesAPI.class);
+    private static final Logger log = LoggerFactory.getLogger(RedisquesAPI.class);
 
     public enum QueueOperation {
         enqueue(null),

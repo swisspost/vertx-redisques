@@ -3,12 +3,12 @@ package org.swisspush.redisques.action;
 import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonObject;
-import io.vertx.redis.client.RedisAPI;
 import org.slf4j.Logger;
 import org.swisspush.redisques.handler.GetQueueItemsCountHandler;
 import org.swisspush.redisques.lua.LuaScriptManager;
 import org.swisspush.redisques.util.QueueConfiguration;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
+import org.swisspush.redisques.util.RedisProvider;
 
 import java.util.List;
 
@@ -20,16 +20,17 @@ import static org.swisspush.redisques.util.RedisquesAPI.QUEUENAME;
  */
 public class GetQueueItemsCountAction extends AbstractQueueAction {
 
-    public GetQueueItemsCountAction(Vertx vertx, LuaScriptManager luaScriptManager, RedisAPI redisAPI, String address, String queuesKey, String queuesPrefix,
-                                     String consumersPrefix, String locksKey, List<QueueConfiguration> queueConfigurations,
-                                     QueueStatisticsCollector queueStatisticsCollector, Logger log) {
-        super(vertx, luaScriptManager, redisAPI, address, queuesKey, queuesPrefix, consumersPrefix, locksKey, queueConfigurations,
+    public GetQueueItemsCountAction(Vertx vertx, LuaScriptManager luaScriptManager, RedisProvider redisProvider, String address, String queuesKey, String queuesPrefix,
+                                    String consumersPrefix, String locksKey, List<QueueConfiguration> queueConfigurations,
+                                    QueueStatisticsCollector queueStatisticsCollector, Logger log) {
+        super(vertx, luaScriptManager, redisProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey, queueConfigurations,
                 queueStatisticsCollector, log);
     }
 
     @Override
     public void execute(Message<JsonObject> event) {
         String queue = event.body().getJsonObject(PAYLOAD).getString(QUEUENAME);
-        redisAPI.llen(queuesPrefix + queue, new GetQueueItemsCountHandler(event));
+        redisProvider.redis().onSuccess(redisAPI -> redisAPI.llen(queuesPrefix + queue, new GetQueueItemsCountHandler(event)))
+                .onFailure(replyErrorMessageHandler(event));
     }
 }

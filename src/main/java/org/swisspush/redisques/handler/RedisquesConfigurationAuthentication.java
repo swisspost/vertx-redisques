@@ -34,7 +34,7 @@ public class RedisquesConfigurationAuthentication implements AuthenticationProvi
         }
     }
 
-    private User user;
+    private final User user;
 
     public RedisquesConfigurationAuthentication(RedisquesConfiguration configuration) {
         Objects.requireNonNull(configuration);

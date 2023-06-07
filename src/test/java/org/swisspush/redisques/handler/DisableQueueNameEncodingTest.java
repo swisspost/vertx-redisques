@@ -52,14 +52,14 @@ public class DisableQueueNameEncodingTest extends AbstractTestCase {
         testVertx = Vertx.vertx();
 
         JsonObject config = RedisquesConfiguration.with()
-            .address(getRedisquesAddress())
-            .processorAddress("processor-address")
-            .refreshPeriod(2)
-            .httpRequestHandlerEnabled(true)
-            .httpRequestHandlerPort(7070)
-            .enableQueueNameDecoding(false)
-            .build()
-            .asJsonObject();
+                .address(getRedisquesAddress())
+                .processorAddress("processor-address")
+                .refreshPeriod(2)
+                .httpRequestHandlerEnabled(true)
+                .httpRequestHandlerPort(7070)
+                .enableQueueNameDecoding(false)
+                .build()
+                .asJsonObject();
 
         RedisQues redisQues = new RedisQues();
 
@@ -93,19 +93,18 @@ public class DisableQueueNameEncodingTest extends AbstractTestCase {
     public void disableEncodingQueueNameTest(TestContext context) {
         Async async = context.async();
         flushAll();
-        eventBusSend(buildEnqueueOperation("queue+with_plus+signs", "helloEnqueue"), message -> {
-            eventBusSend(buildEnqueueOperation("queue+with_plus+signs", "helloEnqueue2"), message2 -> {
-                when().get("/queuing/queues/queue+with_plus+signs")
-                    .then().assertThat()
-                    .statusCode(200)
-                    // has a potential to be very shaky, i.e. if the json response contains spaces
-                    // we can't use `.body("queue+with_plus+signs", hasItems("helloEnqueue", "helloEnqueue2"))`,
-                    // because restassured is interpreting the plus sign (+) in some way
-                    .body(Matchers.equalTo("{\"queue+with_plus+signs\":[\"helloEnqueue\",\"helloEnqueue2\"]}"))
-                ;
-                async.complete();
-            });
-        });
+        eventBusSend(buildEnqueueOperation("queue+with_plus+signs", "helloEnqueue"),
+                message -> eventBusSend(buildEnqueueOperation("queue+with_plus+signs", "helloEnqueue2"), message2 -> {
+                    when().get("/queuing/queues/queue+with_plus+signs")
+                            .then().assertThat()
+                            .statusCode(200)
+                            // has a potential to be very shaky, i.e. if the json response contains spaces
+                            // we can't use `.body("queue+with_plus+signs", hasItems("helloEnqueue", "helloEnqueue2"))`,
+                            // because restassured is interpreting the plus sign (+) in some way
+                            .body(Matchers.equalTo("{\"queue+with_plus+signs\":[\"helloEnqueue\",\"helloEnqueue2\"]}"))
+                    ;
+                    async.complete();
+                }));
         async.awaitSuccess();
     }
 }

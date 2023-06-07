@@ -19,7 +19,7 @@ import static org.swisspush.redisques.util.RedisquesConfiguration.PROP_PROCESSOR
 public class DefaultRedisquesConfigurationProvider implements RedisquesConfigurationProvider {
 
     private final Logger log = LoggerFactory.getLogger(DefaultRedisquesConfigurationProvider.class);
-    private Vertx vertx;
+    private final Vertx vertx;
     private RedisquesConfiguration redisquesConfiguration;
 
     private static final Set<String> ALLOWED_CONFIGURATION_VALUES = Stream.of("processorDelayMax")

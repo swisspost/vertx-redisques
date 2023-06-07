@@ -26,8 +26,6 @@ import static org.swisspush.redisques.util.RedisquesAPI.*;
  */
 public class RedisQuesProcessorDelayedExecutionTest extends AbstractTestCase {
 
-    public static final int NUM_QUEUES = 10;
-
     private static MessageConsumer<JsonObject> queueProcessor = null;
 
     private static final String CUSTOM_REDIS_KEY_PREFIX = "mycustomredisprefix:";
@@ -77,7 +75,7 @@ public class RedisQuesProcessorDelayedExecutionTest extends AbstractTestCase {
     }
 
     @Test
-    public void queueProcessorShouldBeNotifiedWithNonLockedQueue(TestContext context) throws Exception {
+    public void queueProcessorShouldBeNotifiedWithNonLockedQueue(TestContext context) {
         Async async = context.async();
         flushAll();
 

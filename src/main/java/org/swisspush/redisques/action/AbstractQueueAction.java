@@ -1,18 +1,18 @@
 package org.swisspush.redisques.action;
 
-import io.vertx.core.AsyncResult;
+import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.EventBus;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
-import io.vertx.redis.client.RedisAPI;
 import io.vertx.redis.client.Response;
 import org.slf4j.Logger;
 import org.swisspush.redisques.lua.LuaScriptManager;
 import org.swisspush.redisques.util.QueueConfiguration;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
+import org.swisspush.redisques.util.RedisProvider;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -25,24 +25,24 @@ public abstract class AbstractQueueAction implements QueueAction {
 
     private static final int MAX_AGE_MILLISECONDS = 120000; // 120 seconds
 
-    protected LuaScriptManager luaScriptManager;
-    protected RedisAPI redisAPI;
-    protected Vertx vertx;
-    protected Logger log;
-    protected String address;
-    protected String queuesKey;
-    protected String queuesPrefix;
-    protected String consumersPrefix;
-    protected String locksKey;
-    protected List<QueueConfiguration> queueConfigurations;
-    protected QueueStatisticsCollector queueStatisticsCollector;
+    protected final LuaScriptManager luaScriptManager;
+    protected final RedisProvider redisProvider;
+    protected final Vertx vertx;
+    protected final Logger log;
+    protected final String address;
+    protected final String queuesKey;
+    protected final String queuesPrefix;
+    protected final String consumersPrefix;
+    protected final String locksKey;
+    protected final List<QueueConfiguration> queueConfigurations;
+    protected final QueueStatisticsCollector queueStatisticsCollector;
 
-    public AbstractQueueAction(Vertx vertx, LuaScriptManager luaScriptManager, RedisAPI redisAPI, String address, String queuesKey,
+    public AbstractQueueAction(Vertx vertx, LuaScriptManager luaScriptManager, RedisProvider redisProvider, String address, String queuesKey,
                                String queuesPrefix, String consumersPrefix, String locksKey, List<QueueConfiguration> queueConfigurations,
                                QueueStatisticsCollector queueStatisticsCollector, Logger log) {
         this.vertx = vertx;
         this.luaScriptManager = luaScriptManager;
-        this.redisAPI = redisAPI;
+        this.redisProvider = redisProvider;
         this.address = address;
         this.queuesKey = queuesKey;
         this.queuesPrefix = queuesPrefix;
@@ -53,12 +53,8 @@ public abstract class AbstractQueueAction implements QueueAction {
         this.log = log;
     }
 
-    public JsonObject createOkReply() {
-        return new JsonObject().put(STATUS, OK);
-    }
-
-    public JsonObject createErrorReply() {
-        return new JsonObject().put(STATUS, ERROR);
+    protected Handler<Throwable> replyErrorMessageHandler(Message<JsonObject> event) {
+        return throwable -> event.reply(new JsonObject().put(STATUS, ERROR));
     }
 
     protected long getMaxAgeTimestamp() {
@@ -126,7 +122,7 @@ public abstract class AbstractQueueAction implements QueueAction {
             args.add(response.toString());
         }
 
-        redisAPI.hdel(args, delManyResult -> {
+        redisProvider.redis().onSuccess(redisAPI -> redisAPI.hdel(args, delManyResult -> {
             if (delManyResult.succeeded()) {
                 log.info("Successfully deleted {} locks", delManyResult.result());
                 event.reply(createOkReply().put(VALUE, delManyResult.result().toLong()));
@@ -134,6 +130,9 @@ public abstract class AbstractQueueAction implements QueueAction {
                 log.warn("failed to delete locks. Message: {}", delManyResult.cause().getMessage());
                 event.reply(createErrorReply().put(MESSAGE, delManyResult.cause().getMessage()));
             }
+        })).onFailure(throwable -> {
+            log.warn("Redis: failed to delete locks", throwable);
+            event.reply(createErrorReply().put(MESSAGE, throwable.getMessage()));
         });
     }
 
@@ -152,17 +151,12 @@ public abstract class AbstractQueueAction implements QueueAction {
         }
         return null;
     }
-
-    protected void updateTimestamp(final String queueName, Handler<AsyncResult<Response>> handler) {
+    protected Future<Response> updateTimestamp(final String queueName) {
         long ts = System.currentTimeMillis();
         if (log.isTraceEnabled()) {
             log.trace("RedisQues update timestamp for queue: {} to: {}", queueName, ts);
         }
-        if (handler == null) {
-            redisAPI.zadd(Arrays.asList(queuesKey, String.valueOf(ts), queueName));
-        } else {
-            redisAPI.zadd(Arrays.asList(queuesKey, String.valueOf(ts), queueName), handler);
-        }
+        return redisProvider.redis().compose(redisAPI -> redisAPI.zadd(Arrays.asList(queuesKey, String.valueOf(ts), queueName)));
     }
 
     protected void notifyConsumer(final String queueName) {
@@ -174,7 +168,7 @@ public abstract class AbstractQueueAction implements QueueAction {
         if (log.isTraceEnabled()) {
             log.trace("RedisQues notify consumer get: {}", key);
         }
-        redisAPI.get(key, event -> {
+        redisProvider.redis().onSuccess(redisAPI -> redisAPI.get(key, event -> {
             if (event.failed()) {
                 log.warn("Failed to get consumer for queue '{}'", queueName, event.cause());
                 // We should return here. See: "https://softwareengineering.stackexchange.com/a/190535"
@@ -194,6 +188,9 @@ public abstract class AbstractQueueAction implements QueueAction {
                 log.debug("RedisQues Notifying consumer {} to consume queue {}", consumer, queueName);
                 eb.send(consumer, queueName);
             }
+        })).onFailure(throwable -> {
+            log.warn("Redis: Failed to get consumer for queue '{}'", queueName, throwable);
+            // We should return here. See: "https://softwareengineering.stackexchange.com/a/190535"
         });
     }
 }
