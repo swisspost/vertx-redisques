@@ -1,7 +1,6 @@
 package org.swisspush.redisques.util;
 
 import io.vertx.core.Vertx;
-import io.vertx.redis.client.RedisAPI;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -10,58 +9,62 @@ import java.util.Optional;
 
 public class DefaultMemoryUsageProvider implements MemoryUsageProvider {
 
-    private Logger log = LoggerFactory.getLogger(DefaultMemoryUsageProvider.class);
+    private final Logger log = LoggerFactory.getLogger(DefaultMemoryUsageProvider.class);
 
-    private RedisAPI redisAPI;
+    private final RedisProvider redisProvider;
 
-    private Optional<Integer> currentMemoryUsagePercentage = Optional.empty();
+    private Optional<Integer> currentMemoryUsagePercentageOpt = Optional.empty();
 
     private static final int MAX_PERCENTAGE = 100;
     private static final int MIN_PERCENTAGE = 0;
 
-    public DefaultMemoryUsageProvider(RedisAPI redisAPI, Vertx vertx, int memoryUsageCheckIntervalSec) {
-        this.redisAPI = redisAPI;
+    public DefaultMemoryUsageProvider(RedisProvider redisProvider, Vertx vertx, int memoryUsageCheckIntervalSec) {
+        this.redisProvider = redisProvider;
         updateCurrentMemoryUsage();
         vertx.setPeriodic(memoryUsageCheckIntervalSec * 1000L, event -> updateCurrentMemoryUsage());
     }
 
     public Optional<Integer> currentMemoryUsagePercentage() {
-        return currentMemoryUsagePercentage;
+        return currentMemoryUsagePercentageOpt;
     }
 
     private void updateCurrentMemoryUsage() {
-        redisAPI.info(Collections.singletonList("memory")).onComplete(memoryInfoEvent -> {
-            if(memoryInfoEvent.failed()) {
-                log.error("Unable to get memory information from redis", memoryInfoEvent.cause());
-                currentMemoryUsagePercentage = Optional.empty();
-                return;
-            }
+        redisProvider.redis().onSuccess(redisAPI -> redisAPI.info(Collections.singletonList("memory"))
+                .onComplete(memoryInfoEvent -> {
+                    if (memoryInfoEvent.failed()) {
+                        log.error("Unable to get memory information from redis", memoryInfoEvent.cause());
+                        currentMemoryUsagePercentageOpt = Optional.empty();
+                        return;
+                    }
 
-            String memoryInfo = memoryInfoEvent.result().toString();
+                    String memoryInfo = memoryInfoEvent.result().toString();
 
-            Optional<Long> totalSystemMemory = totalSystemMemory(memoryInfo);
-            if (totalSystemMemory.isEmpty()) {
-                currentMemoryUsagePercentage = Optional.empty();
-                return;
-            }
+                    Optional<Long> totalSystemMemory = totalSystemMemory(memoryInfo);
+                    if (totalSystemMemory.isEmpty()) {
+                        currentMemoryUsagePercentageOpt = Optional.empty();
+                        return;
+                    }
 
-            Optional<Long> usedMemory = usedMemory(memoryInfo);
-            if (usedMemory.isEmpty()) {
-                currentMemoryUsagePercentage = Optional.empty();
-                return;
-            }
+                    Optional<Long> usedMemory = usedMemory(memoryInfo);
+                    if (usedMemory.isEmpty()) {
+                        currentMemoryUsagePercentageOpt = Optional.empty();
+                        return;
+                    }
 
-            float currentMemoryUsagePercentage = ((float) usedMemory.get() / totalSystemMemory.get()) * 100;
-            if (currentMemoryUsagePercentage > MAX_PERCENTAGE) {
-                currentMemoryUsagePercentage = MAX_PERCENTAGE;
-            } else if (currentMemoryUsagePercentage < MIN_PERCENTAGE) {
-                currentMemoryUsagePercentage = MIN_PERCENTAGE;
-            }
+                    float currentMemoryUsagePercentage = ((float) usedMemory.get() / totalSystemMemory.get()) * 100;
+                    if (currentMemoryUsagePercentage > MAX_PERCENTAGE) {
+                        currentMemoryUsagePercentage = MAX_PERCENTAGE;
+                    } else if (currentMemoryUsagePercentage < MIN_PERCENTAGE) {
+                        currentMemoryUsagePercentage = MIN_PERCENTAGE;
+                    }
 
-            int roundedValue = Math.round(currentMemoryUsagePercentage);
-            log.info("Current memory usage is {}%", roundedValue);
-            this.currentMemoryUsagePercentage = Optional.of(roundedValue);
-        });
+                    int roundedValue = Math.round(currentMemoryUsagePercentage);
+                    log.info("Current memory usage is {}%", roundedValue);
+                    currentMemoryUsagePercentageOpt = Optional.of(roundedValue);
+                })).onFailure(throwable -> {
+                    log.error("Redis: Unable to get memory information from redis", throwable);
+                    currentMemoryUsagePercentageOpt = Optional.empty();
+                });
     }
 
     private Optional<Long> totalSystemMemory(String memoryInfo) {

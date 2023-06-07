@@ -20,7 +20,7 @@ public class RedisQuesRunner {
                 .httpRequestHandlerEnabled(true)
                 .build().asJsonObject();
 
-        Vertx.vertx().deployVerticle("org.swisspush.redisques.RedisQues", new DeploymentOptions().setConfig(configuration),
+        Vertx.vertx().deployVerticle(new RedisQues(), new DeploymentOptions().setConfig(configuration),
                 event -> LoggerFactory.getLogger(RedisQues.class).info("vertx-redisques started"));
     }
 }

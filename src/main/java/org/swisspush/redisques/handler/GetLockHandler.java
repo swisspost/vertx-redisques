@@ -14,7 +14,7 @@ import static org.swisspush.redisques.util.RedisquesAPI.*;
  * @author baldim
  */
 public class GetLockHandler implements Handler<AsyncResult<Response>> {
-    private Message<JsonObject> event;
+    private final Message<JsonObject> event;
 
     public GetLockHandler(Message<JsonObject> event) {
         this.event = event;

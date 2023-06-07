@@ -16,8 +16,8 @@ import io.vertx.redis.client.Response;
  * @author baldim, https://github.com/mcweba [Marc-Andre Weber]
  */
 public class GetQueueItemsHandler implements Handler<AsyncResult<Response>> {
-    private Message<JsonObject> event;
-    private Long queueItemCount;
+    private final Message<JsonObject> event;
+    private final Long queueItemCount;
 
     public GetQueueItemsHandler(Message<JsonObject> event, Long queueItemCount) {
         this.event = event;

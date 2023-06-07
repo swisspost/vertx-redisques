@@ -51,7 +51,10 @@ public class RedisQuesTest extends AbstractTestCase {
                 .asJsonObject();
 
         memoryUsageProvider = new TestMemoryUsageProvider(Optional.of(50));
-        redisQues = new RedisQues(memoryUsageProvider, new DefaultRedisquesConfigurationProvider(vertx, config));
+        redisQues = RedisQues.builder()
+                .withMemoryUsageProvider(memoryUsageProvider)
+                .withRedisquesRedisquesConfigurationProvider(new DefaultRedisquesConfigurationProvider(vertx, config))
+                .build();
         vertx.deployVerticle(redisQues, new DeploymentOptions().setConfig(config), context.asyncAssertSuccess(event -> {
             deploymentId = event;
             log.info("vert.x Deploy - " + redisQues.getClass().getSimpleName() + " was successful.");

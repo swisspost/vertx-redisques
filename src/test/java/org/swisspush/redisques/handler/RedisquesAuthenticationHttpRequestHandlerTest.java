@@ -57,7 +57,10 @@ public class RedisquesAuthenticationHttpRequestHandlerTest extends AbstractTestC
         // Disable authentication
         JsonObject config = buildConfig(null, null, null);
 
-        RedisQues redisQues = new RedisQues(memoryUsageProvider, new DefaultRedisquesConfigurationProvider(testVertx, config));
+        RedisQues redisQues = RedisQues.builder()
+                .withMemoryUsageProvider(memoryUsageProvider)
+                .withRedisquesRedisquesConfigurationProvider(new DefaultRedisquesConfigurationProvider(testVertx, config))
+                .build();
 
         testVertx.deployVerticle(redisQues, new DeploymentOptions().setConfig(config), context.asyncAssertSuccess(event -> {
             deploymentId = event;
@@ -87,7 +90,10 @@ public class RedisquesAuthenticationHttpRequestHandlerTest extends AbstractTestC
         // Enable authentication but without username
         JsonObject config = buildConfig(true, null, "bar");
 
-        RedisQues redisQues = new RedisQues(memoryUsageProvider, new DefaultRedisquesConfigurationProvider(testVertx, config));
+        RedisQues redisQues = RedisQues.builder()
+                .withMemoryUsageProvider(memoryUsageProvider)
+                .withRedisquesRedisquesConfigurationProvider(new DefaultRedisquesConfigurationProvider(testVertx, config))
+                .build();
 
         testVertx.deployVerticle(redisQues, new DeploymentOptions().setConfig(config), context.asyncAssertSuccess(event -> {
             deploymentId = event;
@@ -117,7 +123,10 @@ public class RedisquesAuthenticationHttpRequestHandlerTest extends AbstractTestC
         // Enable authentication but with empty username
         JsonObject config = buildConfig(true, "", "bar");
 
-        RedisQues redisQues = new RedisQues(memoryUsageProvider, new DefaultRedisquesConfigurationProvider(testVertx, config));
+        RedisQues redisQues = RedisQues.builder()
+                .withMemoryUsageProvider(memoryUsageProvider)
+                .withRedisquesRedisquesConfigurationProvider(new DefaultRedisquesConfigurationProvider(testVertx, config))
+                .build();
 
         testVertx.deployVerticle(redisQues, new DeploymentOptions().setConfig(config), context.asyncAssertSuccess(event -> {
             deploymentId = event;
@@ -147,7 +156,10 @@ public class RedisquesAuthenticationHttpRequestHandlerTest extends AbstractTestC
         // Enable authentication but without password
         JsonObject config = buildConfig(true, "foo", null);
 
-        RedisQues redisQues = new RedisQues(memoryUsageProvider, new DefaultRedisquesConfigurationProvider(testVertx, config));
+        RedisQues redisQues = RedisQues.builder()
+                .withMemoryUsageProvider(memoryUsageProvider)
+                .withRedisquesRedisquesConfigurationProvider(new DefaultRedisquesConfigurationProvider(testVertx, config))
+                .build();
 
         testVertx.deployVerticle(redisQues, new DeploymentOptions().setConfig(config), context.asyncAssertSuccess(event -> {
             deploymentId = event;
@@ -177,7 +189,10 @@ public class RedisquesAuthenticationHttpRequestHandlerTest extends AbstractTestC
         // Enable authentication but with empty password
         JsonObject config = buildConfig(true, "foo", "");
 
-        RedisQues redisQues = new RedisQues(memoryUsageProvider, new DefaultRedisquesConfigurationProvider(testVertx, config));
+        RedisQues redisQues = RedisQues.builder()
+                .withMemoryUsageProvider(memoryUsageProvider)
+                .withRedisquesRedisquesConfigurationProvider(new DefaultRedisquesConfigurationProvider(testVertx, config))
+                .build();
 
         testVertx.deployVerticle(redisQues, new DeploymentOptions().setConfig(config), context.asyncAssertSuccess(event -> {
             deploymentId = event;
@@ -207,7 +222,10 @@ public class RedisquesAuthenticationHttpRequestHandlerTest extends AbstractTestC
         // Enable authentication
         JsonObject config = buildConfig(true, "foo", "bar");
 
-        RedisQues redisQues = new RedisQues(memoryUsageProvider, new DefaultRedisquesConfigurationProvider(testVertx, config));
+        RedisQues redisQues = RedisQues.builder()
+                .withMemoryUsageProvider(memoryUsageProvider)
+                .withRedisquesRedisquesConfigurationProvider(new DefaultRedisquesConfigurationProvider(testVertx, config))
+                .build();
 
         testVertx.deployVerticle(redisQues, new DeploymentOptions().setConfig(config), context.asyncAssertSuccess(event -> {
             deploymentId = event;

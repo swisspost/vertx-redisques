@@ -8,7 +8,7 @@ import static org.swisspush.redisques.util.RedisquesAPI.VALUE;
 
 public class GetConfigurationAction implements QueueAction {
 
-    private RedisquesConfigurationProvider configurationProvider;
+    private final RedisquesConfigurationProvider configurationProvider;
 
     public GetConfigurationAction(RedisquesConfigurationProvider configurationProvider) {
         this.configurationProvider = configurationProvider;
