@@ -29,8 +29,8 @@ public class RedisQues extends AbstractVerticle {
         private RedisquesConfigurationProvider configurationProvider;
         private RedisProvider redisProvider;
 
-        RedisQuesBuilder() {
-            // PackagePrivate, as clients should use "RedisQuesBuilder.builder()" and not this class here directly.
+        private RedisQuesBuilder() {
+            // Private, as clients should use "RedisQues.builder()" and not this class here directly.
         }
 
         public RedisQuesBuilder withMemoryUsageProvider(MemoryUsageProvider memoryUsageProvider) {
@@ -119,7 +119,7 @@ public class RedisQues extends AbstractVerticle {
         }
         redisProvider.redis().onSuccess(redisAPI -> redisAPI.send(
                         Command.SET, RedisUtils.toPayload(key, value, options).toArray(new String[0]))
-                .onComplete(handler)).onFailure(event -> handler.handle(new FailedAsyncResult<>(event)));
+                .onComplete(handler)).onFailure(throwable -> handler.handle(new FailedAsyncResult<>(throwable)));
     }
 
     /**
@@ -644,9 +644,9 @@ public class RedisQues extends AbstractVerticle {
                         myQueues.put(queueName, QueueState.READY);
                         promise.complete();
                     }
-                })).onFailure(event -> {
+                })).onFailure(throwable -> {
                     // We should return here. See: "https://softwareengineering.stackexchange.com/a/190535"
-                    log.warn("Redis: Error on readQueue", event);
+                    log.warn("Redis: Error on readQueue", throwable);
                     myQueues.put(queueName, QueueState.READY);
                     promise.complete();
                 });
@@ -787,10 +787,10 @@ public class RedisQues extends AbstractVerticle {
             } else {
                 redisAPI.zadd(Arrays.asList(queuesKey, String.valueOf(ts), queueName), handler);
             }
-        }).onFailure(event -> {
-            log.warn("Redis: Error in updateTimestamp", event);
+        }).onFailure(throwable -> {
+            log.warn("Redis: Error in updateTimestamp", throwable);
             if (handler != null) {
-                handler.handle(new FailedAsyncResult<>(event));
+                handler.handle(new FailedAsyncResult<>(throwable));
             }
         });
     }
@@ -874,8 +874,8 @@ public class RedisQues extends AbstractVerticle {
                     }
                     CompositeFuture.all(futureList).onComplete(event1 -> result.complete());
                 }))
-                .onFailure(event -> {
-                    log.warn("Redis: Failed to checkQueues", event);
+                .onFailure(throwable -> {
+                    log.warn("Redis: Failed to checkQueues", throwable);
                     result.complete();
                 });
         return result.future();
@@ -891,8 +891,8 @@ public class RedisQues extends AbstractVerticle {
         log.debug("Cleaning old queues");
         redisProvider.redis().onSuccess(redisAPI -> redisAPI.zremrangebyscore(queuesKey, "-inf", String.valueOf(limit),
                         event -> promise.complete()))
-                .onFailure(event -> {
-                    log.warn("Redis: Failed to removeOldQueues", event);
+                .onFailure(throwable -> {
+                    log.warn("Redis: Failed to removeOldQueues", throwable);
                     promise.complete();
                 });
         return promise.future();

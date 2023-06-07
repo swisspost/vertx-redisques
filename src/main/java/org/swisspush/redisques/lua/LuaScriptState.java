@@ -114,7 +114,7 @@ public class LuaScriptState {
                     redisCommand.exec(executionCounterIncr);
                 });
             }
-        })).onFailure(event -> log.error("Redis: Error checking whether lua script exists", event));
+        })).onFailure(throwable -> log.error("Redis: Error checking whether lua script exists", throwable));
     }
 
     public String getScript() {

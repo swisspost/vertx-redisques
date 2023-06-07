@@ -305,11 +305,11 @@ public class QueueStatisticsCollector {
             obj.put(QUEUE_BACKPRESSURE, backpressureTime);
             redisProvider.redis().onSuccess(redisAPI -> redisAPI.hset(List.of(STATSKEY, queueName, obj.toString()),
                     emptyHandler -> {
-                    })).onFailure(event -> log.error("Redis: Error in updateStatisticsInRedis", event));
+                    })).onFailure(throwable -> log.error("Redis: Error in updateStatisticsInRedis", throwable));
         } else {
             redisProvider.redis().onSuccess(redisAPI -> redisAPI.hdel(List.of(STATSKEY, queueName),
                     emptyHandler -> {
-                    })).onFailure(event -> log.error("Redis: Error in updateStatisticsInRedis", event));
+                    })).onFailure(throwable -> log.error("Redis: Error in updateStatisticsInRedis", throwable));
 
         }
     }

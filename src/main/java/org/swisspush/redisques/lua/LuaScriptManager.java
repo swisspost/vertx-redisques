@@ -92,7 +92,7 @@ public class LuaScriptManager {
                         log.error("Check request failed.", event.cause());
                     }
                 }
-            })).onFailure(event -> log.error("Redis: Check request failed.", event));
+            })).onFailure(throwable -> log.error("Redis: Check request failed.", throwable));
         }
     }
 
@@ -143,7 +143,7 @@ public class LuaScriptManager {
                     }
                     event.failed();
                 }
-            })).onFailure(event -> log.error("Redis: ListLength request failed.", event));
+            })).onFailure(throwable -> log.error("Redis: ListLength request failed.", throwable));
         }
     }
 

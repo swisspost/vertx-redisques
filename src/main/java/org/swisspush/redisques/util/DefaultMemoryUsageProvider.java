@@ -61,8 +61,8 @@ public class DefaultMemoryUsageProvider implements MemoryUsageProvider {
                     int roundedValue = Math.round(currentMemoryUsagePercentage);
                     log.info("Current memory usage is {}%", roundedValue);
                     currentMemoryUsagePercentageOpt = Optional.of(roundedValue);
-                })).onFailure(event -> {
-                    log.error("Redis: Unable to get memory information from redis", event);
+                })).onFailure(throwable -> {
+                    log.error("Redis: Unable to get memory information from redis", throwable);
                     currentMemoryUsagePercentageOpt = Optional.empty();
                 });
     }

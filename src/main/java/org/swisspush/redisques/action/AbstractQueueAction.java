@@ -131,7 +131,7 @@ public abstract class AbstractQueueAction implements QueueAction {
                 event.reply(createErrorReply().put(MESSAGE, delManyResult.cause().getMessage()));
             }
         })).onFailure(throwable -> {
-            log.warn("Redis: failed to delete locks. Message: {}", throwable.getMessage());
+            log.warn("Redis: failed to delete locks", throwable);
             event.reply(createErrorReply().put(MESSAGE, throwable.getMessage()));
         });
     }
@@ -188,8 +188,8 @@ public abstract class AbstractQueueAction implements QueueAction {
                 log.debug("RedisQues Notifying consumer {} to consume queue {}", consumer, queueName);
                 eb.send(consumer, queueName);
             }
-        })).onFailure(event -> {
-            log.warn("Redis: Failed to get consumer for queue '{}'", queueName, event);
+        })).onFailure(throwable -> {
+            log.warn("Redis: Failed to get consumer for queue '{}'", queueName, throwable);
             // We should return here. See: "https://softwareengineering.stackexchange.com/a/190535"
         });
     }
