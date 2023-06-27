@@ -42,6 +42,7 @@ public class RedisquesConfiguration {
     private final int memoryUsageLimitPercent;
     private final int memoryUsageCheckIntervalSec;
     private static final int DEFAULT_CHECK_INTERVAL = 60; // 60s
+    private static final int DEFAULT_PROCESSOR_TIMEOUT = 240000; // 240S
     private static final long DEFAULT_PROCESSOR_DELAY_MAX = 0;
     private static final int DEFAULT_REDIS_MAX_POOL_SIZE = 200;
 
@@ -132,16 +133,24 @@ public class RedisquesConfiguration {
         if (checkInterval > 0) {
             this.checkInterval = checkInterval;
         } else {
-            log.warn("Overridden checkInterval of {}s is not valid. Using default value of {}s instead.", checkInterval, DEFAULT_CHECK_INTERVAL);
+            log.warn("Overridden checkInterval of {}s is not valid. Using default value of {}s instead.",
+                    checkInterval, DEFAULT_CHECK_INTERVAL);
             this.checkInterval = DEFAULT_CHECK_INTERVAL;
         }
 
-        this.processorTimeout = processorTimeout;
+        if (processorTimeout >= 1) {
+            this.processorTimeout = processorTimeout;
+        } else {
+            log.warn("Overridden processorTimeout of {} is not valid. Using default value of {} instead.",
+                    processorTimeout, DEFAULT_PROCESSOR_TIMEOUT);
+            this.processorTimeout = DEFAULT_PROCESSOR_TIMEOUT;
+        }
 
         if (processorDelayMax >= 0) {
             this.processorDelayMax = processorDelayMax;
         } else {
-            log.warn("Overridden processorDelayMax of {} is not valid. Using default value of {} instead.", processorDelayMax, DEFAULT_PROCESSOR_DELAY_MAX);
+            log.warn("Overridden processorDelayMax of {} is not valid. Using default value of {} instead.",
+                    processorDelayMax, DEFAULT_PROCESSOR_DELAY_MAX);
             this.processorDelayMax = DEFAULT_PROCESSOR_DELAY_MAX;
         }
 
@@ -259,16 +268,16 @@ public class RedisquesConfiguration {
         if (json.containsKey(PROP_HTTP_REQUEST_HANDLER_ENABLED)) {
             builder.httpRequestHandlerEnabled(json.getBoolean(PROP_HTTP_REQUEST_HANDLER_ENABLED));
         }
-        if(json.containsKey(PROP_HTTP_REQUEST_HANDLER_AUTH_ENABLED)) {
+        if (json.containsKey(PROP_HTTP_REQUEST_HANDLER_AUTH_ENABLED)) {
             builder.httpRequestHandlerAuthenticationEnabled(json.getBoolean(PROP_HTTP_REQUEST_HANDLER_AUTH_ENABLED));
         }
         if (json.containsKey(PROP_HTTP_REQUEST_HANDLER_PREFIX)) {
             builder.httpRequestHandlerPrefix(json.getString(PROP_HTTP_REQUEST_HANDLER_PREFIX));
         }
-        if(json.containsKey(PROP_HTTP_REQUEST_HANDLER_USERNAME)) {
+        if (json.containsKey(PROP_HTTP_REQUEST_HANDLER_USERNAME)) {
             builder.httpRequestHandlerUsername(json.getString(PROP_HTTP_REQUEST_HANDLER_USERNAME));
         }
-        if(json.containsKey(PROP_HTTP_REQUEST_HANDLER_PASSWORD)) {
+        if (json.containsKey(PROP_HTTP_REQUEST_HANDLER_PASSWORD)) {
             builder.httpRequestHandlerPassword(json.getString(PROP_HTTP_REQUEST_HANDLER_PASSWORD));
         }
         if (json.containsKey(PROP_HTTP_REQUEST_HANDLER_PORT)) {
@@ -489,7 +498,7 @@ public class RedisquesConfiguration {
             this.redisHost = "localhost";
             this.redisPort = 6379;
             this.checkInterval = DEFAULT_CHECK_INTERVAL; //60s
-            this.processorTimeout = 240000;
+            this.processorTimeout = DEFAULT_PROCESSOR_TIMEOUT;
             this.processorDelayMax = 0;
             this.httpRequestHandlerEnabled = false;
             this.httpRequestHandlerAuthenticationEnabled = false;

@@ -14,7 +14,9 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static org.swisspush.redisques.util.RedisquesAPI.PROCESSOR_DELAY_MAX;
+import static org.swisspush.redisques.util.RedisquesAPI.PROCESSOR_TIMEOUT;
 import static org.swisspush.redisques.util.RedisquesConfiguration.PROP_PROCESSOR_DELAY_MAX;
+import static org.swisspush.redisques.util.RedisquesConfiguration.PROP_PROCESSOR_TIMEOUT;
 
 public class DefaultRedisquesConfigurationProvider implements RedisquesConfigurationProvider {
 
@@ -22,7 +24,7 @@ public class DefaultRedisquesConfigurationProvider implements RedisquesConfigura
     private final Vertx vertx;
     private RedisquesConfiguration redisquesConfiguration;
 
-    private static final Set<String> ALLOWED_CONFIGURATION_VALUES = Stream.of("processorDelayMax")
+    private static final Set<String> ALLOWED_CONFIGURATION_VALUES = Stream.of("processorDelayMax", "processorTimeout")
             .collect(Collectors.toSet());
 
     public DefaultRedisquesConfigurationProvider(Vertx vertx, JsonObject config) {
@@ -46,19 +48,18 @@ public class DefaultRedisquesConfigurationProvider implements RedisquesConfigura
     }
 
     private Result<Void, String> setConfigurationValues(JsonObject configurationValues, boolean validateOnly) {
-        if (configurationValues != null) {
+        if (configurationValues != null && !configurationValues.isEmpty()) {
             List<String> notAllowedConfigurationValues = findNotAllowedConfigurationValues(configurationValues.fieldNames());
             if (notAllowedConfigurationValues.isEmpty()) {
                 try {
                     Long processorDelayMaxValue = configurationValues.getLong(PROCESSOR_DELAY_MAX);
-                    if (processorDelayMaxValue == null) {
-                        return Result.err("Value for configuration property '" + PROCESSOR_DELAY_MAX + "' is missing");
-                    }
+                    Long processorTimeoutValue = configurationValues.getLong(PROCESSOR_TIMEOUT);
+
                     if(validateOnly) {
                         vertx.eventBus().publish(configuration().getConfigurationUpdatedAddress(), configurationValues);
                     } else {
-                        changeProcessorDelayMax(processorDelayMaxValue);
-                        log.info("Updated configuration value of property '{}' to {}", PROCESSOR_DELAY_MAX, processorDelayMaxValue);
+                        changeProperty(processorDelayMaxValue, PROP_PROCESSOR_DELAY_MAX);
+                        changeProperty(processorTimeoutValue, PROP_PROCESSOR_TIMEOUT);
                     }
                     return Result.ok(null);
                 } catch (ClassCastException ex) {
@@ -80,9 +81,12 @@ public class DefaultRedisquesConfigurationProvider implements RedisquesConfigura
         return configurationValues.stream().filter(p -> !ALLOWED_CONFIGURATION_VALUES.contains(p)).collect(Collectors.toList());
     }
 
-    private void changeProcessorDelayMax(long processorDelayMaxValue){
-        JsonObject configJsonObject = configuration().asJsonObject();
-        configJsonObject.put(PROP_PROCESSOR_DELAY_MAX, processorDelayMaxValue);
-        this.redisquesConfiguration = RedisquesConfiguration.fromJsonObject(configJsonObject);
+    private void changeProperty(Long propertyValue, String propertyName){
+        if(propertyValue != null) {
+            JsonObject configJsonObject = configuration().asJsonObject();
+            configJsonObject.put(propertyName, propertyValue);
+            this.redisquesConfiguration = RedisquesConfiguration.fromJsonObject(configJsonObject);
+            log.info("Updated configuration value of property '{}' to {}", propertyName, propertyValue);
+        }
     }
 }
