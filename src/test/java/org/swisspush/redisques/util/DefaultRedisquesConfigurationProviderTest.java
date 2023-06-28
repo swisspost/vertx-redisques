@@ -120,6 +120,49 @@ public class DefaultRedisquesConfigurationProviderTest {
     }
 
     @Test
+    public void testUpdateProcessorTimeout(TestContext context) {
+        JsonObject initialConfig = new JsonObject("{\n" +
+                "    \"address\": \"redisques\",\n" +
+                "    \"configuration-updated-address\": \"redisques-configuration-updated\",\n" +
+                "    \"redis-prefix\": \"redisques:\",\n" +
+                "    \"processor-address\": \"redisques-processor\",\n" +
+                "    \"refresh-period\": 10,\n" +
+                "    \"redisHost\": \"localhost\",\n" +
+                "    \"redisPort\": 6379,\n" +
+                "    \"redisAuth\": null,\n" +
+                "    \"checkInterval\": 60,\n" +
+                "    \"processorTimeout\": 240000,\n" +
+                "    \"processorDelayMax\": 0,\n" +
+                "    \"httpRequestHandlerEnabled\": true,\n" +
+                "    \"httpRequestHandlerPrefix\": \"/queuing\",\n" +
+                "    \"httpRequestHandlerPort\": 7070,\n" +
+                "    \"httpRequestHandlerUserHeader\": \"x-rp-usr\",\n" +
+                "    \"queueConfigurations\": [\n" +
+                "    ],\n" +
+                "    \"enableQueueNameDecoding\": true,\n" +
+                "    \"maxPoolSize\": 200,\n" +
+                "    \"maxPoolWaitingSize\": -1,\n" +
+                "    \"maxPipelineWaitingSize\": 2048,\n" +
+                "    \"queueSpeedIntervalSec\": 60,\n" +
+                "    \"memoryUsageLimitPercent\": 100,\n" +
+                "    \"memoryUsageCheckIntervalSec\": 60\n" +
+                "}\n");
+
+        configurationProvider = new DefaultRedisquesConfigurationProvider(vertx, initialConfig);
+        RedisquesConfiguration conf = configurationProvider.configuration();
+        context.assertEquals(0L, conf.getProcessorDelayMax());
+
+        JsonObject updateConfig = new JsonObject("{\n" +
+                "  \"processorTimeout\": 360000\n" +
+                "}");
+        Result<Void, String> updateResult = configurationProvider.updateConfiguration(updateConfig, true);
+        context.assertTrue(updateResult.isOk());
+
+        Awaitility.await().atMost(Duration.ofSeconds(2)).until(
+                () -> configurationProvider.configuration().getProcessorTimeout() == 360000, equalTo(true));
+    }
+
+    @Test
     public void testInvalidUpdateDoesNotChangeConfiguration(TestContext context) {
         JsonObject initialConfig = new JsonObject("{\n" +
                 "    \"address\": \"redisques\",\n" +
@@ -190,7 +233,7 @@ public class DefaultRedisquesConfigurationProviderTest {
     }
 
     @Test
-    public void testInvalidUpdateConfigurationValueSetsDefault(TestContext context) {
+    public void testEmptyUpdateConfiguration(TestContext context) {
         JsonObject initialConfig = new JsonObject("{\n" +
                 "    \"address\": \"redisques\",\n" +
                 "    \"configuration-updated-address\": \"redisques-configuration-updated\",\n" +
@@ -201,7 +244,7 @@ public class DefaultRedisquesConfigurationProviderTest {
                 "    \"redisPort\": 6379,\n" +
                 "    \"redisAuth\": null,\n" +
                 "    \"checkInterval\": 60,\n" +
-                "    \"processorTimeout\": 240000,\n" +
+                "    \"processorTimeout\": 120000,\n" +
                 "    \"processorDelayMax\": 55,\n" +
                 "    \"httpRequestHandlerEnabled\": true,\n" +
                 "    \"httpRequestHandlerPrefix\": \"/queuing\",\n" +
@@ -222,15 +265,54 @@ public class DefaultRedisquesConfigurationProviderTest {
         RedisquesConfiguration conf = configurationProvider.configuration();
         context.assertEquals(55L, conf.getProcessorDelayMax());
 
-        JsonObject updateConfig = new JsonObject("{\n" +
-                "  \"processorDelayMax\": -23\n" +
-                "}");
+        JsonObject updateConfig = new JsonObject();
+        Result<Void, String> updateResult = configurationProvider.updateConfiguration(updateConfig, true);
+        context.assertTrue(updateResult.isErr());
+        context.assertEquals("Configuration values missing", updateResult.getErr());
+    }
+
+    @Test
+    public void testInvalidUpdateConfigurationValueSetsDefault(TestContext context) {
+        JsonObject initialConfig = new JsonObject("{\n" +
+                "    \"address\": \"redisques\",\n" +
+                "    \"configuration-updated-address\": \"redisques-configuration-updated\",\n" +
+                "    \"redis-prefix\": \"redisques:\",\n" +
+                "    \"processor-address\": \"redisques-processor\",\n" +
+                "    \"refresh-period\": 10,\n" +
+                "    \"redisHost\": \"localhost\",\n" +
+                "    \"redisPort\": 6379,\n" +
+                "    \"redisAuth\": null,\n" +
+                "    \"checkInterval\": 60,\n" +
+                "    \"processorTimeout\": 120000,\n" +
+                "    \"processorDelayMax\": 55,\n" +
+                "    \"httpRequestHandlerEnabled\": true,\n" +
+                "    \"httpRequestHandlerPrefix\": \"/queuing\",\n" +
+                "    \"httpRequestHandlerPort\": 7070,\n" +
+                "    \"httpRequestHandlerUserHeader\": \"x-rp-usr\",\n" +
+                "    \"queueConfigurations\": [\n" +
+                "    ],\n" +
+                "    \"enableQueueNameDecoding\": true,\n" +
+                "    \"maxPoolSize\": 200,\n" +
+                "    \"maxPoolWaitingSize\": -1,\n" +
+                "    \"maxPipelineWaitingSize\": 2048,\n" +
+                "    \"queueSpeedIntervalSec\": 60,\n" +
+                "    \"memoryUsageLimitPercent\": 100,\n" +
+                "    \"memoryUsageCheckIntervalSec\": 60\n" +
+                "}\n");
+
+        configurationProvider = new DefaultRedisquesConfigurationProvider(vertx, initialConfig);
+        RedisquesConfiguration conf = configurationProvider.configuration();
+        context.assertEquals(55L, conf.getProcessorDelayMax());
+
+        JsonObject updateConfig = new JsonObject().put("processorDelayMax", -23).put("processorTimeout", 0);
         Result<Void, String> updateResult = configurationProvider.updateConfiguration(updateConfig, true);
         context.assertTrue(updateResult.isOk());
 
         // the negative value should be changed to the default value of 0
         Awaitility.await().atMost(Duration.ofSeconds(2)).until(
                 () -> configurationProvider.configuration().getProcessorDelayMax() == 0L, equalTo(true));
+        Awaitility.await().atMost(Duration.ofSeconds(2)).until(
+                () -> configurationProvider.configuration().getProcessorTimeout() == 240000, equalTo(true));
     }
 
     @Test
@@ -294,5 +376,7 @@ public class DefaultRedisquesConfigurationProviderTest {
 
         Awaitility.await().atMost(Duration.ofSeconds(2)).until(
                 () -> configurationProvider.configuration().getProcessorDelayMax() == 0L, equalTo(true));
+        Awaitility.await().atMost(Duration.ofSeconds(2)).until(
+                () -> configurationProvider.configuration().getProcessorTimeout() == 240000, equalTo(true));
     }
 }
