@@ -41,8 +41,8 @@ public class RedisquesConfiguration {
     private final int queueSpeedIntervalSec;
     private final int memoryUsageLimitPercent;
     private final int memoryUsageCheckIntervalSec;
-    private static final int DEFAULT_CHECK_INTERVAL = 60; // 60s
-    private static final int DEFAULT_PROCESSOR_TIMEOUT = 240000; // 240S
+    private static final int DEFAULT_CHECK_INTERVAL_S = 60; // 60s
+    private static final int DEFAULT_PROCESSOR_TIMEOUT_MS = 240000; // 240s
     private static final long DEFAULT_PROCESSOR_DELAY_MAX = 0;
     private static final int DEFAULT_REDIS_MAX_POOL_SIZE = 200;
 
@@ -134,16 +134,16 @@ public class RedisquesConfiguration {
             this.checkInterval = checkInterval;
         } else {
             log.warn("Overridden checkInterval of {}s is not valid. Using default value of {}s instead.",
-                    checkInterval, DEFAULT_CHECK_INTERVAL);
-            this.checkInterval = DEFAULT_CHECK_INTERVAL;
+                    checkInterval, DEFAULT_CHECK_INTERVAL_S);
+            this.checkInterval = DEFAULT_CHECK_INTERVAL_S;
         }
 
         if (processorTimeout >= 1) {
             this.processorTimeout = processorTimeout;
         } else {
             log.warn("Overridden processorTimeout of {} is not valid. Using default value of {} instead.",
-                    processorTimeout, DEFAULT_PROCESSOR_TIMEOUT);
-            this.processorTimeout = DEFAULT_PROCESSOR_TIMEOUT;
+                    processorTimeout, DEFAULT_PROCESSOR_TIMEOUT_MS);
+            this.processorTimeout = DEFAULT_PROCESSOR_TIMEOUT_MS;
         }
 
         if (processorDelayMax >= 0) {
@@ -497,8 +497,8 @@ public class RedisquesConfiguration {
             this.refreshPeriod = 10;
             this.redisHost = "localhost";
             this.redisPort = 6379;
-            this.checkInterval = DEFAULT_CHECK_INTERVAL; //60s
-            this.processorTimeout = DEFAULT_PROCESSOR_TIMEOUT;
+            this.checkInterval = DEFAULT_CHECK_INTERVAL_S; //60s
+            this.processorTimeout = DEFAULT_PROCESSOR_TIMEOUT_MS;
             this.processorDelayMax = 0;
             this.httpRequestHandlerEnabled = false;
             this.httpRequestHandlerAuthenticationEnabled = false;
