@@ -37,6 +37,7 @@ public class RedisquesAPI {
     public static final String BULK_DELETE = "bulkDelete";
     public static final String NO_SUCH_LOCK = "No such lock";
     public static final String PROCESSOR_DELAY_MAX = "processorDelayMax";
+    public static final String PROCESSOR_TIMEOUT = "processorTimeout";
 
     public static final String MONITOR_QUEUE_NAME = "name";
     public static final String MONITOR_QUEUE_SIZE = "size";

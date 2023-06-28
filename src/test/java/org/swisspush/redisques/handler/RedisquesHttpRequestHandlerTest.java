@@ -117,6 +117,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
             "}";
 
     private static final String configurationValid = "{\"processorDelayMax\":99}";
+    private static final String configurationValid2 = "{\"processorTimeout\":55}";
     private static final String configurationValidZero = "{\"processorDelayMax\":0}";
     private static final String configurationNotSupportedValues = "{\"processorDelayMax\":0, \"redisHost\":\"localhost\"}";
     private static final String configurationEmpty = "{}";
@@ -264,6 +265,13 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
                 .statusCode(200)
                 .body("processorDelayMax", equalTo(99));
 
+        given().body(configurationValid2).when().post("/queuing/configuration/").then().assertThat().statusCode(200);
+        when()
+                .get("/queuing/configuration/")
+                .then().assertThat()
+                .statusCode(200)
+                .body("processorTimeout", equalTo(55));
+
         // provide not supported configuration values. this should not change the value of the property
         given().body(configurationNotSupportedValues).when().post("/queuing/configuration/")
                 .then().assertThat().statusCode(400).body(containsString("Not supported configuration values received: [redisHost]"));
@@ -275,7 +283,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
 
         // provide empty configuration values (missing processorDelayMax property). this should not change the value of the property
         given().body(configurationEmpty).when().post("/queuing/configuration/")
-                .then().assertThat().statusCode(400).body(containsString("Value for configuration property 'processorDelayMax' is missing"));
+                .then().assertThat().statusCode(400).body(containsString("Configuration values missing"));
         when()
                 .get("/queuing/configuration/")
                 .then().assertThat()
