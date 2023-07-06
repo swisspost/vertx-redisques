@@ -51,7 +51,7 @@ The following configuration values are available:
 | redis-prefix                            | redisques:                      | Prefix for redis keys holding queues and consumers                                                                                                                                              |
 | processor-address                       | redisques-processor             | Address of message processors                                                                                                                                                                   |
 | refresh-period                          | 10                              | The frequency [s] of consumers refreshing their subscriptions to consume                                                                                                                        |
-| processorTimeout                        | 240000                          | The timeout [ms] to wait for the queue processor to answer the event bus message                                                                                                       |
+| processorTimeout                        | 240000                          | The timeout [ms] to wait for the queue processor to answer the event bus message                                                                                                                |
 | processorDelayMax                       | 0                               | The maximum delay [ms] to wait between queue items before notify the consumer                                                                                                                   |
 | redisHost                               | localhost                       | The host where redis is running on                                                                                                                                                              |
 | redisPort                               | 6379                            | The port where redis is running on                                                                                                                                                              |
@@ -63,6 +63,9 @@ The following configuration values are available:
 | queueSpeedIntervalSec                   | 60                              | The interval [s] to check queue speed                                                                                                                                                           |
 | memoryUsageLimitPercent                 | 100                             | Percentage of the available system memory to be used by vertx-redisques. Only values between 0 and 100 are allowed. When the used memory ratio is higher than this limit, enqueues are rejected |
 | memoryUsageCheckIntervalSec             | 60                              | The interval [s] to check the current memory usage. _memoryUsageCheckIntervalSec_ value must be greater 0, otherwise the default is used.                                                       |
+| redisReconnectAttempts                  | 0                               | The amount of attempts to reconnect when redis connection is lost. Use **0** to not reconnect at all or **-1** to reconnect indefinitely.                                                       |
+| redisReconnectDelaySec                  | 30                              | The interval [s] to attempt to reconnect when redis connection is lost.                                                                                                                         |
+| redisPoolRecycleTimeoutMs               | 180000                          | The timeout [ms] when the connection pool is recycled. Use **-1** when having reconnect feature enabled.                                                                                        |
 | httpRequestHandlerEnabled               | false                           | Enable / disable the HTTP API                                                                                                                                                                   |
 | httpRequestHandlerAuthenticationEnabled | false                           | Enable / disable authentication for the HTTP API                                                                                                                                                |
 | httpRequestHandlerUsername              |                                 | The username for the HTTP API authentication                                                                                                                                                    |
@@ -689,6 +692,9 @@ The result will be a json object with the configuration values like the example 
   "refresh-period": 2,
   "redisHost": "localhost",
   "redisPort": 6379,
+  "redisReconnectAttempts": 0,
+  "redisReconnectDelaySec": 30,
+  "redisPoolRecycleTimeoutMs": 180000,  
   "redisAuth": null,
   "checkInterval": 60,
   "processorTimeout": 240000,
