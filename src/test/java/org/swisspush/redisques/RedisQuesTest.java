@@ -87,6 +87,8 @@ public class RedisQuesTest extends AbstractTestCase {
 
             context.assertEquals(configuration.getString("redisHost"), "localhost");
             context.assertEquals(configuration.getInteger("redisPort"), 6379);
+            context.assertFalse(configuration.getBoolean("redisEnableTLS"));
+
             context.assertEquals(configuration.getString("redis-prefix"), "redisques:");
 
             context.assertEquals(configuration.getInteger("maxPoolSize"), 200);

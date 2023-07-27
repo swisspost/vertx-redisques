@@ -61,13 +61,15 @@ public class DefaultRedisProvider implements RedisProvider {
         String redisHost = config.getRedisHost();
         int redisPort = config.getRedisPort();
         String redisAuth = config.getRedisAuth();
+        boolean redisEnableTLS = config.getRedisEnableTLS();
         int redisMaxPoolSize = config.getMaxPoolSize();
         int redisMaxPoolWaitingSize = config.getMaxPoolWaitSize();
         int redisMaxPipelineWaitingSize = config.getMaxPipelineWaitSize();
 
         Promise<RedisAPI> promise = Promise.promise();
+        String protocol =  redisEnableTLS ? "rediss://" : "redis://";
         Redis.createClient(vertx, new RedisOptions()
-                .setConnectionString("redis://" + redisHost + ":" + redisPort)
+                .setConnectionString(protocol + redisHost + ":" + redisPort)
                 .setPassword((redisAuth == null ? "" : redisAuth))
                 .setMaxPoolSize(redisMaxPoolSize)
                 .setMaxPoolWaiting(redisMaxPoolWaitingSize)
