@@ -31,7 +31,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getRefreshPeriod(), 10);
         testContext.assertEquals(config.getRedisHost(), "localhost");
         testContext.assertEquals(config.getRedisPort(), 6379);
-        testContext.assertEquals(config.getRedisEnableTLS(), false);
+        testContext.assertEquals(config.getRedisEnableTls(), false);
         testContext.assertEquals(config.getCheckInterval(), 60);
         testContext.assertEquals(config.getProcessorTimeout(), 240000);
         testContext.assertEquals(config.getProcessorDelayMax(), 0L);
@@ -55,7 +55,7 @@ public class RedisquesConfigurationTest {
                 .configurationUpdatedAddress("config_updated")
                 .redisHost("anotherhost")
                 .redisPort(1234)
-                .redisEnableTLS(true)
+                .redisEnableTls(true)
                 .checkInterval(5)
                 .processorTimeout(10)
                 .processorDelayMax(50)
@@ -83,7 +83,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getConfigurationUpdatedAddress(), "config_updated");
         testContext.assertEquals(config.getRedisHost(), "anotherhost");
         testContext.assertEquals(config.getRedisPort(), 1234);
-        testContext.assertEquals(config.getRedisEnableTLS(), true);
+        testContext.assertEquals(config.getRedisEnableTls(), true);
         testContext.assertEquals(config.getCheckInterval(), 5);
         testContext.assertEquals(config.getProcessorTimeout(), 10);
         testContext.assertEquals(config.getProcessorDelayMax(), 50L);
@@ -139,7 +139,7 @@ public class RedisquesConfigurationTest {
                 .configurationUpdatedAddress("config_updated")
                 .redisHost("anotherhost")
                 .redisPort(1234)
-                .redisEnableTLS(true)
+                .redisEnableTls(true)
                 .checkInterval(5)
                 .processorTimeout(20)
                 .processorDelayMax(50)
@@ -202,7 +202,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getRefreshPeriod(), 10);
         testContext.assertEquals(config.getRedisHost(), "localhost");
         testContext.assertEquals(config.getRedisPort(), 6379);
-        testContext.assertFalse(config.getRedisEnableTLS());
+        testContext.assertFalse(config.getRedisEnableTls());
         testContext.assertEquals(config.getCheckInterval(), 60);
         testContext.assertEquals(config.getProcessorTimeout(), 240000);
         testContext.assertEquals(config.getProcessorDelayMax(), 0L);
@@ -256,7 +256,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getRefreshPeriod(), 99);
         testContext.assertEquals(config.getRedisHost(), "newredishost");
         testContext.assertEquals(config.getRedisPort(), 4321);
-        testContext.assertTrue(config.getRedisEnableTLS());
+        testContext.assertTrue(config.getRedisEnableTls());
         testContext.assertEquals(config.getCheckInterval(), 5);
         testContext.assertEquals(config.getProcessorTimeout(), 30);
         testContext.assertEquals(config.getProcessorDelayMax(), 99L);
