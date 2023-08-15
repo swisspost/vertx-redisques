@@ -31,6 +31,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getRefreshPeriod(), 10);
         testContext.assertEquals(config.getRedisHost(), "localhost");
         testContext.assertEquals(config.getRedisPort(), 6379);
+        testContext.assertEquals(config.getRedisEnableTls(), false);
         testContext.assertEquals(config.getRedisReconnectAttempts(), 0);
         testContext.assertEquals(config.getRedisReconnectDelaySec(), 30);
         testContext.assertEquals(config.getCheckInterval(), 60);
@@ -56,6 +57,7 @@ public class RedisquesConfigurationTest {
                 .configurationUpdatedAddress("config_updated")
                 .redisHost("anotherhost")
                 .redisPort(1234)
+                .redisEnableTls(true)
                 .redisReconnectAttempts(15)
                 .redisReconnectDelaySec(60)
                 .checkInterval(5)
@@ -85,6 +87,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getConfigurationUpdatedAddress(), "config_updated");
         testContext.assertEquals(config.getRedisHost(), "anotherhost");
         testContext.assertEquals(config.getRedisPort(), 1234);
+        testContext.assertEquals(config.getRedisEnableTls(), true);
         testContext.assertEquals(config.getRedisReconnectAttempts(), 15);
         testContext.assertEquals(config.getRedisReconnectDelaySec(), 60);
         testContext.assertEquals(config.getCheckInterval(), 5);
@@ -118,6 +121,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(json.getInteger(PROP_REFRESH_PERIOD), 10);
         testContext.assertEquals(json.getString(PROP_REDIS_HOST), "localhost");
         testContext.assertEquals(json.getInteger(PROP_REDIS_PORT), 6379);
+        testContext.assertFalse(json.getBoolean(PROP_REDIS_ENABLE_TLS));
         testContext.assertEquals(json.getInteger(PROP_REDIS_RECONNECT_ATTEMPTS), 0);
         testContext.assertEquals(json.getInteger(PROP_REDIS_RECONNECT_DELAY_SEC), 30);
         testContext.assertEquals(json.getInteger(PROP_CHECK_INTERVAL), 60);
@@ -143,6 +147,7 @@ public class RedisquesConfigurationTest {
                 .configurationUpdatedAddress("config_updated")
                 .redisHost("anotherhost")
                 .redisPort(1234)
+                .redisEnableTls(true)
                 .redisReconnectAttempts(22)
                 .redisReconnectDelaySec(55)
                 .checkInterval(5)
@@ -174,6 +179,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(json.getString(PROP_CONFIGURATION_UPDATED_ADDRESS), "config_updated");
         testContext.assertEquals(json.getString(PROP_REDIS_HOST), "anotherhost");
         testContext.assertEquals(json.getInteger(PROP_REDIS_PORT), 1234);
+        testContext.assertTrue(json.getBoolean(PROP_REDIS_ENABLE_TLS));
         testContext.assertEquals(json.getInteger(PROP_REDIS_RECONNECT_ATTEMPTS), 22);
         testContext.assertEquals(json.getInteger(PROP_REDIS_RECONNECT_DELAY_SEC), 55);
         testContext.assertEquals(json.getInteger(PROP_CHECK_INTERVAL), 5);
@@ -208,6 +214,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getRefreshPeriod(), 10);
         testContext.assertEquals(config.getRedisHost(), "localhost");
         testContext.assertEquals(config.getRedisPort(), 6379);
+        testContext.assertFalse(config.getRedisEnableTls());
         testContext.assertEquals(config.getRedisReconnectAttempts(), 0);
         testContext.assertEquals(config.getRedisReconnectDelaySec(), 30);
         testContext.assertEquals(config.getCheckInterval(), 60);
@@ -236,6 +243,7 @@ public class RedisquesConfigurationTest {
         json.put(PROP_REFRESH_PERIOD, 99);
         json.put(PROP_REDIS_HOST, "newredishost");
         json.put(PROP_REDIS_PORT, 4321);
+        json.put(PROP_REDIS_ENABLE_TLS, true);
         json.put(PROP_REDIS_RECONNECT_DELAY_SEC, -5);
         json.put(PROP_CHECK_INTERVAL, 5);
         json.put(PROP_PROCESSOR_TIMEOUT, 30);
@@ -263,6 +271,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getRefreshPeriod(), 99);
         testContext.assertEquals(config.getRedisHost(), "newredishost");
         testContext.assertEquals(config.getRedisPort(), 4321);
+        testContext.assertTrue(config.getRedisEnableTls());
         testContext.assertEquals(config.getRedisReconnectDelaySec(), 1);
         testContext.assertEquals(config.getCheckInterval(), 5);
         testContext.assertEquals(config.getProcessorTimeout(), 30);

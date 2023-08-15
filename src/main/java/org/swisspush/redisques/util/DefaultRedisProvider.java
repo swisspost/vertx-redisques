@@ -73,12 +73,15 @@ public class DefaultRedisProvider implements RedisProvider {
         String redisHost = config.getRedisHost();
         int redisPort = config.getRedisPort();
         String redisAuth = config.getRedisAuth();
+        boolean redisEnableTls = config.getRedisEnableTls();
         int redisMaxPoolSize = config.getMaxPoolSize();
         int redisMaxPoolWaitingSize = config.getMaxPoolWaitSize();
         int redisMaxPipelineWaitingSize = config.getMaxPipelineWaitSize();
         int redisPoolRecycleTimeoutMs = config.getRedisPoolRecycleTimeoutMs();
 
         Promise<RedisAPI> promise = Promise.promise();
+
+        String protocol =  redisEnableTls ? "rediss://" : "redis://";
 
         // make sure to invalidate old connection if present
         if (redis != null) {
@@ -126,7 +129,7 @@ public class DefaultRedisProvider implements RedisProvider {
         }
 
         Redis.createClient(vertx, new RedisOptions()
-                .setConnectionString("redis://" + redisHost + ":" + redisPort)
+                .setConnectionString(protocol + redisHost + ":" + redisPort)
                 .setPassword((redisAuth == null ? "" : redisAuth))
                 .setMaxPoolSize(redisMaxPoolSize)
                 .setMaxPoolWaiting(redisMaxPoolWaitingSize)
