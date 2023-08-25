@@ -58,23 +58,23 @@ public class DefaultRedisProvider implements RedisProvider {
 
     private Future<RedisAPI> connectToRedis() {
         RedisquesConfiguration config = configurationProvider.configuration();
-        String redisHost = config.getRedisHost();
-        int redisPort = config.getRedisPort();
         String redisAuth = config.getRedisAuth();
-        boolean redisEnableTls = config.getRedisEnableTls();
+        String redisUser=config.getRedisUser();
         int redisMaxPoolSize = config.getMaxPoolSize();
         int redisMaxPoolWaitingSize = config.getMaxPoolWaitSize();
         int redisMaxPipelineWaitingSize = config.getMaxPipelineWaitSize();
 
         Promise<RedisAPI> promise = Promise.promise();
-        String protocol =  redisEnableTls ? "rediss://" : "redis://";
-        Redis.createClient(vertx, new RedisOptions()
-                .setConnectionString(protocol + redisHost + ":" + redisPort)
-                .setPassword((redisAuth == null ? "" : redisAuth))
+        RedisOptions redisOptions = new RedisOptions()
+                .setConnectionString(createConnectString(redisUser, redisAuth))
                 .setMaxPoolSize(redisMaxPoolSize)
                 .setMaxPoolWaiting(redisMaxPoolWaitingSize)
-                .setMaxWaitingHandlers(redisMaxPipelineWaitingSize)
-        ).connect(event -> {
+                .setMaxWaitingHandlers(redisMaxPipelineWaitingSize);
+
+        if (redisUser == null || redisUser.isEmpty()) {
+            redisOptions.setPassword((redisAuth == null ? "" : redisAuth));
+        }
+        Redis.createClient(vertx, redisOptions).connect(event -> {
             if (event.failed()) {
                 promise.fail(event.cause());
             } else {
@@ -83,5 +83,16 @@ public class DefaultRedisProvider implements RedisProvider {
         });
 
         return promise.future();
+    }
+
+    private String createConnectString(String userName, String password) {
+        RedisquesConfiguration config = configurationProvider.configuration();
+        StringBuilder connectionStringBuilder = new StringBuilder();
+        connectionStringBuilder.append(config.getRedisEnableTls() ? "rediss://" : "redis://");
+        if (userName != null && !userName.isEmpty()) {
+            connectionStringBuilder.append(userName).append(":").append(password).append("@");
+        }
+        connectionStringBuilder.append(config.getRedisHost()).append(":").append(config.getRedisPort());
+        return connectionStringBuilder.toString();
     }
 }
