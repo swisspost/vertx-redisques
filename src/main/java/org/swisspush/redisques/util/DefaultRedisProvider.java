@@ -69,8 +69,7 @@ public class DefaultRedisProvider implements RedisProvider {
                 .setMaxPoolSize(redisMaxPoolSize)
                 .setMaxPoolWaiting(redisMaxPoolWaitingSize)
                 .setMaxWaitingHandlers(redisMaxPipelineWaitingSize);
-
-            redisOptions.setPassword((redisAuth == null ? "" : redisAuth));
+        redisOptions.setPassword((redisAuth == null ? "" : redisAuth));
         Redis.createClient(vertx, redisOptions).connect(event -> {
             if (event.failed()) {
                 promise.fail(event.cause());

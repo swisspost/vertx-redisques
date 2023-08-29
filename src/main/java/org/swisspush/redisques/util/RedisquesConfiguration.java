@@ -69,9 +69,9 @@ public class RedisquesConfiguration {
     public static final String PROP_REDIS_PORT = "redisPort";
     public static final String PROP_REDIS_ENABLE_TLS = "redisEnableTls";
     /**
-     * @deprecated Instance authentication is considered as legacy. With Redis >6 the ACL authentication method should be used.
+     * @deprecated Instance authentication is considered as legacy. With Redis from 6.x on the ACL authentication method should be used.
      */
-    @Deprecated(since = "3.0.17")
+    @Deprecated(since = "3.0.31")
     public static final String PROP_REDIS_AUTH = "redisAuth";
     public static final String PROP_REDIS_PASSWORD = "redisPassword";
     public static final String PROP_REDIS_USER = "redisUser";
@@ -106,7 +106,7 @@ public class RedisquesConfiguration {
      * Constructor with redisAuth. Since Redis 6.x the use of redisAuth is considered as legacy.
      * @deprecated
      */
-    @Deprecated(since = "3.0.17")
+    @Deprecated(since = "3.0.31")
     public RedisquesConfiguration(String address, String configurationUpdatedAddress, String redisPrefix, String processorAddress, int refreshPeriod,
                                   String redisHost, int redisPort, String redisAuth, int checkInterval,
                                   int processorTimeout, long processorDelayMax, boolean httpRequestHandlerEnabled,
