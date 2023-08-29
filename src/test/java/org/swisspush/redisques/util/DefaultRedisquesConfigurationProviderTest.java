@@ -39,7 +39,8 @@ public class DefaultRedisquesConfigurationProviderTest {
                 "    \"refresh-period\": 10,\n" +
                 "    \"redisHost\": \"localhost\",\n" +
                 "    \"redisPort\": 6379,\n" +
-                "    \"redisAuth\": null,\n" +
+                "    \"redisPassword\": null,\n" +
+                "    \"redisUser\": null,\n" +
                 "    \"checkInterval\": 60,\n" +
                 "    \"processorTimeout\": 240000,\n" +
                 "    \"processorDelayMax\": 23,\n" +
@@ -78,7 +79,8 @@ public class DefaultRedisquesConfigurationProviderTest {
                 "    \"refresh-period\": 10,\n" +
                 "    \"redisHost\": \"localhost\",\n" +
                 "    \"redisPort\": 6379,\n" +
-                "    \"redisAuth\": null,\n" +
+                "    \"redisPassword\": null,\n" +
+                "    \"redisUser\": null,\n" +
                 "    \"checkInterval\": 60,\n" +
                 "    \"processorTimeout\": 240000,\n" +
                 "    \"processorDelayMax\": 0,\n" +
@@ -130,6 +132,8 @@ public class DefaultRedisquesConfigurationProviderTest {
                 "    \"redisHost\": \"localhost\",\n" +
                 "    \"redisPort\": 6379,\n" +
                 "    \"redisAuth\": null,\n" +
+                "    \"redisPassword\": null,\n" +
+                "    \"redisUser\": null,\n" +
                 "    \"checkInterval\": 60,\n" +
                 "    \"processorTimeout\": 240000,\n" +
                 "    \"processorDelayMax\": 0,\n" +
@@ -173,6 +177,8 @@ public class DefaultRedisquesConfigurationProviderTest {
                 "    \"redisHost\": \"localhost\",\n" +
                 "    \"redisPort\": 6379,\n" +
                 "    \"redisAuth\": null,\n" +
+                "    \"redisPassword\": null,\n" +
+                "    \"redisUser\": null,\n" +
                 "    \"checkInterval\": 60,\n" +
                 "    \"processorTimeout\": 240000,\n" +
                 "    \"processorDelayMax\": 55,\n" +
@@ -243,6 +249,8 @@ public class DefaultRedisquesConfigurationProviderTest {
                 "    \"redisHost\": \"localhost\",\n" +
                 "    \"redisPort\": 6379,\n" +
                 "    \"redisAuth\": null,\n" +
+                "    \"redisPassword\": null,\n" +
+                "    \"redisUser\": null,\n" +
                 "    \"checkInterval\": 60,\n" +
                 "    \"processorTimeout\": 120000,\n" +
                 "    \"processorDelayMax\": 55,\n" +
@@ -282,6 +290,8 @@ public class DefaultRedisquesConfigurationProviderTest {
                 "    \"redisHost\": \"localhost\",\n" +
                 "    \"redisPort\": 6379,\n" +
                 "    \"redisAuth\": null,\n" +
+                "    \"redisPassword\": null,\n" +
+                "    \"redisUser\": null,\n" +
                 "    \"checkInterval\": 60,\n" +
                 "    \"processorTimeout\": 120000,\n" +
                 "    \"processorDelayMax\": 55,\n" +
@@ -340,6 +350,8 @@ public class DefaultRedisquesConfigurationProviderTest {
                 "    \"redisHost\": \"localhost\",\n" +
                 "    \"redisPort\": 6379,\n" +
                 "    \"redisAuth\": null,\n" +
+                "    \"redisPassword\": null,\n" +
+                "    \"redisUser\": null,\n" +
                 "    \"checkInterval\": 60,\n" +
                 "    \"processorTimeout\": 240000,\n" +
                 "    \"processorDelayMax\": 0,\n" +
