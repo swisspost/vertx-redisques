@@ -70,18 +70,13 @@ public class DefaultRedisProvider implements RedisProvider {
 
     private Future<RedisAPI> connectToRedis() {
         RedisquesConfiguration config = configurationProvider.configuration();
-        String redisHost = config.getRedisHost();
-        int redisPort = config.getRedisPort();
         String redisAuth = config.getRedisAuth();
-        boolean redisEnableTls = config.getRedisEnableTls();
         int redisMaxPoolSize = config.getMaxPoolSize();
         int redisMaxPoolWaitingSize = config.getMaxPoolWaitSize();
         int redisMaxPipelineWaitingSize = config.getMaxPipelineWaitSize();
         int redisPoolRecycleTimeoutMs = config.getRedisPoolRecycleTimeoutMs();
 
         Promise<RedisAPI> promise = Promise.promise();
-
-        String protocol =  redisEnableTls ? "rediss://" : "redis://";
 
         // make sure to invalidate old connection if present
         if (redis != null) {
