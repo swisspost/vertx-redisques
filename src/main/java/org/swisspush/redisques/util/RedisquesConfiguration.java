@@ -24,6 +24,8 @@ public class RedisquesConfiguration {
     private final int redisPort;
     private boolean redisEnableTls;
     private final String redisAuth;
+    private final String redisPassword;
+    private final String redisUser;
     private final int checkInterval;
     private final int processorTimeout;
     private final long processorDelayMax;
@@ -73,7 +75,13 @@ public class RedisquesConfiguration {
     public static final String PROP_REDIS_HOST = "redisHost";
     public static final String PROP_REDIS_PORT = "redisPort";
     public static final String PROP_REDIS_ENABLE_TLS = "redisEnableTls";
+    /**
+     * @deprecated Instance authentication is considered as legacy. With Redis from 6.x on the ACL authentication method should be used.
+     */
+    @Deprecated(since = "3.0.31")
     public static final String PROP_REDIS_AUTH = "redisAuth";
+    public static final String PROP_REDIS_PASSWORD = "redisPassword";
+    public static final String PROP_REDIS_USER = "redisUser";
     public static final String PROP_REDIS_RECONNECT_ATTEMPTS = "redisReconnectAttempts";
     public static final String PROP_REDIS_RECONNECT_DELAY_SEC = "redisReconnectDelaySec";
     public static final String PROP_REDIS_POOL_RECYCLE_TIMEOUT_MS = "redisPoolRecycleTimeoutMs";
@@ -104,6 +112,11 @@ public class RedisquesConfiguration {
         this(new RedisquesConfigurationBuilder());
     }
 
+    /**
+     * Constructor with redisAuth. Since Redis 6.x the use of redisAuth is considered as legacy.
+     * @deprecated
+     */
+    @Deprecated(since = "3.0.31")
     public RedisquesConfiguration(String address, String configurationUpdatedAddress, String redisPrefix, String processorAddress, int refreshPeriod,
                                   String redisHost, int redisPort, String redisAuth, int checkInterval,
                                   int processorTimeout, long processorDelayMax, boolean httpRequestHandlerEnabled,
@@ -112,7 +125,7 @@ public class RedisquesConfiguration {
                                   Integer httpRequestHandlerPort, String httpRequestHandlerUserHeader,
                                   List<QueueConfiguration> queueConfigurations, boolean enableQueueNameDecoding) {
         this(address, configurationUpdatedAddress, redisPrefix, processorAddress, refreshPeriod, redisHost, redisPort,
-                redisAuth, false, checkInterval, processorTimeout, processorDelayMax, httpRequestHandlerEnabled,
+                redisAuth, null, null, false, checkInterval, processorTimeout, processorDelayMax, httpRequestHandlerEnabled,
                 httpRequestHandlerAuthenticationEnabled, httpRequestHandlerPrefix, httpRequestHandlerUsername,
                 httpRequestHandlerPassword, httpRequestHandlerPort, httpRequestHandlerUserHeader, queueConfigurations,
                 enableQueueNameDecoding, DEFAULT_REDIS_MAX_POOL_SIZE, DEFAULT_REDIS_MAX_POOL_WAIT_SIZE,
@@ -121,8 +134,28 @@ public class RedisquesConfiguration {
                 DEFAULT_REDIS_POOL_RECYCLE_TIMEOUT_MS);
     }
 
+    /**
+     * Constructor with username and password (Redis ACL)
+     */
     public RedisquesConfiguration(String address, String configurationUpdatedAddress, String redisPrefix, String processorAddress, int refreshPeriod,
-                                  String redisHost, int redisPort, String redisAuth, boolean redisEnableTls, int checkInterval,
+                                  String redisHost, int redisPort, String redisPassword, String redisUser, boolean redisEnableTls, int checkInterval,
+                                  int processorTimeout, long processorDelayMax, boolean httpRequestHandlerEnabled,
+                                  boolean httpRequestHandlerAuthenticationEnabled, String httpRequestHandlerPrefix,
+                                  String httpRequestHandlerUsername, String httpRequestHandlerPassword,
+                                  Integer httpRequestHandlerPort, String httpRequestHandlerUserHeader,
+                                  List<QueueConfiguration> queueConfigurations, boolean enableQueueNameDecoding) {
+        this(address, configurationUpdatedAddress, redisPrefix, processorAddress, refreshPeriod, redisHost, redisPort,
+                null, redisPassword, redisUser, redisEnableTls, checkInterval, processorTimeout, processorDelayMax, httpRequestHandlerEnabled,
+                httpRequestHandlerAuthenticationEnabled, httpRequestHandlerPrefix, httpRequestHandlerUsername,
+                httpRequestHandlerPassword, httpRequestHandlerPort, httpRequestHandlerUserHeader, queueConfigurations,
+                enableQueueNameDecoding, DEFAULT_REDIS_MAX_POOL_SIZE, DEFAULT_REDIS_MAX_POOL_WAIT_SIZE,
+                DEFAULT_REDIS_MAX_PIPELINE_WAIT_SIZE, DEFAULT_QUEUE_SPEED_INTERVAL_SEC, DEFAULT_MEMORY_USAGE_LIMIT_PCT,
+                DEFAULT_MEMORY_USAGE_CHECK_INTERVAL_SEC, DEFAULT_REDIS_RECONNECT_ATTEMPTS, DEFAULT_REDIS_RECONNECT_DELAY_SEC,
+                DEFAULT_REDIS_POOL_RECYCLE_TIMEOUT_MS);
+    }
+
+    private RedisquesConfiguration(String address, String configurationUpdatedAddress, String redisPrefix, String processorAddress, int refreshPeriod,
+                                  String redisHost, int redisPort, String redisAuth, String redisPassword, String redisUser, boolean redisEnableTls, int checkInterval,
                                   int processorTimeout, long processorDelayMax, boolean httpRequestHandlerEnabled,
                                   boolean httpRequestHandlerAuthenticationEnabled, String httpRequestHandlerPrefix,
                                   String httpRequestHandlerUsername, String httpRequestHandlerPassword,
@@ -139,6 +172,8 @@ public class RedisquesConfiguration {
         this.redisHost = redisHost;
         this.redisPort = redisPort;
         this.redisAuth = redisAuth;
+        this.redisPassword = redisPassword;
+        this.redisUser = redisUser;
         this.redisEnableTls = redisEnableTls;
         this.maxPoolSize = maxPoolSize;
         this.maxPoolWaitSize = maxPoolWaitSize;
@@ -213,7 +248,7 @@ public class RedisquesConfiguration {
     private RedisquesConfiguration(RedisquesConfigurationBuilder builder) {
         this(builder.address, builder.configurationUpdatedAddress, builder.redisPrefix,
                 builder.processorAddress, builder.refreshPeriod, builder.redisHost, builder.redisPort,
-                builder.redisAuth, builder.redisEnableTls, builder.checkInterval,
+                builder.redisAuth, builder.redisPassword, builder.redisUser, builder.redisEnableTls, builder.checkInterval,
                 builder.processorTimeout, builder.processorDelayMax, builder.httpRequestHandlerEnabled,
                 builder.httpRequestHandlerAuthenticationEnabled, builder.httpRequestHandlerPrefix,
                 builder.httpRequestHandlerUsername, builder.httpRequestHandlerPassword, builder.httpRequestHandlerPort,
@@ -241,6 +276,8 @@ public class RedisquesConfiguration {
         obj.put(PROP_REDIS_RECONNECT_DELAY_SEC, getRedisReconnectDelaySec());
         obj.put(PROP_REDIS_POOL_RECYCLE_TIMEOUT_MS, getRedisPoolRecycleTimeoutMs());
         obj.put(PROP_REDIS_AUTH, getRedisAuth());
+        obj.put(PROP_REDIS_PASSWORD, getRedisPassword());
+        obj.put(PROP_REDIS_USER, getRedisUser());
         obj.put(PROP_REDIS_ENABLE_TLS, getRedisEnableTls());
         obj.put(PROP_CHECK_INTERVAL, getCheckInterval());
         obj.put(PROP_PROCESSOR_TIMEOUT, getProcessorTimeout());
@@ -297,6 +334,12 @@ public class RedisquesConfiguration {
         }
         if (json.containsKey(PROP_REDIS_AUTH)) {
             builder.redisAuth(json.getString(PROP_REDIS_AUTH));
+        }
+        if (json.containsKey(PROP_REDIS_PASSWORD)) {
+            builder.redisPassword(json.getString(PROP_REDIS_PASSWORD));
+        }
+        if (json.containsKey(PROP_REDIS_USER)) {
+            builder.redisUser(json.getString(PROP_REDIS_USER));
         }
         if (json.containsKey(PROP_REDIS_ENABLE_TLS)) {
             builder.redisEnableTls(json.getBoolean(PROP_REDIS_ENABLE_TLS));
@@ -403,6 +446,13 @@ public class RedisquesConfiguration {
 
     public String getRedisAuth() {
         return redisAuth;
+    }
+    public String getRedisPassword() {
+        return redisPassword;
+    }
+
+    public String getRedisUser() {
+        return redisUser;
     }
 
     public boolean getRedisEnableTls() {
@@ -534,6 +584,8 @@ public class RedisquesConfiguration {
         private int redisReconnectDelaySec;
         private int redisPoolRecycleTimeoutMs;
         private String redisAuth;
+        private String redisPassword;
+        private String redisUser;
         private int checkInterval;
         private int processorTimeout;
         private long processorDelayMax;
@@ -646,6 +698,15 @@ public class RedisquesConfiguration {
             return this;
         }
 
+        public RedisquesConfigurationBuilder redisPassword(String redisPassword) {
+            this.redisPassword = redisPassword;
+            return this;
+        }
+
+        public RedisquesConfigurationBuilder redisUser(String redisUser) {
+            this.redisUser = redisUser;
+            return this;
+        }
         public RedisquesConfigurationBuilder checkInterval(int checkInterval) {
             this.checkInterval = checkInterval;
             return this;

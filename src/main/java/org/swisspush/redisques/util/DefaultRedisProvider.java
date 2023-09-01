@@ -90,7 +90,7 @@ public class DefaultRedisProvider implements RedisProvider {
 
         if (connecting.compareAndSet(false, true)) {
             redis = Redis.createClient(vertx, new RedisOptions()
-                    .setConnectionString(protocol + redisHost + ":" + redisPort)
+                    .setConnectionString(createConnectString())
                     .setPassword((redisAuth == null ? "" : redisAuth))
                     .setMaxPoolSize(redisMaxPoolSize)
                     .setMaxPoolWaiting(redisMaxPoolWaitingSize)
@@ -129,6 +129,19 @@ public class DefaultRedisProvider implements RedisProvider {
         }
 
         return promise.future();
+    }
+
+    private String createConnectString() {
+        RedisquesConfiguration config = configurationProvider.configuration();
+        String redisPassword = config.getRedisPassword();
+        String redisUser = config.getRedisUser();
+        StringBuilder connectionStringBuilder = new StringBuilder();
+        connectionStringBuilder.append(config.getRedisEnableTls() ? "rediss://" : "redis://");
+        if (redisUser != null && !redisUser.isEmpty()) {
+            connectionStringBuilder.append(redisUser).append(":").append((redisPassword == null ? "" : redisPassword)).append("@");
+        }
+        connectionStringBuilder.append(config.getRedisHost()).append(":").append(config.getRedisPort());
+        return connectionStringBuilder.toString();
     }
 
     private void attemptReconnect(int retry) {
