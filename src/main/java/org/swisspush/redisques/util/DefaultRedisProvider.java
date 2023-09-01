@@ -90,7 +90,7 @@ public class DefaultRedisProvider implements RedisProvider {
 
         if (connecting.compareAndSet(false, true)) {
             redis = Redis.createClient(vertx, new RedisOptions()
-                    .setConnectionString("redis://" + redisHost + ":" + redisPort)
+                    .setConnectionString(protocol + redisHost + ":" + redisPort)
                     .setPassword((redisAuth == null ? "" : redisAuth))
                     .setMaxPoolSize(redisMaxPoolSize)
                     .setMaxPoolWaiting(redisMaxPoolWaitingSize)
@@ -128,24 +128,11 @@ public class DefaultRedisProvider implements RedisProvider {
             promise.complete(redisAPI);
         }
 
-        Redis.createClient(vertx, new RedisOptions()
-                .setConnectionString(protocol + redisHost + ":" + redisPort)
-                .setPassword((redisAuth == null ? "" : redisAuth))
-                .setMaxPoolSize(redisMaxPoolSize)
-                .setMaxPoolWaiting(redisMaxPoolWaitingSize)
-                .setMaxWaitingHandlers(redisMaxPipelineWaitingSize)
-        ).connect(event -> {
-            if (event.failed()) {
-                promise.fail(event.cause());
-            } else {
-                promise.complete(RedisAPI.api(event.result()));
-            }
-        });
-
         return promise.future();
     }
 
     private void attemptReconnect(int retry) {
+
         log.info("About to reconnect to redis with attempt #{}", retry);
         int reconnectAttempts = configurationProvider.configuration().getRedisReconnectAttempts();
         if (reconnectAttempts < 0) {

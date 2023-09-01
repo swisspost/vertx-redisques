@@ -18,6 +18,8 @@ public class RedisQuesRunner {
 
         JsonObject configuration = RedisquesConfiguration.with()
                 .httpRequestHandlerEnabled(true)
+                .redisReconnectAttempts(-1)
+                .redisPoolRecycleTimeoutMs(-1)
                 .build().asJsonObject();
 
         Vertx.vertx().deployVerticle(new RedisQues(), new DeploymentOptions().setConfig(configuration),
