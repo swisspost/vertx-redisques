@@ -4,6 +4,7 @@ import io.vertx.core.*;
 import io.vertx.redis.client.Redis;
 import io.vertx.redis.client.RedisAPI;
 import io.vertx.redis.client.RedisConnection;
+import io.vertx.redis.client.RedisClientType;
 import io.vertx.redis.client.RedisOptions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -84,13 +85,20 @@ public class DefaultRedisProvider implements RedisProvider {
         }
 
         if (connecting.compareAndSet(false, true)) {
-            redis = Redis.createClient(vertx, new RedisOptions()
-                    .setConnectionString(createConnectString())
+            RedisOptions redisOptions = new RedisOptions()
                     .setPassword((redisAuth == null ? "" : redisAuth))
                     .setMaxPoolSize(redisMaxPoolSize)
                     .setMaxPoolWaiting(redisMaxPoolWaitingSize)
                     .setPoolRecycleTimeout(redisPoolRecycleTimeoutMs)
-                    .setMaxWaitingHandlers(redisMaxPipelineWaitingSize));
+                    .setMaxWaitingHandlers(redisMaxPipelineWaitingSize);
+            if (config.isRedisClustered()) {
+                redisOptions.setType(RedisClientType.CLUSTER);
+                redisOptions.addConnectionString(createConnectString());
+            } else {
+                redisOptions.setConnectionString(createConnectString());
+            }
+
+            redis = Redis.createClient(vertx, redisOptions);
 
             redis.connect().onSuccess(conn -> {
                 log.info("Successfully connected to redis");
