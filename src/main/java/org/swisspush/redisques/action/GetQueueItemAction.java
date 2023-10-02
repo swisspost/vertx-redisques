@@ -9,6 +9,7 @@ import org.swisspush.redisques.lua.LuaScriptManager;
 import org.swisspush.redisques.util.QueueConfiguration;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 import org.swisspush.redisques.util.RedisProvider;
+import org.swisspush.redisques.util.RedisUtils;
 
 import java.util.List;
 
@@ -26,7 +27,7 @@ public class GetQueueItemAction extends AbstractQueueAction {
 
     @Override
     public void execute(Message<JsonObject> event) {
-        String key = queuesPrefix + event.body().getJsonObject(PAYLOAD).getString(QUEUENAME);
+        String key = queuesPrefix + RedisUtils.formatAsHastag(event.body().getJsonObject(PAYLOAD).getString(QUEUENAME));
         int index = event.body().getJsonObject(PAYLOAD).getInteger(INDEX);
         redisProvider.redis().onSuccess(redisAPI ->
                         redisAPI.lindex(key, String.valueOf(index), new GetQueueItemHandler(event)))

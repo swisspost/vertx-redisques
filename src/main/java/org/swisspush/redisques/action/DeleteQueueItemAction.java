@@ -8,6 +8,7 @@ import org.swisspush.redisques.lua.LuaScriptManager;
 import org.swisspush.redisques.util.QueueConfiguration;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 import org.swisspush.redisques.util.RedisProvider;
+import org.swisspush.redisques.util.RedisUtils;
 
 import java.util.List;
 
@@ -24,12 +25,12 @@ public class DeleteQueueItemAction extends AbstractQueueAction {
 
     @Override
     public void execute(Message<JsonObject> event) {
-        String keyLset = queuesPrefix + event.body().getJsonObject(PAYLOAD).getString(QUEUENAME);
+        String keyLset = queuesPrefix + RedisUtils.formatAsHastag(event.body().getJsonObject(PAYLOAD).getString(QUEUENAME));
         int indexLset = event.body().getJsonObject(PAYLOAD).getInteger(INDEX);
         redisProvider.redis().onSuccess(redisAPI -> redisAPI.lset(keyLset, String.valueOf(indexLset), "TO_DELETE",
                 event1 -> {
                     if (event1.succeeded()) {
-                        String keyLrem = queuesPrefix + event.body().getJsonObject(PAYLOAD).getString(QUEUENAME);
+                        String keyLrem = queuesPrefix + RedisUtils.formatAsHastag(event.body().getJsonObject(PAYLOAD).getString(QUEUENAME));
                         redisAPI.lrem(keyLrem, "0", "TO_DELETE", replyLrem -> {
                             if (replyLrem.failed()) {
                                 log.warn("Redis 'lrem' command failed. But will continue anyway.", replyLrem.cause());

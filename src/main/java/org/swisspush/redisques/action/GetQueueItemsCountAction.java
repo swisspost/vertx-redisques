@@ -9,6 +9,7 @@ import org.swisspush.redisques.lua.LuaScriptManager;
 import org.swisspush.redisques.util.QueueConfiguration;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 import org.swisspush.redisques.util.RedisProvider;
+import org.swisspush.redisques.util.RedisUtils;
 
 import java.util.List;
 
@@ -30,7 +31,7 @@ public class GetQueueItemsCountAction extends AbstractQueueAction {
     @Override
     public void execute(Message<JsonObject> event) {
         String queue = event.body().getJsonObject(PAYLOAD).getString(QUEUENAME);
-        redisProvider.redis().onSuccess(redisAPI -> redisAPI.llen(queuesPrefix + queue, new GetQueueItemsCountHandler(event)))
+        redisProvider.redis().onSuccess(redisAPI -> redisAPI.llen(queuesPrefix + RedisUtils.formatAsHastag(queue), new GetQueueItemsCountHandler(event)))
                 .onFailure(replyErrorMessageHandler(event));
     }
 }

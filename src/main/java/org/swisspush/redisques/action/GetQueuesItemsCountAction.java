@@ -36,7 +36,7 @@ public class GetQueuesItemsCountAction extends AbstractQueueAction {
             redisProvider.redis().onSuccess(redisAPI -> redisAPI.zrangebyscore(List.of(queuesKey,
                                     String.valueOf(getMaxAgeTimestamp()), "+inf"),
                             new GetQueuesItemsCountHandler(event, filterPattern.getOk(), luaScriptManager,
-                                    queuesPrefix)))
+                                    queuesPrefix, redisProvider)))
                     .onFailure(replyErrorMessageHandler(event));
         }
     }

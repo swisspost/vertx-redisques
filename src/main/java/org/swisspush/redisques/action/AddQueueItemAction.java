@@ -9,6 +9,7 @@ import org.swisspush.redisques.lua.LuaScriptManager;
 import org.swisspush.redisques.util.QueueConfiguration;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 import org.swisspush.redisques.util.RedisProvider;
+import org.swisspush.redisques.util.RedisUtils;
 
 import java.util.Arrays;
 import java.util.List;
@@ -26,7 +27,7 @@ public class AddQueueItemAction extends AbstractQueueAction {
 
     @Override
     public void execute(Message<JsonObject> event) {
-        String key1 = queuesPrefix + event.body().getJsonObject(PAYLOAD).getString(QUEUENAME);
+        String key1 = queuesPrefix + RedisUtils.formatAsHastag(event.body().getJsonObject(PAYLOAD).getString(QUEUENAME));
         String valueAddItem = event.body().getJsonObject(PAYLOAD).getString(BUFFER);
         redisProvider.redis().onSuccess(
                         redisAPI -> redisAPI.rpush(Arrays.asList(key1, valueAddItem), new AddQueueItemHandler(event)))

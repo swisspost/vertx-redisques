@@ -9,6 +9,7 @@ import org.swisspush.redisques.lua.LuaScriptManager;
 import org.swisspush.redisques.util.QueueConfiguration;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 import org.swisspush.redisques.util.RedisProvider;
+import org.swisspush.redisques.util.RedisUtils;
 
 import java.util.List;
 
@@ -25,7 +26,7 @@ public class ReplaceQueueItemAction extends AbstractQueueAction {
 
     @Override
     public void execute(Message<JsonObject> event) {
-        String keyReplaceItem = queuesPrefix + event.body().getJsonObject(PAYLOAD).getString(QUEUENAME);
+        String keyReplaceItem = queuesPrefix + RedisUtils.formatAsHastag(event.body().getJsonObject(PAYLOAD).getString(QUEUENAME));
         int indexReplaceItem = event.body().getJsonObject(PAYLOAD).getInteger(INDEX);
         String bufferReplaceItem = event.body().getJsonObject(PAYLOAD).getString(BUFFER);
         redisProvider.redis().onSuccess(redisAPI -> redisAPI.lset(keyReplaceItem,

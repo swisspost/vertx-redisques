@@ -9,6 +9,7 @@ import org.swisspush.redisques.util.MemoryUsageProvider;
 import org.swisspush.redisques.util.QueueConfiguration;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 import org.swisspush.redisques.util.RedisProvider;
+import org.swisspush.redisques.util.RedisUtils;
 
 import java.util.Arrays;
 import java.util.List;
@@ -43,7 +44,7 @@ public class EnqueueAction extends AbstractQueueAction {
                 replyError(event, queueName, updateTimestampEvent.cause());
                 return;
             }
-            String keyEnqueue = queuesPrefix + queueName;
+            String keyEnqueue = queuesPrefix + RedisUtils.formatAsHastag(queueName);
             String valueEnqueue = event.body().getString(MESSAGE);
 
             redisProvider.redis().onSuccess(redisAPI -> redisAPI.rpush(Arrays.asList(keyEnqueue, valueEnqueue)).onComplete(enqueueEvent -> {

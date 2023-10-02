@@ -27,10 +27,6 @@ public class LuaScriptManager {
         luaGetScriptState.loadLuaScript(new RedisCommandDoNothing(), 0);
         luaScripts.put(LuaScript.CHECK, luaGetScriptState);
 
-        // load the MultiListLength Lua Script
-        LuaScriptState luaMllenScriptState = new LuaScriptState(LuaScript.MLLEN, redisProvider);
-        luaMllenScriptState.loadLuaScript(new RedisCommandDoNothing(), 0);
-        luaScripts.put(LuaScript.MLLEN, luaMllenScriptState);
     }
 
     /**
@@ -95,57 +91,5 @@ public class LuaScriptManager {
             })).onFailure(throwable -> log.error("Redis: Check request failed.", throwable));
         }
     }
-
-
-    public void handleMultiListLength(List<String> keys, Handler<List<Long>> handler){
-        executeRedisCommand(new MultiListLength(keys, redisProvider, handler), 0);
-    }
-
-    private class MultiListLength implements RedisCommand {
-
-        private List<String> keys;
-        private Handler<List<Long>> handler;
-        private RedisProvider redisProvider;
-
-        public MultiListLength(List<String> keys, RedisProvider redisProvider, final Handler<List<Long>> handler) {
-            this.keys = keys;
-            this.redisProvider = redisProvider;
-            this.handler = handler;
-        }
-
-        @Override
-        public void exec(int executionCounter) {
-            if (keys==null || keys.isEmpty()){
-                handler.handle(List.of());
-                return;
-            }
-            List<String> args= RedisUtils.toPayload(luaScripts.get(LuaScript.MLLEN).getSha(),
-                keys.size(), keys);
-            redisProvider.redis().onSuccess(redisAPI -> redisAPI.evalsha(args, event -> {
-                if(event.succeeded()){
-                    List<Long> res = new ArrayList<>();
-                    for (Response response : event.result()) {
-                        res.add(response.toLong());
-                    }
-                    handler.handle(res);
-                } else {
-                    String message = event.cause().getMessage();
-                    if(message != null && message.startsWith("NOSCRIPT")) {
-                        log.warn("MultiListLength script couldn't be found, reload it");
-                        log.warn("amount the script got loaded: {}", executionCounter);
-                        if(executionCounter > 10) {
-                            log.error("amount the MultiListLength script got loaded is higher than 10, we abort");
-                        } else {
-                            luaScripts.get(LuaScript.MLLEN).loadLuaScript(new MultiListLength(keys, redisProvider, handler), executionCounter);
-                        }
-                    } else {
-                        log.error("ListLength request failed.", event.cause());
-                    }
-                    event.failed();
-                }
-            })).onFailure(throwable -> log.error("Redis: ListLength request failed.", throwable));
-        }
-    }
-
 
 }

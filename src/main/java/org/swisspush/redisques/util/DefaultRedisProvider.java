@@ -1,10 +1,12 @@
 package org.swisspush.redisques.util;
 
-import io.vertx.core.*;
+import io.vertx.core.Future;
+import io.vertx.core.Promise;
+import io.vertx.core.Vertx;
 import io.vertx.redis.client.Redis;
 import io.vertx.redis.client.RedisAPI;
-import io.vertx.redis.client.RedisConnection;
 import io.vertx.redis.client.RedisClientType;
+import io.vertx.redis.client.RedisConnection;
 import io.vertx.redis.client.RedisOptions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,7 +24,6 @@ public class DefaultRedisProvider implements RedisProvider {
     private static final Logger log = LoggerFactory.getLogger(DefaultRedisProvider.class);
     private final Vertx vertx;
     private RedisquesConfigurationProvider configurationProvider;
-
     private RedisAPI redisAPI;
     private Redis redis;
     private final AtomicBoolean connecting = new AtomicBoolean();
@@ -42,6 +43,11 @@ public class DefaultRedisProvider implements RedisProvider {
         } else {
             return setupRedisClient();
         }
+    }
+
+    @Override
+    public Future<Redis> connection() {
+        return Future.succeededFuture(redis);
     }
 
     private boolean reconnectEnabled() {
@@ -103,7 +109,11 @@ public class DefaultRedisProvider implements RedisProvider {
             redis.connect().onSuccess(conn -> {
                 log.info("Successfully connected to redis");
                 client = conn;
-                client.close();
+
+                if (!config.isRedisClustered()){
+                    // don't do this in cluster mode!!!
+                    client.close();
+                }
 
                 // make sure the client is reconnected on error
                 // eg, the underlying TCP connection is closed but the client side doesn't know it yet

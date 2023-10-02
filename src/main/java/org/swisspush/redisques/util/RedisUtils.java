@@ -1,5 +1,6 @@
 package org.swisspush.redisques.util;
 
+import io.netty.util.internal.StringUtil;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 
@@ -54,5 +55,10 @@ public final class RedisUtils {
         }
         return result;
     }
-
+    public static String formatAsHastag(String queueName) {
+        if (StringUtil.isNullOrEmpty(queueName)){
+            return queueName;
+        }
+        return "{" + queueName + "}";
+    }
 }

@@ -9,6 +9,7 @@ import org.swisspush.redisques.lua.LuaScriptManager;
 import org.swisspush.redisques.util.QueueConfiguration;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 import org.swisspush.redisques.util.RedisProvider;
+import org.swisspush.redisques.util.RedisUtils;
 
 import java.util.Arrays;
 import java.util.Collections;
@@ -30,7 +31,7 @@ public class DeleteLockAction extends AbstractQueueAction {
     public void execute(Message<JsonObject> event) {
         String queueName = event.body().getJsonObject(PAYLOAD).getString(QUEUENAME);
         redisProvider.redis().onSuccess(redisAPI ->
-                        redisAPI.exists(Collections.singletonList(queuesPrefix + queueName), event1 -> {
+                        redisAPI.exists(Collections.singletonList(queuesPrefix + RedisUtils.formatAsHastag(queueName)), event1 -> {
                             if (event1.succeeded() && event1.result() != null && event1.result().toInteger() == 1) {
                                 notifyConsumer(queueName);
                             }

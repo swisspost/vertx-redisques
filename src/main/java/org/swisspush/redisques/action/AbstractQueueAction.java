@@ -13,6 +13,7 @@ import org.swisspush.redisques.lua.LuaScriptManager;
 import org.swisspush.redisques.util.QueueConfiguration;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 import org.swisspush.redisques.util.RedisProvider;
+import org.swisspush.redisques.util.RedisUtils;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -27,6 +28,7 @@ public abstract class AbstractQueueAction implements QueueAction {
 
     protected final LuaScriptManager luaScriptManager;
     protected final RedisProvider redisProvider;
+
     protected final Vertx vertx;
     protected final Logger log;
     protected final String address;
@@ -62,7 +64,7 @@ public abstract class AbstractQueueAction implements QueueAction {
     }
 
     protected String buildQueueKey(String queue) {
-        return queuesPrefix + queue;
+        return queuesPrefix + RedisUtils.formatAsHastag(queue);
     }
 
     protected List<String> buildQueueKeys(JsonArray queues) {
@@ -164,7 +166,7 @@ public abstract class AbstractQueueAction implements QueueAction {
         final EventBus eb = vertx.eventBus();
 
         // Find the consumer to notify
-        String key = consumersPrefix + queueName;
+        String key = consumersPrefix + RedisUtils.formatAsHastag(queueName);
         if (log.isTraceEnabled()) {
             log.trace("RedisQues notify consumer get: {}", key);
         }

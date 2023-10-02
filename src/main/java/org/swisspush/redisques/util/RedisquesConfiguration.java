@@ -62,7 +62,7 @@ public class RedisquesConfiguration {
     // - https://groups.google.com/g/vertx/c/fe0RSWEfe8g
     // - https://vertx.io/docs/apidocs/io/vertx/redis/client/RedisOptions.html#setMaxPoolWaiting-int-
     // - https://stackoverflow.com/questions/59692663/vertx-java-httpclient-how-to-derive-maxpoolsize-and-maxwaitqueuesize-values-and
-    private static final int DEFAULT_REDIS_MAX_POOL_WAIT_SIZE = -1;
+    private static final int DEFAULT_REDIS_MAX_POOL_WAIT_SIZE = 2049;
     private static final int DEFAULT_REDIS_MAX_PIPELINE_WAIT_SIZE = 2048;
     private static final int DEFAULT_QUEUE_SPEED_INTERVAL_SEC = 60;
     private static final int DEFAULT_MEMORY_USAGE_LIMIT_PCT = 100;

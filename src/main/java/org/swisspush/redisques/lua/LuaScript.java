@@ -1,8 +1,7 @@
 package org.swisspush.redisques.lua;
 
 public enum LuaScript {
-    CHECK("redisques_check.lua"),
-    MLLEN( "redisques_mllen.lua");
+    CHECK("redisques_check.lua");
 
     private String file;
 

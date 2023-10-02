@@ -137,7 +137,7 @@ public class RedisQues extends AbstractVerticle {
                     "RedisQues Got registration request for queue {} from consumer: {}", queueName, uid);
         }
         // Try to register for this queue
-        redisSetWithOptions(consumersPrefix + queueName, uid, true, consumerLockTime, event -> {
+        redisSetWithOptions(consumersPrefix + RedisUtils.formatAsHastag(queueName), uid, true, consumerLockTime, event -> {
             if (event.succeeded()) {
                 String value = event.result() != null ? event.result().toString() : null;
                 if (log.isTraceEnabled()) {
@@ -196,7 +196,7 @@ public class RedisQues extends AbstractVerticle {
     private void initialize() {
         RedisquesConfiguration configuration = configurationProvider.configuration();
         this.luaScriptManager = new LuaScriptManager(redisProvider);
-        this.queueStatisticsCollector = new QueueStatisticsCollector(redisProvider, luaScriptManager,
+        this.queueStatisticsCollector = new QueueStatisticsCollector(redisProvider,
                 queuesPrefix, vertx, configuration.getQueueSpeedIntervalSec());
 
         RedisquesHttpRequestHandler.init(vertx, configuration);
@@ -267,7 +267,7 @@ public class RedisQues extends AbstractVerticle {
                     forEach(entry -> {
                         final String queue = entry.getKey();
                         // Check if I am still the registered consumer
-                        String consumerKey = consumersPrefix + queue;
+                        String consumerKey = consumersPrefix + RedisUtils.formatAsHastag(queue);
                         if (log.isTraceEnabled()) {
                             log.trace("RedisQues refresh queues get: {}", consumerKey);
                         }
@@ -406,7 +406,7 @@ public class RedisQues extends AbstractVerticle {
                 }
                 refreshRegistration(queue, event -> {
                     // Make sure that I am still the registered consumer
-                    String consumerKey = consumersPrefix + queue;
+                    String consumerKey = consumersPrefix + RedisUtils.formatAsHastag(queue);
                     if (log.isTraceEnabled()) {
                         log.trace("RedisQues unregister consumers get: {}", consumerKey);
                     }
@@ -488,7 +488,7 @@ public class RedisQues extends AbstractVerticle {
             if (log.isTraceEnabled()) {
                 log.trace("RedisQues consume get: {}", consumerKey);
             }
-            redisProvider.redis().onSuccess(redisAPI -> redisAPI.get(consumerKey, event1 -> {
+            redisProvider.redis().onSuccess(redisAPI -> redisAPI.get(consumersPrefix + RedisUtils.formatAsHastag(queueName), event1 -> {
                         if (event1.failed()) {
                             log.error("Unable to get consumer for queue " + queueName, event1.cause());
                             return;
@@ -560,7 +560,7 @@ public class RedisQues extends AbstractVerticle {
         if (log.isTraceEnabled()) {
             log.trace("RedisQues read queue: {}", queueName);
         }
-        String queueKey = queuesPrefix + queueName;
+        String queueKey = queuesPrefix + RedisUtils.formatAsHastag(queueName);
         if (log.isTraceEnabled()) {
             log.trace("RedisQues read queue lindex: {}", queueKey);
         }
@@ -718,7 +718,7 @@ public class RedisQues extends AbstractVerticle {
         final EventBus eb = vertx.eventBus();
         final Promise<Void> promise = Promise.promise();
         // Find the consumer to notify
-        String key = consumersPrefix + queueName;
+        String key = consumersPrefix + consumersPrefix + RedisUtils.formatAsHastag(queueName);
         if (log.isTraceEnabled()) {
             log.trace("RedisQues notify consumer get: {}", key);
         }
@@ -757,7 +757,7 @@ public class RedisQues extends AbstractVerticle {
         if (log.isDebugEnabled()) {
             log.debug("RedisQues Refreshing registration of queue {}, expire in {} s", queueName, consumerLockTime);
         }
-        String consumerKey = consumersPrefix + queueName;
+        String consumerKey = consumersPrefix + consumersPrefix + RedisUtils.formatAsHastag(queueName);
         if (handler == null) {
             throw new RuntimeException("Handler must be set");
         } else {
@@ -822,7 +822,7 @@ public class RedisQues extends AbstractVerticle {
                         futureList.add(promise.future());
                         // Check if the inactive queue is not empty (i.e. the key exists)
                         final String queueName = queueObject.toString();
-                        String key = queuesPrefix + queueName;
+                        String key = queuesPrefix + RedisUtils.formatAsHastag(queueName);
                         if (log.isTraceEnabled()) {
                             log.trace("RedisQues update queue: {}", key);
                         }
