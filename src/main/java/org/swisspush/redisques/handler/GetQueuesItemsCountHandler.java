@@ -64,7 +64,7 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
 
 
             redisProvider.connection().onSuccess(conn -> {
-                List<Future> responses = queues.stream().map(queue -> conn.send(Request.cmd(Command.LLEN, queuesPrefix + RedisUtils.formatAsHastag(queue)))
+                List<Future> responses = queues.stream().map(queue -> conn.send(Request.cmd(Command.LLEN, queuesPrefix + queue))
                 ).collect(Collectors.toList());
                 CompositeFuture.all(responses).onFailure(new Handler<Throwable>() {
                     @Override

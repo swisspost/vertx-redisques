@@ -27,7 +27,7 @@ public class GetQueueItemAction extends AbstractQueueAction {
 
     @Override
     public void execute(Message<JsonObject> event) {
-        String key = queuesPrefix + RedisUtils.formatAsHastag(event.body().getJsonObject(PAYLOAD).getString(QUEUENAME));
+        String key = queuesPrefix + event.body().getJsonObject(PAYLOAD).getString(QUEUENAME);
         int index = event.body().getJsonObject(PAYLOAD).getInteger(INDEX);
         redisProvider.redis().onSuccess(redisAPI ->
                         redisAPI.lindex(key, String.valueOf(index), new GetQueueItemHandler(event)))

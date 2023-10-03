@@ -31,7 +31,7 @@ public class DeleteLockAction extends AbstractQueueAction {
     public void execute(Message<JsonObject> event) {
         String queueName = event.body().getJsonObject(PAYLOAD).getString(QUEUENAME);
         redisProvider.redis().onSuccess(redisAPI ->
-                        redisAPI.exists(Collections.singletonList(queuesPrefix + RedisUtils.formatAsHastag(queueName)), event1 -> {
+                        redisAPI.exists(Collections.singletonList(queuesPrefix + queueName), event1 -> {
                             if (event1.succeeded() && event1.result() != null && event1.result().toInteger() == 1) {
                                 notifyConsumer(queueName);
                             }

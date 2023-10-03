@@ -55,10 +55,4 @@ public final class RedisUtils {
         }
         return result;
     }
-    public static String formatAsHastag(String queueName) {
-        if (StringUtil.isNullOrEmpty(queueName)){
-            return queueName;
-        }
-        return "{" + queueName + "}";
-    }
 }

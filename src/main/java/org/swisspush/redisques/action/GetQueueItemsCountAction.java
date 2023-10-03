@@ -31,7 +31,7 @@ public class GetQueueItemsCountAction extends AbstractQueueAction {
     @Override
     public void execute(Message<JsonObject> event) {
         String queue = event.body().getJsonObject(PAYLOAD).getString(QUEUENAME);
-        redisProvider.redis().onSuccess(redisAPI -> redisAPI.llen(queuesPrefix + RedisUtils.formatAsHastag(queue), new GetQueueItemsCountHandler(event)))
+        redisProvider.redis().onSuccess(redisAPI -> redisAPI.llen(queuesPrefix + queue, new GetQueueItemsCountHandler(event)))
                 .onFailure(replyErrorMessageHandler(event));
     }
 }

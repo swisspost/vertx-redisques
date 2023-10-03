@@ -64,7 +64,7 @@ public abstract class AbstractQueueAction implements QueueAction {
     }
 
     protected String buildQueueKey(String queue) {
-        return queuesPrefix + RedisUtils.formatAsHastag(queue);
+        return queuesPrefix + queue;
     }
 
     protected List<String> buildQueueKeys(JsonArray queues) {
@@ -166,7 +166,7 @@ public abstract class AbstractQueueAction implements QueueAction {
         final EventBus eb = vertx.eventBus();
 
         // Find the consumer to notify
-        String key = consumersPrefix + RedisUtils.formatAsHastag(queueName);
+        String key = consumersPrefix + queueName;
         if (log.isTraceEnabled()) {
             log.trace("RedisQues notify consumer get: {}", key);
         }

@@ -44,7 +44,7 @@ public class EnqueueAction extends AbstractQueueAction {
                 replyError(event, queueName, updateTimestampEvent.cause());
                 return;
             }
-            String keyEnqueue = queuesPrefix + RedisUtils.formatAsHastag(queueName);
+            String keyEnqueue = queuesPrefix + queueName;
             String valueEnqueue = event.body().getString(MESSAGE);
 
             redisProvider.redis().onSuccess(redisAPI -> redisAPI.rpush(Arrays.asList(keyEnqueue, valueEnqueue)).onComplete(enqueueEvent -> {

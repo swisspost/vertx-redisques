@@ -29,7 +29,7 @@ public class GetQueueItemsAction extends AbstractQueueAction {
     @Override
     public void execute(Message<JsonObject> event) {
         String queueName = event.body().getJsonObject(PAYLOAD).getString(QUEUENAME);
-        String keyListRange = queuesPrefix + RedisUtils.formatAsHastag(queueName);
+        String keyListRange = queuesPrefix + queueName;
         int maxQueueItemCountIndex = getMaxQueueItemCountIndex(event.body().getJsonObject(PAYLOAD).getString(LIMIT));
         redisProvider.redis().onSuccess(redisAPI -> redisAPI.llen(keyListRange, countReply -> {
                     Long queueItemCount = countReply.result().toLong();
