@@ -23,7 +23,6 @@ import java.util.stream.Collectors;
 import org.swisspush.redisques.lua.LuaScriptManager;
 import org.swisspush.redisques.util.HandlerUtil;
 import org.swisspush.redisques.util.RedisProvider;
-import org.swisspush.redisques.util.RedisUtils;
 import org.swisspush.redisques.util.RedisquesAPI;
 
 import static org.swisspush.redisques.util.RedisquesAPI.*;

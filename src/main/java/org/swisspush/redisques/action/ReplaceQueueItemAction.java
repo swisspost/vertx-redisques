@@ -9,7 +9,6 @@ import org.swisspush.redisques.lua.LuaScriptManager;
 import org.swisspush.redisques.util.QueueConfiguration;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 import org.swisspush.redisques.util.RedisProvider;
-import org.swisspush.redisques.util.RedisUtils;
 
 import java.util.List;
 

@@ -488,7 +488,7 @@ public class RedisQues extends AbstractVerticle {
             if (log.isTraceEnabled()) {
                 log.trace("RedisQues consume get: {}", consumerKey);
             }
-            redisProvider.redis().onSuccess(redisAPI -> redisAPI.get(consumersPrefix + queueName, event1 -> {
+            redisProvider.redis().onSuccess(redisAPI -> redisAPI.get(consumerKey, event1 -> {
                         if (event1.failed()) {
                             log.error("Unable to get consumer for queue " + queueName, event1.cause());
                             return;
@@ -718,7 +718,7 @@ public class RedisQues extends AbstractVerticle {
         final EventBus eb = vertx.eventBus();
         final Promise<Void> promise = Promise.promise();
         // Find the consumer to notify
-        String key = consumersPrefix + consumersPrefix + queueName;
+        String key = consumersPrefix + queueName;
         if (log.isTraceEnabled()) {
             log.trace("RedisQues notify consumer get: {}", key);
         }
@@ -757,7 +757,7 @@ public class RedisQues extends AbstractVerticle {
         if (log.isDebugEnabled()) {
             log.debug("RedisQues Refreshing registration of queue {}, expire in {} s", queueName, consumerLockTime);
         }
-        String consumerKey = consumersPrefix + consumersPrefix + queueName;
+        String consumerKey = consumersPrefix + queueName;
         if (handler == null) {
             throw new RuntimeException("Handler must be set");
         } else {
