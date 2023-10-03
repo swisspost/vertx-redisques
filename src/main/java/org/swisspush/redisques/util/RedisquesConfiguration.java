@@ -5,6 +5,7 @@ import io.vertx.core.json.JsonObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -20,8 +21,8 @@ public class RedisquesConfiguration {
     private final String redisPrefix;
     private final String processorAddress;
     private final int refreshPeriod;
-    private final String redisHost;
-    private final int redisPort;
+    private final List<String> redisHosts;
+    private final List<Integer> redisPorts;
     private boolean redisEnableTls;
     private final boolean redisClustered;
     private final String redisAuth;
@@ -74,7 +75,9 @@ public class RedisquesConfiguration {
     public static final String PROP_PROCESSOR_ADDRESS = "processor-address";
     public static final String PROP_REFRESH_PERIOD = "refresh-period";
     public static final String PROP_REDIS_HOST = "redisHost";
+    public static final String PROP_REDIS_HOST_LIST = "redisHosts";
     public static final String PROP_REDIS_PORT = "redisPort";
+    public static final String PROP_REDIS_PORT_LIST = "redisPorts";
     public static final String PROP_REDIS_CLUSTERED = "redisClustered";
     public static final String PROP_REDIS_ENABLE_TLS = "redisEnableTls";
     /**
@@ -127,7 +130,7 @@ public class RedisquesConfiguration {
                                   String httpRequestHandlerUsername, String httpRequestHandlerPassword,
                                   Integer httpRequestHandlerPort, String httpRequestHandlerUserHeader,
                                   List<QueueConfiguration> queueConfigurations, boolean enableQueueNameDecoding) {
-        this(address, configurationUpdatedAddress, redisPrefix, processorAddress, refreshPeriod, redisHost, redisPort,
+        this(address, configurationUpdatedAddress, redisPrefix, processorAddress, refreshPeriod, Collections.singletonList(redisHost), Collections.singletonList(redisPort),
                 false, redisAuth, null, null, false, checkInterval, processorTimeout, processorDelayMax, httpRequestHandlerEnabled,
                 httpRequestHandlerAuthenticationEnabled, httpRequestHandlerPrefix, httpRequestHandlerUsername,
                 httpRequestHandlerPassword, httpRequestHandlerPort, httpRequestHandlerUserHeader, queueConfigurations,
@@ -148,7 +151,7 @@ public class RedisquesConfiguration {
                                   String httpRequestHandlerUsername, String httpRequestHandlerPassword,
                                   Integer httpRequestHandlerPort, String httpRequestHandlerUserHeader,
                                   List<QueueConfiguration> queueConfigurations, boolean enableQueueNameDecoding) {
-        this(address, configurationUpdatedAddress, redisPrefix, processorAddress, refreshPeriod, redisHost, redisPort,
+        this(address, configurationUpdatedAddress, redisPrefix, processorAddress, refreshPeriod, Collections.singletonList(redisHost), Collections.singletonList(redisPort),
                 false, null, redisPassword, redisUser, redisEnableTls, checkInterval, processorTimeout, processorDelayMax, httpRequestHandlerEnabled,
                 httpRequestHandlerAuthenticationEnabled, httpRequestHandlerPrefix, httpRequestHandlerUsername,
                 httpRequestHandlerPassword, httpRequestHandlerPort, httpRequestHandlerUserHeader, queueConfigurations,
@@ -168,7 +171,7 @@ public class RedisquesConfiguration {
                                   String httpRequestHandlerUsername, String httpRequestHandlerPassword,
                                   Integer httpRequestHandlerPort, String httpRequestHandlerUserHeader,
                                   List<QueueConfiguration> queueConfigurations, boolean enableQueueNameDecoding) {
-        this(address, configurationUpdatedAddress, redisPrefix, processorAddress, refreshPeriod, redisHost, redisPort,
+        this(address, configurationUpdatedAddress, redisPrefix, processorAddress, refreshPeriod, Collections.singletonList(redisHost), Collections.singletonList(redisPort),
                 redisClustered, null, redisPassword, redisUser, redisEnableTls, checkInterval, processorTimeout, processorDelayMax, httpRequestHandlerEnabled,
                 httpRequestHandlerAuthenticationEnabled, httpRequestHandlerPrefix, httpRequestHandlerUsername,
                 httpRequestHandlerPassword, httpRequestHandlerPort, httpRequestHandlerUserHeader, queueConfigurations,
@@ -179,7 +182,7 @@ public class RedisquesConfiguration {
     }
 
     private RedisquesConfiguration(String address, String configurationUpdatedAddress, String redisPrefix, String processorAddress, int refreshPeriod,
-                                   String redisHost, int redisPort, boolean redisClustered, String redisAuth, String redisPassword, String redisUser, boolean redisEnableTls, int checkInterval,
+                                   List<String> redisHosts, List<Integer> redisPorts, boolean redisClustered, String redisAuth, String redisPassword, String redisUser, boolean redisEnableTls, int checkInterval,
                                    int processorTimeout, long processorDelayMax, boolean httpRequestHandlerEnabled,
                                    boolean httpRequestHandlerAuthenticationEnabled, String httpRequestHandlerPrefix,
                                    String httpRequestHandlerUsername, String httpRequestHandlerPassword,
@@ -193,8 +196,8 @@ public class RedisquesConfiguration {
         this.redisPrefix = redisPrefix;
         this.processorAddress = processorAddress;
         this.refreshPeriod = refreshPeriod;
-        this.redisHost = redisHost;
-        this.redisPort = redisPort;
+        this.redisHosts = redisHosts;
+        this.redisPorts = redisPorts;
         this.redisClustered = redisClustered;
         this.redisAuth = redisAuth;
         this.redisPassword = redisPassword;
@@ -272,7 +275,7 @@ public class RedisquesConfiguration {
 
     private RedisquesConfiguration(RedisquesConfigurationBuilder builder) {
         this(builder.address, builder.configurationUpdatedAddress, builder.redisPrefix,
-                builder.processorAddress, builder.refreshPeriod, builder.redisHost, builder.redisPort, builder.redisClustered,
+                builder.processorAddress, builder.refreshPeriod, builder.redisHosts, builder.redisPorts, builder.redisClustered,
                 builder.redisAuth, builder.redisPassword, builder.redisUser, builder.redisEnableTls, builder.checkInterval,
                 builder.processorTimeout, builder.processorDelayMax, builder.httpRequestHandlerEnabled,
                 builder.httpRequestHandlerAuthenticationEnabled, builder.httpRequestHandlerPrefix,
@@ -296,7 +299,9 @@ public class RedisquesConfiguration {
         obj.put(PROP_PROCESSOR_ADDRESS, getProcessorAddress());
         obj.put(PROP_REFRESH_PERIOD, getRefreshPeriod());
         obj.put(PROP_REDIS_HOST, getRedisHost());
+        obj.put(PROP_REDIS_HOST_LIST, getRedisHosts());
         obj.put(PROP_REDIS_PORT, getRedisPort());
+        obj.put(PROP_REDIS_PORT_LIST, getRedisPorts());
         obj.put(PROP_REDIS_RECONNECT_ATTEMPTS, getRedisReconnectAttempts());
         obj.put(PROP_REDIS_RECONNECT_DELAY_SEC, getRedisReconnectDelaySec());
         obj.put(PROP_REDIS_POOL_RECYCLE_TIMEOUT_MS, getRedisPoolRecycleTimeoutMs());
@@ -346,8 +351,14 @@ public class RedisquesConfiguration {
         if (json.containsKey(PROP_REDIS_HOST)) {
             builder.redisHost(json.getString(PROP_REDIS_HOST));
         }
+        if (json.containsKey(PROP_REDIS_HOST_LIST)) {
+            builder.redisHosts(json.getJsonArray(PROP_REDIS_HOST_LIST).getList());
+        }
         if (json.containsKey(PROP_REDIS_PORT)) {
             builder.redisPort(json.getInteger(PROP_REDIS_PORT));
+        }
+        if (json.containsKey(PROP_REDIS_PORT_LIST)) {
+            builder.redisPorts(json.getJsonArray(PROP_REDIS_PORT_LIST).getList());
         }
         if (json.containsKey(PROP_REDIS_RECONNECT_ATTEMPTS)) {
             builder.redisReconnectAttempts(json.getInteger(PROP_REDIS_RECONNECT_ATTEMPTS));
@@ -454,11 +465,18 @@ public class RedisquesConfiguration {
     }
 
     public String getRedisHost() {
-        return redisHost;
+        return redisHosts.get(0);
+    }
+
+    public List<String> getRedisHosts() {
+        return redisHosts;
     }
 
     public int getRedisPort() {
-        return redisPort;
+        return redisPorts.get(0);
+    }
+    public List<Integer> getRedisPorts() {
+        return redisPorts;
     }
 
     public int getRedisReconnectAttempts() {
@@ -611,8 +629,8 @@ public class RedisquesConfiguration {
         private String redisPrefix;
         private String processorAddress;
         private int refreshPeriod;
-        private String redisHost;
-        private int redisPort;
+        private List<String> redisHosts;
+        private List<Integer>  redisPorts;
         private boolean redisEnableTls;
         private int redisReconnectAttempts;
         private int redisReconnectDelaySec;
@@ -647,8 +665,8 @@ public class RedisquesConfiguration {
             this.redisPrefix = "redisques:";
             this.processorAddress = "redisques-processor";
             this.refreshPeriod = 10;
-            this.redisHost = "localhost";
-            this.redisPort = 6379;
+            this.redisHosts = Collections.singletonList("localhost");
+            this.redisPorts = Collections.singletonList(6379);
             this.redisEnableTls = false;
             this.redisReconnectAttempts = DEFAULT_REDIS_RECONNECT_ATTEMPTS;
             this.redisReconnectDelaySec = DEFAULT_REDIS_RECONNECT_DELAY_SEC;
@@ -699,12 +717,22 @@ public class RedisquesConfiguration {
         }
 
         public RedisquesConfigurationBuilder redisHost(String redisHost) {
-            this.redisHost = redisHost;
+            this.redisHosts = Collections.singletonList(redisHost);
+            return this;
+        }
+
+        public RedisquesConfigurationBuilder redisHosts(List<String> redisHost) {
+            this.redisHosts = redisHost;
             return this;
         }
 
         public RedisquesConfigurationBuilder redisPort(int redisPort) {
-            this.redisPort = redisPort;
+            this.redisPorts = Collections.singletonList(redisPort);
+            return this;
+        }
+
+        public RedisquesConfigurationBuilder redisPorts(List<Integer> redisPorts) {
+            this.redisPorts = redisPorts;
             return this;
         }
 

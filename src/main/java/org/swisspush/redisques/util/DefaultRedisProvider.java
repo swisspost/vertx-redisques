@@ -11,6 +11,8 @@ import io.vertx.redis.client.RedisOptions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -99,10 +101,8 @@ public class DefaultRedisProvider implements RedisProvider {
                     .setMaxWaitingHandlers(redisMaxPipelineWaitingSize);
             if (config.isRedisClustered()) {
                 redisOptions.setType(RedisClientType.CLUSTER);
-                redisOptions.addConnectionString(createConnectString());
-            } else {
-                redisOptions.setConnectionString(createConnectString());
             }
+            createConnectStrings().forEach(redisOptions::addConnectionString);
 
             redis = Redis.createClient(vertx, redisOptions);
 
@@ -110,7 +110,7 @@ public class DefaultRedisProvider implements RedisProvider {
                 log.info("Successfully connected to redis");
                 client = conn;
 
-                if (!config.isRedisClustered()){
+                if (!config.isRedisClustered()) {
                     // don't do this in cluster mode!!!
                     client.close();
                 }
@@ -144,17 +144,23 @@ public class DefaultRedisProvider implements RedisProvider {
         return promise.future();
     }
 
-    private String createConnectString() {
+    private List<String> createConnectStrings() {
         RedisquesConfiguration config = configurationProvider.configuration();
         String redisPassword = config.getRedisPassword();
         String redisUser = config.getRedisUser();
-        StringBuilder connectionStringBuilder = new StringBuilder();
-        connectionStringBuilder.append(config.getRedisEnableTls() ? "rediss://" : "redis://");
+        StringBuilder connectionStringPrefixBuilder = new StringBuilder();
+        connectionStringPrefixBuilder.append(config.getRedisEnableTls() ? "rediss://" : "redis://");
         if (redisUser != null && !redisUser.isEmpty()) {
-            connectionStringBuilder.append(redisUser).append(":").append((redisPassword == null ? "" : redisPassword)).append("@");
+            connectionStringPrefixBuilder.append(redisUser).append(":").append((redisPassword == null ? "" : redisPassword)).append("@");
         }
-        connectionStringBuilder.append(config.getRedisHost()).append(":").append(config.getRedisPort());
-        return connectionStringBuilder.toString();
+        List<String> connectionString = new ArrayList<>();
+        String connectionStringPrefix = connectionStringPrefixBuilder.toString();
+        for (int i = 0; i < config.getRedisHosts().size(); i++) {
+            String host = config.getRedisHosts().get(i);
+            int port = config.getRedisPorts().get(i);
+            connectionString.add(connectionStringPrefix + host + ":" + port);
+        }
+        return connectionString;
     }
 
     private void attemptReconnect(int retry) {
