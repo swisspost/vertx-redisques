@@ -68,21 +68,21 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
                 CompositeFuture.all(responses).onFailure(new Handler<Throwable>() {
                     @Override
                     public void handle(Throwable throwable) {
-                        log.error("Unexepected queue MultiListLength result");
+                        log.error("Unexepected queue length result");
                         event.reply(new JsonObject().put(STATUS, ERROR));
                     }
                 }).onSuccess(new Handler<CompositeFuture>() {
                     @Override
                     public void handle(CompositeFuture compositeFuture) {
-                        List<NumberType> multiListLength = compositeFuture.list();
-                        if (multiListLength == null) {
-                            log.error("Unexepected queue MultiListLength result null");
+                        List<NumberType> queueLengthList = compositeFuture.list();
+                        if (queueLengthList == null) {
+                            log.error("Unexepected queue length result null");
                             event.reply(new JsonObject().put(STATUS, ERROR));
                             return;
                         }
-                        if (multiListLength.size() != queues.size()) {
-                            log.error("Unexpected queue MultiListLength result with unequal size {} : {}",
-                                    queues.size(), multiListLength.size());
+                        if (queueLengthList.size() != queues.size()) {
+                            log.error("Unexpected queue length result with unequal size {} : {}",
+                                    queues.size(), queueLengthList.size());
                             event.reply(new JsonObject().put(STATUS, ERROR));
                             return;
                         }
@@ -91,7 +91,7 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
                             String queueName = queues.get(i);
                             result.add(new JsonObject()
                                     .put(MONITOR_QUEUE_NAME, queueName)
-                                    .put(MONITOR_QUEUE_SIZE,  multiListLength.get(i).toLong()));
+                                    .put(MONITOR_QUEUE_SIZE,  queueLengthList.get(i).toLong()));
                         }
                         event.reply(new JsonObject().put(RedisquesAPI.STATUS, RedisquesAPI.OK)
                                 .put(QUEUES, result));

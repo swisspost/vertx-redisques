@@ -413,17 +413,17 @@ public class QueueStatisticsCollector {
             List<Future> responses = queues.stream().map(queue -> conn.send(Request.cmd(Command.LLEN, queuePrefix + queue))
             ).collect(Collectors.toList());
             CompositeFuture.all(responses).onFailure(throwable -> {
-                log.error("Unexepected queue MultiListLength result");
+                log.error("Unexepected queue length result");
                 event.reply(new JsonObject().put(STATUS, ERROR));
             }).onSuccess(compositeFuture -> {
                 List<NumberType> queueListLength = compositeFuture.list();
                 if (queueListLength == null) {
-                    log.error("Unexepected queue MultiListLength result null");
+                    log.error("Unexepected queue length result null");
                     event.reply(new JsonObject().put(STATUS, ERROR));
                     return;
                 }
                 if (queueListLength.size() != queues.size()) {
-                    log.error("Unexpected queue MultiListLength result with unequal size {} : {}",
+                    log.error("Unexpected queue length result with unequal size {} : {}",
                             queues.size(), queueListLength.size());
                     event.reply(new JsonObject().put(STATUS, ERROR));
                     return;
