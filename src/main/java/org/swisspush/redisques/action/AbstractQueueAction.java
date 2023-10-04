@@ -27,7 +27,6 @@ public abstract class AbstractQueueAction implements QueueAction {
 
     protected final LuaScriptManager luaScriptManager;
     protected final RedisProvider redisProvider;
-
     protected final Vertx vertx;
     protected final Logger log;
     protected final String address;

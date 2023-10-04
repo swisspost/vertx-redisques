@@ -54,7 +54,7 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
     public void handle(AsyncResult<Response> handleQueues) {
         if (handleQueues.succeeded()) {
             List<String> queues = HandlerUtil.filterByPattern(handleQueues.result(),
-                    filterPattern);
+                filterPattern);
             if (queues.isEmpty()) {
                 log.debug("Queue count evaluation with empty queues");
                 event.reply(new JsonObject().put(STATUS, OK).put(QUEUES, new JsonArray()));
