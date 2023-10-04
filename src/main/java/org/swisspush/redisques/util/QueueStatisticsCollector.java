@@ -416,15 +416,15 @@ public class QueueStatisticsCollector {
                 log.error("Unexepected queue length result");
                 event.reply(new JsonObject().put(STATUS, ERROR));
             }).onSuccess(compositeFuture -> {
-                List<NumberType> queueListLength = compositeFuture.list();
-                if (queueListLength == null) {
+                List<NumberType> queueLengthList = compositeFuture.list();
+                if (queueLengthList == null) {
                     log.error("Unexepected queue length result null");
                     event.reply(new JsonObject().put(STATUS, ERROR));
                     return;
                 }
-                if (queueListLength.size() != queues.size()) {
+                if (queueLengthList.size() != queues.size()) {
                     log.error("Unexpected queue length result with unequal size {} : {}",
-                            queues.size(), queueListLength.size());
+                            queues.size(), queueLengthList.size());
                     event.reply(new JsonObject().put(STATUS, ERROR));
                     return;
                 }
@@ -432,7 +432,7 @@ public class QueueStatisticsCollector {
                 final HashMap<String, QueueStatistic> statisticsMap = new HashMap<>();
                 for (int i = 0; i < queues.size(); i++) {
                     QueueStatistic qs = new QueueStatistic(queues.get(i));
-                    qs.setSize(queueListLength.get(i).toLong());
+                    qs.setSize(queueLengthList.get(i).toLong());
                     qs.setMessageSpeed(getQueueSpeed(qs.queueName));
                     statisticsMap.put(qs.queueName, qs);
                 }
