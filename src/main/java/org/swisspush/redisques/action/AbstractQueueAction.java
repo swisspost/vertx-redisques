@@ -9,7 +9,6 @@ import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.redis.client.Response;
 import org.slf4j.Logger;
-import org.swisspush.redisques.lua.LuaScriptManager;
 import org.swisspush.redisques.util.QueueConfiguration;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 import org.swisspush.redisques.util.RedisProvider;
@@ -25,7 +24,6 @@ public abstract class AbstractQueueAction implements QueueAction {
 
     private static final int MAX_AGE_MILLISECONDS = 120000; // 120 seconds
 
-    protected final LuaScriptManager luaScriptManager;
     protected final RedisProvider redisProvider;
     protected final Vertx vertx;
     protected final Logger log;
@@ -37,11 +35,10 @@ public abstract class AbstractQueueAction implements QueueAction {
     protected final List<QueueConfiguration> queueConfigurations;
     protected final QueueStatisticsCollector queueStatisticsCollector;
 
-    public AbstractQueueAction(Vertx vertx, LuaScriptManager luaScriptManager, RedisProvider redisProvider, String address, String queuesKey,
+    public AbstractQueueAction(Vertx vertx, RedisProvider redisProvider, String address, String queuesKey,
                                String queuesPrefix, String consumersPrefix, String locksKey, List<QueueConfiguration> queueConfigurations,
                                QueueStatisticsCollector queueStatisticsCollector, Logger log) {
         this.vertx = vertx;
-        this.luaScriptManager = luaScriptManager;
         this.redisProvider = redisProvider;
         this.address = address;
         this.queuesKey = queuesKey;

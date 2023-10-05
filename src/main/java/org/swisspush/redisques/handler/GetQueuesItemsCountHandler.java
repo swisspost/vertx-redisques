@@ -20,7 +20,6 @@ import java.util.Optional;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
-import org.swisspush.redisques.lua.LuaScriptManager;
 import org.swisspush.redisques.util.HandlerUtil;
 import org.swisspush.redisques.util.RedisProvider;
 import org.swisspush.redisques.util.RedisquesAPI;
@@ -33,19 +32,16 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
 
     private final Message<JsonObject> event;
     private final Optional<Pattern> filterPattern;
-    private final LuaScriptManager luaScriptManager;
     private final String queuesPrefix;
     private final RedisProvider redisProvider;
 
     public GetQueuesItemsCountHandler(
             Message<JsonObject> event,
             Optional<Pattern> filterPattern,
-            LuaScriptManager luaScriptManager,
             String queuesPrefix,
             RedisProvider redisProvider) {
         this.event = event;
         this.filterPattern = filterPattern;
-        this.luaScriptManager = luaScriptManager;
         this.queuesPrefix = queuesPrefix;
         this.redisProvider = redisProvider;
     }
