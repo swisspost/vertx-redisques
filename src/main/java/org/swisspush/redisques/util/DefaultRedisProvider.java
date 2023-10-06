@@ -98,10 +98,9 @@ public class DefaultRedisProvider implements RedisProvider {
                     .setMaxPoolSize(redisMaxPoolSize)
                     .setMaxPoolWaiting(redisMaxPoolWaitingSize)
                     .setPoolRecycleTimeout(redisPoolRecycleTimeoutMs)
-                    .setMaxWaitingHandlers(redisMaxPipelineWaitingSize);
-            if (config.isRedisClustered()) {
-                redisOptions.setType(RedisClientType.CLUSTER);
-            }
+                    .setMaxWaitingHandlers(redisMaxPipelineWaitingSize)
+                    .setType(config.getRedisClientType());;
+
             createConnectStrings().forEach(redisOptions::addConnectionString);
 
             redis = Redis.createClient(vertx, redisOptions);
@@ -110,7 +109,7 @@ public class DefaultRedisProvider implements RedisProvider {
                 log.info("Successfully connected to redis");
                 client = conn;
 
-                if (!config.isRedisClustered()) {
+                if (config.getRedisClientType() == RedisClientType.STANDALONE) {
                     // don't do this in cluster mode!!!
                     client.close();
                 }
