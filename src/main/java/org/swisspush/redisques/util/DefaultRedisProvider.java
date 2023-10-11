@@ -110,7 +110,6 @@ public class DefaultRedisProvider implements RedisProvider {
                 client = conn;
 
                 if (config.getRedisClientType() == RedisClientType.STANDALONE) {
-                    // don't do this in cluster mode!!!
                     client.close();
                 }
 
