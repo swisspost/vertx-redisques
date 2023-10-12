@@ -474,6 +474,9 @@ public class QueueStatisticsCollector {
                 });
 
             });
+        }).onFailure(throwable -> {
+            log.warn("Redis: Failed to get queue length.", throwable);
+            event.reply(new JsonObject().put(STATUS, ERROR));
         });
     }
 

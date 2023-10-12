@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
 
 /**
  * Default implementation for a Provider for {@link RedisAPI}
@@ -49,7 +50,11 @@ public class DefaultRedisProvider implements RedisProvider {
 
     @Override
     public Future<Redis> connection() {
-        return Future.succeededFuture(redis);
+        if (redis != null) {
+            return Future.succeededFuture(redis);
+        } else {
+            return setupRedisClient().compose(redisAPI -> Future.succeededFuture(redis));
+        }
     }
 
     private boolean reconnectEnabled() {

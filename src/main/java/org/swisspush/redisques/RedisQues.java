@@ -361,7 +361,9 @@ public class RedisQues extends AbstractVerticle {
                             log.info("periodic queue check is triggered now");
                             checkQueues();
                         });
-            });
+            }).onFailure(throwable -> {
+                log.warn("Redis: Failed to trigger queue check.", throwable);
+            });;
 
         });
     }

@@ -61,38 +61,35 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
             redisProvider.connection().onSuccess(conn -> {
                 List<Future> responses = queues.stream().map(queue -> conn.send(Request.cmd(Command.LLEN, queuesPrefix + queue))
                 ).collect(Collectors.toList());
-                CompositeFuture.all(responses).onFailure(new Handler<Throwable>() {
-                    @Override
-                    public void handle(Throwable throwable) {
-                        log.error("Unexepected queue length result");
+                CompositeFuture.all(responses).onFailure(throwable -> {
+                    log.error("Unexepected queue length result");
+                    event.reply(new JsonObject().put(STATUS, ERROR));
+                }).onSuccess(compositeFuture -> {
+                    List<NumberType> queueLengthList = compositeFuture.list();
+                    if (queueLengthList == null) {
+                        log.error("Unexepected queue length result null");
                         event.reply(new JsonObject().put(STATUS, ERROR));
+                        return;
                     }
-                }).onSuccess(new Handler<CompositeFuture>() {
-                    @Override
-                    public void handle(CompositeFuture compositeFuture) {
-                        List<NumberType> queueLengthList = compositeFuture.list();
-                        if (queueLengthList == null) {
-                            log.error("Unexepected queue length result null");
-                            event.reply(new JsonObject().put(STATUS, ERROR));
-                            return;
-                        }
-                        if (queueLengthList.size() != queues.size()) {
-                            log.error("Unexpected queue length result with unequal size {} : {}",
-                                    queues.size(), queueLengthList.size());
-                            event.reply(new JsonObject().put(STATUS, ERROR));
-                            return;
-                        }
-                        JsonArray result = new JsonArray();
-                        for (int i = 0; i < queues.size(); i++) {
-                            String queueName = queues.get(i);
-                            result.add(new JsonObject()
-                                    .put(MONITOR_QUEUE_NAME, queueName)
-                                    .put(MONITOR_QUEUE_SIZE,  queueLengthList.get(i).toLong()));
-                        }
-                        event.reply(new JsonObject().put(RedisquesAPI.STATUS, RedisquesAPI.OK)
-                                .put(QUEUES, result));
+                    if (queueLengthList.size() != queues.size()) {
+                        log.error("Unexpected queue length result with unequal size {} : {}",
+                                queues.size(), queueLengthList.size());
+                        event.reply(new JsonObject().put(STATUS, ERROR));
+                        return;
                     }
+                    JsonArray result = new JsonArray();
+                    for (int i = 0; i < queues.size(); i++) {
+                        String queueName = queues.get(i);
+                        result.add(new JsonObject()
+                                .put(MONITOR_QUEUE_NAME, queueName)
+                                .put(MONITOR_QUEUE_SIZE, queueLengthList.get(i).toLong()));
+                    }
+                    event.reply(new JsonObject().put(RedisquesAPI.STATUS, RedisquesAPI.OK)
+                            .put(QUEUES, result));
                 });
+            }).onFailure(throwable -> {
+                log.warn("Redis: Failed to get queue length.", throwable);
+                event.reply(new JsonObject().put(STATUS, ERROR));
             });
 
         } else {
