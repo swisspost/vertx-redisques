@@ -1,16 +1,21 @@
 package org.swisspush.redisques.util;
 
-import io.vertx.core.*;
+import io.vertx.core.Future;
+import io.vertx.core.Promise;
+import io.vertx.core.Vertx;
 import io.vertx.redis.client.Redis;
 import io.vertx.redis.client.RedisAPI;
-import io.vertx.redis.client.RedisConnection;
 import io.vertx.redis.client.RedisClientType;
+import io.vertx.redis.client.RedisConnection;
 import io.vertx.redis.client.RedisOptions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
 
 /**
  * Default implementation for a Provider for {@link RedisAPI}
@@ -22,7 +27,6 @@ public class DefaultRedisProvider implements RedisProvider {
     private static final Logger log = LoggerFactory.getLogger(DefaultRedisProvider.class);
     private final Vertx vertx;
     private RedisquesConfigurationProvider configurationProvider;
-
     private RedisAPI redisAPI;
     private Redis redis;
     private final AtomicBoolean connecting = new AtomicBoolean();
@@ -41,6 +45,15 @@ public class DefaultRedisProvider implements RedisProvider {
             return Future.succeededFuture(redisAPI);
         } else {
             return setupRedisClient();
+        }
+    }
+
+    @Override
+    public Future<Redis> connection() {
+        if (redis != null) {
+            return Future.succeededFuture(redis);
+        } else {
+            return setupRedisClient().compose(redisAPI -> Future.succeededFuture(redis));
         }
     }
 
@@ -90,20 +103,20 @@ public class DefaultRedisProvider implements RedisProvider {
                     .setMaxPoolSize(redisMaxPoolSize)
                     .setMaxPoolWaiting(redisMaxPoolWaitingSize)
                     .setPoolRecycleTimeout(redisPoolRecycleTimeoutMs)
-                    .setMaxWaitingHandlers(redisMaxPipelineWaitingSize);
-            if (config.isRedisClustered()) {
-                redisOptions.setType(RedisClientType.CLUSTER);
-                redisOptions.addConnectionString(createConnectString());
-            } else {
-                redisOptions.setConnectionString(createConnectString());
-            }
+                    .setMaxWaitingHandlers(redisMaxPipelineWaitingSize)
+                    .setType(config.getRedisClientType());;
+
+            createConnectStrings().forEach(redisOptions::addConnectionString);
 
             redis = Redis.createClient(vertx, redisOptions);
 
             redis.connect().onSuccess(conn -> {
                 log.info("Successfully connected to redis");
                 client = conn;
-                client.close();
+
+                if (config.getRedisClientType() == RedisClientType.STANDALONE) {
+                    client.close();
+                }
 
                 // make sure the client is reconnected on error
                 // eg, the underlying TCP connection is closed but the client side doesn't know it yet
@@ -134,17 +147,23 @@ public class DefaultRedisProvider implements RedisProvider {
         return promise.future();
     }
 
-    private String createConnectString() {
+    private List<String> createConnectStrings() {
         RedisquesConfiguration config = configurationProvider.configuration();
         String redisPassword = config.getRedisPassword();
         String redisUser = config.getRedisUser();
-        StringBuilder connectionStringBuilder = new StringBuilder();
-        connectionStringBuilder.append(config.getRedisEnableTls() ? "rediss://" : "redis://");
+        StringBuilder connectionStringPrefixBuilder = new StringBuilder();
+        connectionStringPrefixBuilder.append(config.getRedisEnableTls() ? "rediss://" : "redis://");
         if (redisUser != null && !redisUser.isEmpty()) {
-            connectionStringBuilder.append(redisUser).append(":").append((redisPassword == null ? "" : redisPassword)).append("@");
+            connectionStringPrefixBuilder.append(redisUser).append(":").append((redisPassword == null ? "" : redisPassword)).append("@");
         }
-        connectionStringBuilder.append(config.getRedisHost()).append(":").append(config.getRedisPort());
-        return connectionStringBuilder.toString();
+        List<String> connectionString = new ArrayList<>();
+        String connectionStringPrefix = connectionStringPrefixBuilder.toString();
+        for (int i = 0; i < config.getRedisHosts().size(); i++) {
+            String host = config.getRedisHosts().get(i);
+            int port = config.getRedisPorts().get(i);
+            connectionString.add(connectionStringPrefix + host + ":" + port);
+        }
+        return connectionString;
     }
 
     private void attemptReconnect(int retry) {

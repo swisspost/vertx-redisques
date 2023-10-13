@@ -1,5 +1,4 @@
 package org.swisspush.redisques.util;
-
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 

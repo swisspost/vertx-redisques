@@ -87,12 +87,15 @@ public class RedisQuesTest extends AbstractTestCase {
 
             context.assertEquals(configuration.getString("redisHost"), "localhost");
             context.assertEquals(configuration.getInteger("redisPort"), 6379);
+
+            context.assertEquals(configuration.getJsonArray("redisHosts").getList(), Collections.singletonList("localhost"));
+            context.assertEquals(configuration.getJsonArray("redisPorts").getList(), Collections.singletonList(6379));
             context.assertFalse(configuration.getBoolean("redisEnableTls"));
 
             context.assertEquals(configuration.getString("redis-prefix"), "redisques:");
 
             context.assertEquals(configuration.getInteger("maxPoolSize"), 200);
-            context.assertEquals(configuration.getInteger("maxPoolWaitingSize"), -1);
+            context.assertEquals(configuration.getInteger("maxPoolWaitingSize"), Integer.MAX_VALUE);
             context.assertEquals(configuration.getInteger("maxPipelineWaitingSize"), 2048);
 
             context.assertEquals(configuration.getInteger("checkInterval"), 60);

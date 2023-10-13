@@ -14,7 +14,6 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mockito;
 import org.slf4j.Logger;
-import org.swisspush.redisques.lua.LuaScriptManager;
 import org.swisspush.redisques.util.MemoryUsageProvider;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 import org.swisspush.redisques.util.RedisProvider;
@@ -56,7 +55,7 @@ public class EnqueueActionTest {
 
         message = Mockito.mock(Message.class);
 
-        action = new EnqueueAction(vertx, Mockito.mock(LuaScriptManager.class), redisProvider,
+        action = new EnqueueAction(vertx, redisProvider,
                 "addr", "q-", "prefix-", "c-", "l-",
                 new ArrayList<>(), Mockito.mock(QueueStatisticsCollector.class), Mockito.mock(Logger.class), memoryUsageProvider, 80);
     }
