@@ -4,7 +4,6 @@ import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonObject;
 import org.slf4j.Logger;
-import org.swisspush.redisques.lua.LuaScriptManager;
 import org.swisspush.redisques.util.MemoryUsageProvider;
 import org.swisspush.redisques.util.QueueConfiguration;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
@@ -20,10 +19,10 @@ public class EnqueueAction extends AbstractQueueAction {
     private final MemoryUsageProvider memoryUsageProvider;
     private final int memoryUsageLimitPercent;
 
-    public EnqueueAction(Vertx vertx, LuaScriptManager luaScriptManager, RedisProvider redisProvider, String address, String queuesKey, String queuesPrefix,
+    public EnqueueAction(Vertx vertx, RedisProvider redisProvider, String address, String queuesKey, String queuesPrefix,
                          String consumersPrefix, String locksKey, List<QueueConfiguration> queueConfigurations,
                          QueueStatisticsCollector queueStatisticsCollector, Logger log, MemoryUsageProvider memoryUsageProvider, int memoryUsageLimitPercent) {
-        super(vertx, luaScriptManager, redisProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey, queueConfigurations,
+        super(vertx, redisProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey, queueConfigurations,
                 queueStatisticsCollector, log);
         this.memoryUsageProvider = memoryUsageProvider;
         this.memoryUsageLimitPercent = memoryUsageLimitPercent;

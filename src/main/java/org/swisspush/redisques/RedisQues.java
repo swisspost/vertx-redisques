@@ -12,7 +12,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.swisspush.redisques.action.QueueAction;
 import org.swisspush.redisques.handler.RedisquesHttpRequestHandler;
-import org.swisspush.redisques.lua.LuaScriptManager;
 import org.swisspush.redisques.util.*;
 
 import java.util.*;
@@ -91,8 +90,6 @@ public class RedisQues extends AbstractVerticle {
     private MemoryUsageProvider memoryUsageProvider;
     private QueueActionFactory queueActionFactory;
     private RedisquesConfigurationProvider configurationProvider;
-
-    private LuaScriptManager luaScriptManager;
 
     private Map<QueueOperation, QueueAction> queueActions = new HashMap<>();
 
@@ -195,8 +192,7 @@ public class RedisQues extends AbstractVerticle {
 
     private void initialize() {
         RedisquesConfiguration configuration = configurationProvider.configuration();
-        this.luaScriptManager = new LuaScriptManager(redisProvider);
-        this.queueStatisticsCollector = new QueueStatisticsCollector(redisProvider, luaScriptManager,
+        this.queueStatisticsCollector = new QueueStatisticsCollector(redisProvider,
                 queuesPrefix, vertx, configuration.getQueueSpeedIntervalSec());
 
         RedisquesHttpRequestHandler.init(vertx, configuration);
@@ -207,7 +203,7 @@ public class RedisQues extends AbstractVerticle {
                     configurationProvider.configuration().getMemoryUsageCheckIntervalSec());
         }
 
-        queueActionFactory = new QueueActionFactory(luaScriptManager, redisProvider, vertx, log,
+        queueActionFactory = new QueueActionFactory(redisProvider, vertx, log,
                 queuesKey, queuesPrefix, consumersPrefix, locksKey, queueStatisticsCollector, memoryUsageProvider,
                 configurationProvider);
 
@@ -356,13 +352,20 @@ public class RedisQues extends AbstractVerticle {
     }
 
     private void registerQueueCheck() {
-        vertx.setPeriodic(configurationProvider.configuration().getCheckIntervalTimerMs(), periodicEvent -> luaScriptManager.handleQueueCheck(queueCheckLastexecKey,
-                configurationProvider.configuration().getCheckInterval(), shouldCheck -> {
-                    if (shouldCheck) {
-                        log.info("periodic queue check is triggered now");
-                        checkQueues();
-                    }
-                }));
+        vertx.setPeriodic(configurationProvider.configuration().getCheckIntervalTimerMs(), periodicEvent ->
+        {
+            redisProvider.connection().onSuccess(conn -> {
+                conn.send(Request.cmd(Command.SET, queueCheckLastexecKey, System.currentTimeMillis(),
+                                "NX", "EX", configurationProvider.configuration().getCheckInterval()))
+                        .onFailure(throwable -> log.error("Unexepected queue check result")).onSuccess(response -> {
+                            log.info("periodic queue check is triggered now");
+                            checkQueues();
+                        });
+            }).onFailure(throwable -> {
+                log.warn("Redis: Failed to trigger queue check.", throwable);
+            });;
+
+        });
     }
 
     private void unsupportedOperation(String operation, Message<JsonObject> event) {

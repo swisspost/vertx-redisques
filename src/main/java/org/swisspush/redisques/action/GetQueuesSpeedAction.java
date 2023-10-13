@@ -5,7 +5,6 @@ import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonObject;
 import org.slf4j.Logger;
 import org.swisspush.redisques.handler.GetQueuesSpeedHandler;
-import org.swisspush.redisques.lua.LuaScriptManager;
 import org.swisspush.redisques.util.*;
 
 import java.util.List;
@@ -19,10 +18,10 @@ import static org.swisspush.redisques.util.RedisquesAPI.*;
  */
 public class GetQueuesSpeedAction extends AbstractQueueAction {
 
-    public GetQueuesSpeedAction(Vertx vertx, LuaScriptManager luaScriptManager, RedisProvider redisProvider, String address, String queuesKey, String queuesPrefix,
+    public GetQueuesSpeedAction(Vertx vertx, RedisProvider redisProvider, String address, String queuesKey, String queuesPrefix,
                                 String consumersPrefix, String locksKey, List<QueueConfiguration> queueConfigurations,
                                 QueueStatisticsCollector queueStatisticsCollector, Logger log) {
-        super(vertx, luaScriptManager, redisProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey, queueConfigurations,
+        super(vertx, redisProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey, queueConfigurations,
                 queueStatisticsCollector, log);
     }
 
