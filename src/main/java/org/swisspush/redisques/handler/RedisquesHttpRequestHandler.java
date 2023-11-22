@@ -18,13 +18,17 @@ import io.vertx.ext.web.RoutingContext;
 import io.vertx.ext.web.handler.BasicAuthHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.swisspush.redisques.RedisQues;
 import org.swisspush.redisques.util.RedisquesAPI;
 import org.swisspush.redisques.util.RedisquesConfiguration;
 import org.swisspush.redisques.util.Result;
 import org.swisspush.redisques.util.StatusCode;
 
 import java.nio.charset.StandardCharsets;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
@@ -53,16 +57,19 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     private static final String EMPTY_QUEUES_PARAM = "emptyQueues";
     private static final String DELETED = "deleted";
 
+    private static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("dd.MM.yyyy hh:mm:ss");
+
     private final String redisquesAddress;
     private final String userHeader;
     private final boolean enableQueueNameDecoding;
     private final int queueSpeedIntervalSec;
+    private final RedisQues redisQues;
 
-    public static void init(Vertx vertx, RedisquesConfiguration modConfig) {
+    public static void init(Vertx vertx, RedisquesConfiguration modConfig, RedisQues redisQues) {
         log.info("Enable http request handler: " + modConfig.getHttpRequestHandlerEnabled());
         if (modConfig.getHttpRequestHandlerEnabled()) {
             if (modConfig.getHttpRequestHandlerPort() != null && modConfig.getHttpRequestHandlerUserHeader() != null) {
-                RedisquesHttpRequestHandler handler = new RedisquesHttpRequestHandler(vertx, modConfig);
+                RedisquesHttpRequestHandler handler = new RedisquesHttpRequestHandler(vertx, modConfig, redisQues);
                 // in Vert.x 2x 100-continues was activated per default, in vert.x 3x it is off per default.
                 HttpServerOptions options = new HttpServerOptions().setHandle100ContinueAutomatically(true);
                 vertx.createHttpServer(options).requestHandler(handler).listen(modConfig.getHttpRequestHandlerPort(), result -> {
@@ -91,13 +98,14 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         return Result.ok(false);
     }
 
-    private RedisquesHttpRequestHandler(Vertx vertx, RedisquesConfiguration modConfig) {
+    private RedisquesHttpRequestHandler(Vertx vertx, RedisquesConfiguration modConfig, RedisQues redisQues) {
         this.router = Router.router(vertx);
         this.eventBus = vertx.eventBus();
         this.redisquesAddress = modConfig.getAddress();
         this.userHeader = modConfig.getHttpRequestHandlerUserHeader();
         this.enableQueueNameDecoding = modConfig.getEnableQueueNameDecoding();
         this.queueSpeedIntervalSec = modConfig.getQueueSpeedIntervalSec();
+        this.redisQues = redisQues;
 
         final String prefix = modConfig.getHttpRequestHandlerPrefix();
 
@@ -504,6 +512,10 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
                     if (limit > 0) {
                         queuesList = limitJsonQueueArray(queuesList, limit);
                     }
+                    Map<String, RedisQues.DequeueStatistic> processTimeList = redisQues.getDequeueStatistic();
+                    if (processTimeList.size() > 0){
+                        fillTheProcessTimeToQueuesList(queuesList, processTimeList);
+                    }
                     JsonObject resultObject = new JsonObject();
                     resultObject.put(QUEUES, queuesList);
                     jsonResponse(ctx.response(), resultObject);
@@ -517,6 +529,23 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
                 String error = "Error gathering names of active queues";
                 log.error(error);
                 respondWith(StatusCode.INTERNAL_SERVER_ERROR, error, ctx.request());
+            }
+        });
+    }
+
+    private void fillTheProcessTimeToQueuesList(List<JsonObject> queuesList, Map<String, RedisQues.DequeueStatistic> processTimeList) {
+        queuesList.forEach(entries -> {
+            String queueName = entries.getString(MONITOR_QUEUE_NAME);
+            entries.put(MONITOR_QUEUE_LAST_DEQUEUE_ATTEMPT, "");
+            entries.put(MONITOR_QUEUE_LAST_DEQUEUE_SUCCESS, "");
+            if (processTimeList.containsKey(queueName)) {
+                RedisQues.DequeueStatistic dequeueStatistic = processTimeList.get(queueName);
+                if (dequeueStatistic.lastDequeueAttemptTimestamp != null) {
+                    entries.put(MONITOR_QUEUE_LAST_DEQUEUE_ATTEMPT, DATE_FORMAT.format(new Date(dequeueStatistic.lastDequeueAttemptTimestamp)));
+                }
+                if (dequeueStatistic.lastDequeueAttemptTimestamp != null) {
+                    entries.put(MONITOR_QUEUE_LAST_DEQUEUE_SUCCESS, DATE_FORMAT.format(new Date(dequeueStatistic.lastDequeueSuccessTimestamp)));
+                }
             }
         });
     }
