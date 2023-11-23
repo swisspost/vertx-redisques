@@ -512,9 +512,9 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
                     if (limit > 0) {
                         queuesList = limitJsonQueueArray(queuesList, limit);
                     }
-                    Map<String, RedisQues.DequeueStatistic> processTimeList = redisQues.getDequeueStatistic();
-                    if (processTimeList.size() > 0){
-                        fillTheProcessTimeToQueuesList(queuesList, processTimeList);
+                    Map<String, RedisQues.DequeueStatistic> dequeueProcessStatistic = redisQues.getDequeueStatistic();
+                    if (dequeueProcessStatistic.size() > 0) {
+                        fillStatisticToQueuesList(queuesList, dequeueProcessStatistic);
                     }
                     JsonObject resultObject = new JsonObject();
                     resultObject.put(QUEUES, queuesList);
@@ -533,18 +533,22 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         });
     }
 
-    private void fillTheProcessTimeToQueuesList(List<JsonObject> queuesList, Map<String, RedisQues.DequeueStatistic> processTimeList) {
+    private void fillStatisticToQueuesList(List<JsonObject> queuesList, Map<String, RedisQues.DequeueStatistic> dequeueProcessStatistic) {
         queuesList.forEach(entries -> {
             String queueName = entries.getString(MONITOR_QUEUE_NAME);
             entries.put(MONITOR_QUEUE_LAST_DEQUEUE_ATTEMPT, "");
             entries.put(MONITOR_QUEUE_LAST_DEQUEUE_SUCCESS, "");
-            if (processTimeList.containsKey(queueName)) {
-                RedisQues.DequeueStatistic dequeueStatistic = processTimeList.get(queueName);
+            entries.put(MONITOR_QUEUE_NEXT_DEQUEUE_DUE_TS, "");
+            if (dequeueProcessStatistic.containsKey(queueName)) {
+                RedisQues.DequeueStatistic dequeueStatistic = dequeueProcessStatistic.get(queueName);
                 if (dequeueStatistic.lastDequeueAttemptTimestamp != null) {
                     entries.put(MONITOR_QUEUE_LAST_DEQUEUE_ATTEMPT, DATE_FORMAT.format(new Date(dequeueStatistic.lastDequeueAttemptTimestamp)));
                 }
-                if (dequeueStatistic.lastDequeueAttemptTimestamp != null) {
+                if (dequeueStatistic.lastDequeueSuccessTimestamp != null) {
                     entries.put(MONITOR_QUEUE_LAST_DEQUEUE_SUCCESS, DATE_FORMAT.format(new Date(dequeueStatistic.lastDequeueSuccessTimestamp)));
+                }
+                if (dequeueStatistic.nextDequeueDueTimestamp != null) {
+                    entries.put(MONITOR_QUEUE_NEXT_DEQUEUE_DUE_TS, dequeueStatistic.nextDequeueDueTimestamp.toString());
                 }
             }
         });

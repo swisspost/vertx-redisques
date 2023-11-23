@@ -43,6 +43,7 @@ public class RedisquesAPI {
     public static final String MONITOR_QUEUE_SIZE = "size";
     public static final String MONITOR_QUEUE_LAST_DEQUEUE_ATTEMPT = "lastDequeueAttempt";
     public static final String MONITOR_QUEUE_LAST_DEQUEUE_SUCCESS = "lastDequeueSuccess";
+    public static final String MONITOR_QUEUE_NEXT_DEQUEUE_DUE_TS = "nextDequeueDueTimestamp";
     public static final String STATISTIC_QUEUE_FAILURES = "failures";
     public static final String STATISTIC_QUEUE_BACKPRESSURE = "backpressureTime";
     public static final String STATISTIC_QUEUE_SLOWDOWN = "slowdownTime";
