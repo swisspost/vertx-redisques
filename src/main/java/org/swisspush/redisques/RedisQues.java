@@ -598,7 +598,7 @@ public class RedisQues extends AbstractVerticle {
                     }
                     if (answer.result() != null) {
                         dequeueStatistic.computeIfAbsent(queueName, s -> new DequeueStatistic());
-                        dequeueStatistic.get(queueName).lastDequeueAttemptTimestamp = new Date().getTime();
+                        dequeueStatistic.get(queueName).lastDequeueAttemptTimestamp = System.currentTimeMillis();
                         processMessageWithTimeout(queueName, answer.result().toString(), success -> {
 
                             // update the queue failure count and get a retry interval
@@ -685,7 +685,7 @@ public class RedisQues extends AbstractVerticle {
             log.trace("RedsQues reschedule after failure for queue: {}", queueName);
         }
         long retryDelayInMills = retryInSeconds * 1000L;
-        dequeueStatistic.get(queueName).nextDequeueDueTimestamp = new Date().getTime() + retryDelayInMills;
+        dequeueStatistic.get(queueName).nextDequeueDueTimestamp = System.currentTimeMillis() + retryDelayInMills;
         vertx.setTimer(retryDelayInMills, timerId -> {
             if (log.isDebugEnabled()) {
                 log.debug("RedisQues re-notify the consumer of queue '{}' at {}", queueName, new Date(System.currentTimeMillis()));
@@ -723,7 +723,7 @@ public class RedisQues extends AbstractVerticle {
                 boolean success;
                 if (reply.succeeded()) {
                     success = OK.equals(reply.result().body().getString(STATUS));
-                    dequeueStatistic.get(queue).lastDequeueSuccessTimestamp = new Date().getTime();
+                    dequeueStatistic.get(queue).lastDequeueSuccessTimestamp = System.currentTimeMillis();
                     dequeueStatistic.get(queue).nextDequeueDueTimestamp = null;
                 } else {
                     log.info("RedisQues QUEUE_ERROR: Consumer failed {} queue: {} ({})", uid, queue, reply.cause().getMessage());

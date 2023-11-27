@@ -513,9 +513,8 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
                         queuesList = limitJsonQueueArray(queuesList, limit);
                     }
                     Map<String, RedisQues.DequeueStatistic> dequeueProcessStatistic = redisQues.getDequeueStatistic();
-                    if (dequeueProcessStatistic.size() > 0) {
-                        fillStatisticToQueuesList(queuesList, dequeueProcessStatistic);
-                    }
+                    fillStatisticToQueuesList(queuesList, dequeueProcessStatistic);
+
                     JsonObject resultObject = new JsonObject();
                     resultObject.put(QUEUES, queuesList);
                     jsonResponse(ctx.response(), resultObject);
@@ -548,7 +547,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
                     entries.put(MONITOR_QUEUE_LAST_DEQUEUE_SUCCESS, DATE_FORMAT.format(new Date(dequeueStatistic.lastDequeueSuccessTimestamp)));
                 }
                 if (dequeueStatistic.nextDequeueDueTimestamp != null) {
-                    entries.put(MONITOR_QUEUE_NEXT_DEQUEUE_DUE_TS, dequeueStatistic.nextDequeueDueTimestamp.toString());
+                    entries.put(MONITOR_QUEUE_NEXT_DEQUEUE_DUE_TS, DATE_FORMAT.format(new Date(dequeueStatistic.nextDequeueDueTimestamp)));
                 }
             }
         });
