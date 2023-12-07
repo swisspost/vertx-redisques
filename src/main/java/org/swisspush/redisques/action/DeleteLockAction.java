@@ -18,23 +18,29 @@ import static org.swisspush.redisques.util.RedisquesAPI.QUEUENAME;
 
 public class DeleteLockAction extends AbstractQueueAction {
 
-    public DeleteLockAction(Vertx vertx, RedisProvider redisProvider, String address, String queuesKey, String queuesPrefix,
-                            String consumersPrefix, String locksKey, List<QueueConfiguration> queueConfigurations,
-                            QueueStatisticsCollector queueStatisticsCollector, Logger log) {
-        super(vertx, redisProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey, queueConfigurations,
-                queueStatisticsCollector, log);
+    public DeleteLockAction(
+            Vertx vertx, RedisProvider redisProvider, String address, String queuesKey, String queuesPrefix,
+            String consumersPrefix, String locksKey, List<QueueConfiguration> queueConfigurations,
+            QueueStatisticsCollector queueStatisticsCollector, Logger log
+    ) {
+        super(vertx, redisProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey,
+                queueConfigurations, queueStatisticsCollector, log);
     }
 
     @Override
     public void execute(Message<JsonObject> event) {
         String queueName = event.body().getJsonObject(PAYLOAD).getString(QUEUENAME);
-        redisProvider.redis().onSuccess(redisAPI ->
-                        redisAPI.exists(Collections.singletonList(queuesPrefix + queueName), event1 -> {
-                            if (event1.succeeded() && event1.result() != null && event1.result().toInteger() == 1) {
-                                notifyConsumer(queueName);
-                            }
-                            redisAPI.hdel(Arrays.asList(locksKey, queueName), new DeleteLockHandler(event));
-                        }))
-                .onFailure(replyErrorMessageHandler(event));
+        var p = redisProvider.redis();
+        p.onSuccess(redisAPI -> {
+            redisAPI.exists(Collections.singletonList(queuesPrefix + queueName), event1 -> {
+                if( event1.failed() ) log.warn("Concealed error", new Exception(event1.cause()));
+                if (event1.succeeded() && event1.result() != null && event1.result().toInteger() == 1) {
+                    notifyConsumer(queueName);
+                }
+                redisAPI.hdel(Arrays.asList(locksKey, queueName), new DeleteLockHandler(event));
+            });
+        });
+        p.onFailure(ex -> replyErrorMessageHandler(event).handle(ex));
     }
+
 }

@@ -19,11 +19,14 @@ public class EnqueueAction extends AbstractQueueAction {
     private final MemoryUsageProvider memoryUsageProvider;
     private final int memoryUsageLimitPercent;
 
-    public EnqueueAction(Vertx vertx, RedisProvider redisProvider, String address, String queuesKey, String queuesPrefix,
-                         String consumersPrefix, String locksKey, List<QueueConfiguration> queueConfigurations,
-                         QueueStatisticsCollector queueStatisticsCollector, Logger log, MemoryUsageProvider memoryUsageProvider, int memoryUsageLimitPercent) {
-        super(vertx, redisProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey, queueConfigurations,
-                queueStatisticsCollector, log);
+    public EnqueueAction(
+            Vertx vertx, RedisProvider redisProvider, String address, String queuesKey, String queuesPrefix,
+            String consumersPrefix, String locksKey, List<QueueConfiguration> queueConfigurations,
+            QueueStatisticsCollector queueStatisticsCollector, Logger log, MemoryUsageProvider memoryUsageProvider,
+            int memoryUsageLimitPercent
+    ) {
+        super(vertx, redisProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey,
+                queueConfigurations, queueStatisticsCollector, log);
         this.memoryUsageProvider = memoryUsageProvider;
         this.memoryUsageLimitPercent = memoryUsageLimitPercent;
     }
@@ -45,7 +48,8 @@ public class EnqueueAction extends AbstractQueueAction {
             String keyEnqueue = queuesPrefix + queueName;
             String valueEnqueue = event.body().getString(MESSAGE);
 
-            redisProvider.redis().onSuccess(redisAPI -> redisAPI.rpush(Arrays.asList(keyEnqueue, valueEnqueue)).onComplete(enqueueEvent -> {
+            var p = redisProvider.redis();
+            p.onSuccess(redisAPI -> redisAPI.rpush(Arrays.asList(keyEnqueue, valueEnqueue)).onComplete(enqueueEvent -> {
                 JsonObject reply = new JsonObject();
                 if (enqueueEvent.succeeded()) {
                     if (log.isDebugEnabled()) {
@@ -79,13 +83,13 @@ public class EnqueueAction extends AbstractQueueAction {
                 } else {
                     replyError(event, queueName, enqueueEvent.cause());
                 }
-            })).onFailure(throwable -> replyError(event, queueName, throwable));
+            })).onFailure(ex -> replyError(event, queueName, ex));
         });
     }
 
-    private void replyError(Message<JsonObject> event, String queueName, Throwable cause) {
+    private void replyError(Message<JsonObject> event, String queueName, Throwable ex) {
         String message = "RedisQues QUEUE_ERROR: Error while enqueueing message into queue " + queueName;
-        log.error(message, cause);
+        log.error(message, new Exception(ex));
         JsonObject reply = new JsonObject();
         reply.put(STATUS, ERROR);
         reply.put(MESSAGE, message);

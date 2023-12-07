@@ -51,7 +51,10 @@ public abstract class AbstractQueueAction implements QueueAction {
     }
 
     protected Handler<Throwable> replyErrorMessageHandler(Message<JsonObject> event) {
-        return throwable -> event.reply(new JsonObject().put(STATUS, ERROR));
+        return ex -> {
+            log.warn("Concealed error", new Exception(ex));
+            event.reply(new JsonObject().put(STATUS, ERROR));
+        };
     }
 
     protected long getMaxAgeTimestamp() {
