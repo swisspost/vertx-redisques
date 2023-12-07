@@ -39,7 +39,8 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
             Message<JsonObject> event,
             Optional<Pattern> filterPattern,
             String queuesPrefix,
-            RedisProvider redisProvider) {
+            RedisProvider redisProvider
+    ) {
         this.event = event;
         this.filterPattern = filterPattern;
         this.queuesPrefix = queuesPrefix;
@@ -57,17 +58,18 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
                 return;
             }
 
-
             redisProvider.connection().onSuccess(conn -> {
-                List<Future> responses = queues.stream().map(queue -> conn.send(Request.cmd(Command.LLEN, queuesPrefix + queue))
-                ).collect(Collectors.toList());
-                CompositeFuture.all(responses).onFailure(throwable -> {
-                    log.error("Unexepected queue length result");
+                List<Future> responses = queues.stream()
+                        .map(queue -> conn.send(Request.cmd(Command.LLEN, queuesPrefix + queue)))
+                        .collect(Collectors.toList());
+                CompositeFuture.all(responses).onFailure(ex -> {
+                    log.error("Unexpected queue length result", new Exception(ex));
                     event.reply(new JsonObject().put(STATUS, ERROR));
                 }).onSuccess(compositeFuture -> {
                     List<NumberType> queueLengthList = compositeFuture.list();
                     if (queueLengthList == null) {
-                        log.error("Unexepected queue length result null");
+                        log.error("Unexpected queue length result null",
+                                new Exception(compositeFuture.cause()));
                         event.reply(new JsonObject().put(STATUS, ERROR));
                         return;
                     }
@@ -87,12 +89,13 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
                     event.reply(new JsonObject().put(RedisquesAPI.STATUS, RedisquesAPI.OK)
                             .put(QUEUES, result));
                 });
-            }).onFailure(throwable -> {
-                log.warn("Redis: Failed to get queue length.", throwable);
+            }).onFailure(ex -> {
+                log.warn("Redis: Failed to get queue length.", new Exception(ex));
                 event.reply(new JsonObject().put(STATUS, ERROR));
             });
 
         } else {
+            log.warn("Concealed error", new Exception(handleQueues.cause()));
             event.reply(new JsonObject().put(STATUS, ERROR));
         }
     }

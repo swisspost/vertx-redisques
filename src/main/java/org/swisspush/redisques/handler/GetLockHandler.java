@@ -5,8 +5,14 @@ import io.vertx.core.Handler;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonObject;
 import io.vertx.redis.client.Response;
+import org.slf4j.Logger;
 
-import static org.swisspush.redisques.util.RedisquesAPI.*;
+import static org.slf4j.LoggerFactory.getLogger;
+import static org.swisspush.redisques.util.RedisquesAPI.ERROR;
+import static org.swisspush.redisques.util.RedisquesAPI.NO_SUCH_LOCK;
+import static org.swisspush.redisques.util.RedisquesAPI.OK;
+import static org.swisspush.redisques.util.RedisquesAPI.STATUS;
+import static org.swisspush.redisques.util.RedisquesAPI.VALUE;
 
 /**
  * Class GetLockHandler.
@@ -14,6 +20,8 @@ import static org.swisspush.redisques.util.RedisquesAPI.*;
  * @author baldim
  */
 public class GetLockHandler implements Handler<AsyncResult<Response>> {
+
+    private static final Logger log = getLogger(GetLockHandler.class);
     private final Message<JsonObject> event;
 
     public GetLockHandler(Message<JsonObject> event) {
@@ -29,7 +37,9 @@ public class GetLockHandler implements Handler<AsyncResult<Response>> {
                 event.reply(new JsonObject().put(STATUS, NO_SUCH_LOCK));
             }
         } else {
+            log.warn("Concealed error", new Exception(reply.cause()));
             event.reply(new JsonObject().put(STATUS, ERROR));
         }
     }
+
 }
