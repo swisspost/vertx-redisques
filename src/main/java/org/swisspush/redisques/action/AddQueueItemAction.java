@@ -16,19 +16,22 @@ import static org.swisspush.redisques.util.RedisquesAPI.*;
 
 public class AddQueueItemAction extends AbstractQueueAction {
 
-    public AddQueueItemAction(Vertx vertx, RedisProvider redisProvider, String address, String queuesKey, String queuesPrefix,
-                              String consumersPrefix, String locksKey, List<QueueConfiguration> queueConfigurations,
-                              QueueStatisticsCollector queueStatisticsCollector, Logger log) {
-        super(vertx, redisProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey, queueConfigurations,
-                queueStatisticsCollector, log);
+    public AddQueueItemAction(
+            Vertx vertx, RedisProvider redisProvider, String address, String queuesKey, String queuesPrefix,
+            String consumersPrefix, String locksKey, List<QueueConfiguration> queueConfigurations,
+            QueueStatisticsCollector queueStatisticsCollector, Logger log
+    ) {
+        super(vertx, redisProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey,
+                queueConfigurations, queueStatisticsCollector, log);
     }
 
     @Override
     public void execute(Message<JsonObject> event) {
         String key1 = queuesPrefix + event.body().getJsonObject(PAYLOAD).getString(QUEUENAME);
         String valueAddItem = event.body().getJsonObject(PAYLOAD).getString(BUFFER);
-        redisProvider.redis().onSuccess(
-                        redisAPI -> redisAPI.rpush(Arrays.asList(key1, valueAddItem), new AddQueueItemHandler(event)))
-                .onFailure(replyErrorMessageHandler(event));
+        var p = redisProvider.redis();
+        p.onSuccess(redisAPI -> redisAPI.rpush(Arrays.asList(key1, valueAddItem), new AddQueueItemHandler(event)));
+        p.onFailure(ex -> replyErrorMessageHandler(event).handle(ex));
     }
+
 }

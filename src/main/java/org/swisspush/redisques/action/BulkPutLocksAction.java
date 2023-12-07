@@ -16,12 +16,13 @@ import static org.swisspush.redisques.util.RedisquesAPI.*;
 
 public class BulkPutLocksAction extends AbstractQueueAction {
 
-
-    public BulkPutLocksAction(Vertx vertx, RedisProvider redisProvider, String address, String queuesKey, String queuesPrefix,
-                              String consumersPrefix, String locksKey, List<QueueConfiguration> queueConfigurations,
-                              QueueStatisticsCollector queueStatisticsCollector, Logger log) {
-        super(vertx, redisProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey, queueConfigurations,
-                queueStatisticsCollector, log);
+    public BulkPutLocksAction(
+            Vertx vertx, RedisProvider redisProvider, String address, String queuesKey, String queuesPrefix,
+            String consumersPrefix, String locksKey, List<QueueConfiguration> queueConfigurations,
+            QueueStatisticsCollector queueStatisticsCollector, Logger log
+    ) {
+        super(vertx, redisProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey,
+                queueConfigurations, queueStatisticsCollector, log);
     }
 
     @Override
@@ -43,8 +44,11 @@ public class BulkPutLocksAction extends AbstractQueueAction {
             return;
         }
 
-        redisProvider.redis().onSuccess(redisAPI ->
-                        redisAPI.hmset(buildLocksItems(locksKey, locks, lockInfo), new PutLockHandler(event)))
-                .onFailure(replyErrorMessageHandler(event));
+        var p = redisProvider.redis();
+        p.onSuccess(redisAPI -> {
+            redisAPI.hmset(buildLocksItems(locksKey, locks, lockInfo), new PutLockHandler(event));
+        });
+        p.onFailure(ex -> replyErrorMessageHandler(event).handle(ex));
     }
+
 }

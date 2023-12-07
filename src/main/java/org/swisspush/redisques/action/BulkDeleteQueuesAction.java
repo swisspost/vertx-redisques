@@ -15,11 +15,13 @@ import static org.swisspush.redisques.util.RedisquesAPI.*;
 
 public class BulkDeleteQueuesAction extends AbstractQueueAction {
 
-    public BulkDeleteQueuesAction(Vertx vertx, RedisProvider redisProvider, String address, String queuesKey, String queuesPrefix,
-                                  String consumersPrefix, String locksKey, List<QueueConfiguration> queueConfigurations,
-                                  QueueStatisticsCollector queueStatisticsCollector, Logger log) {
-        super(vertx, redisProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey, queueConfigurations,
-                queueStatisticsCollector, log);
+    public BulkDeleteQueuesAction(
+            Vertx vertx, RedisProvider redisProvider, String address, String queuesKey, String queuesPrefix,
+            String consumersPrefix, String locksKey, List<QueueConfiguration> queueConfigurations,
+            QueueStatisticsCollector queueStatisticsCollector, Logger log
+    ) {
+        super(vertx, redisProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey,
+                queueConfigurations, queueStatisticsCollector, log);
     }
 
     @Override
@@ -39,15 +41,17 @@ public class BulkDeleteQueuesAction extends AbstractQueueAction {
             event.reply(createErrorReply().put(ERROR_TYPE, BAD_INPUT).put(MESSAGE, "Queues must be string values"));
             return;
         }
-        redisProvider.redis().onSuccess(redisAPI -> redisAPI.del(buildQueueKeys(queues), delManyReply -> {
-                    queueStatisticsCollector.resetQueueStatistics(queues);
-                    if (delManyReply.succeeded()) {
-                        event.reply(createOkReply().put(VALUE, delManyReply.result().toLong()));
-                    } else {
-                        log.error("Failed to bulkDeleteQueues", delManyReply.cause());
-                        event.reply(createErrorReply());
-                    }
-                }))
-                .onFailure(replyErrorMessageHandler(event));
+        var p = redisProvider.redis();
+        p.onSuccess(redisAPI -> redisAPI.del(buildQueueKeys(queues), delManyReply -> {
+            queueStatisticsCollector.resetQueueStatistics(queues);
+            if (delManyReply.succeeded()) {
+                event.reply(createOkReply().put(VALUE, delManyReply.result().toLong()));
+            } else {
+                log.error("Failed to bulkDeleteQueues", new Exception(delManyReply.cause()));
+                event.reply(createErrorReply());
+            }
+        }));
+        p.onFailure(ex -> replyErrorMessageHandler(event).handle(ex));
     }
+
 }
