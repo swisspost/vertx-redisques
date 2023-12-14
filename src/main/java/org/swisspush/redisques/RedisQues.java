@@ -96,12 +96,6 @@ public class RedisQues extends AbstractVerticle {
 
     private Map<String, DequeueStatistic> dequeueStatistic = new ConcurrentHashMap<>();
 
-    public class DequeueStatistic{
-        public Long lastDequeueAttemptTimestamp;
-        public Long lastDequeueSuccessTimestamp;
-        public Long nextDequeueDueTimestamp;
-    }
-
     public RedisQues() {
     }
 
@@ -110,10 +104,6 @@ public class RedisQues extends AbstractVerticle {
         this.memoryUsageProvider = memoryUsageProvider;
         this.configurationProvider = configurationProvider;
         this.redisProvider = redisProvider;
-    }
-
-    public Map<String, DequeueStatistic> getDequeueStatistic() {
-        return dequeueStatistic;
     }
 
     public static RedisQuesBuilder builder() {
@@ -181,6 +171,14 @@ public class RedisQues extends AbstractVerticle {
         RedisquesConfiguration modConfig = configurationProvider.configuration();
         log.info("Starting Redisques module with configuration: {}", configurationProvider.configuration());
 
+        int dequeueStatisticReportInterval = modConfig.getDequeueStatisticReportIntervalSec();
+        if (dequeueStatisticReportInterval > 0) {
+            vertx.setPeriodic(1000L * dequeueStatisticReportInterval, handler -> {
+                dequeueStatistic.forEach((queueName, dequeueStatistic) ->
+                        queueStatisticsCollector.setDequeueStatistic(queueName, dequeueStatistic));
+            });
+        }
+
         queuesKey = modConfig.getRedisPrefix() + "queues";
         queuesPrefix = modConfig.getRedisPrefix() + "queues:";
         consumersPrefix = modConfig.getRedisPrefix() + "consumers:";
@@ -208,7 +206,7 @@ public class RedisQues extends AbstractVerticle {
         this.queueStatisticsCollector = new QueueStatisticsCollector(redisProvider,
                 queuesPrefix, vertx, configuration.getQueueSpeedIntervalSec());
 
-        RedisquesHttpRequestHandler.init(vertx, configuration, this);
+        RedisquesHttpRequestHandler.init(vertx, configuration, queueStatisticsCollector);
 
         // only initialize memoryUsageProvider when not provided in the constructor
         if (memoryUsageProvider == null) {

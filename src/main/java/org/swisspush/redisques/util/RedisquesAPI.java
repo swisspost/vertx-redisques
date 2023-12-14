@@ -41,13 +41,14 @@ public class RedisquesAPI {
 
     public static final String MONITOR_QUEUE_NAME = "name";
     public static final String MONITOR_QUEUE_SIZE = "size";
-    public static final String MONITOR_QUEUE_LAST_DEQUEUE_ATTEMPT = "lastDequeueAttempt";
-    public static final String MONITOR_QUEUE_LAST_DEQUEUE_SUCCESS = "lastDequeueSuccess";
-    public static final String MONITOR_QUEUE_NEXT_DEQUEUE_DUE_TS = "nextDequeueDueTimestamp";
+    public static final String STATISTIC_QUEUE_LAST_DEQUEUE_ATTEMPT = "lastDequeueAttempt";
+    public static final String STATISTIC_QUEUE_LAST_DEQUEUE_SUCCESS = "lastDequeueSuccess";
+    public static final String STATISTIC_QUEUE_NEXT_DEQUEUE_DUE_TS = "nextDequeueDueTimestamp";
     public static final String STATISTIC_QUEUE_FAILURES = "failures";
     public static final String STATISTIC_QUEUE_BACKPRESSURE = "backpressureTime";
     public static final String STATISTIC_QUEUE_SLOWDOWN = "slowdownTime";
     public static final String STATISTIC_QUEUE_SPEED = "speed";
+    public final static String STATISTIC_QUEUE_DEQUEUESTATISTIC = "dequeueStatistic";
     public static final String STATISTIC_QUEUE_SPEED_INTERVAL_UNIT= "unitSec";
 
     private static final Logger log = LoggerFactory.getLogger(RedisquesAPI.class);

@@ -11,6 +11,9 @@ import io.vertx.redis.client.Response;
 import java.util.List;
 import java.util.Optional;
 import java.util.regex.Pattern;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.swisspush.redisques.util.HandlerUtil;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 
@@ -20,6 +23,7 @@ import org.swisspush.redisques.util.QueueStatisticsCollector;
  */
 public class GetQueuesStatisticsHandler implements Handler<AsyncResult<Response>> {
 
+    private static final Logger log = LoggerFactory.getLogger(GetQueuesStatisticsHandler.class);
     private final Message<JsonObject> event;
     private final Optional<Pattern> filterPattern;
     private final QueueStatisticsCollector queueStatisticsCollector;
@@ -36,8 +40,13 @@ public class GetQueuesStatisticsHandler implements Handler<AsyncResult<Response>
     public void handle(AsyncResult<Response> handleQueues) {
         if (handleQueues.succeeded()) {
             List<String> queues = HandlerUtil
-                .filterByPattern(handleQueues.result(), filterPattern);
-            queueStatisticsCollector.getQueueStatistics(event, queues);
+                    .filterByPattern(handleQueues.result(), filterPattern);
+            queueStatisticsCollector.getQueueStatistics(queues)
+                    .onFailure(ex -> {
+                        log.error("", ex);
+                        event.reply(new JsonObject().put(STATUS, ERROR));
+                    })
+                    .onSuccess(event::reply);
         } else {
             event.reply(new JsonObject().put(STATUS, ERROR));
         }
