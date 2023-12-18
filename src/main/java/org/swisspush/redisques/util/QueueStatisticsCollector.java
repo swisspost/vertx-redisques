@@ -5,7 +5,6 @@ import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.Message;
-import io.vertx.core.json.Json;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.redis.client.Command;
@@ -25,7 +24,6 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
-import static org.swisspush.redisques.util.RedisquesAPI.ERROR;
 import static org.swisspush.redisques.util.RedisquesAPI.MONITOR_QUEUE_NAME;
 import static org.swisspush.redisques.util.RedisquesAPI.MONITOR_QUEUE_SIZE;
 import static org.swisspush.redisques.util.RedisquesAPI.OK;
@@ -59,7 +57,7 @@ public class QueueStatisticsCollector {
     private final static String QUEUE_FAILURES = "failures";
     private final static String QUEUE_BACKPRESSURE = "backpressureTime";
     private final static String QUEUE_SLOWDOWNTIME = "slowdownTime";
-    private final static String QUEUE_DEQUEUESTATISTIC = "dequeueStatistic";
+    private final static String QUEUE_DEQUEUE_STATISTIC = "dequeueStatistic";
 
     private final Map<String, AtomicLong> queueFailureCount = new HashMap<>();
     private final Map<String, Long> queueBackpressureTime = new HashMap<>();
@@ -303,10 +301,10 @@ public class QueueStatisticsCollector {
     }
 
     /**
-     * Set the {@link DequeueStatistic} for the given queue. Note that this is done in memory
-     * but as well persisted on redis.
+     * Sets the {@link DequeueStatistic} for the given queue. Note that this is done in memory
+     * but as well persisted in redis.
      *
-     * @param queueName The name of the queue for which the value must be set.
+     * @param queueName The name of the queue for which the stats must be set.
      * @param dequeueStatistic The {@link DequeueStatistic}
      */
     public void setDequeueStatistic(String queueName, DequeueStatistic dequeueStatistic) {
@@ -343,7 +341,7 @@ public class QueueStatisticsCollector {
             obj.put(QUEUE_FAILURES, failures);
             obj.put(QUEUE_SLOWDOWNTIME, slowDownTime);
             obj.put(QUEUE_BACKPRESSURE, backpressureTime);
-            obj.put(QUEUE_DEQUEUESTATISTIC, JsonObject.mapFrom(dequeueStatistic));
+            obj.put(QUEUE_DEQUEUE_STATISTIC, JsonObject.mapFrom(dequeueStatistic));
             redisProvider.redis().onSuccess(redisAPI -> redisAPI.hset(List.of(STATSKEY, queueName, obj.toString()),
                     emptyHandler -> {
                     })).onFailure(throwable -> log.error("Redis: Error in updateStatisticsInRedis", throwable));
@@ -428,7 +426,7 @@ public class QueueStatisticsCollector {
                     .put(STATISTIC_QUEUE_BACKPRESSURE, backpressureTime)
                     .put(STATISTIC_QUEUE_SLOWDOWN, slowdownTime)
                     .put(STATISTIC_QUEUE_SPEED, speed)
-                    .put(QUEUE_DEQUEUESTATISTIC, dequeueStatistic);
+                    .put(QUEUE_DEQUEUE_STATISTIC, dequeueStatistic);
         }
     }
 
@@ -454,11 +452,11 @@ public class QueueStatisticsCollector {
             List<Future> responses = queues.stream().map(queue -> conn.send(Request.cmd(Command.LLEN, queuePrefix + queue))
             ).collect(Collectors.toList());
             CompositeFuture.all(responses).onFailure(throwable -> {
-                promise.fail("Unexepected queue length result");
+                promise.fail("Unexpected queue length result");
             }).onSuccess(compositeFuture -> {
                 List<NumberType> queueLengthList = compositeFuture.list();
                 if (queueLengthList == null) {
-                    promise.fail("Unexepected queue length result null");
+                    promise.fail("Unexpected queue length result null");
                     return;
                 }
                 if (queueLengthList.size() != queues.size()) {
@@ -492,8 +490,8 @@ public class QueueStatisticsCollector {
                             queueStatistic.setFailures(jObj.getLong(QUEUE_FAILURES, 0L));
                             queueStatistic.setBackpressureTime(jObj.getLong(QUEUE_BACKPRESSURE, 0L));
                             queueStatistic.setSlowdownTime(jObj.getLong(QUEUE_SLOWDOWNTIME, 0L));
-                            if (jObj.containsKey(QUEUE_DEQUEUESTATISTIC)) {
-                                queueStatistic.setDequeueStatistic(jObj.getJsonObject(QUEUE_DEQUEUESTATISTIC).mapTo(DequeueStatistic.class));
+                            if (jObj.containsKey(QUEUE_DEQUEUE_STATISTIC)) {
+                                queueStatistic.setDequeueStatistic(jObj.getJsonObject(QUEUE_DEQUEUE_STATISTIC).mapTo(DequeueStatistic.class));
                             }
                         }
                     }
