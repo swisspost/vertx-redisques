@@ -78,7 +78,9 @@ public class DefaultRedisquesConfigurationProvider implements RedisquesConfigura
         if (configurationValues == null) {
             return Collections.emptyList();
         }
-        return configurationValues.stream().filter(p -> !ALLOWED_CONFIGURATION_VALUES.contains(p)).collect(Collectors.toList());
+        return configurationValues.stream()
+                .filter(p -> !ALLOWED_CONFIGURATION_VALUES.contains(p))
+                .collect(Collectors.toList());
     }
 
     private void changeProperty(Long propertyValue, String propertyName){

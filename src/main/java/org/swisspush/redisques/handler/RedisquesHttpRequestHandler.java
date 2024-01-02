@@ -577,7 +577,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
                 }
             } else {
                 String error = "Error gathering names of active queues";
-                log.error(error);
+                log.error(error, reply.cause());
                 respondWith(StatusCode.INTERNAL_SERVER_ERROR, error, ctx.request());
             }
         });
@@ -644,6 +644,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     private void getQueuesCount(RoutingContext ctx) {
         String filter = ctx.request().params().get(FILTER);
         eventBus.request(redisquesAddress, buildGetQueuesCountOperation(filter), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
+            if( reply.failed() ) log.warn("TODO error handling", reply.cause());
             if (reply.succeeded() && OK.equals(reply.result().body().getString(STATUS))) {
                 JsonObject result = new JsonObject();
                 result.put(COUNT, reply.result().body().getLong(VALUE));
@@ -663,6 +664,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     private void listQueues(RoutingContext ctx) {
         String filter = ctx.request().params().get(FILTER);
         eventBus.request(redisquesAddress, buildGetQueuesOperation(filter), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
+            if( reply.failed() ) log.warn("TODO error handling", reply.cause());
             if (reply.succeeded() && OK.equals(reply.result().body().getString(STATUS))) {
                 jsonResponse(ctx.response(), reply.result().body().getJsonObject(VALUE));
             } else {

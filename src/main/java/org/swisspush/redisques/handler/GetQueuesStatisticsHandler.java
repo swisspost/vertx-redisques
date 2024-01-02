@@ -1,21 +1,21 @@
 package org.swisspush.redisques.handler;
 
-import static org.swisspush.redisques.util.RedisquesAPI.ERROR;
-import static org.swisspush.redisques.util.RedisquesAPI.STATUS;
-
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Handler;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonObject;
 import io.vertx.redis.client.Response;
-import java.util.List;
-import java.util.Optional;
-import java.util.regex.Pattern;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.swisspush.redisques.util.HandlerUtil;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
+
+import java.util.List;
+import java.util.Optional;
+import java.util.regex.Pattern;
+
+import static org.swisspush.redisques.util.RedisquesAPI.ERROR;
+import static org.swisspush.redisques.util.RedisquesAPI.STATUS;
 
 /**
  * Retrieves in it's AsyncResult handler for all given queue names the queue statistics information
@@ -28,9 +28,11 @@ public class GetQueuesStatisticsHandler implements Handler<AsyncResult<Response>
     private final Optional<Pattern> filterPattern;
     private final QueueStatisticsCollector queueStatisticsCollector;
 
-    public GetQueuesStatisticsHandler(Message<JsonObject> event,
-        Optional<Pattern> filterPattern,
-        QueueStatisticsCollector queueStatisticsCollector) {
+    public GetQueuesStatisticsHandler(
+            Message<JsonObject> event,
+            Optional<Pattern> filterPattern,
+            QueueStatisticsCollector queueStatisticsCollector
+    ) {
         this.event = event;
         this.filterPattern = filterPattern;
         this.queueStatisticsCollector = queueStatisticsCollector;
@@ -48,7 +50,9 @@ public class GetQueuesStatisticsHandler implements Handler<AsyncResult<Response>
                     })
                     .onSuccess(event::reply);
         } else {
+            log.warn("Concealed error", new Exception(handleQueues.cause()));
             event.reply(new JsonObject().put(STATUS, ERROR));
         }
     }
+
 }

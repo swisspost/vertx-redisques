@@ -8,6 +8,8 @@ import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.redis.client.Command;
+import io.vertx.redis.client.Redis;
+import io.vertx.redis.client.RedisAPI;
 import io.vertx.redis.client.Request;
 import io.vertx.redis.client.Response;
 import io.vertx.redis.client.impl.types.NumberType;
@@ -342,14 +344,21 @@ public class QueueStatisticsCollector {
             obj.put(QUEUE_SLOWDOWNTIME, slowDownTime);
             obj.put(QUEUE_BACKPRESSURE, backpressureTime);
             obj.put(QUEUE_DEQUEUE_STATISTIC, JsonObject.mapFrom(dequeueStatistic));
-            redisProvider.redis().onSuccess(redisAPI -> redisAPI.hset(List.of(STATSKEY, queueName, obj.toString()),
-                    emptyHandler -> {
-                    })).onFailure(throwable -> log.error("Redis: Error in updateStatisticsInRedis", throwable));
+            redisProvider.redis()
+                    .onSuccess(redisAPI -> {
+                        redisAPI.hset(List.of(STATSKEY, queueName, obj.toString()), ev -> {
+                            if( ev.failed() ) log.warn("TODO error handling", new Exception(ev.cause()));
+                        });
+                    })
+                    .onFailure(ex -> log.error("Redis: Error in updateStatisticsInRedis", ex));
         } else {
-            redisProvider.redis().onSuccess(redisAPI -> redisAPI.hdel(List.of(STATSKEY, queueName),
-                    emptyHandler -> {
-                    })).onFailure(throwable -> log.error("Redis: Error in updateStatisticsInRedis", throwable));
-
+            redisProvider.redis()
+                    .onSuccess(redisAPI -> {
+                        redisAPI.hdel(List.of(STATSKEY, queueName), ev -> {
+                            if (ev.failed()) log.warn("TODO error handling", new Exception(ev.cause()));
+                        });
+                    })
+                    .onFailure(ex -> log.error("Redis: Error in updateStatisticsInRedis", ex));
         }
     }
 
@@ -515,6 +524,153 @@ public class QueueStatisticsCollector {
             promise.fail(new Exception("Redis: Failed to get queue length.", throwable));
         });
         return promise.future();
+        var ctx = new RequestCtx();
+        ctx.event = event;
+        ctx.queueNames = queues;
+        step1(ctx);
+    }
+
+    /**
+     * Retrieve the queue statistics for the requested queues.
+     * <p>
+     * Note: This operation does interact with Redis to retrieve the values for the statistics
+     * for all queues requested (independent of the redisques instance for which the queues are
+     * registered). Therefore this method must be used with care and not be called too often!
+     *
+     * @param event  The event on which we will answer finally
+     * @param queues The queues for which we are interested in the statistics
+     */
+    public void getQueueStatistics(Message<JsonObject> event, final List<String> queues) {
+        if (queues == null || queues.isEmpty()) {
+            log.debug("Queue statistics evaluation with empty queues, returning empty result");
+            event.reply(new JsonObject().put(STATUS, OK).put(RedisquesAPI.QUEUES, new JsonArray()));
+            return;
+        }
+        var ctx = new RequestCtx();
+        ctx.event = event;
+        ctx.queueNames = queues;
+        step1(ctx);
+    }
+
+    /** <p>init redis connection.</p> */
+    void step1(RequestCtx ctx) {
+        redisProvider.connection()
+                .onFailure(ex -> {
+                    log.warn("Redis: Failed to get queue length.", new Exception(ex));
+                    ctx.event.reply(new JsonObject().put(STATUS, ERROR));
+                })
+                .onSuccess(conn -> {
+                    assert conn != null;
+                    ctx.conn = conn;
+                    step2(ctx);
+                });
+    }
+
+    /** <p>Query queue lengths.</p> */
+    void step2(RequestCtx ctx) {
+        assert ctx.conn != null;
+        List<Future> responses = ctx.queueNames.stream()
+                .map(queue -> ctx.conn.send(Request.cmd(Command.LLEN, queuePrefix + queue)))
+                .collect(Collectors.toList());
+        CompositeFuture.all(responses)
+                .onFailure(ex -> {
+                    log.warn("Unexpected queue length result", new Exception(ex));
+                    ctx.event.reply(new JsonObject().put(STATUS, ERROR));
+                })
+                .onSuccess(compositeFuture -> {
+                    List<NumberType> queueLengthList = compositeFuture.list();
+                    if (queueLengthList == null) {
+                        log.warn("Unexpected queue length result: null");
+                        ctx.event.reply(new JsonObject().put(STATUS, ERROR));
+                        return;
+                    }
+                    if (queueLengthList.size() != ctx.queueNames.size()) {
+                        log.error("Unexpected queue length result with unequal size {} : {}",
+                                ctx.queueNames.size(), queueLengthList.size());
+                        ctx.event.reply(new JsonObject().put(STATUS, ERROR));
+                        return;
+                    }
+                    ctx.queueLengthList = queueLengthList;
+                    step3(ctx);
+                })
+        ;
+    }
+
+    /** <p>init queue statistics.</p> */
+    void step3(RequestCtx ctx) {
+        assert ctx.queueLengthList != null;
+        // populate the list of queue statistics in a Hashmap for later fast merging
+        ctx.statistics = new HashMap<>(ctx.queueNames.size());
+        for (int i = 0; i < ctx.queueNames.size(); i++) {
+            QueueStatistic qs = new QueueStatistic(ctx.queueNames.get(i));
+            qs.setSize(ctx.queueLengthList.get(i).toLong());
+            qs.setMessageSpeed(getQueueSpeed(qs.queueName));
+            ctx.statistics.put(qs.queueName, qs);
+        }
+        step4(ctx);
+    }
+
+    /** <p>init a resAPI instance we need to get more details.</p> */
+    void step4(RequestCtx ctx){
+        redisProvider.redis()
+                .onFailure(ex -> {
+                    log.error("Redis: Error in getQueueStatistics", new Exception(ex));
+                    ctx.event.reply(new JsonObject().put(STATUS, ERROR));
+                })
+                .onSuccess(redisAPI -> {
+                    assert redisAPI != null;
+                    ctx.redisAPI = redisAPI;
+                    step5(ctx);
+                })
+        ;
+    }
+
+    /**
+     * <p>retrieve all available failure statistics from Redis and merge them
+     * together with the previous populated common queue statistics map</p>
+     */
+    void step5(RequestCtx ctx) {
+        assert ctx.redisAPI != null;
+        assert ctx.statistics != null;
+        ctx.redisAPI.hvals(STATSKEY, statisticsSet -> {
+            if( statisticsSet == null || statisticsSet.failed() ){
+                log.error("statistics queue evaluation failed",
+                        statisticsSet == null ? null : statisticsSet.cause());
+                ctx.event.reply(new JsonObject().put(STATUS, ERROR));
+                return;
+            }
+            ctx.redisFailStats = statisticsSet.result();
+            assert ctx.redisFailStats != null;
+            step6(ctx);
+        });
+    }
+
+    /** <p>put received statistics data to the former prepared statistics objects per
+     *  queue.</p> */
+    void step6(RequestCtx ctx ){
+        assert ctx.redisFailStats != null;
+        for (Response response : ctx.redisFailStats) {
+            JsonObject jObj = new JsonObject(response.toString());
+            String queueName = jObj.getString(QUEUENAME);
+            QueueStatistic queueStatistic = ctx.statistics.get(queueName);
+            if (queueStatistic != null) {
+                // if it isn't there, there is obviously no statistic needed
+                queueStatistic.setFailures(jObj.getLong(QUEUE_FAILURES, 0L));
+                queueStatistic.setBackpressureTime(jObj.getLong(QUEUE_BACKPRESSURE, 0L));
+                queueStatistic.setSlowdownTime(jObj.getLong(QUEUE_SLOWDOWNTIME, 0L));
+            }
+        }
+        // build the final resulting statistics list from the former merged queue
+        // values from various sources
+        JsonArray result = new JsonArray();
+        for (String queueName : ctx.queueNames) {
+            QueueStatistic stats = ctx.statistics.get(queueName);
+            if (stats != null) {
+                result.add(stats.getAsJsonObject());
+            }
+        }
+        ctx.event.reply(new JsonObject().put(STATUS, OK)
+                .put(RedisquesAPI.QUEUES, result));
     }
 
     /**
@@ -538,6 +694,18 @@ public class QueueStatisticsCollector {
             speed = speed + getQueueSpeed(queue);
         }
         event.reply(new JsonObject().put(STATUS, OK).put(STATISTIC_QUEUE_SPEED, speed));
+    }
+
+    /** <p>Holds intermediate state related to a {@link #getQueueStatistics(Message, List)}
+     * request.</p> */
+    private static class RequestCtx {
+        private Message<JsonObject> event; // origin event we have to answer
+        private List<String> queueNames; // Requested queues to analyze
+        private Redis conn;
+        private RedisAPI redisAPI;
+        private List<NumberType> queueLengthList;
+        private HashMap<String, QueueStatistic> statistics; // Stats we're going to populate
+        private Response redisFailStats; // failure stats we got from redis.
     }
 
 }

@@ -36,20 +36,22 @@ public class LockedEnqueueAction extends EnqueueAction {
         }
         JsonObject lockInfo = extractLockInfo(event.body().getJsonObject(PAYLOAD).getString(REQUESTED_BY));
         if (lockInfo != null) {
-            redisProvider.redis().onSuccess(redisAPI -> redisAPI.hmset(Arrays.asList(locksKey, queueName, lockInfo.encode()),
-                            putLockResult -> {
-                                if (putLockResult.succeeded()) {
-                                    log.debug("RedisQues lockedEnqueue locking successful, now going to enqueue");
-                                    enqueueActionExecute(event);
-                                } else {
-                                    log.warn("RedisQues lockedEnqueue locking failed. Skip enqueue");
-                                    event.reply(createErrorReply());
-                                }
-                            }))
-                    .onFailure(throwable -> {
-                        log.warn("Redis: RedisQues lockedEnqueue locking failed. Skip enqueue");
-                        event.reply(createErrorReply());
-                    });
+            var p = redisProvider.redis();
+            p.onSuccess(redisAPI -> redisAPI.hmset(Arrays.asList(locksKey, queueName, lockInfo.encode()), putLockResult -> {
+                if (putLockResult.succeeded()) {
+                    log.debug("RedisQues lockedEnqueue locking successful, now going to enqueue");
+                    enqueueActionExecute(event);
+                } else {
+                    log.warn("RedisQues lockedEnqueue locking failed. Skip enqueue",
+                            new Exception(putLockResult.cause()));
+                    event.reply(createErrorReply());
+                }
+            }));
+            p.onFailure(ex -> {
+                log.warn("Redis: RedisQues lockedEnqueue locking failed. Skip enqueue",
+                        new Exception(ex));
+                event.reply(createErrorReply());
+            });
         } else {
             log.warn("RedisQues lockedEnqueue failed because property '{}' was missing", REQUESTED_BY);
             event.reply(createErrorReply().put(MESSAGE, "Property '" + REQUESTED_BY + "' missing"));

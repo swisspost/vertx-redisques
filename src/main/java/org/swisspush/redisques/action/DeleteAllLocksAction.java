@@ -15,11 +15,13 @@ import static org.swisspush.redisques.util.RedisquesAPI.MESSAGE;
 
 public class DeleteAllLocksAction extends AbstractQueueAction {
 
-    public DeleteAllLocksAction(Vertx vertx, RedisProvider redisProvider, String address, String queuesKey, String queuesPrefix,
-                                String consumersPrefix, String locksKey, List<QueueConfiguration> queueConfigurations,
-                                QueueStatisticsCollector queueStatisticsCollector, Logger log) {
-        super(vertx, redisProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey, queueConfigurations,
-                queueStatisticsCollector, log);
+    public DeleteAllLocksAction(
+            Vertx vertx, RedisProvider redisProvider, String address, String queuesKey, String queuesPrefix,
+            String consumersPrefix, String locksKey, List<QueueConfiguration> queueConfigurations,
+            QueueStatisticsCollector queueStatisticsCollector, Logger log
+    ) {
+        super(vertx, redisProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey,
+                queueConfigurations, queueStatisticsCollector, log);
     }
 
     @Override
@@ -29,13 +31,14 @@ public class DeleteAllLocksAction extends AbstractQueueAction {
                 Response locks = locksResult.result();
                 deleteLocks(event, locks);
             } else {
-                replyError(event, locksResult.cause().getMessage());
+                replyError(event, locksResult.cause());
             }
-        })).onFailure(throwable -> replyError(event, throwable.getMessage()));
+        })).onFailure(ex -> replyError(event, ex));
     }
 
-    private void replyError(Message<JsonObject> event, String message) {
-        log.warn("failed to delete all locks. Message: {}", message);
-        event.reply(createErrorReply().put(MESSAGE, message));
+    private void replyError(Message<JsonObject> event, Throwable ex) {
+        if( log.isWarnEnabled() ) log.warn("failed to delete all locks.", new Exception(ex));
+        event.reply(createErrorReply().put(MESSAGE, ex.getMessage()));
     }
+
 }

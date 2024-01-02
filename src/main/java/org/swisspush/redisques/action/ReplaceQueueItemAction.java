@@ -15,11 +15,14 @@ import static org.swisspush.redisques.util.RedisquesAPI.*;
 
 public class ReplaceQueueItemAction extends AbstractQueueAction {
 
-    public ReplaceQueueItemAction(Vertx vertx, RedisProvider redisProvider, String address, String queuesKey, String queuesPrefix,
-                                  String consumersPrefix, String locksKey, List<QueueConfiguration> queueConfigurations,
-                                  QueueStatisticsCollector queueStatisticsCollector, Logger log) {
-        super(vertx, redisProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey, queueConfigurations,
-                queueStatisticsCollector, log);
+    public ReplaceQueueItemAction(
+            Vertx vertx, RedisProvider redisProvider, String address, String queuesKey,
+            String queuesPrefix, String consumersPrefix, String locksKey,
+            List<QueueConfiguration> queueConfigurations,
+            QueueStatisticsCollector queueStatisticsCollector, Logger log
+    ) {
+        super(vertx, redisProvider, address, queuesKey, queuesPrefix, consumersPrefix,
+                locksKey, queueConfigurations, queueStatisticsCollector, log);
     }
 
     @Override
@@ -27,8 +30,10 @@ public class ReplaceQueueItemAction extends AbstractQueueAction {
         String keyReplaceItem = queuesPrefix + event.body().getJsonObject(PAYLOAD).getString(QUEUENAME);
         int indexReplaceItem = event.body().getJsonObject(PAYLOAD).getInteger(INDEX);
         String bufferReplaceItem = event.body().getJsonObject(PAYLOAD).getString(BUFFER);
-        redisProvider.redis().onSuccess(redisAPI -> redisAPI.lset(keyReplaceItem,
-                        String.valueOf(indexReplaceItem), bufferReplaceItem, new ReplaceQueueItemHandler(event)))
-                .onFailure(replyErrorMessageHandler(event));
+        var p = redisProvider.redis();
+        p.onSuccess(redisAPI -> redisAPI.lset(keyReplaceItem, String.valueOf(indexReplaceItem),
+                bufferReplaceItem, new ReplaceQueueItemHandler(event)));
+        p.onFailure(ex -> replyErrorMessageHandler(event).handle(ex));
     }
+
 }

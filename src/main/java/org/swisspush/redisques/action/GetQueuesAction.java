@@ -16,11 +16,14 @@ import static org.swisspush.redisques.util.RedisquesAPI.*;
 
 public class GetQueuesAction extends AbstractQueueAction {
 
-    public GetQueuesAction(Vertx vertx, RedisProvider redisProvider, String address, String queuesKey, String queuesPrefix,
-                           String consumersPrefix, String locksKey, List<QueueConfiguration> queueConfigurations,
-                           QueueStatisticsCollector queueStatisticsCollector, Logger log) {
-        super(vertx, redisProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey, queueConfigurations,
-                queueStatisticsCollector, log);
+    public GetQueuesAction(
+            Vertx vertx, RedisProvider redisProvider, String address, String queuesKey,
+            String queuesPrefix, String consumersPrefix, String locksKey,
+            List<QueueConfiguration> queueConfigurations, QueueStatisticsCollector queueStatisticsCollector,
+            Logger log
+    ) {
+        super(vertx, redisProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey,
+                queueConfigurations, queueStatisticsCollector, log);
     }
 
     @Override
@@ -33,10 +36,12 @@ public class GetQueuesAction extends AbstractQueueAction {
         if (filterPatternResult.isErr()) {
             event.reply(createErrorReply().put(ERROR_TYPE, BAD_INPUT).put(MESSAGE, filterPatternResult.getErr()));
         } else {
-            redisProvider.redis().onSuccess(redisAPI -> redisAPI.zrangebyscore(
-                            Arrays.asList(queuesKey, String.valueOf(getMaxAgeTimestamp()), "+inf"),
-                            new GetQueuesHandler(event, filterPatternResult.getOk(), countOnly)))
-                    .onFailure(replyErrorMessageHandler(event));
+            var p = redisProvider.redis();
+            p.onSuccess(redisAPI -> redisAPI.zrangebyscore(
+                    Arrays.asList(queuesKey, String.valueOf(getMaxAgeTimestamp()), "+inf"),
+                    new GetQueuesHandler(event, filterPatternResult.getOk(), countOnly)));
+            p.onFailure(ex -> replyErrorMessageHandler(event).handle(ex));
         }
     }
+
 }

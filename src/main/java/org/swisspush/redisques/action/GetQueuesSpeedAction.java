@@ -18,11 +18,14 @@ import static org.swisspush.redisques.util.RedisquesAPI.*;
  */
 public class GetQueuesSpeedAction extends AbstractQueueAction {
 
-    public GetQueuesSpeedAction(Vertx vertx, RedisProvider redisProvider, String address, String queuesKey, String queuesPrefix,
-                                String consumersPrefix, String locksKey, List<QueueConfiguration> queueConfigurations,
-                                QueueStatisticsCollector queueStatisticsCollector, Logger log) {
-        super(vertx, redisProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey, queueConfigurations,
-                queueStatisticsCollector, log);
+    public GetQueuesSpeedAction(
+            Vertx vertx, RedisProvider redisProvider, String address, String queuesKey,
+            String queuesPrefix, String consumersPrefix, String locksKey,
+            List<QueueConfiguration> queueConfigurations, QueueStatisticsCollector queueStatisticsCollector,
+            Logger log
+    ) {
+        super(vertx, redisProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey,
+                queueConfigurations, queueStatisticsCollector, log);
     }
 
     @Override
@@ -47,7 +50,7 @@ public class GetQueuesSpeedAction extends AbstractQueueAction {
                                 new GetQueuesSpeedHandler(event, filterPattern.getOk(),
                                         queueStatisticsCollector));
                     })
-                    .onFailure(replyErrorMessageHandler(event));
+                    .onFailure(ex -> replyErrorMessageHandler(event).handle(ex));
         }
     }
 

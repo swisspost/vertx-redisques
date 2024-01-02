@@ -39,7 +39,7 @@ public class RedisQuesTimer {
             log.debug("starting timer with a delay of " + delay + "ms");
             vertx.setTimer(delay, delayed -> promise.complete());
         } else {
-            promise.complete();
+            vertx.runOnContext(aVoid -> promise.complete());
         }
 
         return promise.future();

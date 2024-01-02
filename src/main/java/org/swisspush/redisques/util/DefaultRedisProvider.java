@@ -15,7 +15,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.Function;
 
 /**
  * Default implementation for a Provider for {@link RedisAPI}
@@ -70,7 +69,7 @@ public class DefaultRedisProvider implements RedisProvider {
             connectToRedis().onComplete(event -> {
                 connectPromiseRef.getAndSet(null);
                 if (event.failed()) {
-                    currentPromise.fail(event.cause());
+                    currentPromise.fail(new Exception(event.cause()));
                 } else {
                     redisAPI = event.result();
                     currentPromise.complete(redisAPI);
@@ -104,7 +103,7 @@ public class DefaultRedisProvider implements RedisProvider {
                     .setMaxPoolWaiting(redisMaxPoolWaitingSize)
                     .setPoolRecycleTimeout(redisPoolRecycleTimeoutMs)
                     .setMaxWaitingHandlers(redisMaxPipelineWaitingSize)
-                    .setType(config.getRedisClientType());;
+                    .setType(config.getRedisClientType());
 
             createConnectStrings().forEach(redisOptions::addConnectionString);
 
@@ -122,7 +121,10 @@ public class DefaultRedisProvider implements RedisProvider {
                 // eg, the underlying TCP connection is closed but the client side doesn't know it yet
                 // the client tries to use the staled connection to talk to server. An exceptions will be raised
                 if (reconnectEnabled()) {
-                    conn.exceptionHandler(e -> attemptReconnect(0));
+                    conn.exceptionHandler(ex -> {
+                        log.warn("Connection broken. Attempt reconnect.", ex);
+                        attemptReconnect(0);
+                    });
                 }
 
                 // make sure the client is reconnected on connection close
@@ -154,9 +156,10 @@ public class DefaultRedisProvider implements RedisProvider {
         StringBuilder connectionStringPrefixBuilder = new StringBuilder();
         connectionStringPrefixBuilder.append(config.getRedisEnableTls() ? "rediss://" : "redis://");
         if (redisUser != null && !redisUser.isEmpty()) {
-            connectionStringPrefixBuilder.append(redisUser).append(":").append((redisPassword == null ? "" : redisPassword)).append("@");
+            connectionStringPrefixBuilder.append(redisUser).append(":")
+                    .append((redisPassword == null ? "" : redisPassword)).append("@");
         }
-        List<String> connectionString = new ArrayList<>();
+        List<String> connectionString = new ArrayList<>(config.getRedisHosts().size());
         String connectionStringPrefix = connectionStringPrefixBuilder.toString();
         for (int i = 0; i < config.getRedisHosts().size(); i++) {
             String host = config.getRedisHosts().get(i);
@@ -183,7 +186,10 @@ public class DefaultRedisProvider implements RedisProvider {
     private void doReconnect(int retry) {
         long backoffMs = (long) (Math.pow(2, Math.min(retry, 10)) * configurationProvider.configuration().getRedisReconnectDelaySec());
         log.debug("Schedule reconnect #{} in {}ms.", retry, backoffMs);
-        vertx.setTimer(backoffMs, timer -> connectToRedis()
-                .onFailure(t -> attemptReconnect(retry + 1)));
+        vertx.setTimer(backoffMs, timer -> connectToRedis().onFailure(ex -> {
+            log.info("Reconnect failed. Try again.", ex);
+            attemptReconnect(retry + 1);
+        }));
     }
+
 }
