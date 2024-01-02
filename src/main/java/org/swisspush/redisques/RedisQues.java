@@ -566,16 +566,11 @@ public class RedisQues extends AbstractVerticle {
                         log.error("Failed to peek queue '{}'", queueName, answer.cause());
                         // We should return here. See: "https://softwareengineering.stackexchange.com/a/190535"
                     }
-                    if (log.isTraceEnabled()) {
-                        log.trace("RedisQues read queue lindex result: {}", answer.result());
-                    }
-                    if (answer.result() != null) {
-                        dequeueStatistic.computeIfAbsent(queueName, s -> new DequeueStatistic());
-                        dequeueStatistic.get(queueName).lastDequeueAttemptTimestamp = System.currentTimeMillis();
-                        processMessageWithTimeout(queueName, answer.result().toString(), success -> {
                     Response response = answer.result();
                     log.trace("RedisQues read queue lindex result: {}", response);
                     if (response != null) {
+                        dequeueStatistic.computeIfAbsent(queueName, s -> new DequeueStatistic());
+                        dequeueStatistic.get(queueName).lastDequeueAttemptTimestamp = System.currentTimeMillis();
                         processMessageWithTimeout(queueName, response.toString(), success -> {
 
                             // update the queue failure count and get a retry interval
@@ -659,12 +654,8 @@ public class RedisQues extends AbstractVerticle {
         log.trace("RedsQues reschedule after failure for queue: {}", queueName);
 
         vertx.setTimer(retryInSeconds * 1000L, timerId -> {
-        if (log.isTraceEnabled()) {
-            log.trace("RedsQues reschedule after failure for queue: {}", queueName);
-        }
-        long retryDelayInMills = retryInSeconds * 1000L;
-        dequeueStatistic.get(queueName).nextDequeueDueTimestamp = System.currentTimeMillis() + retryDelayInMills;
-        vertx.setTimer(retryDelayInMills, timerId -> {
+            long retryDelayInMills = retryInSeconds * 1000L;
+            dequeueStatistic.get(queueName).nextDequeueDueTimestamp = System.currentTimeMillis() + retryDelayInMills;
             if (log.isDebugEnabled()) {
                 log.debug("RedisQues re-notify the consumer of queue '{}' at {}", queueName, new Date(System.currentTimeMillis()));
             }
