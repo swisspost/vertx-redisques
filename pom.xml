@@ -2,7 +2,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>org.swisspush</groupId>
     <artifactId>redisques</artifactId>
-    <version>3.0.33-SNAPSHOT</version>
+    <version>3.1.0-SNAPSHOT</version>
     <name>redisques</name>
     <description>
         A highly scalable redis-persistent queuing system for vertx
@@ -97,7 +97,7 @@
         </dependency>
         <dependency>
             <groupId>org.mockito</groupId>
-            <artifactId>mockito-all</artifactId>
+            <artifactId>mockito-core</artifactId>
             <version>${mockito.version}</version>
             <scope>test</scope>
         </dependency>
@@ -391,7 +391,7 @@
     <properties>
         <vertx.version>4.5.1</vertx.version>
         <slf4j.version>2.0.10</slf4j.version>
-        <mockito.version>1.10.19</mockito.version>
+        <mockito.version>5.8.0</mockito.version>
         <junit.version>4.13.2</junit.version>
         <awaitility.version>4.2.0</awaitility.version>
         <jedis.version>3.7.0</jedis.version>
