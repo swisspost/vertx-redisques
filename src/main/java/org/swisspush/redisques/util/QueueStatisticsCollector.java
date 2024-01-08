@@ -452,7 +452,7 @@ public class QueueStatisticsCollector {
      */
 
     public Future<JsonObject> getQueueStatistics(final List<String> queues) {
-        Promise<JsonObject> promise = Promise.promise();
+        final Promise<JsonObject> promise = Promise.promise();
         if (queues == null || queues.isEmpty()) {
             log.debug("Queue statistics evaluation with empty queues, returning empty result");
             promise.complete(new JsonObject().put(STATUS, OK).put(RedisquesAPI.QUEUES, new JsonArray()));
@@ -460,12 +460,13 @@ public class QueueStatisticsCollector {
         }
         var ctx = new RequestCtx();
         ctx.queueNames = queues;
-        step1(ctx, promise);
+        step1(ctx).onComplete(promise);
         return promise.future();
     }
 
     /** <p>init redis connection.</p> */
-    void step1(RequestCtx ctx, Promise<JsonObject> promise) {
+    Future<JsonObject> step1(RequestCtx ctx) {
+        final Promise<JsonObject> promise = Promise.promise();
         redisProvider.connection()
                 .onFailure(throwable -> {
                     promise.fail(new Exception("Redis: Failed to get queue length.", throwable));
@@ -473,13 +474,15 @@ public class QueueStatisticsCollector {
                 .onSuccess(conn -> {
                     assert conn != null;
                     ctx.conn = conn;
-                    step2(ctx, promise);
+                    step2(ctx).onComplete(promise);
                 });
+        return promise.future();
     }
 
     /** <p>Query queue lengths.</p> */
-    void step2(RequestCtx ctx, Promise<JsonObject> promise) {
+    Future<JsonObject> step2(RequestCtx ctx) {
         assert ctx.conn != null;
+        final Promise<JsonObject> promise = Promise.promise();
         List<Future> responses = ctx.queueNames.stream()
                 .map(queue -> ctx.conn.send(Request.cmd(Command.LLEN, queuePrefix + queue)))
                 .collect(Collectors.toList());
@@ -500,14 +503,15 @@ public class QueueStatisticsCollector {
                         return;
                     }
                     ctx.queueLengthList = queueLengthList;
-                    step3(ctx, promise);
-                })
-        ;
+                    step3(ctx).onComplete(promise);
+                });
+        return promise.future();
     }
 
     /** <p>init queue statistics.</p> */
-    void step3(RequestCtx ctx, Promise<JsonObject> promise) {
+    Future<JsonObject> step3(RequestCtx ctx) {
         assert ctx.queueLengthList != null;
+        final Promise<JsonObject> promise = Promise.promise();
         // populate the list of queue statistics in a Hashmap for later fast merging
         ctx.statistics = new HashMap<>(ctx.queueNames.size());
         for (int i = 0; i < ctx.queueNames.size(); i++) {
@@ -516,11 +520,13 @@ public class QueueStatisticsCollector {
             qs.setMessageSpeed(getQueueSpeed(qs.queueName));
             ctx.statistics.put(qs.queueName, qs);
         }
-        step4(ctx, promise);
+        step4(ctx).onComplete(promise);
+        return promise.future();
     }
 
     /** <p>init a resAPI instance we need to get more details.</p> */
-    void step4(RequestCtx ctx, Promise<JsonObject> promise){
+    Future<JsonObject> step4(RequestCtx ctx){
+        final Promise<JsonObject> promise = Promise.promise();
         redisProvider.redis()
                 .onFailure(throwable -> {
                     promise.fail(new Exception("Redis: Error in getQueueStatistics", throwable));
@@ -528,18 +534,19 @@ public class QueueStatisticsCollector {
                 .onSuccess(redisAPI -> {
                     assert redisAPI != null;
                     ctx.redisAPI = redisAPI;
-                    step5(ctx, promise);
-                })
-        ;
+                    step5(ctx).onComplete(promise);
+                });
+        return promise.future();
     }
 
     /**
      * <p>retrieve all available failure statistics from Redis and merge them
      * together with the previous populated common queue statistics map</p>
      */
-    void step5(RequestCtx ctx, Promise<JsonObject> promise) {
+    Future<JsonObject> step5(RequestCtx ctx) {
         assert ctx.redisAPI != null;
         assert ctx.statistics != null;
+        final Promise<JsonObject> promise = Promise.promise();
         ctx.redisAPI.hvals(STATSKEY, statisticsSet -> {
             if( statisticsSet == null || statisticsSet.failed() ){
                 promise.fail(new RuntimeException("statistics queue evaluation failed",
@@ -548,14 +555,16 @@ public class QueueStatisticsCollector {
             }
             ctx.redisFailStats = statisticsSet.result();
             assert ctx.redisFailStats != null;
-            step6(ctx, promise);
+            step6(ctx).onComplete(promise);
         });
+        return promise.future();
     }
 
     /** <p>put received statistics data to the former prepared statistics objects per
      *  queue.</p> */
-    void step6(RequestCtx ctx, Promise<JsonObject> promise){
+    Future<JsonObject> step6(RequestCtx ctx){
         assert ctx.redisFailStats != null;
+        final Promise<JsonObject> promise = Promise.promise();
         for (Response response : ctx.redisFailStats) {
             JsonObject jObj = new JsonObject(response.toString());
             String queueName = jObj.getString(QUEUENAME);
@@ -581,6 +590,7 @@ public class QueueStatisticsCollector {
         }
         promise.complete(new JsonObject().put(STATUS, OK)
                 .put(RedisquesAPI.QUEUES, result));
+        return promise.future();
     }
 
     /**

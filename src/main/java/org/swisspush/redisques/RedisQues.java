@@ -844,7 +844,6 @@ public class RedisQues extends AbstractVerticle {
                                 });
                             } else {
                                 // Ensure we clean the old queues also in the case of empty queue.
-                                log.trace("RedisQues remove old queue: {}", queueName);
                                 if (log.isTraceEnabled()) {
                                     log.trace("RedisQues remove old queue: {}", queueName);
                                 }

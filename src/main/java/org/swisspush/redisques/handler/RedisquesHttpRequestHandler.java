@@ -563,7 +563,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
                         queuesList = limitJsonQueueArray(queuesList, limit);
                     }
 
-                    // this function always Success
+                    // this function always succeeds, no need to handle the error case
                     fillStatisticToQueuesList(queuesList).onSuccess(updatedQueuesList -> {
                         JsonObject resultObject = new JsonObject();
                         resultObject.put(QUEUES, updatedQueuesList);
@@ -586,8 +586,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     private Future<List<JsonObject>> fillStatisticToQueuesList(List<JsonObject> queuesList) {
         Promise<List<JsonObject>> promise = Promise.promise();
         List<String> queueNameList = new ArrayList<>();
-        for (JsonObject jsonObject : queuesList)
-        {
+        for (JsonObject jsonObject : queuesList) {
             queueNameList.add(jsonObject.getString(MONITOR_QUEUE_NAME));
         }
 
