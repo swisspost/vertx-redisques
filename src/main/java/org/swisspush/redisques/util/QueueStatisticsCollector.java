@@ -460,7 +460,13 @@ public class QueueStatisticsCollector {
         }
         var ctx = new RequestCtx();
         ctx.queueNames = queues;
-        step1(ctx).onComplete(promise);
+        step1(ctx).compose(
+                jsonObject1 -> step2(ctx).compose(
+                        jsonObject2 -> step3(ctx).compose(
+                                jsonObject3 -> step4(ctx).compose(
+                                        jsonObject4 -> step5(ctx).compose(
+                                                jsonObject5 -> step6(ctx))
+                                )))).onComplete(promise);
         return promise.future();
     }
 
@@ -474,7 +480,7 @@ public class QueueStatisticsCollector {
                 .onSuccess(conn -> {
                     assert conn != null;
                     ctx.conn = conn;
-                    step2(ctx).onComplete(promise);
+                    promise.complete();
                 });
         return promise.future();
     }
@@ -503,7 +509,7 @@ public class QueueStatisticsCollector {
                         return;
                     }
                     ctx.queueLengthList = queueLengthList;
-                    step3(ctx).onComplete(promise);
+                    promise.complete();
                 });
         return promise.future();
     }
@@ -520,7 +526,7 @@ public class QueueStatisticsCollector {
             qs.setMessageSpeed(getQueueSpeed(qs.queueName));
             ctx.statistics.put(qs.queueName, qs);
         }
-        step4(ctx).onComplete(promise);
+        promise.complete();
         return promise.future();
     }
 
@@ -534,7 +540,7 @@ public class QueueStatisticsCollector {
                 .onSuccess(redisAPI -> {
                     assert redisAPI != null;
                     ctx.redisAPI = redisAPI;
-                    step5(ctx).onComplete(promise);
+                    promise.complete();
                 });
         return promise.future();
     }
@@ -555,7 +561,7 @@ public class QueueStatisticsCollector {
             }
             ctx.redisFailStats = statisticsSet.result();
             assert ctx.redisFailStats != null;
-            step6(ctx).onComplete(promise);
+            promise.complete();
         });
         return promise.future();
     }
