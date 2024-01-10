@@ -1,5 +1,8 @@
 package org.swisspush.redisques.handler;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.istack.NotNull;
 import com.sun.istack.Nullable;
 import io.restassured.RestAssured;
@@ -123,7 +126,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
     private static final String configurationEmpty = "{}";
 
     @Rule
-    public Timeout rule = Timeout.seconds(15);
+    public Timeout rule = Timeout.seconds(35);
 
     @BeforeClass
     public static void beforeClass() {
@@ -151,6 +154,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
                                 .withEnqueueDelayMillisPerSize(5).withEnqueueMaxDelayMillis(100)
                 ))
                 .queueSpeedIntervalSec(4)
+                .dequeueStatisticReportIntervalSec(5)
                 .build()
                 .asJsonObject();
 
@@ -1867,10 +1871,10 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
     }
 
     @Test
-    public void getMonitorInformation(TestContext context) {
+    public void getMonitorInformation(TestContext context) throws JsonProcessingException {
         Async async = context.async();
         flushAll();
-
+        ObjectMapper jsonMapper = new ObjectMapper();
         when().get("/queuing/monitor").then().assertThat().statusCode(200)
                 .body("queues", empty());
 
@@ -1888,6 +1892,12 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         given().body("{}").when().put("/queuing/locks/queue_3").then().assertThat().statusCode(200);
         when().delete("/queuing/queues/queue_3/0").then().assertThat().statusCode(200);
 
+        // wait 5.1 second, because the update time is 5 seconds
+        try {
+            Thread.sleep(5100);
+        } catch (InterruptedException iex) {
+            // ignore
+        }
         String expectedNoEmptyQueuesNoLimit = "{\n" +
                 "  \"queues\": [\n" +
                 "    {\n" +
@@ -1900,10 +1910,15 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
                 "    }\n" +
                 "  ]\n" +
                 "}";
-
-        when().get("/queuing/monitor").then().assertThat().statusCode(200)
-                .body(equalTo(new JsonObject(expectedNoEmptyQueuesNoLimit).toString()));
-
+        JsonNode expectedStaticJson = jsonMapper.readTree(expectedNoEmptyQueuesNoLimit);
+        JsonNode receivedJson = jsonMapper.readTree(when().get("/queuing/monitor").then().assertThat().statusCode(200).extract().asString());
+        verifyResponse(context, expectedStaticJson, receivedJson);
+        // wait 5.1 second, because the update time is 5 seconds
+        try {
+            Thread.sleep(5100);
+        } catch (InterruptedException iex) {
+            // ignore
+        }
         String expectedWithEmptyQueuesNoLimit = "{\n" +
                 "  \"queues\": [\n" +
                 "    {\n" +
@@ -1921,9 +1936,15 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
                 "  ]\n" +
                 "}";
 
-        when().get("/queuing/monitor?emptyQueues").then().assertThat().statusCode(200)
-                .body(equalTo(new JsonObject(expectedWithEmptyQueuesNoLimit).toString()));
-
+        expectedStaticJson = jsonMapper.readTree(expectedWithEmptyQueuesNoLimit);
+        receivedJson = jsonMapper.readTree(when().get("/queuing/monitor?emptyQueues").then().assertThat().statusCode(200).extract().asString());
+        verifyResponse(context, expectedStaticJson, receivedJson);
+        // wait 5.1 second, because the update time is 5 seconds
+        try {
+            Thread.sleep(5100);
+        } catch (InterruptedException iex) {
+            // ignore
+        }
         String expectedNoEmptyQueuesAndLimit3 = "{\n" +
                 "  \"queues\": [\n" +
                 "    {\n" +
@@ -1937,9 +1958,15 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
                 "  ]\n" +
                 "}";
 
-        when().get("/queuing/monitor?limit=3").then().assertThat().statusCode(200)
-                .body(equalTo(new JsonObject(expectedNoEmptyQueuesAndLimit3).toString()));
-
+        expectedStaticJson = jsonMapper.readTree(expectedNoEmptyQueuesAndLimit3);
+        receivedJson = jsonMapper.readTree(when().get("/queuing/monitor?limit=3").then().assertThat().statusCode(200).extract().asString());
+        verifyResponse(context, expectedStaticJson, receivedJson);
+        // wait 5.1 second, because the update time is 5 seconds
+        try {
+            Thread.sleep(5100);
+        } catch (InterruptedException iex) {
+            // ignore
+        }
         String expectedWithEmptyQueuesAndLimit3 = "{\n" +
                 "  \"queues\": [\n" +
                 "    {\n" +
@@ -1957,9 +1984,15 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
                 "  ]\n" +
                 "}";
 
-        when().get("/queuing/monitor?limit=3&emptyQueues").then().assertThat().statusCode(200)
-                .body(equalTo(new JsonObject(expectedWithEmptyQueuesAndLimit3).toString()));
-
+        expectedStaticJson = jsonMapper.readTree(expectedWithEmptyQueuesAndLimit3);
+        receivedJson = jsonMapper.readTree(when().get("/queuing/monitor?limit=3&emptyQueues").then().assertThat().statusCode(200).extract().asString());
+        verifyResponse(context, expectedStaticJson, receivedJson);
+        // wait 5.1 second, because the update time is 5 seconds
+        try {
+            Thread.sleep(5100);
+        } catch (InterruptedException iex) {
+            // ignore
+        }
         String expectedWithEmptyQueuesAndInvalidLimit = "{\n" +
                 "  \"queues\": [\n" +
                 "    {\n" +
@@ -1977,10 +2010,24 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
                 "  ]\n" +
                 "}";
 
-        when().get("/queuing/monitor?limit=xx99xx&emptyQueues").then().assertThat().statusCode(200)
-                .body(equalTo(new JsonObject(expectedWithEmptyQueuesAndInvalidLimit).toString()));
+        expectedStaticJson = jsonMapper.readTree(expectedWithEmptyQueuesAndInvalidLimit);
+        receivedJson = jsonMapper.readTree(when().get("/queuing/monitor?limit=limit=xx99xx&emptyQueues").then().assertThat().statusCode(200).extract().asString());
+        verifyResponse(context, expectedStaticJson, receivedJson);
 
         async.complete();
+    }
+
+    private static void verifyResponse(TestContext context, JsonNode expectedStaticJson, JsonNode receivedJson) {
+        context.assertEquals(expectedStaticJson.size(), receivedJson.size());
+        context.assertEquals(expectedStaticJson.get("queues").size(), receivedJson.get("queues").size());
+        for (int i = 0; i < expectedStaticJson.get("queues").size(); i++){
+            context.assertEquals(expectedStaticJson.get("queues").get(i).get("name"), receivedJson.get("queues").get(i).get("name"));
+            context.assertEquals(expectedStaticJson.get("queues").get(i).get("size"), receivedJson.get("queues").get(i).get("size"));
+
+            context.assertFalse(receivedJson.get("queues").get(i).get("lastDequeueAttempt").asText().isEmpty());
+            context.assertTrue(receivedJson.get("queues").get(i).get("lastDequeueSuccess").asText().isEmpty()); // No handlers for address processor-address
+            context.assertFalse(receivedJson.get("queues").get(i).get("nextDequeueDueTimestamp").asText().isEmpty()); // So will retry
+        }
     }
 
     @Test
