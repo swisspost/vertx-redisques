@@ -29,20 +29,25 @@ public class GetQueueItemsAction extends AbstractQueueAction {
         String queueName = event.body().getJsonObject(PAYLOAD).getString(QUEUENAME);
         String keyListRange = queuesPrefix + queueName;
         int maxQueueItemCountIndex = getMaxQueueItemCountIndex(event.body().getJsonObject(PAYLOAD).getString(LIMIT));
-        redisProvider.redis().onSuccess(redisAPI -> redisAPI.llen(keyListRange, countReply -> {
-                    Long queueItemCount = countReply.result().toLong();
-                    if (countReply.succeeded() && queueItemCount != null) {
-                        redisAPI.lrange(keyListRange, "0", String.valueOf(maxQueueItemCountIndex),
-                                new GetQueueItemsHandler(event, queueItemCount));
-                    } else {
-                        log.warn("Operation getQueueItems failed. But I'll not notify my caller :)", countReply.cause());
-                        // IMO we should 'event.fail(countReply.cause())' here. But we don't, to keep backward compatibility.
-                    }
-                }))
-                .onFailure(throwable -> {
-                    log.warn("Operation getQueueItems failed. But I'll not notify my caller :)", throwable);
-                    // IMO we should 'event.fail(countReply.cause())' here. But we don't, to keep backward compatibility.
-                });
+        var p = redisProvider.redis();
+        p.onSuccess(redisAPI -> redisAPI.llen(keyListRange, countReply -> {
+            Long queueItemCount = countReply.result().toLong();
+            if (countReply.succeeded() && queueItemCount != null) {
+                redisAPI.lrange(keyListRange, "0", String.valueOf(maxQueueItemCountIndex),
+                        new GetQueueItemsHandler(event, queueItemCount));
+            } else {
+                if( countReply.failed() ) {
+                    log.warn("Operation getQueueItems failed. But I'll not notify my caller :)",
+                            countReply.cause());
+                    // IMO we should 'event.fail(countReply.cause())' here. But we don't, to keep
+                    // backward compatibility.
+                }
+            }
+        }));
+        p.onFailure(ex -> {
+            log.warn("Operation getQueueItems failed. But I'll not notify my caller :)", ex);
+            // IMO we should 'event.fail(countReply.cause())' here. But we don't, to keep backward compatibility.
+        });
     }
 
     private int getMaxQueueItemCountIndex(String limit) {
@@ -55,9 +60,11 @@ public class GetQueueItemsAction extends AbstractQueueAction {
                 }
                 log.info("use limit parameter " + maxIndex);
             } catch (NumberFormatException ex) {
-                log.warn("Invalid limit parameter '{}' configured for max queue item count. Using default {}", limit, DEFAULT_MAX_QUEUEITEM_COUNT);
+                log.warn("Invalid limit parameter '{}' configured for max queue item count. Using default {}",
+                        limit, DEFAULT_MAX_QUEUEITEM_COUNT);
             }
         }
         return defaultMaxIndex;
     }
+
 }

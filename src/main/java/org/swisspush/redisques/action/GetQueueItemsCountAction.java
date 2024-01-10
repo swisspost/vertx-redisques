@@ -19,17 +19,22 @@ import static org.swisspush.redisques.util.RedisquesAPI.QUEUENAME;
  */
 public class GetQueueItemsCountAction extends AbstractQueueAction {
 
-    public GetQueueItemsCountAction(Vertx vertx, RedisProvider redisProvider, String address, String queuesKey, String queuesPrefix,
-                                    String consumersPrefix, String locksKey, List<QueueConfiguration> queueConfigurations,
-                                    QueueStatisticsCollector queueStatisticsCollector, Logger log) {
-        super(vertx, redisProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey, queueConfigurations,
-                queueStatisticsCollector, log);
+    public GetQueueItemsCountAction(
+            Vertx vertx, RedisProvider redisProvider, String address, String queuesKey,
+            String queuesPrefix, String consumersPrefix, String locksKey,
+            List<QueueConfiguration> queueConfigurations, QueueStatisticsCollector queueStatisticsCollector,
+            Logger log
+    ) {
+        super(vertx, redisProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey,
+                queueConfigurations, queueStatisticsCollector, log);
     }
 
     @Override
     public void execute(Message<JsonObject> event) {
         String queue = event.body().getJsonObject(PAYLOAD).getString(QUEUENAME);
-        redisProvider.redis().onSuccess(redisAPI -> redisAPI.llen(queuesPrefix + queue, new GetQueueItemsCountHandler(event)))
-                .onFailure(replyErrorMessageHandler(event));
+        var p = redisProvider.redis();
+        p.onSuccess(redisAPI -> redisAPI.llen(queuesPrefix + queue, new GetQueueItemsCountHandler(event)));
+        p.onFailure(ex -> replyErrorMessageHandler(event).handle(ex));
     }
+
 }

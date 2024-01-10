@@ -17,25 +17,30 @@ import static org.swisspush.redisques.util.RedisquesAPI.QUEUENAME;
 
 public class GetLockAction extends AbstractQueueAction {
 
-    public GetLockAction(Vertx vertx, RedisProvider redisProvider, String address, String queuesKey, String queuesPrefix,
-                         String consumersPrefix, String locksKey, List<QueueConfiguration> queueConfigurations,
-                         QueueStatisticsCollector queueStatisticsCollector, Logger log) {
-        super(vertx, redisProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey, queueConfigurations,
-                queueStatisticsCollector, log);
+    public GetLockAction(
+            Vertx vertx, RedisProvider redisProvider, String address, String queuesKey,
+            String queuesPrefix, String consumersPrefix, String locksKey,
+            List<QueueConfiguration> queueConfigurations, QueueStatisticsCollector queueStatisticsCollector,
+            Logger log
+    ) {
+        super(vertx, redisProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey,
+                queueConfigurations, queueStatisticsCollector, log);
     }
-
 
     @Override
     public void execute(Message<JsonObject> event) {
         final JsonObject body = event.body();
-        if (null == body) {
-            log.warn("Got msg with empty body from event bus. We'll run directly in " +
-                    "a NullPointerException now. address={}  replyAddress={} ", event.address(), event.replyAddress());
-            // IMO we should 'fail()' here. But we don't, to keep backward compatibility.
+        if (body == null) {
+            replyErrorMessageHandler(event).handle(new NullPointerException("" +
+                    "Got msg with no body from event bus. address=" +
+                    event.address() + " replyAddress=" + event.replyAddress()));
+            return;
         }
-        redisProvider.redis().onSuccess(redisAPI ->
-                        redisAPI.hget(locksKey, body.getJsonObject(PAYLOAD).getString(QUEUENAME), new GetLockHandler(event)))
-                .onFailure(replyErrorMessageHandler(event));
+        var p = redisProvider.redis();
+        p.onSuccess(redisAPI -> {
+            redisAPI.hget(locksKey, body.getJsonObject(PAYLOAD).getString(QUEUENAME), new GetLockHandler(event));
+        });
+        p.onFailure(ex -> replyErrorMessageHandler(event).handle(ex));
     }
 
 }

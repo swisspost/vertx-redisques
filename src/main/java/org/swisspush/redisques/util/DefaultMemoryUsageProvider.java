@@ -29,7 +29,9 @@ public class DefaultMemoryUsageProvider implements MemoryUsageProvider {
     }
 
     private void updateCurrentMemoryUsage() {
-        redisProvider.redis().onSuccess(redisAPI -> redisAPI.info(Collections.singletonList("memory"))
+        redisProvider.redis()
+                .onFailure( ex -> log.warn("TODO error handling", ex))
+                .onSuccess(redisAPI -> redisAPI.info(Collections.singletonList("memory"))
                 .onComplete(memoryInfoEvent -> {
                     if (memoryInfoEvent.failed()) {
                         log.error("Unable to get memory information from redis", memoryInfoEvent.cause());

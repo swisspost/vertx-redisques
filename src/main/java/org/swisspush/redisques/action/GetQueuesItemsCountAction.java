@@ -36,7 +36,8 @@ public class GetQueuesItemsCountAction extends AbstractQueueAction {
                                     String.valueOf(getMaxAgeTimestamp()), "+inf"),
                             new GetQueuesItemsCountHandler(event, filterPattern.getOk(),
                                     queuesPrefix, redisProvider)))
-                    .onFailure(replyErrorMessageHandler(event));
+                    .onFailure(ex -> replyErrorMessageHandler(event).handle(ex));
         }
     }
+
 }

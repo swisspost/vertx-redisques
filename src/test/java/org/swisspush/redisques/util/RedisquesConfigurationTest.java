@@ -137,6 +137,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(json.getJsonArray(PROP_QUEUE_CONFIGURATIONS).getList().size(), 0);
         testContext.assertEquals(json.getInteger(PROP_QUEUE_SPEED_INTERVAL_SEC), 60);
         testContext.assertEquals(json.getInteger(PROP_MEMORY_USAGE_LIMIT_PCT), 100);
+        testContext.assertEquals(json.getInteger(PROP_DEQUEUE_STATISTIC_REPORT_INTERVAL_SEC), 30);
     }
 
     @Test
@@ -163,6 +164,7 @@ public class RedisquesConfigurationTest {
                 ))
                 .queueSpeedIntervalSec(1)
                 .memoryUsageLimitPercent(55)
+                .dequeueStatisticReportIntervalSec(44)
                 .build();
 
         JsonObject json = config.asJsonObject();
@@ -192,7 +194,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(json.getString(PROP_HTTP_REQUEST_HANDLER_USER_HEADER), "x-custom-user-header");
         testContext.assertEquals(json.getInteger(PROP_QUEUE_SPEED_INTERVAL_SEC), 1);
         testContext.assertEquals(json.getInteger(PROP_MEMORY_USAGE_LIMIT_PCT), 55);
-
+        testContext.assertEquals(json.getInteger(PROP_DEQUEUE_STATISTIC_REPORT_INTERVAL_SEC), 44);
         // queue configurations
         JsonArray queueConfigurationsJsonArray = json.getJsonArray(PROP_QUEUE_CONFIGURATIONS);
         List<JsonObject> queueConfigurationJsonObjects = queueConfigurationsJsonArray.getList();
@@ -230,6 +232,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getQueueConfigurations().size(), 0);
         testContext.assertEquals(config.getQueueSpeedIntervalSec(), 60);
         testContext.assertEquals(config.getMemoryUsageLimitPercent(), 100);
+        testContext.assertEquals(config.getDequeueStatisticReportIntervalSec(), 30);
     }
 
     @Test
@@ -257,6 +260,7 @@ public class RedisquesConfigurationTest {
         json.put(PROP_HTTP_REQUEST_HANDLER_USER_HEADER, "x-custom-user-header");
         json.put(PROP_QUEUE_SPEED_INTERVAL_SEC, 1);
         json.put(PROP_MEMORY_USAGE_LIMIT_PCT, 75);
+        json.put(PROP_DEQUEUE_STATISTIC_REPORT_INTERVAL_SEC, 22);
         json.put(PROP_QUEUE_CONFIGURATIONS, new JsonArray(Collections.singletonList(
                 new QueueConfiguration().withPattern("vehicle-.*")
                         .withRetryIntervals(10, 20, 30, 60)
@@ -285,6 +289,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getHttpRequestHandlerUserHeader(), "x-custom-user-header");
         testContext.assertEquals(config.getQueueSpeedIntervalSec(), 1);
         testContext.assertEquals(config.getMemoryUsageLimitPercent(), 75);
+        testContext.assertEquals(config.getDequeueStatisticReportIntervalSec(), 22);
 
         // queue configurations
         testContext.assertEquals(config.getQueueConfigurations().size(), 1);

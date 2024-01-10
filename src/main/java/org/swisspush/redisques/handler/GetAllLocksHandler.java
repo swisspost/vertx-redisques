@@ -6,13 +6,18 @@ import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.redis.client.Response;
+import org.slf4j.Logger;
 import org.swisspush.redisques.util.HandlerUtil;
 
 import java.util.List;
 import java.util.Optional;
 import java.util.regex.Pattern;
 
-import static org.swisspush.redisques.util.RedisquesAPI.*;
+import static org.slf4j.LoggerFactory.getLogger;
+import static org.swisspush.redisques.util.RedisquesAPI.ERROR;
+import static org.swisspush.redisques.util.RedisquesAPI.OK;
+import static org.swisspush.redisques.util.RedisquesAPI.STATUS;
+import static org.swisspush.redisques.util.RedisquesAPI.VALUE;
 
 /**
  * Class GetAllLocksHandler.
@@ -21,6 +26,7 @@ import static org.swisspush.redisques.util.RedisquesAPI.*;
  */
 public class GetAllLocksHandler implements Handler<AsyncResult<Response>> {
 
+    private static final Logger log = getLogger(GetAllLocksHandler.class);
     private final Message<JsonObject> event;
     private final Optional<Pattern> filterPattern;
 
@@ -38,7 +44,9 @@ public class GetAllLocksHandler implements Handler<AsyncResult<Response>> {
             result.put("locks", new JsonArray(filteredLocks));
             event.reply(new JsonObject().put(STATUS, OK).put(VALUE, result));
         } else {
+            if( reply.failed() ) log.warn("Concealed error", new Exception(reply.cause()));
             event.reply(new JsonObject().put(STATUS, ERROR));
         }
     }
+
 }

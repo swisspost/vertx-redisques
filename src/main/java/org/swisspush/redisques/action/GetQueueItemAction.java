@@ -16,19 +16,25 @@ import static org.swisspush.redisques.util.RedisquesAPI.*;
 public class GetQueueItemAction extends AbstractQueueAction {
 
 
-    public GetQueueItemAction(Vertx vertx, RedisProvider redisProvider, String address, String queuesKey, String queuesPrefix,
-                              String consumersPrefix, String locksKey, List<QueueConfiguration> queueConfigurations,
-                              QueueStatisticsCollector queueStatisticsCollector, Logger log) {
-        super(vertx, redisProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey, queueConfigurations,
-                queueStatisticsCollector, log);
+    public GetQueueItemAction(
+            Vertx vertx, RedisProvider redisProvider, String address, String queuesKey,
+            String queuesPrefix, String consumersPrefix, String locksKey,
+            List<QueueConfiguration> queueConfigurations, QueueStatisticsCollector queueStatisticsCollector,
+            Logger log
+    ) {
+        super(vertx, redisProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey,
+                queueConfigurations, queueStatisticsCollector, log);
     }
 
     @Override
     public void execute(Message<JsonObject> event) {
         String key = queuesPrefix + event.body().getJsonObject(PAYLOAD).getString(QUEUENAME);
         int index = event.body().getJsonObject(PAYLOAD).getInteger(INDEX);
-        redisProvider.redis().onSuccess(redisAPI ->
-                        redisAPI.lindex(key, String.valueOf(index), new GetQueueItemHandler(event)))
-                .onFailure(replyErrorMessageHandler(event));
+        var p = redisProvider.redis();
+        p.onSuccess(redisAPI -> {
+            redisAPI.lindex(key, String.valueOf(index), new GetQueueItemHandler(event));
+        });
+        p.onFailure(ex -> replyErrorMessageHandler(event).handle(ex));
     }
+
 }

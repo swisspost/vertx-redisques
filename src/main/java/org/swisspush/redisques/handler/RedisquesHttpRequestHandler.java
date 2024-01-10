@@ -2,7 +2,9 @@ package org.swisspush.redisques.handler;
 
 import io.netty.util.internal.StringUtil;
 import io.vertx.core.AsyncResult;
+import io.vertx.core.Future;
 import io.vertx.core.Handler;
+import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.eventbus.EventBus;
@@ -10,6 +12,7 @@ import io.vertx.core.eventbus.Message;
 import io.vertx.core.http.HttpServerOptions;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
+import io.vertx.core.json.Json;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.ext.auth.authentication.AuthenticationProvider;
@@ -18,18 +21,69 @@ import io.vertx.ext.web.RoutingContext;
 import io.vertx.ext.web.handler.BasicAuthHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.swisspush.redisques.util.DequeueStatistic;
+import org.swisspush.redisques.util.QueueStatisticsCollector;
 import org.swisspush.redisques.util.RedisquesAPI;
 import org.swisspush.redisques.util.RedisquesConfiguration;
 import org.swisspush.redisques.util.Result;
 import org.swisspush.redisques.util.StatusCode;
 
 import java.nio.charset.StandardCharsets;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
-import static org.swisspush.redisques.util.HttpServerRequestUtil.*;
-import static org.swisspush.redisques.util.RedisquesAPI.*;
+import static org.swisspush.redisques.util.HttpServerRequestUtil.decode;
+import static org.swisspush.redisques.util.HttpServerRequestUtil.encodePayload;
+import static org.swisspush.redisques.util.HttpServerRequestUtil.evaluateUrlParameterToBeEmptyOrTrue;
+import static org.swisspush.redisques.util.HttpServerRequestUtil.extractNonEmptyJsonArrayFromBody;
+import static org.swisspush.redisques.util.RedisquesAPI.BAD_INPUT;
+import static org.swisspush.redisques.util.RedisquesAPI.COUNT;
+import static org.swisspush.redisques.util.RedisquesAPI.ERROR_TYPE;
+import static org.swisspush.redisques.util.RedisquesAPI.FILTER;
+import static org.swisspush.redisques.util.RedisquesAPI.LIMIT;
+import static org.swisspush.redisques.util.RedisquesAPI.LOCKS;
+import static org.swisspush.redisques.util.RedisquesAPI.MEMORY_FULL;
+import static org.swisspush.redisques.util.RedisquesAPI.MESSAGE;
+import static org.swisspush.redisques.util.RedisquesAPI.MONITOR_QUEUE_NAME;
+import static org.swisspush.redisques.util.RedisquesAPI.MONITOR_QUEUE_SIZE;
+import static org.swisspush.redisques.util.RedisquesAPI.NO_SUCH_LOCK;
+import static org.swisspush.redisques.util.RedisquesAPI.OK;
+import static org.swisspush.redisques.util.RedisquesAPI.QUEUES;
+import static org.swisspush.redisques.util.RedisquesAPI.STATISTIC_QUEUE_DEQUEUESTATISTIC;
+import static org.swisspush.redisques.util.RedisquesAPI.STATISTIC_QUEUE_LAST_DEQUEUE_ATTEMPT;
+import static org.swisspush.redisques.util.RedisquesAPI.STATISTIC_QUEUE_LAST_DEQUEUE_SUCCESS;
+import static org.swisspush.redisques.util.RedisquesAPI.STATISTIC_QUEUE_NEXT_DEQUEUE_DUE_TS;
+import static org.swisspush.redisques.util.RedisquesAPI.STATUS;
+import static org.swisspush.redisques.util.RedisquesAPI.VALUE;
+import static org.swisspush.redisques.util.RedisquesAPI.buildAddQueueItemOperation;
+import static org.swisspush.redisques.util.RedisquesAPI.buildBulkDeleteLocksOperation;
+import static org.swisspush.redisques.util.RedisquesAPI.buildBulkDeleteQueuesOperation;
+import static org.swisspush.redisques.util.RedisquesAPI.buildBulkPutLocksOperation;
+import static org.swisspush.redisques.util.RedisquesAPI.buildDeleteAllLocksOperation;
+import static org.swisspush.redisques.util.RedisquesAPI.buildDeleteAllQueueItemsOperation;
+import static org.swisspush.redisques.util.RedisquesAPI.buildDeleteLockOperation;
+import static org.swisspush.redisques.util.RedisquesAPI.buildDeleteQueueItemOperation;
+import static org.swisspush.redisques.util.RedisquesAPI.buildEnqueueOperation;
+import static org.swisspush.redisques.util.RedisquesAPI.buildGetAllLocksOperation;
+import static org.swisspush.redisques.util.RedisquesAPI.buildGetConfigurationOperation;
+import static org.swisspush.redisques.util.RedisquesAPI.buildGetLockOperation;
+import static org.swisspush.redisques.util.RedisquesAPI.buildGetQueueItemOperation;
+import static org.swisspush.redisques.util.RedisquesAPI.buildGetQueueItemsCountOperation;
+import static org.swisspush.redisques.util.RedisquesAPI.buildGetQueueItemsOperation;
+import static org.swisspush.redisques.util.RedisquesAPI.buildGetQueuesCountOperation;
+import static org.swisspush.redisques.util.RedisquesAPI.buildGetQueuesItemsCountOperation;
+import static org.swisspush.redisques.util.RedisquesAPI.buildGetQueuesOperation;
+import static org.swisspush.redisques.util.RedisquesAPI.buildGetQueuesSpeedOperation;
+import static org.swisspush.redisques.util.RedisquesAPI.buildGetQueuesStatisticsOperation;
+import static org.swisspush.redisques.util.RedisquesAPI.buildLockedEnqueueOperation;
+import static org.swisspush.redisques.util.RedisquesAPI.buildPutLockOperation;
+import static org.swisspush.redisques.util.RedisquesAPI.buildReplaceQueueItemOperation;
+import static org.swisspush.redisques.util.RedisquesAPI.buildSetConfigurationOperation;
 
 /**
  * Handler class for HTTP requests providing access to Redisques over HTTP.
@@ -53,16 +107,19 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     private static final String EMPTY_QUEUES_PARAM = "emptyQueues";
     private static final String DELETED = "deleted";
 
+    private static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("dd.MM.yyyy hh:mm:ss");
+
     private final String redisquesAddress;
     private final String userHeader;
     private final boolean enableQueueNameDecoding;
     private final int queueSpeedIntervalSec;
+    private final QueueStatisticsCollector queueStatisticsCollector;
 
-    public static void init(Vertx vertx, RedisquesConfiguration modConfig) {
+    public static void init(Vertx vertx, RedisquesConfiguration modConfig, QueueStatisticsCollector queueStatisticsCollector) {
         log.info("Enable http request handler: " + modConfig.getHttpRequestHandlerEnabled());
         if (modConfig.getHttpRequestHandlerEnabled()) {
             if (modConfig.getHttpRequestHandlerPort() != null && modConfig.getHttpRequestHandlerUserHeader() != null) {
-                RedisquesHttpRequestHandler handler = new RedisquesHttpRequestHandler(vertx, modConfig);
+                RedisquesHttpRequestHandler handler = new RedisquesHttpRequestHandler(vertx, modConfig, queueStatisticsCollector);
                 // in Vert.x 2x 100-continues was activated per default, in vert.x 3x it is off per default.
                 HttpServerOptions options = new HttpServerOptions().setHandle100ContinueAutomatically(true);
                 vertx.createHttpServer(options).requestHandler(handler).listen(modConfig.getHttpRequestHandlerPort(), result -> {
@@ -91,13 +148,14 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         return Result.ok(false);
     }
 
-    private RedisquesHttpRequestHandler(Vertx vertx, RedisquesConfiguration modConfig) {
+    private RedisquesHttpRequestHandler(Vertx vertx, RedisquesConfiguration modConfig, QueueStatisticsCollector queueStatisticsCollector) {
         this.router = Router.router(vertx);
         this.eventBus = vertx.eventBus();
         this.redisquesAddress = modConfig.getAddress();
         this.userHeader = modConfig.getHttpRequestHandlerUserHeader();
         this.enableQueueNameDecoding = modConfig.getEnableQueueNameDecoding();
         this.queueSpeedIntervalSec = modConfig.getQueueSpeedIntervalSec();
+        this.queueStatisticsCollector = queueStatisticsCollector;
 
         final String prefix = modConfig.getHttpRequestHandlerPrefix();
 
@@ -504,9 +562,13 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
                     if (limit > 0) {
                         queuesList = limitJsonQueueArray(queuesList, limit);
                     }
-                    JsonObject resultObject = new JsonObject();
-                    resultObject.put(QUEUES, queuesList);
-                    jsonResponse(ctx.response(), resultObject);
+
+                    // this function always succeeds, no need to handle the error case
+                    fillStatisticToQueuesList(queuesList).onSuccess(updatedQueuesList -> {
+                        JsonObject resultObject = new JsonObject();
+                        resultObject.put(QUEUES, updatedQueuesList);
+                        jsonResponse(ctx.response(), resultObject);
+                    });
                 } else {
                     // there was no result, we as well return an empty result
                     JsonObject resultObject = new JsonObject();
@@ -515,10 +577,58 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
                 }
             } else {
                 String error = "Error gathering names of active queues";
-                log.error(error);
+                log.error(error, reply.cause());
                 respondWith(StatusCode.INTERNAL_SERVER_ERROR, error, ctx.request());
             }
         });
+    }
+
+    private Future<List<JsonObject>> fillStatisticToQueuesList(List<JsonObject> queuesList) {
+        Promise<List<JsonObject>> promise = Promise.promise();
+        List<String> queueNameList = new ArrayList<>();
+        for (JsonObject jsonObject : queuesList) {
+            queueNameList.add(jsonObject.getString(MONITOR_QUEUE_NAME));
+        }
+
+        queueStatisticsCollector.getQueueStatistics(queueNameList)
+                .onFailure(ex -> {
+                    log.error("Failed to fetch QueueStatistics for queue", ex);
+                    promise.complete(queuesList);
+                })
+                .onSuccess(queueStatisticsJsonObject -> {
+                    if (OK.equals(queueStatisticsJsonObject.getString(STATUS))
+                            && !queueStatisticsJsonObject.getJsonArray(QUEUES).isEmpty()) {
+                        JsonArray queueStatisticsArray = queueStatisticsJsonObject.getJsonArray(QUEUES);
+                        queuesList.forEach(entries -> {
+                            String queueName = entries.getString(MONITOR_QUEUE_NAME);
+                            entries.put(STATISTIC_QUEUE_LAST_DEQUEUE_ATTEMPT, "");
+                            entries.put(STATISTIC_QUEUE_LAST_DEQUEUE_SUCCESS, "");
+                            entries.put(STATISTIC_QUEUE_NEXT_DEQUEUE_DUE_TS, "");
+                            queueStatisticsJsonObject.getJsonArray(QUEUES);
+
+                            for (Iterator<Object> it = queueStatisticsArray.stream().iterator(); it.hasNext(); ) {
+                                JsonObject queueStatistic = (JsonObject) it.next();
+                                if (queueName.equals(queueStatistic.getString(MONITOR_QUEUE_NAME))
+                                && queueStatistic.containsKey(STATISTIC_QUEUE_DEQUEUESTATISTIC)
+                                && queueStatistic.getJsonObject(STATISTIC_QUEUE_DEQUEUESTATISTIC) != null) {
+                                    DequeueStatistic dequeueStatistic = queueStatistic.getJsonObject(STATISTIC_QUEUE_DEQUEUESTATISTIC).mapTo(DequeueStatistic.class);
+                                    if (dequeueStatistic.lastDequeueAttemptTimestamp != null) {
+                                        entries.put(STATISTIC_QUEUE_LAST_DEQUEUE_ATTEMPT, DATE_FORMAT.format(new Date(dequeueStatistic.lastDequeueAttemptTimestamp)));
+                                    }
+                                    if (dequeueStatistic.lastDequeueSuccessTimestamp != null) {
+                                        entries.put(STATISTIC_QUEUE_LAST_DEQUEUE_SUCCESS, DATE_FORMAT.format(new Date(dequeueStatistic.lastDequeueSuccessTimestamp)));
+                                    }
+                                    if (dequeueStatistic.nextDequeueDueTimestamp != null) {
+                                        entries.put(STATISTIC_QUEUE_NEXT_DEQUEUE_DUE_TS, DATE_FORMAT.format(new Date(dequeueStatistic.nextDequeueDueTimestamp)));
+                                    }
+                                    break;
+                                }
+                            }
+                        });
+                    }
+                    promise.complete(queuesList);
+                });
+        return promise.future();
     }
 
 
@@ -533,6 +643,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     private void getQueuesCount(RoutingContext ctx) {
         String filter = ctx.request().params().get(FILTER);
         eventBus.request(redisquesAddress, buildGetQueuesCountOperation(filter), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
+            if( reply.failed() ) log.warn("TODO error handling", reply.cause());
             if (reply.succeeded() && OK.equals(reply.result().body().getString(STATUS))) {
                 JsonObject result = new JsonObject();
                 result.put(COUNT, reply.result().body().getLong(VALUE));
@@ -552,6 +663,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     private void listQueues(RoutingContext ctx) {
         String filter = ctx.request().params().get(FILTER);
         eventBus.request(redisquesAddress, buildGetQueuesOperation(filter), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
+            if( reply.failed() ) log.warn("TODO error handling", reply.cause());
             if (reply.succeeded() && OK.equals(reply.result().body().getString(STATUS))) {
                 jsonResponse(ctx.response(), reply.result().body().getJsonObject(VALUE));
             } else {
