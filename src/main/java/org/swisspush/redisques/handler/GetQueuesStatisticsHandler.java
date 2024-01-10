@@ -6,6 +6,7 @@ import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonObject;
 import io.vertx.redis.client.Response;
 import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.swisspush.redisques.util.HandlerUtil;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 
@@ -13,7 +14,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.regex.Pattern;
 
-import static org.slf4j.LoggerFactory.getLogger;
 import static org.swisspush.redisques.util.RedisquesAPI.ERROR;
 import static org.swisspush.redisques.util.RedisquesAPI.STATUS;
 
@@ -23,7 +23,7 @@ import static org.swisspush.redisques.util.RedisquesAPI.STATUS;
  */
 public class GetQueuesStatisticsHandler implements Handler<AsyncResult<Response>> {
 
-    private static final Logger log = getLogger(GetQueuesStatisticsHandler.class);
+    private static final Logger log = LoggerFactory.getLogger(GetQueuesStatisticsHandler.class);
     private final Message<JsonObject> event;
     private final Optional<Pattern> filterPattern;
     private final QueueStatisticsCollector queueStatisticsCollector;
@@ -42,8 +42,13 @@ public class GetQueuesStatisticsHandler implements Handler<AsyncResult<Response>
     public void handle(AsyncResult<Response> handleQueues) {
         if (handleQueues.succeeded()) {
             List<String> queues = HandlerUtil
-                .filterByPattern(handleQueues.result(), filterPattern);
-            queueStatisticsCollector.getQueueStatistics(event, queues);
+                    .filterByPattern(handleQueues.result(), filterPattern);
+            queueStatisticsCollector.getQueueStatistics(queues)
+                    .onFailure(ex -> {
+                        log.error("", ex);
+                        event.reply(new JsonObject().put(STATUS, ERROR));
+                    })
+                    .onSuccess(event::reply);
         } else {
             log.warn("Concealed error", new Exception(handleQueues.cause()));
             event.reply(new JsonObject().put(STATUS, ERROR));
