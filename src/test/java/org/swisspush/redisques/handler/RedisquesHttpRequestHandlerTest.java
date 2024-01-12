@@ -151,8 +151,8 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
                         new QueueConfiguration().withPattern("stat.*").withRetryIntervals(1, 2, 3, 5)
                                 .withEnqueueDelayMillisPerSize(5).withEnqueueMaxDelayMillis(100)
                 ))
-                .queueSpeedIntervalSec(4)
-                .dequeueStatisticReportIntervalSec(5)
+                .queueSpeedIntervalSec(2)
+                .dequeueStatisticReportIntervalSec(3)
                 .build()
                 .asJsonObject();
 
@@ -1892,7 +1892,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
 
         // wait 5.1 second, because the update time is 5 seconds
         try {
-            Thread.sleep(5100);
+            Thread.sleep(3100);
         } catch (InterruptedException iex) {
             // ignore
         }
@@ -1913,7 +1913,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         verifyResponse(context, expectedStaticJson, receivedJson);
         // wait 5.1 second, because the update time is 5 seconds
         try {
-            Thread.sleep(5100);
+            Thread.sleep(3100);
         } catch (InterruptedException iex) {
             // ignore
         }
@@ -1939,7 +1939,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         verifyResponse(context, expectedStaticJson, receivedJson);
         // wait 5.1 second, because the update time is 5 seconds
         try {
-            Thread.sleep(5100);
+            Thread.sleep(3100);
         } catch (InterruptedException iex) {
             // ignore
         }
@@ -1961,7 +1961,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         verifyResponse(context, expectedStaticJson, receivedJson);
         // wait 5.1 second, because the update time is 5 seconds
         try {
-            Thread.sleep(5100);
+            Thread.sleep(3100);
         } catch (InterruptedException iex) {
             // ignore
         }
@@ -1987,7 +1987,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         verifyResponse(context, expectedStaticJson, receivedJson);
         // wait 5.1 second, because the update time is 5 seconds
         try {
-            Thread.sleep(5100);
+            Thread.sleep(3100);
         } catch (InterruptedException iex) {
             // ignore
         }
