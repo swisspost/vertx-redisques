@@ -1,5 +1,6 @@
 package org.swisspush.redisques;
 
+import jakarta.xml.bind.DatatypeConverter;
 import org.awaitility.Awaitility;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.DeploymentOptions;
@@ -15,7 +16,6 @@ import org.junit.*;
 import org.swisspush.redisques.util.RedisquesConfiguration;
 import redis.clients.jedis.Jedis;
 
-import javax.xml.bind.DatatypeConverter;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;

@@ -22,7 +22,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Optional;
 
-import static org.mockito.Matchers.anyList;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.*;
 
 /**
@@ -68,7 +68,7 @@ public class EnqueueActionTest {
         action.execute(message);
 
         verify(message, times(1)).reply(eq(new JsonObject(Buffer.buffer("{\"status\":\"error\",\"message\":\"memory usage limit reached\"}"))));
-        verifyZeroInteractions(redisAPI);
+        verifyNoInteractions(redisAPI);
     }
 
     @Test
