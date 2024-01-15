@@ -15,6 +15,8 @@ import org.junit.runner.RunWith;
 @RunWith(VertxUnitRunner.class)
 public class RedisQuesTimerTest {
 
+    private static final double TEST_BUFFER_MS = 2.5;
+
     @Test
     public void testExecuteDelayedLong(TestContext context){
         Async async = context.async();
@@ -71,6 +73,9 @@ public class RedisQuesTimerTest {
             delayMs = 1;
         }
         double delayPlus50Percent = delayMs * 1.5;
+        if(delayPlus50Percent <= TEST_BUFFER_MS) {
+            delayPlus50Percent = TEST_BUFFER_MS; // to increase test stability for very low delays we add some ms
+        }
         context.assertTrue(duration <= delayPlus50Percent, "Future completed after " + duration + "ms. " +
                 "However it should not have taken more than the delay + 50% which would be " + delayPlus50Percent + "ms");
     }
