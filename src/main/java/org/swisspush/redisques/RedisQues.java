@@ -691,13 +691,17 @@ public class RedisQues extends AbstractVerticle {
                 boolean success;
                 if (reply.succeeded()) {
                     success = OK.equals(reply.result().body().getString(STATUS));
-                    dequeueStatistic.get(queue).lastDequeueSuccessTimestamp = System.currentTimeMillis();
-                    dequeueStatistic.get(queue).nextDequeueDueTimestamp = null;
+                    if (success) {
+                        dequeueStatistic.get(queue).lastDequeueSuccessTimestamp = System.currentTimeMillis();
+                        dequeueStatistic.get(queue).nextDequeueDueTimestamp = null;
+                    }
                 } else {
                     log.info("RedisQues QUEUE_ERROR: Consumer failed {} queue: {}",
                             uid, queue, new Exception(reply.cause()));
                     success = Boolean.FALSE;
                 }
+
+
                 handler.handle(success);
             });
             updateTimestamp(queue, null);
