@@ -2040,13 +2040,15 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
                 return false;
             }
 
-            if (!receivedJson.get("queues").get(i).get("lastDequeueAttempt").asText().isEmpty()) {
+            if (receivedJson.get("queues").get(i).get("lastDequeueAttempt").asText().isEmpty()) {
                 return false;
             }
             if (!receivedJson.get("queues").get(i).get("lastDequeueSuccess").asText().isEmpty()) {
+                // No handlers for address processor-address, so this should never set
                 return false;
             }
-            if (!receivedJson.get("queues").get(i).get("nextDequeueDueTimestamp").asText().isEmpty()) {
+            if (receivedJson.get("queues").get(i).get("nextDequeueDueTimestamp").asText().isEmpty()) {
+                // So will retry
                 return false;
             }
         }
