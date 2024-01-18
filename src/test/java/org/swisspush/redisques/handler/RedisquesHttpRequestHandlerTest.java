@@ -2011,7 +2011,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
 
         for (int i = 0; i < repeat; i++) {
             JsonNode receivedJson = jsonMapper.readTree(when().get(url).then().assertThat().statusCode(200).extract().asString());
-            if (verifyResponse(context, expectedStaticJson, receivedJson)) {
+            if (doesMatch(context, expectedStaticJson, receivedJson)) {
                 return;
             }
             try {
@@ -2022,7 +2022,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         }
     }
 
-    private static boolean verifyResponse(TestContext context, JsonNode expectedStaticJson, JsonNode receivedJson) {
+    private static boolean doesMatch(TestContext context, JsonNode expectedStaticJson, JsonNode receivedJson) {
 
         if (expectedStaticJson.size() != receivedJson.size()) {
             return false;
