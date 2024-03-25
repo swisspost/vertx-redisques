@@ -1,5 +1,6 @@
 package org.swisspush.redisques;
 
+import com.google.common.base.Strings;
 import io.vertx.core.*;
 import io.vertx.core.eventbus.DeliveryOptions;
 import io.vertx.core.eventbus.EventBus;
@@ -91,6 +92,7 @@ public class RedisQues extends AbstractVerticle {
     private MemoryUsageProvider memoryUsageProvider;
     private QueueActionFactory queueActionFactory;
     private RedisquesConfigurationProvider configurationProvider;
+    private RedisMonitor redisMonitor;
 
     private Map<QueueOperation, QueueAction> queueActions = new HashMap<>();
 
@@ -257,6 +259,19 @@ public class RedisQues extends AbstractVerticle {
 
         registerActiveQueueRegistrationRefresh();
         registerQueueCheck();
+        registerMetricsGathering(configuration);
+    }
+
+    private void registerMetricsGathering(RedisquesConfiguration configuration){
+        String metricsAddress = configuration.getPublishMetricsAddress();
+        if(Strings.isNullOrEmpty(metricsAddress)) {
+            return;
+        }
+        String metricStorageName = configuration.getMetricStorageName();
+        int metricRefreshPeriod = configuration.getMetricRefreshPeriod();
+
+        redisMonitor = new RedisMonitor(vertx, redisProvider, metricsAddress, metricStorageName, metricRefreshPeriod);
+        redisMonitor.start();
     }
 
     private void registerActiveQueueRegistrationRefresh() {
@@ -379,6 +394,9 @@ public class RedisQues extends AbstractVerticle {
     @Override
     public void stop() {
         unregisterConsumers(true);
+        if(redisMonitor != null) {
+            redisMonitor.stop();
+        }
     }
 
     private void gracefulStop(final Handler<Void> doneHandler) {

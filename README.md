@@ -75,6 +75,9 @@ The following configuration values are available:
 | httpRequestHandlerPort                  | 7070                            | The port of the HTTP API                                                                                                                                                                        |
 | httpRequestHandlerUserHeader            | x-rp-usr                        | The name of the header property where the user information is provided. Used for the HTTP API                                                                                                   |
 | queueConfigurations                     |                                 | Configure retry intervals and enqueue delaying for queue patterns                                                                                                                               |
+| publish-metrics-address                 |                                 | The EventBus address to send collected redis metrics to                                                                                                                                         |
+| metric-storage-name                     | queue                           | The name of the storage used in the published metrics                                                                                                                                           |
+| metric-refresh-period                   | 10                              | The frequency [s] of collecting metrics from redis database                                                                                                                                     |
 
 ### Configuration util
 

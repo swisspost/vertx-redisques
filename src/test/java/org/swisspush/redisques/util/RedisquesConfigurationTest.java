@@ -28,6 +28,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getConfigurationUpdatedAddress(), "redisques-configuration-updated");
         testContext.assertEquals(config.getRedisPrefix(), "redisques:");
         testContext.assertEquals(config.getProcessorAddress(), "redisques-processor");
+        testContext.assertEquals(config.getMetricRefreshPeriod(), 10);
         testContext.assertEquals(config.getRefreshPeriod(), 10);
         testContext.assertEquals(config.getRedisHost(), "localhost");
         testContext.assertEquals(config.getRedisPort(), 6379);
@@ -47,6 +48,8 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getQueueConfigurations().size(), 0);
         testContext.assertEquals(config.getQueueSpeedIntervalSec(),60);
         testContext.assertEquals(config.getMemoryUsageLimitPercent(),100);
+        testContext.assertEquals(config.getMetricStorageName(), "queue");
+        testContext.assertNull(config.getPublishMetricsAddress());
     }
 
     @Test
@@ -75,12 +78,15 @@ public class RedisquesConfigurationTest {
                 ))
                 .queueSpeedIntervalSec(1)
                 .memoryUsageLimitPercent(80)
+                .publishMetricsAddress("eventbus-addr-1")
+                .metricStorageName("queue")
                 .build();
 
         // default values
         testContext.assertEquals(config.getRedisPrefix(), "redisques:");
         testContext.assertEquals(config.getProcessorAddress(), "redisques-processor");
         testContext.assertEquals(config.getRefreshPeriod(), 10);
+        testContext.assertEquals(config.getMetricRefreshPeriod(), 10);
 
         // overridden values
         testContext.assertEquals(config.getAddress(), "new_address");
@@ -102,6 +108,8 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getHttpRequestHandlerUserHeader(), "x-custom-user-header");
         testContext.assertEquals(config.getQueueSpeedIntervalSec(), 1);
         testContext.assertEquals(config.getMemoryUsageLimitPercent(), 80);
+        testContext.assertEquals(config.getPublishMetricsAddress(), "eventbus-addr-1");
+        testContext.assertEquals(config.getMetricStorageName(), "queue");
         // queue configurations
         testContext.assertEquals(config.getQueueConfigurations().size(), 1);
         QueueConfiguration queueConfiguration = config.getQueueConfigurations().get(0);
@@ -118,6 +126,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(json.getString(PROP_CONFIGURATION_UPDATED_ADDRESS), "redisques-configuration-updated");
         testContext.assertEquals(json.getString(PROP_REDIS_PREFIX), "redisques:");
         testContext.assertEquals(json.getString(PROP_PROCESSOR_ADDRESS), "redisques-processor");
+        testContext.assertEquals(json.getInteger(PROP_METRIC_REFRESH_PERIOD), 10);
         testContext.assertEquals(json.getInteger(PROP_REFRESH_PERIOD), 10);
         testContext.assertEquals(json.getString(PROP_REDIS_HOST), "localhost");
         testContext.assertEquals(json.getInteger(PROP_REDIS_PORT), 6379);
@@ -138,6 +147,8 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(json.getInteger(PROP_QUEUE_SPEED_INTERVAL_SEC), 60);
         testContext.assertEquals(json.getInteger(PROP_MEMORY_USAGE_LIMIT_PCT), 100);
         testContext.assertEquals(json.getInteger(PROP_DEQUEUE_STATISTIC_REPORT_INTERVAL_SEC), 30);
+        testContext.assertNull(json.getString(PROP_PUBLISH_METRICS_ADDRESS));
+        testContext.assertEquals(json.getString(PROP_METRIC_STORAGE_NAME), "queue");
     }
 
     @Test
@@ -165,6 +176,8 @@ public class RedisquesConfigurationTest {
                 .queueSpeedIntervalSec(1)
                 .memoryUsageLimitPercent(55)
                 .dequeueStatisticReportIntervalSec(44)
+                .publishMetricsAddress("eventbus-addr-1")
+                .metricStorageName("queue")
                 .build();
 
         JsonObject json = config.asJsonObject();
@@ -173,6 +186,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(json.getString(PROP_REDIS_PREFIX), "redisques:");
         testContext.assertEquals(json.getString(PROP_PROCESSOR_ADDRESS), "redisques-processor");
         testContext.assertEquals(json.getInteger(PROP_REFRESH_PERIOD), 10);
+        testContext.assertEquals(json.getInteger(PROP_METRIC_REFRESH_PERIOD), 10);
         testContext.assertFalse(json.getBoolean(PROP_HTTP_REQUEST_HANDLER_ENABLED));
         testContext.assertEquals(json.getString(PROP_HTTP_REQUEST_HANDLER_PREFIX), "/queuing");
 
@@ -195,6 +209,8 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(json.getInteger(PROP_QUEUE_SPEED_INTERVAL_SEC), 1);
         testContext.assertEquals(json.getInteger(PROP_MEMORY_USAGE_LIMIT_PCT), 55);
         testContext.assertEquals(json.getInteger(PROP_DEQUEUE_STATISTIC_REPORT_INTERVAL_SEC), 44);
+        testContext.assertEquals(json.getString(PROP_PUBLISH_METRICS_ADDRESS), "eventbus-addr-1");
+        testContext.assertEquals(json.getString(PROP_METRIC_STORAGE_NAME), "queue");
         // queue configurations
         JsonArray queueConfigurationsJsonArray = json.getJsonArray(PROP_QUEUE_CONFIGURATIONS);
         List<JsonObject> queueConfigurationJsonObjects = queueConfigurationsJsonArray.getList();
@@ -214,6 +230,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getRedisPrefix(), "redisques:");
         testContext.assertEquals(config.getProcessorAddress(), "redisques-processor");
         testContext.assertEquals(config.getRefreshPeriod(), 10);
+        testContext.assertEquals(config.getMetricRefreshPeriod(), 10);
         testContext.assertEquals(config.getRedisHost(), "localhost");
         testContext.assertEquals(config.getRedisPort(), 6379);
         testContext.assertFalse(config.getRedisEnableTls());
@@ -233,6 +250,8 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getQueueSpeedIntervalSec(), 60);
         testContext.assertEquals(config.getMemoryUsageLimitPercent(), 100);
         testContext.assertEquals(config.getDequeueStatisticReportIntervalSec(), 30);
+        testContext.assertNull(config.getPublishMetricsAddress());
+        testContext.assertEquals(config.getMetricStorageName(), "queue");
     }
 
     @Test
@@ -244,6 +263,7 @@ public class RedisquesConfigurationTest {
         json.put(PROP_REDIS_PREFIX, "new_redis-prefix");
         json.put(PROP_PROCESSOR_ADDRESS, "new_processor-address");
         json.put(PROP_REFRESH_PERIOD, 99);
+        json.put(PROP_METRIC_REFRESH_PERIOD, 55);
         json.put(PROP_REDIS_HOST, "newredishost");
         json.put(PROP_REDIS_PORT, 4321);
         json.put(PROP_REDIS_ENABLE_TLS, true);
@@ -261,6 +281,8 @@ public class RedisquesConfigurationTest {
         json.put(PROP_QUEUE_SPEED_INTERVAL_SEC, 1);
         json.put(PROP_MEMORY_USAGE_LIMIT_PCT, 75);
         json.put(PROP_DEQUEUE_STATISTIC_REPORT_INTERVAL_SEC, 22);
+        json.put(PROP_METRIC_STORAGE_NAME, "queue");
+        json.put(PROP_PUBLISH_METRICS_ADDRESS, "eventbus-addr-1");
         json.put(PROP_QUEUE_CONFIGURATIONS, new JsonArray(Collections.singletonList(
                 new QueueConfiguration().withPattern("vehicle-.*")
                         .withRetryIntervals(10, 20, 30, 60)
@@ -273,6 +295,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getRedisPrefix(), "new_redis-prefix");
         testContext.assertEquals(config.getProcessorAddress(), "new_processor-address");
         testContext.assertEquals(config.getRefreshPeriod(), 99);
+        testContext.assertEquals(config.getMetricRefreshPeriod(), 55);
         testContext.assertEquals(config.getRedisHost(), "newredishost");
         testContext.assertEquals(config.getRedisPort(), 4321);
         testContext.assertTrue(config.getRedisEnableTls());
@@ -290,6 +313,8 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getQueueSpeedIntervalSec(), 1);
         testContext.assertEquals(config.getMemoryUsageLimitPercent(), 75);
         testContext.assertEquals(config.getDequeueStatisticReportIntervalSec(), 22);
+        testContext.assertEquals(config.getPublishMetricsAddress(), "eventbus-addr-1");
+        testContext.assertEquals(config.getMetricStorageName(), "queue");
 
         // queue configurations
         testContext.assertEquals(config.getQueueConfigurations().size(), 1);
@@ -374,6 +399,25 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(2, with().redisReconnectDelaySec(2).build().getRedisReconnectDelaySec());
         testContext.assertEquals(50, with().redisReconnectDelaySec(50).build().getRedisReconnectDelaySec());
         testContext.assertEquals(3600, with().redisReconnectDelaySec(3600).build().getRedisReconnectDelaySec());
+    }
+
+    @Test
+    public void testMetricRefreshPeriod(TestContext testContext) {
+        testContext.assertEquals(10, with().metricRefreshPeriod(-30).build().getMetricRefreshPeriod()); // negative values are not allowed
+        testContext.assertEquals(10, with().metricRefreshPeriod(0).build().getMetricRefreshPeriod());
+        testContext.assertEquals(1, with().metricRefreshPeriod(1).build().getMetricRefreshPeriod());
+        testContext.assertEquals(2, with().metricRefreshPeriod(2).build().getMetricRefreshPeriod());
+        testContext.assertEquals(50, with().metricRefreshPeriod(50).build().getMetricRefreshPeriod());
+        testContext.assertEquals(3600, with().metricRefreshPeriod(3600).build().getMetricRefreshPeriod());
+    }
+
+    @Test
+    public void testMetricStorageName(TestContext testContext) {
+        testContext.assertEquals("queue", with().metricStorageName(null).build().getMetricStorageName());
+        testContext.assertEquals("queue", with().metricStorageName("").build().getMetricStorageName());
+        testContext.assertEquals("queue", with().metricStorageName("  ").build().getMetricStorageName());
+        testContext.assertEquals("foobar", with().metricStorageName("foobar").build().getMetricStorageName());
+        testContext.assertEquals("foobar", with().metricStorageName("  foobar  ").build().getMetricStorageName());
     }
 
     private int add500ms(int interval) {
