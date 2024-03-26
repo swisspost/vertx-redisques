@@ -7,11 +7,7 @@ import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
-import io.vertx.redis.client.Command;
-import io.vertx.redis.client.Redis;
-import io.vertx.redis.client.RedisAPI;
-import io.vertx.redis.client.Request;
-import io.vertx.redis.client.Response;
+import io.vertx.redis.client.*;
 import io.vertx.redis.client.impl.types.NumberType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,15 +22,8 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
-import static org.swisspush.redisques.util.RedisquesAPI.MONITOR_QUEUE_NAME;
-import static org.swisspush.redisques.util.RedisquesAPI.MONITOR_QUEUE_SIZE;
-import static org.swisspush.redisques.util.RedisquesAPI.OK;
-import static org.swisspush.redisques.util.RedisquesAPI.QUEUENAME;
-import static org.swisspush.redisques.util.RedisquesAPI.STATISTIC_QUEUE_BACKPRESSURE;
-import static org.swisspush.redisques.util.RedisquesAPI.STATISTIC_QUEUE_FAILURES;
-import static org.swisspush.redisques.util.RedisquesAPI.STATISTIC_QUEUE_SLOWDOWN;
-import static org.swisspush.redisques.util.RedisquesAPI.STATISTIC_QUEUE_SPEED;
-import static org.swisspush.redisques.util.RedisquesAPI.STATUS;
+import static java.lang.System.currentTimeMillis;
+import static org.swisspush.redisques.util.RedisquesAPI.*;
 
 /**
  * Class StatisticsCollector helps collecting statistics information about queue handling and
@@ -489,28 +478,40 @@ public class QueueStatisticsCollector {
     Future<JsonObject> step2(RequestCtx ctx) {
         assert ctx.conn != null;
         final Promise<JsonObject> promise = Promise.promise();
+        int numQueues = ctx.queueNames.size();
+        String fmt1 = "About to perform {} requests to redis just for monitoring";
+        if (numQueues > 256) {
+            log.warn(fmt1, numQueues);
+        } else {
+            log.debug(fmt1, numQueues);
+        }
+        long begRedisRequestsEpochMs = currentTimeMillis();
         List<Future> responses = ctx.queueNames.stream()
                 .map(queue -> ctx.conn.send(Request.cmd(Command.LLEN, queuePrefix + queue)))
                 .collect(Collectors.toList());
-        CompositeFuture.all(responses)
-                .onFailure(ex -> {
-                    promise.fail("Unexpected queue length result");
-                })
-                .onSuccess(compositeFuture -> {
-                    List<NumberType> queueLengthList = compositeFuture.list();
-                    if (queueLengthList == null) {
-                        promise.fail("Unexpected queue length result: null");
-                        return;
-                    }
-                    if (queueLengthList.size() != ctx.queueNames.size()) {
-                        String err = "Unexpected queue length result with unequal size " +
-                                ctx.queueNames.size() + " : " + queueLengthList.size();
-                        promise.fail(err);
-                        return;
-                    }
-                    ctx.queueLengthList = queueLengthList;
-                    promise.complete();
-                });
+        CompositeFuture.all(responses).onComplete( ev -> {
+            long durRedisRequestsMs = currentTimeMillis() - begRedisRequestsEpochMs;
+            String fmt2 = "All those {} redis requests took {}ms";
+            if (durRedisRequestsMs > 3000) log.warn(fmt2, numQueues, durRedisRequestsMs);
+            else log.debug(fmt2, numQueues, durRedisRequestsMs);
+            if(ev.failed()){
+                promise.fail(new Exception("Unexpected queue length result", ev.cause()));
+                return;
+            }
+            List<NumberType> queueLengthList = ev.result().list();
+            if (queueLengthList == null) {
+                promise.fail("Unexpected queue length result: null");
+                return;
+            }
+            if (queueLengthList.size() != ctx.queueNames.size()) {
+                String err = "Unexpected queue length result with unequal size " +
+                        ctx.queueNames.size() + " : " + queueLengthList.size();
+                promise.fail(err);
+                return;
+            }
+            ctx.queueLengthList = queueLengthList;
+            promise.complete();
+        });
         return promise.future();
     }
 
