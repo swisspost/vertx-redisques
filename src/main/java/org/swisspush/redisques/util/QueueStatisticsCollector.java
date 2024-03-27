@@ -492,9 +492,12 @@ public class QueueStatisticsCollector {
         CompositeFuture.all(responses).onComplete( ev -> {
             long durRedisRequestsMs = currentTimeMillis() - begRedisRequestsEpochMs;
             String fmt2 = "All those {} redis requests took {}ms";
-            if (durRedisRequestsMs > 3000) log.warn(fmt2, numQueues, durRedisRequestsMs);
-            else log.debug(fmt2, numQueues, durRedisRequestsMs);
-            if(ev.failed()){
+            if (durRedisRequestsMs > 3000) {
+                log.warn(fmt2, numQueues, durRedisRequestsMs);
+            } else {
+                log.debug(fmt2, numQueues, durRedisRequestsMs);
+            }
+            if (ev.failed()) {
                 promise.fail(new Exception("Unexpected queue length result", ev.cause()));
                 return;
             }
