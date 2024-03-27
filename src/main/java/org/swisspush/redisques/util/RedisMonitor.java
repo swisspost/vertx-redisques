@@ -14,7 +14,7 @@ import java.util.Map;
 public class RedisMonitor {
     private final Vertx vertx;
     private final RedisProvider redisProvider;
-    private final int period;
+    private final int periodMs;
     private long timer;
     private final Logger log = LoggerFactory.getLogger(RedisMonitor.class);
 
@@ -26,23 +26,23 @@ public class RedisMonitor {
      * @param vertx         vertx
      * @param redisProvider RedisProvider
      * @param name          name
-     * @param period        in seconds.
+     * @param periodSec        in seconds.
      */
-    public RedisMonitor(Vertx vertx, RedisProvider redisProvider, String monitoringAddress, String name, int period) {
-        this(vertx, redisProvider, name, period,
+    public RedisMonitor(Vertx vertx, RedisProvider redisProvider, String monitoringAddress, String name, int periodSec) {
+        this(vertx, redisProvider, name, periodSec,
                 new EventBusMetricsPublisher(vertx, monitoringAddress, "redis." + name + ".")
         );
     }
 
-    public RedisMonitor(Vertx vertx, RedisProvider redisProvider, String name, int period, MetricsPublisher publisher) {
+    public RedisMonitor(Vertx vertx, RedisProvider redisProvider, String name, int periodSec, MetricsPublisher publisher) {
         this.vertx = vertx;
         this.redisProvider = redisProvider;
-        this.period = period * 1000;
+        this.periodMs = periodSec * 1000;
         this.publisher = publisher;
     }
 
     public void start() {
-        timer = vertx.setPeriodic(period, timer -> redisProvider.redis().onSuccess(redisAPI -> {
+        timer = vertx.setPeriodic(periodMs, timer -> redisProvider.redis().onSuccess(redisAPI -> {
             redisAPI.info(new ArrayList<>()).onComplete(event -> {
                 if (event.succeeded()) {
                     collectMetrics(event.result().toBuffer());
@@ -56,6 +56,7 @@ public class RedisMonitor {
     public void stop() {
         if (timer != 0) {
             vertx.cancelTimer(timer);
+            timer = 0;
         }
     }
 
@@ -100,7 +101,7 @@ public class RedisMonitor {
                     publisher.publishMetric(key, value);
                 }
             } catch (NumberFormatException e) {
-                // ignore this field
+                log.warn("ignore field '{}' because '{}' doesnt look number-ish enough", key, valueStr);
             }
         });
     }

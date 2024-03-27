@@ -396,6 +396,7 @@ public class RedisQues extends AbstractVerticle {
         unregisterConsumers(true);
         if(redisMonitor != null) {
             redisMonitor.stop();
+            redisMonitor = null;
         }
     }
 
