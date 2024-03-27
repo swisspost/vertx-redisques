@@ -116,7 +116,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     private final QueueStatisticsCollector queueStatisticsCollector;
 
     public static void init(Vertx vertx, RedisquesConfiguration modConfig, QueueStatisticsCollector queueStatisticsCollector) {
-        log.info("Enable http request handler: " + modConfig.getHttpRequestHandlerEnabled());
+        log.info("Enable http request handler: {}", modConfig.getHttpRequestHandlerEnabled());
         if (modConfig.getHttpRequestHandlerEnabled()) {
             if (modConfig.getHttpRequestHandlerPort() != null && modConfig.getHttpRequestHandlerUserHeader() != null) {
                 RedisquesHttpRequestHandler handler = new RedisquesHttpRequestHandler(vertx, modConfig, queueStatisticsCollector);
@@ -124,7 +124,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
                 HttpServerOptions options = new HttpServerOptions().setHandle100ContinueAutomatically(true);
                 vertx.createHttpServer(options).requestHandler(handler).listen(modConfig.getHttpRequestHandlerPort(), result -> {
                     if (result.succeeded()) {
-                        log.info("Successfully started http request handler on port " + modConfig.getHttpRequestHandlerPort());
+                        log.info("Successfully started http request handler on port {}", modConfig.getHttpRequestHandlerPort());
                     } else {
                         log.error("Unable to start http request handler.", result.cause());
                     }
@@ -710,7 +710,8 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
                 } else {
                     ctx.response().setStatusCode(StatusCode.NOT_FOUND.getStatusCode());
                     ctx.response().end(replyBody.getString(MESSAGE));
-                    log.warn("Error in routerMatcher.getWithRegEx. Command = '" + (replyBody.getString("command") == null ? "<null>" : replyBody.getString("command")) + "'.");
+                    log.warn("Error in routerMatcher.getWithRegEx. Command = '{}'.",
+                            replyBody.getString("command") == null ? "<null>" : replyBody.getString("command"));
                 }
             });
         });
@@ -869,7 +870,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
 
     private void respondWith(StatusCode statusCode, String responseMessage, HttpServerRequest request) {
         final HttpServerResponse response = request.response();
-        log.info("Responding with status code " + statusCode + " and message: " + responseMessage);
+        log.info("Responding with status code {} and message: {}", statusCode, responseMessage);
         response.setStatusCode(statusCode.getStatusCode());
         response.setStatusMessage(statusCode.getStatusMessage());
         response.putHeader(CONTENT_TYPE, TEXT_PLAIN);
@@ -939,7 +940,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
             return Integer.parseInt(limitParam);
         } catch (NumberFormatException ex) {
             if (limitParam != null) {
-                log.warn("Non-numeric limit parameter value used: " + limitParam);
+                log.warn("Non-numeric limit parameter value used: {}", limitParam);
             }
             return Integer.MAX_VALUE;
         }
