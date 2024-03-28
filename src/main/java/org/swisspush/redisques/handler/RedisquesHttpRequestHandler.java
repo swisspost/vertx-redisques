@@ -59,7 +59,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
      * <p>For why we should NOT use such date formats, see SDCISA-15311. We really
      * should utilize ISO dates and include timezone information.</p>
      *
-     * @deprecated TODO <a href="https://xkcd.com/1179/>about date formats</a>"
+     * @deprecated TODO <a href="https://xkcd.com/1179/">about date formats</a>
      */
     @Deprecated
     private static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("dd.MM.yyyy hh:mm:ss");

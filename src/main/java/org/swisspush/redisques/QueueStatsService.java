@@ -13,6 +13,7 @@ import java.util.*;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
+import static java.lang.Long.compare;
 import static java.lang.System.currentTimeMillis;
 import static java.util.Collections.emptyList;
 import static org.slf4j.LoggerFactory.getLogger;
@@ -84,9 +85,7 @@ public class QueueStatsService {
                 // No need to process empty queues any further if caller is not interested
                 // in them anyway.
                 if (!includeEmptyQueues && (size == null || size == 0)) continue;
-                Queue queue = new Queue();
-                queue.name = name;
-                queue.size = size;
+                Queue queue = new Queue(name, size);
                 queues.add(queue);
             }
             queues.sort(this::compareLargestFirst);
@@ -105,7 +104,7 @@ public class QueueStatsService {
         queueStatisticsCollector.getQueueStatistics(req.queueNames).onComplete( ev -> {
             req.queueNames = null; // <- no longer needed
             long durGetQueueStatsMs = currentTimeMillis() - begGetQueueStatsMs;
-            if (durGetQueueStatsMs > 42) log.debug("queueStatisticsCollector.getQueueStatistics() took {}ms", durGetQueueStatsMs);
+            log.debug("queueStatisticsCollector.getQueueStatistics() took {}ms", durGetQueueStatsMs);
             if (ev.failed()) {
                 log.warn("queueStatisticsCollector.getQueueStatistics() failed. Fallback to empty result.", ev.cause());
                 req.queuesJsonArr = new JsonArray();
@@ -147,15 +146,8 @@ public class QueueStatsService {
         onDone.accept(null, req);
     }
 
-    private int compareLargestFirst(Queue aq, Queue bq) {
-        if (aq.size == null && bq.size == null) return 0;
-        if (aq.size == null) return -1;
-        if (bq.size == null) return +1;
-        long as = aq.size, bs = bq.size;
-        if (as > bs) return -1;
-        if (as < bs) return +1;
-        assert as == bs : as +", "+ bs;
-        return 0;
+    private int compareLargestFirst(Queue a, Queue b) {
+        return compare(b.size, a.size);
     }
 
 
@@ -169,11 +161,16 @@ public class QueueStatsService {
 
 
     public static class Queue {
-        private String name;
-        private Long size;
+        private final String name;
+        private final long size;
         private Long lastDequeueAttemptEpochMs;
         private Long lastDequeueSuccessEpochMs;
         private Long nextDequeueDueTimestampEpochMs;
+        private Queue(String name, long size){
+            assert name != null;
+            this.name = name;
+            this.size = size;
+        }
 
         public String getName() { return name; }
         public long getSize() { return size; }
