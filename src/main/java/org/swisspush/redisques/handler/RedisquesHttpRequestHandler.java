@@ -12,7 +12,6 @@ import io.vertx.core.eventbus.Message;
 import io.vertx.core.http.HttpServerOptions;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
-import io.vertx.core.json.Json;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.ext.auth.authentication.AuthenticationProvider;
@@ -22,6 +21,7 @@ import io.vertx.ext.web.handler.BasicAuthHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.swisspush.redisques.util.DequeueStatistic;
+import org.swisspush.redisques.util.DequeueStatisticCollector;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 import org.swisspush.redisques.util.RedisquesAPI;
 import org.swisspush.redisques.util.RedisquesConfiguration;
@@ -107,19 +107,21 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     private static final String EMPTY_QUEUES_PARAM = "emptyQueues";
     private static final String DELETED = "deleted";
 
-    private static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("dd.MM.yyyy hh:mm:ss");
+    private static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("dd.MM.yyyy hh:mm:ss aaa");
 
     private final String redisquesAddress;
     private final String userHeader;
     private final boolean enableQueueNameDecoding;
     private final int queueSpeedIntervalSec;
     private final QueueStatisticsCollector queueStatisticsCollector;
+    private final DequeueStatisticCollector dequeueStatisticCollector;
 
-    public static void init(Vertx vertx, RedisquesConfiguration modConfig, QueueStatisticsCollector queueStatisticsCollector) {
+    public static void init(Vertx vertx, RedisquesConfiguration modConfig, QueueStatisticsCollector queueStatisticsCollector,
+                            DequeueStatisticCollector dequeueStatisticCollector) {
         log.info("Enable http request handler: " + modConfig.getHttpRequestHandlerEnabled());
         if (modConfig.getHttpRequestHandlerEnabled()) {
             if (modConfig.getHttpRequestHandlerPort() != null && modConfig.getHttpRequestHandlerUserHeader() != null) {
-                RedisquesHttpRequestHandler handler = new RedisquesHttpRequestHandler(vertx, modConfig, queueStatisticsCollector);
+                RedisquesHttpRequestHandler handler = new RedisquesHttpRequestHandler(vertx, modConfig, queueStatisticsCollector, dequeueStatisticCollector);
                 // in Vert.x 2x 100-continues was activated per default, in vert.x 3x it is off per default.
                 HttpServerOptions options = new HttpServerOptions().setHandle100ContinueAutomatically(true);
                 vertx.createHttpServer(options).requestHandler(handler).listen(modConfig.getHttpRequestHandlerPort(), result -> {
@@ -148,7 +150,8 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         return Result.ok(false);
     }
 
-    private RedisquesHttpRequestHandler(Vertx vertx, RedisquesConfiguration modConfig, QueueStatisticsCollector queueStatisticsCollector) {
+    private RedisquesHttpRequestHandler(Vertx vertx, RedisquesConfiguration modConfig, QueueStatisticsCollector queueStatisticsCollector,
+                                        DequeueStatisticCollector dequeueStatisticCollector) {
         this.router = Router.router(vertx);
         this.eventBus = vertx.eventBus();
         this.redisquesAddress = modConfig.getAddress();
@@ -156,6 +159,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         this.enableQueueNameDecoding = modConfig.getEnableQueueNameDecoding();
         this.queueSpeedIntervalSec = modConfig.getQueueSpeedIntervalSec();
         this.queueStatisticsCollector = queueStatisticsCollector;
+        this.dequeueStatisticCollector = dequeueStatisticCollector;
 
         final String prefix = modConfig.getHttpRequestHandlerPrefix();
 
@@ -599,34 +603,38 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
                     if (OK.equals(queueStatisticsJsonObject.getString(STATUS))
                             && !queueStatisticsJsonObject.getJsonArray(QUEUES).isEmpty()) {
                         JsonArray queueStatisticsArray = queueStatisticsJsonObject.getJsonArray(QUEUES);
-                        queuesList.forEach(entries -> {
-                            String queueName = entries.getString(MONITOR_QUEUE_NAME);
-                            entries.put(STATISTIC_QUEUE_LAST_DEQUEUE_ATTEMPT, "");
-                            entries.put(STATISTIC_QUEUE_LAST_DEQUEUE_SUCCESS, "");
-                            entries.put(STATISTIC_QUEUE_NEXT_DEQUEUE_DUE_TS, "");
-                            queueStatisticsJsonObject.getJsonArray(QUEUES);
 
-                            for (Iterator<Object> it = queueStatisticsArray.stream().iterator(); it.hasNext(); ) {
-                                JsonObject queueStatistic = (JsonObject) it.next();
-                                if (queueName.equals(queueStatistic.getString(MONITOR_QUEUE_NAME))
-                                && queueStatistic.containsKey(STATISTIC_QUEUE_DEQUEUESTATISTIC)
-                                && queueStatistic.getJsonObject(STATISTIC_QUEUE_DEQUEUESTATISTIC) != null) {
-                                    DequeueStatistic dequeueStatistic = queueStatistic.getJsonObject(STATISTIC_QUEUE_DEQUEUESTATISTIC).mapTo(DequeueStatistic.class);
-                                    if (dequeueStatistic.lastDequeueAttemptTimestamp != null) {
-                                        entries.put(STATISTIC_QUEUE_LAST_DEQUEUE_ATTEMPT, DATE_FORMAT.format(new Date(dequeueStatistic.lastDequeueAttemptTimestamp)));
-                                    }
-                                    if (dequeueStatistic.lastDequeueSuccessTimestamp != null) {
-                                        entries.put(STATISTIC_QUEUE_LAST_DEQUEUE_SUCCESS, DATE_FORMAT.format(new Date(dequeueStatistic.lastDequeueSuccessTimestamp)));
-                                    }
-                                    if (dequeueStatistic.nextDequeueDueTimestamp != null) {
-                                        entries.put(STATISTIC_QUEUE_NEXT_DEQUEUE_DUE_TS, DATE_FORMAT.format(new Date(dequeueStatistic.nextDequeueDueTimestamp)));
-                                    }
-                                    break;
+                        dequeueStatisticCollector.getAllDequeueStatistics().onComplete(asyncResult -> {
+                            queuesList.forEach(entries -> {
+                                String queueName = entries.getString(MONITOR_QUEUE_NAME);
+                                entries.put(STATISTIC_QUEUE_LAST_DEQUEUE_ATTEMPT, "");
+                                entries.put(STATISTIC_QUEUE_LAST_DEQUEUE_SUCCESS, "");
+                                entries.put(STATISTIC_QUEUE_NEXT_DEQUEUE_DUE_TS, "");
+                                queueStatisticsJsonObject.getJsonArray(QUEUES);
+                                DequeueStatistic dequeueStatistic = new DequeueStatistic();
+                                if (asyncResult.succeeded()){
+                                    dequeueStatistic = asyncResult.result().get(queueName);
                                 }
-                            }
+                                for (Iterator<Object> it = queueStatisticsArray.stream().iterator(); it.hasNext(); ) {
+                                    JsonObject queueStatistic = (JsonObject) it.next();
+                                    if (queueName.equals(queueStatistic.getString(MONITOR_QUEUE_NAME)) && dequeueStatistic != null) {
+                                        if (dequeueStatistic.getLastDequeueAttemptTimestamp() != null) {
+                                            entries.put(STATISTIC_QUEUE_LAST_DEQUEUE_ATTEMPT, DATE_FORMAT.format(new Date(dequeueStatistic.getLastDequeueAttemptTimestamp())));
+                                        }
+                                        if (dequeueStatistic.getLastDequeueSuccessTimestamp() != null) {
+                                            entries.put(STATISTIC_QUEUE_LAST_DEQUEUE_SUCCESS, DATE_FORMAT.format(new Date(dequeueStatistic.getLastDequeueSuccessTimestamp())));
+                                        }
+                                        if (dequeueStatistic.getNextDequeueDueTimestamp() != null) {
+                                            entries.put(STATISTIC_QUEUE_NEXT_DEQUEUE_DUE_TS, DATE_FORMAT.format(new Date(dequeueStatistic.getNextDequeueDueTimestamp())));
+                                        }
+                                        break;
+                                    }
+                                }
+                            });
+                            promise.complete(queuesList);
                         });
+
                     }
-                    promise.complete(queuesList);
                 });
         return promise.future();
     }
@@ -643,7 +651,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     private void getQueuesCount(RoutingContext ctx) {
         String filter = ctx.request().params().get(FILTER);
         eventBus.request(redisquesAddress, buildGetQueuesCountOperation(filter), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
-            if( reply.failed() ) log.warn("TODO error handling", reply.cause());
+            if (reply.failed()) log.warn("TODO error handling", reply.cause());
             if (reply.succeeded() && OK.equals(reply.result().body().getString(STATUS))) {
                 JsonObject result = new JsonObject();
                 result.put(COUNT, reply.result().body().getLong(VALUE));
@@ -663,7 +671,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     private void listQueues(RoutingContext ctx) {
         String filter = ctx.request().params().get(FILTER);
         eventBus.request(redisquesAddress, buildGetQueuesOperation(filter), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
-            if( reply.failed() ) log.warn("TODO error handling", reply.cause());
+            if (reply.failed()) log.warn("TODO error handling", reply.cause());
             if (reply.succeeded() && OK.equals(reply.result().body().getString(STATUS))) {
                 jsonResponse(ctx.response(), reply.result().body().getJsonObject(VALUE));
             } else {
