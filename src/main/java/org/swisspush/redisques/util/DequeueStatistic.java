@@ -11,4 +11,11 @@ public class DequeueStatistic {
     public boolean isEmpty() {
         return lastDequeueAttemptTimestamp == null && lastDequeueSuccessTimestamp == null && nextDequeueDueTimestamp == null;
     }
+
+    public void copyDeepTo(DequeueStatistic dst) {
+        dst.lastDequeueAttemptTimestamp = this.lastDequeueAttemptTimestamp;
+        dst.lastDequeueSuccessTimestamp = this.lastDequeueSuccessTimestamp;
+        dst.nextDequeueDueTimestamp = this.nextDequeueDueTimestamp;
+    }
+
 }

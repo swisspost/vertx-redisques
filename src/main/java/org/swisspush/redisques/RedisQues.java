@@ -167,6 +167,10 @@ public class RedisQues extends AbstractVerticle {
         int dequeueStatisticReportInterval = modConfig.getDequeueStatisticReportIntervalSec();
         if (dequeueStatisticReportInterval > 0) {
             vertx.setPeriodic(1000L * dequeueStatisticReportInterval, handler -> {
+                int size = dequeueStatistic.size();
+                if (size > 5_000) log.warn("Going to report {} dequeue statistics towards collector", size);
+                else if (size > 500) log.info("Going to report {} dequeue statistics towards collector", size);
+                else log.debug("Going to report {} dequeue statistics towards collector", size);
                 dequeueStatistic.forEach((queueName, dequeueStatistic) ->
                         queueStatisticsCollector.setDequeueStatistic(queueName, dequeueStatistic));
             });

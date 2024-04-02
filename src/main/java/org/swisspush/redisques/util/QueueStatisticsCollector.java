@@ -23,6 +23,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
 import static java.lang.System.currentTimeMillis;
+import static java.lang.Thread.currentThread;
 import static org.swisspush.redisques.util.RedisquesAPI.*;
 
 /**
@@ -325,21 +326,38 @@ public class QueueStatisticsCollector {
         long failures = getQueueFailureCount(queueName);
         long slowDownTime = getQueueSlowDownTime(queueName);
         long backpressureTime = getQueueBackPressureTime(queueName);
-        DequeueStatistic dequeueStatistic = getDequeueStatistic(queueName);
+        // Get by copy, to prevent concurrent changes while we're going through
+        // callbacks further down.
+        DequeueStatistic dequeueStatistic = new DequeueStatistic();
+        getDequeueStatistic(queueName).copyDeepTo(dequeueStatistic);
         if (failures > 0 || slowDownTime > 0 || backpressureTime > 0 || !dequeueStatistic.isEmpty()) {
-            JsonObject obj = new JsonObject();
-            obj.put(QUEUENAME, queueName);
-            obj.put(QUEUE_FAILURES, failures);
-            obj.put(QUEUE_SLOWDOWNTIME, slowDownTime);
-            obj.put(QUEUE_BACKPRESSURE, backpressureTime);
-            obj.put(QUEUE_DEQUEUE_STATISTIC, JsonObject.mapFrom(dequeueStatistic));
-            redisProvider.redis()
-                    .onSuccess(redisAPI -> {
-                        redisAPI.hset(List.of(STATSKEY, queueName, obj.toString()), ev -> {
-                            if( ev.failed() ) log.warn("TODO error handling", new Exception(ev.cause()));
-                        });
-                    })
-                    .onFailure(ex -> log.error("Redis: Error in updateStatisticsInRedis", ex));
+            redisProvider.redis().onComplete( redisEv -> {
+                if (redisEv.failed()) {
+                    log.error("redisProvider.redis()", redisEv.cause());
+                    return;
+                }
+                RedisAPI redis = redisEv.result();
+                // For whatever reason hset seems to take a while. Not yet sure what is going
+                // on. According to the stacktraces of the BlockedThreadChecker it seems as
+                // BLOCKING IO is happening inside hset. But instead, it could also be that this
+                // code here gets called from some forEach loops, and maybe the iterated thingy
+                // is too large to do everything in one eventloop task.
+                // Either way, lets move that operation over to a worker thread and lets see
+                // if it changes anything.
+                vertx.executeBlocking(() -> {
+                    assert !currentThread().getName().contains("eventloop");
+                    JsonObject obj = new JsonObject();
+                    obj.put(QUEUENAME, queueName);
+                    obj.put(QUEUE_FAILURES, failures);
+                    obj.put(QUEUE_SLOWDOWNTIME, slowDownTime);
+                    obj.put(QUEUE_BACKPRESSURE, backpressureTime);
+                    obj.put(QUEUE_DEQUEUE_STATISTIC, JsonObject.mapFrom(dequeueStatistic));
+                    redis.hset(List.of(STATSKEY, queueName, obj.toString()), ev -> {
+                        if( ev.failed() ) log.warn("TODO error handling", new Exception(ev.cause()));
+                    });
+                    return null;
+                }, false);
+            });
         } else {
             redisProvider.redis()
                     .onSuccess(redisAPI -> {
