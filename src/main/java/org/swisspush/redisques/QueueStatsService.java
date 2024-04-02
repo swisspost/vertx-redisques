@@ -20,6 +20,15 @@ import static org.slf4j.LoggerFactory.getLogger;
 import static org.swisspush.redisques.util.RedisquesAPI.*;
 
 
+/**
+ * <p>Old impl did fetch all queues (take 2000 as an example from PaISA prod) Did
+ * a nested iteration, so worst case iterate 2000 times 2000 queues to find the
+ * matching queue (2'000 * 2'000 = 4'000'000 iterations). New impl now does setup a
+ * dictionary then does indexed access while iterating the 2000 entries
+ * (2'000 + 2'000 = 4'000 iterations). Keep in mind 2'000 is just some usual value.
+ * Under load, this value can increase further and so the old, exponential approach
+ * just did explode in terms of computational efford.</p>
+ */
 public class QueueStatsService {
 
     private static final Logger log = getLogger(QueueStatsService.class);

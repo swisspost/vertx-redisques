@@ -547,11 +547,11 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
                 //      relies on this behavior.
                 Long epochMs;
                 epochMs = queue.getLastDequeueAttemptEpochMs();
-                queueJson.put("lastDequeueAttempt", epochMs == null ? "" : asUglyDate(epochMs));
+                queueJson.put("lastDequeueAttempt", epochMs == null ? "" : formatAsUIDate(epochMs));
                 epochMs = queue.getLastDequeueSuccessEpochMs();
-                queueJson.put("lastDequeueSuccess", epochMs == null ? "" : asUglyDate(epochMs));
+                queueJson.put("lastDequeueSuccess", epochMs == null ? "" : formatAsUIDate(epochMs));
                 epochMs = queue.getNextDequeueDueTimestampEpochMs();
-                queueJson.put("nextDequeueDueTimestamp", epochMs == null ? "" : asUglyDate(epochMs));
+                queueJson.put("nextDequeueDueTimestamp", epochMs == null ? "" : formatAsUIDate(epochMs));
                 rsp.write(queueJson.encode());
             }
             rsp.end("]}\n");
@@ -577,7 +577,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
      * @deprecated <a href="https://xkcd.com/1179/">about date formats</a>
      */
     @Deprecated
-    private String asUglyDate(long epochMs) {
+    private String formatAsUIDate(long epochMs) {
         return DATE_FORMAT.format(new Date(epochMs));
     }
 
