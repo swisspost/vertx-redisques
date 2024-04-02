@@ -450,18 +450,18 @@ public class QueueStatisticsCollector {
         var ctx = new RequestCtx();
         ctx.queueNames = queues;
         step1(ctx).compose(
-                jsonObject1 -> step2(ctx).compose(
-                        jsonObject2 -> step3(ctx).compose(
-                                jsonObject3 -> step4(ctx).compose(
-                                        jsonObject4 -> step5(ctx).compose(
-                                                jsonObject5 -> step6(ctx))
+                nothing1 -> step2(ctx).compose(
+                        nothing2 -> step3(ctx).compose(
+                                nothing3 -> step4(ctx).compose(
+                                        nothing4 -> step5(ctx).compose(
+                                                nothing5 -> step6(ctx))
                                 )))).onComplete(promise);
         return promise.future();
     }
 
     /** <p>init redis connection.</p> */
-    Future<JsonObject> step1(RequestCtx ctx) {
-        final Promise<JsonObject> promise = Promise.promise();
+    Future<Void> step1(RequestCtx ctx) {
+        final Promise<Void> promise = Promise.promise();
         redisProvider.connection()
                 .onFailure(throwable -> {
                     promise.fail(new Exception("Redis: Failed to get queue length.", throwable));
@@ -475,9 +475,9 @@ public class QueueStatisticsCollector {
     }
 
     /** <p>Query queue lengths.</p> */
-    Future<JsonObject> step2(RequestCtx ctx) {
+    Future<Void> step2(RequestCtx ctx) {
         assert ctx.conn != null;
-        final Promise<JsonObject> promise = Promise.promise();
+        final Promise<Void> promise = Promise.promise();
         int numQueues = ctx.queueNames.size();
         String fmt1 = "About to perform {} requests to redis just for monitoring";
         if (numQueues > 256) {
@@ -519,9 +519,9 @@ public class QueueStatisticsCollector {
     }
 
     /** <p>init queue statistics.</p> */
-    Future<JsonObject> step3(RequestCtx ctx) {
+    Future<Void> step3(RequestCtx ctx) {
         assert ctx.queueLengthList != null;
-        final Promise<JsonObject> promise = Promise.promise();
+        final Promise<Void> promise = Promise.promise();
         // populate the list of queue statistics in a Hashmap for later fast merging
         ctx.statistics = new HashMap<>(ctx.queueNames.size());
         for (int i = 0; i < ctx.queueNames.size(); i++) {
@@ -535,8 +535,8 @@ public class QueueStatisticsCollector {
     }
 
     /** <p>init a resAPI instance we need to get more details.</p> */
-    Future<JsonObject> step4(RequestCtx ctx){
-        final Promise<JsonObject> promise = Promise.promise();
+    Future<Void> step4(RequestCtx ctx){
+        final Promise<Void> promise = Promise.promise();
         redisProvider.redis()
                 .onFailure(throwable -> {
                     promise.fail(new Exception("Redis: Error in getQueueStatistics", throwable));
@@ -553,10 +553,10 @@ public class QueueStatisticsCollector {
      * <p>retrieve all available failure statistics from Redis and merge them
      * together with the previous populated common queue statistics map</p>
      */
-    Future<JsonObject> step5(RequestCtx ctx) {
+    Future<Void> step5(RequestCtx ctx) {
         assert ctx.redisAPI != null;
         assert ctx.statistics != null;
-        final Promise<JsonObject> promise = Promise.promise();
+        final Promise<Void> promise = Promise.promise();
         ctx.redisAPI.hvals(STATSKEY, statisticsSet -> {
             if( statisticsSet == null || statisticsSet.failed() ){
                 promise.fail(new RuntimeException("statistics queue evaluation failed",
