@@ -2,7 +2,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>org.swisspush</groupId>
     <artifactId>redisques</artifactId>
-    <version>3.1.1-SNAPSHOT</version>
+    <version>3.1.2-SNAPSHOT</version>
     <name>redisques</name>
     <description>
         A highly scalable redis-persistent queuing system for vertx
@@ -68,11 +68,6 @@
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
-            <version>${slf4j.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.slf4j</groupId>
-            <artifactId>slf4j-reload4j</artifactId>
             <version>${slf4j.version}</version>
         </dependency>
 
@@ -389,7 +384,7 @@
         </profile>
     </profiles>
     <properties>
-        <vertx.version>4.5.1</vertx.version>
+        <vertx.version>4.5.2</vertx.version>
         <slf4j.version>2.0.10</slf4j.version>
         <mockito.version>5.8.0</mockito.version>
         <junit.version>4.13.2</junit.version>
@@ -397,7 +392,7 @@
         <jedis.version>3.7.0</jedis.version>
         <rest-assured.version>5.4.0</rest-assured.version>
         <commons-coded.version>1.16.0</commons-coded.version>
-        <jackson-databind.version>2.15.0</jackson-databind.version>
+        <jackson-databind.version>2.17.0</jackson-databind.version>
         <project.build.sourceEncoding>UTF8</project.build.sourceEncoding>
         <sonatypeOssDistMgmtSnapshotsUrl>
             https://oss.sonatype.org/content/repositories/snapshots/
