@@ -116,7 +116,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     private final QueueStatisticsCollector queueStatisticsCollector;
 
     public static void init(Vertx vertx, RedisquesConfiguration modConfig, QueueStatisticsCollector queueStatisticsCollector) {
-        log.info("Enable http request handler: {}", modConfig.getHttpRequestHandlerEnabled());
+        log.info("Enabling http request handler: {}", modConfig.getHttpRequestHandlerEnabled());
         if (modConfig.getHttpRequestHandlerEnabled()) {
             if (modConfig.getHttpRequestHandlerPort() != null && modConfig.getHttpRequestHandlerUserHeader() != null) {
                 RedisquesHttpRequestHandler handler = new RedisquesHttpRequestHandler(vertx, modConfig, queueStatisticsCollector);
