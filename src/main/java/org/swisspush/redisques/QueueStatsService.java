@@ -7,11 +7,11 @@ import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import org.slf4j.Logger;
 import org.swisspush.redisques.util.DequeueStatistic;
+import org.swisspush.redisques.util.DequeueStatisticCollector;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 
 import java.util.*;
 import java.util.function.BiConsumer;
-import java.util.function.Consumer;
 
 import static java.lang.Long.compare;
 import static java.lang.System.currentTimeMillis;
@@ -36,12 +36,15 @@ public class QueueStatsService {
     private final EventBus eventBus;
     private final String redisquesAddress;
     private final QueueStatisticsCollector queueStatisticsCollector;
+    private final DequeueStatisticCollector dequeueStatisticCollector;
 
-    public QueueStatsService(Vertx vertx, EventBus eventBus, String redisquesAddress, QueueStatisticsCollector queueStatisticsCollector) {
+    public QueueStatsService(Vertx vertx, EventBus eventBus, String redisquesAddress, QueueStatisticsCollector queueStatisticsCollector,
+                             DequeueStatisticCollector dequeueStatisticCollector) {
         this.vertx = vertx;
         this.eventBus = eventBus;
         this.redisquesAddress = redisquesAddress;
         this.queueStatisticsCollector = queueStatisticsCollector;
+        this.dequeueStatisticCollector = dequeueStatisticCollector;
     }
 
     public <CTX> void getQueueStats(CTX mCtx, GetQueueStatsMentor<CTX> mentor) {
@@ -141,18 +144,19 @@ public class QueueStatsService {
             String name = detailJson.getString(MONITOR_QUEUE_NAME);
             detailsByName.put(name, detailJson);
         }
-        for (Queue queue : req.queues) {
-            JsonObject detail = detailsByName.get(queue.name);
-            if (detail == null) continue; // no details to enrich.
-            JsonObject dequeueStatsJson = detail.getJsonObject(STATISTIC_QUEUE_DEQUEUESTATISTIC);
-            if (dequeueStatsJson == null) continue; // no dequeue stats we could enrich
-            DequeueStatistic dequeueStats = dequeueStatsJson.mapTo(DequeueStatistic.class);
-            // Attach whatever details we got.
-            queue.lastDequeueAttemptEpochMs = dequeueStats.lastDequeueAttemptTimestamp;
-            queue.lastDequeueSuccessEpochMs = dequeueStats.lastDequeueSuccessTimestamp;
-            queue.nextDequeueDueTimestampEpochMs = dequeueStats.nextDequeueDueTimestamp;
-        }
-        onDone.accept(null, req);
+
+        dequeueStatisticCollector.getAllDequeueStatistics().onSuccess(event -> {
+            for (Queue queue : req.queues) {
+                if (event.containsKey(queue.name)) {
+                    DequeueStatistic dequeueStats = event.get(queue.name);
+                    // Attach whatever details we got.
+                    queue.lastDequeueAttemptEpochMs = dequeueStats.getLastDequeueAttemptTimestamp();
+                    queue.lastDequeueSuccessEpochMs = dequeueStats.getLastDequeueSuccessTimestamp();
+                    queue.nextDequeueDueTimestampEpochMs = dequeueStats.getNextDequeueDueTimestamp();
+                }
+            }
+            onDone.accept(null, req);
+        }).onFailure(throwable -> log.warn("queueStatisticsCollector.getAllDequeueStatistics() failed. Fallback to empty result.", throwable));
     }
 
     private int compareLargestFirst(Queue a, Queue b) {

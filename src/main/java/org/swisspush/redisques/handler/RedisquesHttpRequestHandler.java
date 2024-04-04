@@ -20,7 +20,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.swisspush.redisques.QueueStatsService;
 import org.swisspush.redisques.QueueStatsService.GetQueueStatsMentor;
-import org.swisspush.redisques.util.*;
 import org.swisspush.redisques.util.DequeueStatistic;
 import org.swisspush.redisques.util.DequeueStatisticCollector;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
@@ -78,7 +77,6 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     private final QueueStatisticsCollector queueStatisticsCollector;
     private final QueueStatsService queueStatsService;
     private final GetQueueStatsMentor<RoutingContext> queueStatsMentor = new MyQueueStatsMentor();
-    private final DequeueStatisticCollector dequeueStatisticCollector;
 
     public static void init(Vertx vertx, RedisquesConfiguration modConfig, QueueStatisticsCollector queueStatisticsCollector,
                             DequeueStatisticCollector dequeueStatisticCollector) {
@@ -124,8 +122,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         this.enableQueueNameDecoding = modConfig.getEnableQueueNameDecoding();
         this.queueSpeedIntervalSec = modConfig.getQueueSpeedIntervalSec();
         this.queueStatisticsCollector = queueStatisticsCollector;
-        this.queueStatsService = new QueueStatsService(vertx, eventBus, redisquesAddress, queueStatisticsCollector);
-        this.dequeueStatisticCollector = dequeueStatisticCollector;
+        this.queueStatsService = new QueueStatsService(vertx, eventBus, redisquesAddress, queueStatisticsCollector, dequeueStatisticCollector);
 
         final String prefix = modConfig.getHttpRequestHandlerPrefix();
 
@@ -590,49 +587,6 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     @Deprecated
     private String formatAsUIDate(long epochMs) {
         return DATE_FORMAT.format(new Date(epochMs));
-        queueStatisticsCollector.getQueueStatistics(queueNameList)
-                .onFailure(ex -> {
-                    log.error("Failed to fetch QueueStatistics for queue", ex);
-                    promise.complete(queuesList);
-                })
-                .onSuccess(queueStatisticsJsonObject -> {
-                    if (OK.equals(queueStatisticsJsonObject.getString(STATUS))
-                            && !queueStatisticsJsonObject.getJsonArray(QUEUES).isEmpty()) {
-                        JsonArray queueStatisticsArray = queueStatisticsJsonObject.getJsonArray(QUEUES);
-
-                        dequeueStatisticCollector.getAllDequeueStatistics().onComplete(asyncResult -> {
-                            queuesList.forEach(entries -> {
-                                String queueName = entries.getString(MONITOR_QUEUE_NAME);
-                                entries.put(STATISTIC_QUEUE_LAST_DEQUEUE_ATTEMPT, "");
-                                entries.put(STATISTIC_QUEUE_LAST_DEQUEUE_SUCCESS, "");
-                                entries.put(STATISTIC_QUEUE_NEXT_DEQUEUE_DUE_TS, "");
-                                queueStatisticsJsonObject.getJsonArray(QUEUES);
-                                DequeueStatistic dequeueStatistic = new DequeueStatistic();
-                                if (asyncResult.succeeded()){
-                                    dequeueStatistic = asyncResult.result().get(queueName);
-                                }
-                                for (Iterator<Object> it = queueStatisticsArray.stream().iterator(); it.hasNext(); ) {
-                                    JsonObject queueStatistic = (JsonObject) it.next();
-                                    if (queueName.equals(queueStatistic.getString(MONITOR_QUEUE_NAME)) && dequeueStatistic != null) {
-                                        if (dequeueStatistic.getLastDequeueAttemptTimestamp() != null) {
-                                            entries.put(STATISTIC_QUEUE_LAST_DEQUEUE_ATTEMPT, DATE_FORMAT.format(new Date(dequeueStatistic.getLastDequeueAttemptTimestamp())));
-                                        }
-                                        if (dequeueStatistic.getLastDequeueSuccessTimestamp() != null) {
-                                            entries.put(STATISTIC_QUEUE_LAST_DEQUEUE_SUCCESS, DATE_FORMAT.format(new Date(dequeueStatistic.getLastDequeueSuccessTimestamp())));
-                                        }
-                                        if (dequeueStatistic.getNextDequeueDueTimestamp() != null) {
-                                            entries.put(STATISTIC_QUEUE_NEXT_DEQUEUE_DUE_TS, DATE_FORMAT.format(new Date(dequeueStatistic.getNextDequeueDueTimestamp())));
-                                        }
-                                        break;
-                                    }
-                                }
-                            });
-                            promise.complete(queuesList);
-                        });
-
-                    }
-                });
-        return promise.future();
     }
 
     private void listOrCountQueues(RoutingContext ctx) {
