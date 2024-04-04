@@ -16,7 +16,7 @@ public class DequeueStatistic implements Serializable {
         return lastDequeueAttemptTimestamp == null && lastDequeueSuccessTimestamp == null && nextDequeueDueTimestamp == null;
     }
 
-    public void setLastDequeueAttemptTimestamp(Long timestamp) {
+    public void setLastDequeueAttemptTimestamp(long timestamp) {
         this.lastDequeueAttemptTimestamp = timestamp;
         updateLastUpdatedTimestamp();
     }
@@ -25,7 +25,7 @@ public class DequeueStatistic implements Serializable {
         return this.lastDequeueAttemptTimestamp;
     }
 
-    public void setLastDequeueSuccessTimestamp(Long timestamp) {
+    public void setLastDequeueSuccessTimestamp(long timestamp) {
         this.lastDequeueSuccessTimestamp = timestamp;
         updateLastUpdatedTimestamp();
     }
