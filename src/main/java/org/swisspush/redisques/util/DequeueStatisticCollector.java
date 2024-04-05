@@ -53,7 +53,7 @@ public class DequeueStatisticCollector {
                                 asyncMap.remove(queueName).onComplete(dequeueStatisticAsyncResult -> {
                                     log.debug("dequeue statistic for queue {} removed.", queueName);
                                     lock.release();
-                                })
+                                });
                             } else {
                                 // update
                                 asyncMap.put(queueName, dequeueStatistic).onComplete(event -> {

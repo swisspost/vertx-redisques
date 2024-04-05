@@ -179,7 +179,7 @@ public class RedisQues extends AbstractVerticle {
                     if (entry.getValue().isMarkToDelete()) {
                         iter.remove();
                     }
-                    dequeueStatisticCollector.setDequeueStatistic((entry.getKey(), entry.getValue());
+                    dequeueStatisticCollector.setDequeueStatistic(entry.getKey(), entry.getValue());
                 }
             });
         }
@@ -648,7 +648,7 @@ public class RedisQues extends AbstractVerticle {
                         dequeueStatistic.computeIfPresent(queueName, (s, dequeueStatistic) -> {
                             dequeueStatistic.setMarkToDelete();
                             return dequeueStatistic;
-                        })
+                        });
 
                         promise.complete();
                     }
@@ -871,7 +871,7 @@ public class RedisQues extends AbstractVerticle {
                                 dequeueStatistic.computeIfPresent(queueName, (s, dequeueStatistic) -> {
                                     dequeueStatistic.setMarkToDelete();
                                     return dequeueStatistic;
-                                })
+                                });
                                 if (counter.decrementAndGet() == 0) {
                                     removeOldQueues(limit).onComplete(removeOldQueuesEvent -> {
                                         if( removeOldQueuesEvent.failed() )
