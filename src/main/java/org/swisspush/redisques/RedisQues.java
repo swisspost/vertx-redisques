@@ -173,8 +173,14 @@ public class RedisQues extends AbstractVerticle {
         int dequeueStatisticReportInterval = modConfig.getDequeueStatisticReportIntervalSec();
         if (dequeueStatisticReportInterval > 0) {
             vertx.setPeriodic(1000L * dequeueStatisticReportInterval, handler -> {
-                dequeueStatistic.forEach((queueName, dequeueStatistic) ->
-                        dequeueStatisticCollector.setDequeueStatistic(queueName, dequeueStatistic));
+                Iterator<Map.Entry<String, DequeueStatistic>> iter = dequeueStatistic.entrySet().iterator();
+                while (iter.hasNext()) {
+                    Map.Entry<String, DequeueStatistic> entry = iter.next();
+                    if (entry.getValue().isMarkToDelete()) {
+                        iter.remove();
+                    }
+                    dequeueStatisticCollector.setDequeueStatistic((entry.getKey(), entry.getValue());
+                }
             });
         }
 
@@ -638,7 +644,12 @@ public class RedisQues extends AbstractVerticle {
                         // This can happen when requests to consume happen at the same moment the queue is emptied.
                         log.debug("Got a request to consume from empty queue {}", queueName);
                         myQueues.put(queueName, QueueState.READY);
-                        dequeueStatistic.put(queueName, null);
+
+                        dequeueStatistic.computeIfPresent(queueName, (s, dequeueStatistic) -> {
+                            dequeueStatistic.setMarkToDelete();
+                            return dequeueStatistic;
+                        })
+
                         promise.complete();
                     }
                 })).onFailure(throwable -> {
@@ -857,7 +868,10 @@ public class RedisQues extends AbstractVerticle {
                                 if (log.isTraceEnabled()) {
                                     log.trace("RedisQues remove old queue: {}", queueName);
                                 }
-                                dequeueStatistic.put(queueName, null);
+                                dequeueStatistic.computeIfPresent(queueName, (s, dequeueStatistic) -> {
+                                    dequeueStatistic.setMarkToDelete();
+                                    return dequeueStatistic;
+                                })
                                 if (counter.decrementAndGet() == 0) {
                                     removeOldQueues(limit).onComplete(removeOldQueuesEvent -> {
                                         if( removeOldQueuesEvent.failed() )

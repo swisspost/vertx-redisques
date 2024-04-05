@@ -8,6 +8,8 @@ public class DequeueStatistic implements Serializable {
     private Long nextDequeueDueTimestamp = null;
     private Long lastUpdatedTimestamp = null;
 
+    private boolean markToDelete = false;
+
     private void updateLastUpdatedTimestamp() {
         this.lastUpdatedTimestamp = System.currentTimeMillis();
     }
@@ -16,7 +18,7 @@ public class DequeueStatistic implements Serializable {
         return lastDequeueAttemptTimestamp == null && lastDequeueSuccessTimestamp == null && nextDequeueDueTimestamp == null;
     }
 
-    public void setLastDequeueAttemptTimestamp(long timestamp) {
+    public void setLastDequeueAttemptTimestamp(Long timestamp) {
         this.lastDequeueAttemptTimestamp = timestamp;
         updateLastUpdatedTimestamp();
     }
@@ -25,7 +27,7 @@ public class DequeueStatistic implements Serializable {
         return this.lastDequeueAttemptTimestamp;
     }
 
-    public void setLastDequeueSuccessTimestamp(long timestamp) {
+    public void setLastDequeueSuccessTimestamp(Long timestamp) {
         this.lastDequeueSuccessTimestamp = timestamp;
         updateLastUpdatedTimestamp();
     }
@@ -45,5 +47,13 @@ public class DequeueStatistic implements Serializable {
 
     public Long getLastUpdatedTimestamp() {
         return lastUpdatedTimestamp;
+    }
+
+    public void setMarkToDelete() {
+        this.markToDelete = true;
+    }
+
+    public boolean isMarkToDelete() {
+        return this.markToDelete;
     }
 }

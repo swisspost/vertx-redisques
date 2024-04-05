@@ -22,8 +22,7 @@ public class DequeueStatisticCollector {
         this.sharedData = vertx.sharedData();
     }
 
-
-    public void setDequeueStatistic(final String queueName, final DequeueStatistic newDequeueStatistic) {
+    public void setDequeueStatistic(final String queueName, final DequeueStatistic dequeueStatistic) {
         sharedData.getLock(DEQUEUE_STATISTIC_LOCK_PREFIX.concat(queueName)).onSuccess(lock ->
                 sharedData.getAsyncMap(DEQUEUE_STATISTIC_DATA, (Handler<AsyncResult<AsyncMap<String, DequeueStatistic>>>) asyncResult -> {
                     if (asyncResult.failed()) {
@@ -32,28 +31,32 @@ public class DequeueStatisticCollector {
                         return;
                     }
                     AsyncMap<String, DequeueStatistic> asyncMap = asyncResult.result();
-                    if (newDequeueStatistic == null) {
-                        // remove
-                        asyncMap.remove(queueName).onComplete(event -> lock.release());
-                    } else {
-                        // add or update
-                        asyncMap.get(queueName).onSuccess(dequeueStatistic -> {
-                            if (dequeueStatistic == null) {
-                                try {
-                                    asyncMap.put(queueName, newDequeueStatistic).onSuccess(event -> {
-                                        log.debug("dequeue statistic for queue {} added.", queueName);
-                                        lock.release();
-                                    }).onFailure(event -> {
-                                        log.debug("dequeue statistic for queue {} failed to add.", queueName);
-                                        lock.release();
-                                    });
-                                } catch (Exception throwable) {
-                                    log.error("Failed to pur dequeue statistic data for queue {}.", queueName, throwable);
+
+                    asyncMap.get(queueName).onSuccess(sharedDequeueStatistic -> {
+                        if (sharedDequeueStatistic == null) {
+                            try {
+                                asyncMap.put(queueName, dequeueStatistic).onSuccess(event -> {
+                                    log.debug("dequeue statistic for queue {} added.", queueName);
                                     lock.release();
-                                }
-                                return;
-                            } else if (dequeueStatistic.getLastUpdatedTimestamp() < newDequeueStatistic.getLastUpdatedTimestamp()) {
-                                asyncMap.put(queueName, newDequeueStatistic).onComplete(event -> {
+                                }).onFailure(event -> {
+                                    log.debug("dequeue statistic for queue {} failed to add.", queueName);
+                                    lock.release();
+                                });
+                            } catch (Exception throwable) {
+                                log.error("Failed to pur dequeue statistic data for queue {}.", queueName, throwable);
+                                lock.release();
+                            }
+                            return;
+                        } else if (sharedDequeueStatistic.getLastUpdatedTimestamp() < dequeueStatistic.getLastUpdatedTimestamp()) {
+                            if (dequeueStatistic.isMarkToDelete()) {
+                                // delete
+                                asyncMap.remove(queueName).onComplete(dequeueStatisticAsyncResult -> {
+                                    log.debug("dequeue statistic for queue {} removed.", queueName);
+                                    lock.release();
+                                })
+                            } else {
+                                // update
+                                asyncMap.put(queueName, dequeueStatistic).onComplete(event -> {
                                     if (event.succeeded()) {
                                         log.debug("dequeue statistic for queue {} updated.", queueName);
                                     } else {
@@ -61,16 +64,16 @@ public class DequeueStatisticCollector {
                                     }
                                     lock.release();
                                 });
-                                return;
-                            } else {
-                                log.debug("dequeue statistic for queue {} has newer data, update skipped", queueName);
                             }
-                            lock.release();
-                        }).onFailure(throwable -> {
-                            lock.release();
-                            log.error("Failed to get dequeue statistic data for queue {}.", queueName, throwable);
-                        });
-                    }
+                            return;
+                        } else {
+                            log.debug("dequeue statistic for queue {} has newer data, update skipped", queueName);
+                        }
+                        lock.release();
+                    }).onFailure(throwable -> {
+                        lock.release();
+                        log.error("Failed to get dequeue statistic data for queue {}.", queueName, throwable);
+                    });
 
                 })).onFailure(throwable -> {
             log.error("Failed to lock dequeue statistic data for queue {}.", queueName, throwable);
