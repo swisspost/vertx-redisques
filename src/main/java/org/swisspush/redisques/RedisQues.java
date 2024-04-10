@@ -175,17 +175,8 @@ public class RedisQues extends AbstractVerticle {
 
         int dequeueStatisticReportIntervalSec = modConfig.getDequeueStatisticReportIntervalSec();
         if (dequeueStatisticReportIntervalSec > 0) {
-            vertx.setPeriodic(1000L * dequeueStatisticReportIntervalSec, handler -> {
-                log.debug("Local dequeue statistic map size: {}", dequeueStatistic.size());
-                Iterator<Map.Entry<String, DequeueStatistic>> iter = dequeueStatistic.entrySet().iterator();
-                while (iter.hasNext()) {
-                    Map.Entry<String, DequeueStatistic> entry = iter.next();
-                    if (entry.getValue().isMarkedForRemoval()) {
-                        iter.remove();
-                    }
-                    dequeueStatisticCollector.setDequeueStatistic(entry.getKey(), entry.getValue());
-                }
-            });
+            Runnable publisher = newDequeueStatisticPublisher();
+            vertx.setPeriodic(1000L * dequeueStatisticReportIntervalSec, time -> publisher.run());
         }
 
         queuesKey = modConfig.getRedisPrefix() + "queues";
@@ -312,7 +303,10 @@ public class RedisQues extends AbstractVerticle {
                         var entry = iter.next();
                         var queueName = entry.getKey();
                         var dequeueStatistic = entry.getValue();
-                        queueStatisticsCollector.setDequeueStatistic(queueName, dequeueStatistic);
+                        if (entry.getValue().isMarkedForRemoval()) {
+                            RedisQues.this.dequeueStatistic.remove(queueName);
+                        }
+                        dequeueStatisticCollector.setDequeueStatistic(queueName, dequeueStatistic);
                         i += 1;
                         long nowEpochMs = currentTimeMillis();
                         long stepDurationMs = nowEpochMs - stepEpochMs;
