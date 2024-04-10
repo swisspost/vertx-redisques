@@ -170,13 +170,14 @@ public class RedisQues extends AbstractVerticle {
         RedisquesConfiguration modConfig = configurationProvider.configuration();
         log.info("Starting Redisques module with configuration: {}", configurationProvider.configuration());
 
-        int dequeueStatisticReportInterval = modConfig.getDequeueStatisticReportIntervalSec();
-        if (dequeueStatisticReportInterval > 0) {
-            vertx.setPeriodic(1000L * dequeueStatisticReportInterval, handler -> {
+        int dequeueStatisticReportIntervalSec = modConfig.getDequeueStatisticReportIntervalSec();
+        if (dequeueStatisticReportIntervalSec > 0) {
+            vertx.setPeriodic(1000L * dequeueStatisticReportIntervalSec, handler -> {
+                log.debug("Local dequeue statistic map size: {}", dequeueStatistic.size());
                 Iterator<Map.Entry<String, DequeueStatistic>> iter = dequeueStatistic.entrySet().iterator();
                 while (iter.hasNext()) {
                     Map.Entry<String, DequeueStatistic> entry = iter.next();
-                    if (entry.getValue().isMarkToDelete()) {
+                    if (entry.getValue().isMarkedForRemoval()) {
                         iter.remove();
                     }
                     dequeueStatisticCollector.setDequeueStatistic(entry.getKey(), entry.getValue());
@@ -646,7 +647,7 @@ public class RedisQues extends AbstractVerticle {
                         myQueues.put(queueName, QueueState.READY);
 
                         dequeueStatistic.computeIfPresent(queueName, (s, dequeueStatistic) -> {
-                            dequeueStatistic.setMarkToDelete();
+                            dequeueStatistic.setMarkedForRemoval();
                             return dequeueStatistic;
                         });
 
@@ -869,7 +870,7 @@ public class RedisQues extends AbstractVerticle {
                                     log.trace("RedisQues remove old queue: {}", queueName);
                                 }
                                 dequeueStatistic.computeIfPresent(queueName, (s, dequeueStatistic) -> {
-                                    dequeueStatistic.setMarkToDelete();
+                                    dequeueStatistic.setMarkedForRemoval();
                                     return dequeueStatistic;
                                 });
                                 if (counter.decrementAndGet() == 0) {

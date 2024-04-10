@@ -26,55 +26,55 @@ public class DequeueStatisticCollector {
         sharedData.getLock(DEQUEUE_STATISTIC_LOCK_PREFIX.concat(queueName)).onSuccess(lock ->
                 sharedData.getAsyncMap(DEQUEUE_STATISTIC_DATA, (Handler<AsyncResult<AsyncMap<String, DequeueStatistic>>>) asyncResult -> {
                     if (asyncResult.failed()) {
-                        log.error("Failed to get dequeue statistic data map.", asyncResult.cause());
+                        log.error("Failed to get shared dequeue statistic data map.", asyncResult.cause());
                         lock.release();
                         return;
                     }
                     AsyncMap<String, DequeueStatistic> asyncMap = asyncResult.result();
-
-                    asyncMap.get(queueName).onSuccess(sharedDequeueStatistic -> {
-                        if (sharedDequeueStatistic == null) {
-                            try {
-                                asyncMap.put(queueName, dequeueStatistic).onSuccess(event -> {
-                                    log.debug("dequeue statistic for queue {} added.", queueName);
+                    asyncMap.size().onComplete(mapSizeResult -> {
+                        log.debug("shared dequeue statistic map size: {}", mapSizeResult.result());
+                        asyncMap.get(queueName).onSuccess(sharedDequeueStatistic -> {
+                            if (sharedDequeueStatistic == null) {
+                                try {
+                                    asyncMap.put(queueName, dequeueStatistic).onSuccess(event -> {
+                                        log.debug("shared dequeue statistic for queue {} added.", queueName);
+                                        lock.release();
+                                    }).onFailure(event -> {
+                                        log.debug("shared dequeue statistic for queue {} failed to add.", queueName);
+                                        lock.release();
+                                    });
+                                } catch (Exception exception) {
+                                    log.error("Failed to put shared dequeue statistic for queue {}.", queueName, exception);
                                     lock.release();
-                                }).onFailure(event -> {
-                                    log.debug("dequeue statistic for queue {} failed to add.", queueName);
-                                    lock.release();
-                                });
-                            } catch (Exception throwable) {
-                                log.error("Failed to pur dequeue statistic data for queue {}.", queueName, throwable);
+                                }
+                            } else if (sharedDequeueStatistic.getLastUpdatedTimestamp() < dequeueStatistic.getLastUpdatedTimestamp()) {
+                                if (dequeueStatistic.isMarkedForRemoval()) {
+                                    // delete
+                                    asyncMap.remove(queueName).onComplete(dequeueStatisticAsyncResult -> {
+                                        log.debug("shared dequeue statistic for queue {} removed.", queueName);
+                                        lock.release();
+                                    });
+                                } else {
+                                    // update
+                                    asyncMap.put(queueName, dequeueStatistic).onComplete(event -> {
+                                        if (event.succeeded()) {
+                                            log.debug("shared dequeue statistic for queue {} updated.", queueName);
+                                        } else {
+                                            log.debug("shared dequeue statistic for queue {} failed to update.", queueName);
+                                        }
+                                        lock.release();
+                                    });
+                                }
+                            } else {
+                                log.debug("shared dequeue statistic for queue {} has newer data, update skipped", queueName);
                                 lock.release();
                             }
-                            return;
-                        } else if (sharedDequeueStatistic.getLastUpdatedTimestamp() < dequeueStatistic.getLastUpdatedTimestamp()) {
-                            if (dequeueStatistic.isMarkToDelete()) {
-                                // delete
-                                asyncMap.remove(queueName).onComplete(dequeueStatisticAsyncResult -> {
-                                    log.debug("dequeue statistic for queue {} removed.", queueName);
-                                    lock.release();
-                                });
-                            } else {
-                                // update
-                                asyncMap.put(queueName, dequeueStatistic).onComplete(event -> {
-                                    if (event.succeeded()) {
-                                        log.debug("dequeue statistic for queue {} updated.", queueName);
-                                    } else {
-                                        log.debug("dequeue statistic for queue {} failed to update.", queueName);
-                                    }
-                                    lock.release();
-                                });
-                            }
-                            return;
-                        } else {
-                            log.debug("dequeue statistic for queue {} has newer data, update skipped", queueName);
-                        }
-                        lock.release();
-                    }).onFailure(throwable -> {
-                        lock.release();
-                        log.error("Failed to get dequeue statistic data for queue {}.", queueName, throwable);
-                    });
+                        }).onFailure(throwable -> {
+                            lock.release();
+                            log.error("Failed to get shared dequeue statistic data for queue {}.", queueName, throwable);
+                        });
 
+                    });
                 })).onFailure(throwable -> {
             log.error("Failed to lock dequeue statistic data for queue {}.", queueName, throwable);
         });
