@@ -573,7 +573,7 @@ public class RedisQues extends AbstractVerticle {
                             }
                         } else {
                             // Somehow registration changed. Let's renotify.
-                            log.warn("Registration for queue {} has changed to {}", queueName, consumer);
+                            log.debug("Registration for queue {} has changed to {}", queueName, consumer);
                             myQueues.remove(queueName);
                             notifyConsumer(queueName).onComplete(notifyConsumerEvent -> {
                                 if( notifyConsumerEvent.failed() )
