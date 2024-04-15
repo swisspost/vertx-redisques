@@ -48,7 +48,7 @@ public class DequeueStatisticCollector {
                                     try {
                                         asyncMap.put(queueName, dequeueStatistic).onComplete(voidAsyncResult -> {
                                             if (voidAsyncResult.failed()){
-                                                log.error("shared dequeue statistic for queue {} failed to add.", queueName);
+                                                log.error("shared dequeue statistic for queue {} failed to add.", queueName, voidAsyncResult.cause());
                                             } else {
                                                 log.debug("shared dequeue statistic for queue {} added.", queueName);
                                             }
@@ -63,7 +63,7 @@ public class DequeueStatisticCollector {
                                         // delete
                                         asyncMap.remove(queueName).onComplete(removeAsyncResult -> {
                                             if (removeAsyncResult.failed()){
-                                                log.error("failed to removed shared dequeue statistic for queue {}.", queueName);
+                                                log.error("failed to removed shared dequeue statistic for queue {}.", queueName, removeAsyncResult.cause());
                                             } else {
                                                 log.debug("shared dequeue statistic for queue {} removed.", queueName);
                                             }
@@ -73,7 +73,7 @@ public class DequeueStatisticCollector {
                                         // update
                                         asyncMap.put(queueName, dequeueStatistic).onComplete(event -> {
                                             if (event.failed()) {
-                                                log.error("shared dequeue statistic for queue {} failed to update.", queueName);
+                                                log.error("shared dequeue statistic for queue {} failed to update.", queueName, event.cause());
                                             } else {
                                                 log.debug("shared dequeue statistic for queue {} updated.", queueName);
                                             }
