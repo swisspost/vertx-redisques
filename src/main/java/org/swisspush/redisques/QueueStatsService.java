@@ -7,11 +7,11 @@ import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import org.slf4j.Logger;
 import org.swisspush.redisques.util.DequeueStatistic;
+import org.swisspush.redisques.util.DequeueStatisticCollector;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 
 import java.util.*;
 import java.util.function.BiConsumer;
-import java.util.function.Consumer;
 
 import static java.lang.Long.compare;
 import static java.lang.System.currentTimeMillis;
@@ -36,12 +36,15 @@ public class QueueStatsService {
     private final EventBus eventBus;
     private final String redisquesAddress;
     private final QueueStatisticsCollector queueStatisticsCollector;
+    private final DequeueStatisticCollector dequeueStatisticCollector;
 
-    public QueueStatsService(Vertx vertx, EventBus eventBus, String redisquesAddress, QueueStatisticsCollector queueStatisticsCollector) {
+    public QueueStatsService(Vertx vertx, EventBus eventBus, String redisquesAddress, QueueStatisticsCollector queueStatisticsCollector,
+                             DequeueStatisticCollector dequeueStatisticCollector) {
         this.vertx = vertx;
         this.eventBus = eventBus;
         this.redisquesAddress = redisquesAddress;
         this.queueStatisticsCollector = queueStatisticsCollector;
+        this.dequeueStatisticCollector = dequeueStatisticCollector;
     }
 
     public <CTX> void getQueueStats(CTX mCtx, GetQueueStatsMentor<CTX> mentor) {
@@ -55,7 +58,7 @@ public class QueueStatsService {
             for (Queue q : req1.queues) req1.queueNames.add(q.name);
             fetchRetryDetails(req1, (ex2, req2) -> {
                 if (ex2 != null) { req2.mentor.onError(ex2, req2.mCtx); return; }
-                mergeRetryDetailsIntoCollectedData(req2, (ex3, req3) -> {
+                attachDequeueStats(req2, (ex3, req3) -> {
                     if (ex3 != null) { req3.mentor.onError(ex3, req3.mCtx); return; }
                     req3.mentor.onQueueStatistics(req3.queues, req3.mCtx);
                 });
@@ -133,7 +136,7 @@ public class QueueStatsService {
         });
     }
 
-    private <CTX> void mergeRetryDetailsIntoCollectedData(GetQueueStatsRequest<CTX> req, BiConsumer<Throwable, GetQueueStatsRequest<CTX>> onDone) {
+    private <CTX> void attachDequeueStats(GetQueueStatsRequest<CTX> req, BiConsumer<Throwable, GetQueueStatsRequest<CTX>> onDone) {
         // Setup a lookup table as we need to find by name further below.
         Map<String, JsonObject> detailsByName = new HashMap<>(req.queuesJsonArr.size());
         for (var it = (Iterator<JsonObject>) (Object) req.queuesJsonArr.iterator(); it.hasNext(); ) {
@@ -141,18 +144,22 @@ public class QueueStatsService {
             String name = detailJson.getString(MONITOR_QUEUE_NAME);
             detailsByName.put(name, detailJson);
         }
-        for (Queue queue : req.queues) {
-            JsonObject detail = detailsByName.get(queue.name);
-            if (detail == null) continue; // no details to enrich.
-            JsonObject dequeueStatsJson = detail.getJsonObject(STATISTIC_QUEUE_DEQUEUESTATISTIC);
-            if (dequeueStatsJson == null) continue; // no dequeue stats we could enrich
-            DequeueStatistic dequeueStats = dequeueStatsJson.mapTo(DequeueStatistic.class);
-            // Attach whatever details we got.
-            queue.lastDequeueAttemptEpochMs = dequeueStats.lastDequeueAttemptTimestamp;
-            queue.lastDequeueSuccessEpochMs = dequeueStats.lastDequeueSuccessTimestamp;
-            queue.nextDequeueDueTimestampEpochMs = dequeueStats.nextDequeueDueTimestamp;
-        }
-        onDone.accept(null, req);
+
+        dequeueStatisticCollector.getAllDequeueStatistics().onSuccess(event -> {
+            for (Queue queue : req.queues) {
+                if (event.containsKey(queue.name)) {
+                    DequeueStatistic sharedDequeueStatisticCopy = event.get(queue.name);
+                    // Attach value of shared data
+                    queue.lastDequeueAttemptEpochMs = sharedDequeueStatisticCopy.getLastDequeueAttemptTimestamp();
+                    queue.lastDequeueSuccessEpochMs = sharedDequeueStatisticCopy.getLastDequeueSuccessTimestamp();
+                    queue.nextDequeueDueTimestampEpochMs = sharedDequeueStatisticCopy.getNextDequeueDueTimestamp();
+                }
+            }
+            onDone.accept(null, req);
+        }).onFailure(throwable -> {
+            log.warn("queueStatisticsCollector.getAllDequeueStatistics() failed. Fallback to empty result.", throwable);
+            onDone.accept(null, req);
+        });
     }
 
     private int compareLargestFirst(Queue a, Queue b) {

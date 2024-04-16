@@ -16,10 +16,13 @@ import org.swisspush.redisques.util.*;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.swisspush.redisques.util.RedisquesAPI.*;
 import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.*;
+
+import static java.lang.System.currentTimeMillis;
 
 public class RedisQues extends AbstractVerticle {
 
@@ -66,8 +69,9 @@ public class RedisQues extends AbstractVerticle {
     // The queues this verticle is listening to
     private final Map<String, QueueState> myQueues = new HashMap<>();
 
-    private final Logger log = LoggerFactory.getLogger(RedisQues.class);
+    private static final Logger log = LoggerFactory.getLogger(RedisQues.class);
 
+    private DequeueStatisticCollector dequeueStatisticCollector;
     private QueueStatisticsCollector queueStatisticsCollector;
 
     private Handler<Void> stoppedHandler = null;
@@ -161,15 +165,18 @@ public class RedisQues extends AbstractVerticle {
         if (this.configurationProvider == null) {
             this.configurationProvider = new DefaultRedisquesConfigurationProvider(vertx, config());
         }
+
+        if (this.dequeueStatisticCollector == null) {
+            this.dequeueStatisticCollector = new DequeueStatisticCollector(vertx);
+        }
+
         RedisquesConfiguration modConfig = configurationProvider.configuration();
         log.info("Starting Redisques module with configuration: {}", configurationProvider.configuration());
 
-        int dequeueStatisticReportInterval = modConfig.getDequeueStatisticReportIntervalSec();
-        if (dequeueStatisticReportInterval > 0) {
-            vertx.setPeriodic(1000L * dequeueStatisticReportInterval, handler -> {
-                dequeueStatistic.forEach((queueName, dequeueStatistic) ->
-                        queueStatisticsCollector.setDequeueStatistic(queueName, dequeueStatistic));
-            });
+        int dequeueStatisticReportIntervalSec = modConfig.getDequeueStatisticReportIntervalSec();
+        if (dequeueStatisticReportIntervalSec > 0) {
+            Runnable publisher = newDequeueStatisticPublisher();
+            vertx.setPeriodic(1000L * dequeueStatisticReportIntervalSec, time -> publisher.run());
         }
 
         queuesKey = modConfig.getRedisPrefix() + "queues";
@@ -199,7 +206,7 @@ public class RedisQues extends AbstractVerticle {
         this.queueStatisticsCollector = new QueueStatisticsCollector(redisProvider,
                 queuesPrefix, vertx, configuration.getQueueSpeedIntervalSec());
 
-        RedisquesHttpRequestHandler.init(vertx, configuration, queueStatisticsCollector);
+        RedisquesHttpRequestHandler.init(vertx, configuration, queueStatisticsCollector, dequeueStatisticCollector);
 
         // only initialize memoryUsageProvider when not provided in the constructor
         if (memoryUsageProvider == null) {
@@ -257,6 +264,67 @@ public class RedisQues extends AbstractVerticle {
 
         registerActiveQueueRegistrationRefresh();
         registerQueueCheck();
+    }
+
+    private Runnable newDequeueStatisticPublisher() {
+        return new Runnable() {
+            final AtomicBoolean isRunning = new AtomicBoolean();
+            Iterator<Map.Entry<String, DequeueStatistic>> iter;
+            long startEpochMs;
+            int i, size;
+            public void run() {
+                if (!isRunning.compareAndSet(false, true)) {
+                    log.warn("Previous publish run still in progress at idx {} of {} since {}ms",
+                            i, size, currentTimeMillis() - startEpochMs);
+                    return;
+                }
+                try {
+                    // Local copy to prevent changes between 'size' and 'iterator' call, plus
+                    // to prevent changes of the backing set while we're iterating.
+                    Map<String, DequeueStatistic> localCopy = new HashMap<>(dequeueStatistic);
+                    size = localCopy.size();
+                    iter = localCopy.entrySet().iterator();
+                    i = 0;
+                    startEpochMs = currentTimeMillis();
+                    if (size > 5_000) log.warn("Going to report {} dequeue statistics towards collector", size);
+                    else if (size > 500) log.info("Going to report {} dequeue statistics towards collector", size);
+                    else log.debug("Going to report {} dequeue statistics towards collector", size);
+                } catch (Throwable ex) {
+                    isRunning.set(false);
+                    throw ex;
+                }
+                resume();
+            }
+            void resume() {
+                try {
+                    long stepEpochMs = currentTimeMillis();
+                    int stepBeginIdx = i;
+                    while (iter.hasNext()) {
+                        var entry = iter.next();
+                        var queueName = entry.getKey();
+                        var dequeueStatistic = entry.getValue();
+                        if (entry.getValue().isMarkedForRemoval()) {
+                            RedisQues.this.dequeueStatistic.remove(queueName);
+                        }
+                        dequeueStatisticCollector.setDequeueStatistic(queueName, dequeueStatistic);
+                        i += 1;
+                        long nowEpochMs = currentTimeMillis();
+                        long stepDurationMs = nowEpochMs - stepEpochMs;
+                        if (stepDurationMs >= 8) {
+                            log.debug("Release EvLoop after step={}x, soFar={}x, size={}x statistics. Took step={}ms, total={}ms.",
+                                    i - stepBeginIdx, i, size, stepDurationMs, nowEpochMs - startEpochMs);
+                            vertx.runOnContext(v -> resume());
+                            return;
+                        }
+                    }
+                    log.debug("Done publishing {} queue statistics. Took {}ms", i, currentTimeMillis() - startEpochMs);
+                    isRunning.set(false);
+                } catch (Throwable ex) {
+                    isRunning.set(false);
+                    throw ex;
+                }
+            }
+        };
     }
 
     private void registerActiveQueueRegistrationRefresh() {
@@ -514,7 +582,7 @@ public class RedisQues extends AbstractVerticle {
                             }
                         } else {
                             // Somehow registration changed. Let's renotify.
-                            log.warn("Registration for queue {} has changed to {}", queueName, consumer);
+                            log.debug("Registration for queue {} has changed to {}", queueName, consumer);
                             myQueues.remove(queueName);
                             notifyConsumer(queueName).onComplete(notifyConsumerEvent -> {
                                 if( notifyConsumerEvent.failed() )
@@ -570,7 +638,7 @@ public class RedisQues extends AbstractVerticle {
                     log.trace("RedisQues read queue lindex result: {}", response);
                     if (response != null) {
                         dequeueStatistic.computeIfAbsent(queueName, s -> new DequeueStatistic());
-                        dequeueStatistic.get(queueName).lastDequeueAttemptTimestamp = System.currentTimeMillis();
+                        dequeueStatistic.get(queueName).setLastDequeueAttemptTimestamp(System.currentTimeMillis());
                         processMessageWithTimeout(queueName, response.toString(), success -> {
 
                             // update the queue failure count and get a retry interval
@@ -632,7 +700,12 @@ public class RedisQues extends AbstractVerticle {
                         // This can happen when requests to consume happen at the same moment the queue is emptied.
                         log.debug("Got a request to consume from empty queue {}", queueName);
                         myQueues.put(queueName, QueueState.READY);
-                        dequeueStatistic.remove(queueName);
+
+                        dequeueStatistic.computeIfPresent(queueName, (s, dequeueStatistic) -> {
+                            dequeueStatistic.setMarkedForRemoval();
+                            return dequeueStatistic;
+                        });
+
                         promise.complete();
                     }
                 })).onFailure(throwable -> {
@@ -655,7 +728,7 @@ public class RedisQues extends AbstractVerticle {
 
         vertx.setTimer(retryInSeconds * 1000L, timerId -> {
             long retryDelayInMills = retryInSeconds * 1000L;
-            dequeueStatistic.get(queueName).nextDequeueDueTimestamp = System.currentTimeMillis() + retryDelayInMills;
+            dequeueStatistic.get(queueName).setNextDequeueDueTimestamp(System.currentTimeMillis() + retryDelayInMills);
             if (log.isDebugEnabled()) {
                 log.debug("RedisQues re-notify the consumer of queue '{}' at {}", queueName, new Date(System.currentTimeMillis()));
             }
@@ -692,8 +765,8 @@ public class RedisQues extends AbstractVerticle {
                 if (reply.succeeded()) {
                     success = OK.equals(reply.result().body().getString(STATUS));
                     if (success) {
-                        dequeueStatistic.get(queue).lastDequeueSuccessTimestamp = System.currentTimeMillis();
-                        dequeueStatistic.get(queue).nextDequeueDueTimestamp = null;
+                        dequeueStatistic.get(queue).setLastDequeueSuccessTimestamp(System.currentTimeMillis());
+                        dequeueStatistic.get(queue).setNextDequeueDueTimestamp(null);
                     }
                 } else {
                     log.info("RedisQues QUEUE_ERROR: Consumer failed {} queue: {}",
@@ -851,7 +924,10 @@ public class RedisQues extends AbstractVerticle {
                                 if (log.isTraceEnabled()) {
                                     log.trace("RedisQues remove old queue: {}", queueName);
                                 }
-                                dequeueStatistic.remove(queueName);
+                                dequeueStatistic.computeIfPresent(queueName, (s, dequeueStatistic) -> {
+                                    dequeueStatistic.setMarkedForRemoval();
+                                    return dequeueStatistic;
+                                });
                                 if (counter.decrementAndGet() == 0) {
                                     removeOldQueues(limit).onComplete(removeOldQueuesEvent -> {
                                         if( removeOldQueuesEvent.failed() )
