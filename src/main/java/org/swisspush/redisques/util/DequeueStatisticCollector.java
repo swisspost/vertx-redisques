@@ -23,16 +23,25 @@ public class DequeueStatisticCollector {
         this.sharedData = vertx.sharedData();
     }
 
-    public void setDequeueStatistic(final String queueName, final DequeueStatistic dequeueStatistic) {
+    /**
+     *
+     * @param queueName
+     * @param dequeueStatistic
+     * @return an always completed future
+     */
+    public Future<Void> setDequeueStatistic(final String queueName, final DequeueStatistic dequeueStatistic) {
+        Promise<Void> promise = Promise.promise();
         sharedData.getLock(DEQUEUE_STATISTIC_LOCK_PREFIX.concat(queueName)).onComplete(lockAsyncResult -> {
             if (lockAsyncResult.failed()) {
                 log.error("Failed to lock dequeue statistic data for queue {}.", queueName, lockAsyncResult.cause());
+                promise.complete();
             } else {
                 final Lock lock = lockAsyncResult.result();
                 sharedData.getAsyncMap(DEQUEUE_STATISTIC_DATA, (Handler<AsyncResult<AsyncMap<String, DequeueStatistic>>>) asyncResult -> {
                     if (asyncResult.failed()) {
                         log.error("Failed to get shared dequeue statistic data map.", asyncResult.cause());
                         lock.release();
+                        promise.complete();
                         return;
                     }
                     AsyncMap<String, DequeueStatistic> asyncMap = asyncResult.result();
@@ -40,8 +49,9 @@ public class DequeueStatisticCollector {
                         log.debug("shared dequeue statistic map size: {}", mapSizeResult.result());
                         asyncMap.get(queueName).onComplete(dequeueStatisticAsyncResult -> {
                             if (dequeueStatisticAsyncResult.failed()) {
-                                lock.release();
                                 log.error("Failed to get shared dequeue statistic data for queue {}.", queueName, dequeueStatisticAsyncResult.cause());
+                                lock.release();
+                                promise.complete();
                             } else {
                                 final DequeueStatistic sharedDequeueStatistic = dequeueStatisticAsyncResult.result();
                                 if (sharedDequeueStatistic == null) {
@@ -53,10 +63,12 @@ public class DequeueStatisticCollector {
                                                 log.debug("shared dequeue statistic for queue {} added.", queueName);
                                             }
                                             lock.release();
+                                            promise.complete();
                                         });
                                     } catch (Exception exception) {
                                         log.error("Failed to put shared dequeue statistic for queue {}.", queueName, exception);
                                         lock.release();
+                                        promise.complete();
                                     }
                                 } else if (sharedDequeueStatistic.getLastUpdatedTimestamp() < dequeueStatistic.getLastUpdatedTimestamp()) {
                                     if (dequeueStatistic.isMarkedForRemoval()) {
@@ -68,6 +80,7 @@ public class DequeueStatisticCollector {
                                                 log.debug("shared dequeue statistic for queue {} removed.", queueName);
                                             }
                                             lock.release();
+                                            promise.complete();
                                         });
                                     } else {
                                         // update
@@ -78,11 +91,13 @@ public class DequeueStatisticCollector {
                                                 log.debug("shared dequeue statistic for queue {} updated.", queueName);
                                             }
                                             lock.release();
+                                            promise.complete();
                                         });
                                     }
                                 } else {
                                     log.debug("shared dequeue statistic for queue {} has newer data, update skipped", queueName);
                                     lock.release();
+                                    promise.complete();
                                 }
                             }
                         });
@@ -90,6 +105,7 @@ public class DequeueStatisticCollector {
                 });
             }
         });
+        return promise.future();
     }
 
     public Future<Map<String, DequeueStatistic>> getAllDequeueStatistics() {

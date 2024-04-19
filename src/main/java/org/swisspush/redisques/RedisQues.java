@@ -1,6 +1,12 @@
 package org.swisspush.redisques;
 
 import io.vertx.core.*;
+import io.vertx.core.AbstractVerticle;
+import io.vertx.core.AsyncResult;
+import io.vertx.core.CompositeFuture;
+import io.vertx.core.Future;
+import io.vertx.core.Handler;
+import io.vertx.core.Promise;
 import io.vertx.core.eventbus.DeliveryOptions;
 import io.vertx.core.eventbus.EventBus;
 import io.vertx.core.eventbus.Message;
@@ -18,6 +24,7 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BiConsumer;
 
 import static org.swisspush.redisques.util.RedisquesAPI.*;
 import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.*;
@@ -178,7 +185,6 @@ public class RedisQues extends AbstractVerticle {
             Runnable publisher = newDequeueStatisticPublisher();
             vertx.setPeriodic(1000L * dequeueStatisticReportIntervalSec, time -> publisher.run());
         }
-
         queuesKey = modConfig.getRedisPrefix() + "queues";
         queuesPrefix = modConfig.getRedisPrefix() + "queues:";
         consumersPrefix = modConfig.getRedisPrefix() + "consumers:";
@@ -284,6 +290,14 @@ public class RedisQues extends AbstractVerticle {
                     Map<String, DequeueStatistic> localCopy = new HashMap<>(dequeueStatistic);
                     size = localCopy.size();
                     iter = localCopy.entrySet().iterator();
+
+                    // use local copy to cleanup
+                    localCopy.forEach((queueName, dequeueStatistic) -> {
+                        if (dequeueStatistic.isMarkedForRemoval()) {
+                            RedisQues.this.dequeueStatistic.remove(queueName);
+                        }
+                    });
+
                     i = 0;
                     startEpochMs = currentTimeMillis();
                     if (size > 5_000) log.warn("Going to report {} dequeue statistics towards collector", size);
@@ -297,28 +311,21 @@ public class RedisQues extends AbstractVerticle {
             }
             void resume() {
                 try {
-                    long stepEpochMs = currentTimeMillis();
-                    int stepBeginIdx = i;
-                    while (iter.hasNext()) {
-                        var entry = iter.next();
-                        var queueName = entry.getKey();
-                        var dequeueStatistic = entry.getValue();
-                        if (entry.getValue().isMarkedForRemoval()) {
-                            RedisQues.this.dequeueStatistic.remove(queueName);
+                    List<Future<Void>> futureList = new ArrayList<>();
+                    vertx.executeBlocking((Handler<Promise<Void>>) promise -> {
+                        while (iter.hasNext()) {
+                            var entry = iter.next();
+                            var queueName = entry.getKey();
+                            var dequeueStatistic = entry.getValue();
+                            Future<Void> future = dequeueStatisticCollector.setDequeueStatistic(queueName, dequeueStatistic);
+                            future.onComplete(event -> i += 1);
+                            futureList.add(future);
                         }
-                        dequeueStatisticCollector.setDequeueStatistic(queueName, dequeueStatistic);
-                        i += 1;
-                        long nowEpochMs = currentTimeMillis();
-                        long stepDurationMs = nowEpochMs - stepEpochMs;
-                        if (stepDurationMs >= 8) {
-                            log.debug("Release EvLoop after step={}x, soFar={}x, size={}x statistics. Took step={}ms, total={}ms.",
-                                    i - stepBeginIdx, i, size, stepDurationMs, nowEpochMs - startEpochMs);
-                            vertx.runOnContext(v -> resume());
-                            return;
-                        }
-                    }
-                    log.debug("Done publishing {} queue statistics. Took {}ms", i, currentTimeMillis() - startEpochMs);
-                    isRunning.set(false);
+                        Future.all(futureList).onComplete(event -> promise.complete());
+                    }).onComplete(event -> {
+                        log.debug("Done publishing {} queue statistics. Took {}ms", i, currentTimeMillis() - startEpochMs);
+                        isRunning.set(false);
+                    });
                 } catch (Throwable ex) {
                     isRunning.set(false);
                     throw ex;
