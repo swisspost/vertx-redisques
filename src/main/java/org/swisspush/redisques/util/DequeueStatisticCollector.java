@@ -63,19 +63,14 @@ public class DequeueStatisticCollector {
 
                         final DequeueStatistic sharedDequeueStatistic = dequeueStatisticAsyncResult.result();
                         if (sharedDequeueStatistic == null) {
-                            try {
-                                asyncMap.put(queueName, dequeueStatistic).onComplete(voidAsyncResult -> {
-                                    if (voidAsyncResult.failed()) {
-                                        log.error("shared dequeue statistic for queue {} failed to add.", queueName, voidAsyncResult.cause());
-                                    } else {
-                                        log.debug("shared dequeue statistic for queue {} added.", queueName);
-                                    }
-                                    releaseAndCompleteHandler.handle(null);
-                                });
-                            } catch (Exception exception) {
-                                log.error("Failed to put shared dequeue statistic for queue {}.", queueName, exception);
+                            asyncMap.put(queueName, dequeueStatistic).onComplete(voidAsyncResult -> {
+                                if (voidAsyncResult.failed()) {
+                                    log.error("shared dequeue statistic for queue {} failed to add.", queueName, voidAsyncResult.cause());
+                                } else {
+                                    log.debug("shared dequeue statistic for queue {} added.", queueName);
+                                }
                                 releaseAndCompleteHandler.handle(null);
-                            }
+                            });
                         } else if (sharedDequeueStatistic.getLastUpdatedTimestamp() < dequeueStatistic.getLastUpdatedTimestamp()) {
                             if (dequeueStatistic.isMarkedForRemoval()) {
                                 // delete
