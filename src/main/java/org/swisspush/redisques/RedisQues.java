@@ -321,9 +321,17 @@ public class RedisQues extends AbstractVerticle {
                             future.onComplete(event -> i += 1);
                             futureList.add(future);
                         }
-                        Future.all(futureList).onComplete(event -> promise.complete());
+                        Future.all(futureList).onComplete(event -> {
+                            if (event.failed()) {
+                                log.error("Promise that should always complete has failed, ignore it", event.cause());
+                            }
+                            promise.complete();
+                        });
                     }).onComplete(event -> {
-                        log.debug("Done publishing {} queue statistics. Took {}ms", i, currentTimeMillis() - startEpochMs);
+                        if (event.failed()) {
+                            log.error("publishing dequeue statistics not complete, just continue", event.cause());
+                        }
+                        log.debug("Done publishing {} dequeue statistics. Took {}ms", i, currentTimeMillis() - startEpochMs);
                         isRunning.set(false);
                     });
                 } catch (Throwable ex) {
