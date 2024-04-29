@@ -24,8 +24,6 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.BiConsumer;
-
 import static org.swisspush.redisques.util.RedisquesAPI.*;
 import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.*;
 
@@ -106,7 +104,7 @@ public class RedisQues extends AbstractVerticle {
     private Map<QueueOperation, QueueAction> queueActions = new HashMap<>();
 
     private Map<String, DequeueStatistic> dequeueStatistic = new ConcurrentHashMap<>();
-    private boolean dequeueStatisticDisabled = false;
+    private boolean dequeueStatisticEnabled = false;
 
     public RedisQues() {
     }
@@ -182,13 +180,11 @@ public class RedisQues extends AbstractVerticle {
         log.info("Starting Redisques module with configuration: {}", configurationProvider.configuration());
 
         int dequeueStatisticReportIntervalSec = modConfig.getDequeueStatisticReportIntervalSec();
-        if (dequeueStatisticReportIntervalSec > 0) {
+        if (dequeueStatisticReportIntervalSec != -1) {
+            dequeueStatisticEnabled = true;
             Runnable publisher = newDequeueStatisticPublisher();
             vertx.setPeriodic(1000L * dequeueStatisticReportIntervalSec, time -> publisher.run());
-        } else {
-            dequeueStatisticDisabled = true;
         }
-
         queuesKey = modConfig.getRedisPrefix() + "queues";
         queuesPrefix = modConfig.getRedisPrefix() + "queues:";
         consumersPrefix = modConfig.getRedisPrefix() + "consumers:";
@@ -656,8 +652,10 @@ public class RedisQues extends AbstractVerticle {
                     Response response = answer.result();
                     log.trace("RedisQues read queue lindex result: {}", response);
                     if (response != null) {
-                        dequeueStatistic.computeIfAbsent(queueName, s -> new DequeueStatistic());
-                        dequeueStatistic.get(queueName).setLastDequeueAttemptTimestamp(System.currentTimeMillis());
+                        if (dequeueStatisticEnabled) {
+                            dequeueStatistic.computeIfAbsent(queueName, s -> new DequeueStatistic());
+                            dequeueStatistic.get(queueName).setLastDequeueAttemptTimestamp(System.currentTimeMillis());
+                        }
                         processMessageWithTimeout(queueName, response.toString(), success -> {
 
                             // update the queue failure count and get a retry interval
@@ -720,9 +718,7 @@ public class RedisQues extends AbstractVerticle {
                         log.debug("Got a request to consume from empty queue {}", queueName);
                         myQueues.put(queueName, QueueState.READY);
 
-                        if (dequeueStatisticDisabled) {
-                            dequeueStatistic.remove(queueName);
-                        } else {
+                        if (dequeueStatisticEnabled) {
                             dequeueStatistic.computeIfPresent(queueName, (s, dequeueStatistic) -> {
                                 dequeueStatistic.setMarkedForRemoval();
                                 return dequeueStatistic;
@@ -749,8 +745,10 @@ public class RedisQues extends AbstractVerticle {
         log.trace("RedsQues reschedule after failure for queue: {}", queueName);
 
         vertx.setTimer(retryInSeconds * 1000L, timerId -> {
-            long retryDelayInMills = retryInSeconds * 1000L;
-            dequeueStatistic.get(queueName).setNextDequeueDueTimestamp(System.currentTimeMillis() + retryDelayInMills);
+            if (dequeueStatisticEnabled) {
+                long retryDelayInMills = retryInSeconds * 1000L;
+                dequeueStatistic.get(queueName).setNextDequeueDueTimestamp(System.currentTimeMillis() + retryDelayInMills);
+            }
             if (log.isDebugEnabled()) {
                 log.debug("RedisQues re-notify the consumer of queue '{}' at {}", queueName, new Date(System.currentTimeMillis()));
             }
@@ -786,7 +784,7 @@ public class RedisQues extends AbstractVerticle {
                 boolean success;
                 if (reply.succeeded()) {
                     success = OK.equals(reply.result().body().getString(STATUS));
-                    if (success) {
+                    if (success && dequeueStatisticEnabled) {
                         dequeueStatistic.get(queue).setLastDequeueSuccessTimestamp(System.currentTimeMillis());
                         dequeueStatistic.get(queue).setNextDequeueDueTimestamp(null);
                     }
@@ -946,9 +944,7 @@ public class RedisQues extends AbstractVerticle {
                                 if (log.isTraceEnabled()) {
                                     log.trace("RedisQues remove old queue: {}", queueName);
                                 }
-                                if (dequeueStatisticDisabled) {
-                                    dequeueStatistic.remove(queueName);
-                                } else {
+                                if (dequeueStatisticEnabled) {
                                     dequeueStatistic.computeIfPresent(queueName, (s, dequeueStatistic) -> {
                                         dequeueStatistic.setMarkedForRemoval();
                                         return dequeueStatistic;
