@@ -180,7 +180,7 @@ public class RedisQues extends AbstractVerticle {
         log.info("Starting Redisques module with configuration: {}", configurationProvider.configuration());
 
         int dequeueStatisticReportIntervalSec = modConfig.getDequeueStatisticReportIntervalSec();
-        if (dequeueStatisticReportIntervalSec != -1) {
+        if (dequeueStatisticReportIntervalSec > 0) {
             dequeueStatisticEnabled = true;
             Runnable publisher = newDequeueStatisticPublisher();
             vertx.setPeriodic(1000L * dequeueStatisticReportIntervalSec, time -> publisher.run());
