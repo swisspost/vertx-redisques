@@ -70,7 +70,7 @@ public class RedisquesConfiguration {
     private static final int DEFAULT_QUEUE_SPEED_INTERVAL_SEC = 60;
     private static final int DEFAULT_MEMORY_USAGE_LIMIT_PCT = 100;
     private static final int DEFAULT_MEMORY_USAGE_CHECK_INTERVAL_SEC = 60;
-    private static final int DEFAULT_DEQUEUE_STATISTIC_REPORT_INTERVAL_SEC = 30;
+    private static final int DEFAULT_DEQUEUE_STATISTIC_REPORT_INTERVAL_SEC = 0;
 
     public static final String PROP_ADDRESS = "address";
     public static final String PROP_CONFIGURATION_UPDATED_ADDRESS = "configuration-updated-address";

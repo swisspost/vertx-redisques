@@ -106,6 +106,7 @@ public class RedisQues extends AbstractVerticle {
     private Map<QueueOperation, QueueAction> queueActions = new HashMap<>();
 
     private Map<String, DequeueStatistic> dequeueStatistic = new ConcurrentHashMap<>();
+    private boolean dequeueStatisticDisabled = false;
 
     public RedisQues() {
     }
@@ -184,7 +185,10 @@ public class RedisQues extends AbstractVerticle {
         if (dequeueStatisticReportIntervalSec > 0) {
             Runnable publisher = newDequeueStatisticPublisher();
             vertx.setPeriodic(1000L * dequeueStatisticReportIntervalSec, time -> publisher.run());
+        } else {
+            dequeueStatisticDisabled = true;
         }
+
         queuesKey = modConfig.getRedisPrefix() + "queues";
         queuesPrefix = modConfig.getRedisPrefix() + "queues:";
         consumersPrefix = modConfig.getRedisPrefix() + "consumers:";
@@ -716,11 +720,14 @@ public class RedisQues extends AbstractVerticle {
                         log.debug("Got a request to consume from empty queue {}", queueName);
                         myQueues.put(queueName, QueueState.READY);
 
-                        dequeueStatistic.computeIfPresent(queueName, (s, dequeueStatistic) -> {
-                            dequeueStatistic.setMarkedForRemoval();
-                            return dequeueStatistic;
-                        });
-
+                        if (dequeueStatisticDisabled) {
+                            dequeueStatistic.remove(queueName);
+                        } else {
+                            dequeueStatistic.computeIfPresent(queueName, (s, dequeueStatistic) -> {
+                                dequeueStatistic.setMarkedForRemoval();
+                                return dequeueStatistic;
+                            });
+                        }
                         promise.complete();
                     }
                 })).onFailure(throwable -> {
@@ -939,10 +946,14 @@ public class RedisQues extends AbstractVerticle {
                                 if (log.isTraceEnabled()) {
                                     log.trace("RedisQues remove old queue: {}", queueName);
                                 }
-                                dequeueStatistic.computeIfPresent(queueName, (s, dequeueStatistic) -> {
-                                    dequeueStatistic.setMarkedForRemoval();
-                                    return dequeueStatistic;
-                                });
+                                if (dequeueStatisticDisabled) {
+                                    dequeueStatistic.remove(queueName);
+                                } else {
+                                    dequeueStatistic.computeIfPresent(queueName, (s, dequeueStatistic) -> {
+                                        dequeueStatistic.setMarkedForRemoval();
+                                        return dequeueStatistic;
+                                    });
+                                }
                                 if (counter.decrementAndGet() == 0) {
                                     removeOldQueues(limit).onComplete(removeOldQueuesEvent -> {
                                         if( removeOldQueuesEvent.failed() )
