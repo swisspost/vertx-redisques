@@ -24,6 +24,7 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+
 import static org.swisspush.redisques.util.RedisquesAPI.*;
 import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.*;
 
@@ -272,6 +273,18 @@ public class RedisQues extends AbstractVerticle {
         registerQueueCheck();
     }
 
+    class Task {
+        private final String queueName;
+        private final DequeueStatistic dequeueStatistic;
+        Task(String queueName, DequeueStatistic dequeueStatistic) {
+            this.queueName = queueName;
+            this.dequeueStatistic = dequeueStatistic;
+        }
+        Future<Void> execute() {
+            return dequeueStatisticCollector.setDequeueStatistic(queueName, dequeueStatistic);
+        }
+    }
+
     private Runnable newDequeueStatisticPublisher() {
         return new Runnable() {
             final AtomicBoolean isRunning = new AtomicBoolean();
@@ -291,7 +304,7 @@ public class RedisQues extends AbstractVerticle {
                     size = localCopy.size();
                     iter = localCopy.entrySet().iterator();
 
-                    // use local copy to cleanup
+                    // use local copy to clean up
                     localCopy.forEach((queueName, dequeueStatistic) -> {
                         if (dequeueStatistic.isMarkedForRemoval()) {
                             RedisQues.this.dequeueStatistic.remove(queueName);
@@ -311,29 +324,35 @@ public class RedisQues extends AbstractVerticle {
             }
             void resume() {
                 try {
-                    List<Future<Void>> futureList = new ArrayList<>();
-                    vertx.executeBlocking((Handler<Promise<Void>>) promise -> {
+                        List<Task> entryList = new ArrayList<>();
                         while (iter.hasNext()) {
                             var entry = iter.next();
                             var queueName = entry.getKey();
                             var dequeueStatistic = entry.getValue();
-                            Future<Void> future = dequeueStatisticCollector.setDequeueStatistic(queueName, dequeueStatistic);
-                            future.onComplete(event -> i += 1);
-                            futureList.add(future);
+                            entryList.add(new Task(queueName, dequeueStatistic));
                         }
-                        Future.all(futureList).onComplete(event -> {
+
+                        Future<List<Void>> startFuture = Future.succeededFuture(new ArrayList<>());
+                        // Chain the futures sequentially to execute tasks
+                        Future<List<Void>> resultFuture = entryList.stream()
+                                .reduce(startFuture, (future, task) -> future.compose(previousResults -> {
+                                    // Perform asynchronous task
+                                    return task.execute().compose(taskResult -> {
+                                        // Append task result to previous results
+                                        previousResults.add(taskResult);
+                                        return Future.succeededFuture(previousResults);
+                                    });
+                                }),  (a,b) -> Future.succeededFuture());
+                        resultFuture.onComplete(event -> {
                             if (event.failed()) {
                                 log.error("Promise that should always complete has failed, ignore it", event.cause());
                             }
-                            promise.complete();
+                            if (event.failed()) {
+                                log.error("publishing dequeue statistics not complete, just continue", event.cause());
+                            }
+                            log.debug("Done publishing {} dequeue statistics. Took {}ms", i, currentTimeMillis() - startEpochMs);
+                            isRunning.set(false);
                         });
-                    }).onComplete(event -> {
-                        if (event.failed()) {
-                            log.error("publishing dequeue statistics not complete, just continue", event.cause());
-                        }
-                        log.debug("Done publishing {} dequeue statistics. Took {}ms", i, currentTimeMillis() - startEpochMs);
-                        isRunning.set(false);
-                    });
                 } catch (Throwable ex) {
                     isRunning.set(false);
                     throw ex;
