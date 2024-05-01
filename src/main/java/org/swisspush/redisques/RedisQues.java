@@ -281,7 +281,15 @@ public class RedisQues extends AbstractVerticle {
             this.dequeueStatistic = dequeueStatistic;
         }
         Future<Void> execute() {
-            return dequeueStatisticCollector.setDequeueStatistic(queueName, dequeueStatistic);
+            // switch to a worker thread
+            return vertx.executeBlocking(promise -> {
+                dequeueStatisticCollector.setDequeueStatistic(queueName, dequeueStatistic).onComplete(event -> {
+                    if (event.failed()) {
+                        log.error("Future that should always succeed has failed, ignore it", event.cause());
+                    }
+                    promise.complete();
+                });
+            });
         }
     }
 
@@ -323,36 +331,34 @@ public class RedisQues extends AbstractVerticle {
                 resume();
             }
             void resume() {
+                // here we are executing in an event loop thread
                 try {
-                        List<Task> entryList = new ArrayList<>();
-                        while (iter.hasNext()) {
-                            var entry = iter.next();
-                            var queueName = entry.getKey();
-                            var dequeueStatistic = entry.getValue();
-                            entryList.add(new Task(queueName, dequeueStatistic));
-                        }
+                    List<Task> entryList = new ArrayList<>();
+                    while (iter.hasNext()) {
+                        var entry = iter.next();
+                        var queueName = entry.getKey();
+                        var dequeueStatistic = entry.getValue();
+                        entryList.add(new Task(queueName, dequeueStatistic));
+                    }
 
-                        Future<List<Void>> startFuture = Future.succeededFuture(new ArrayList<>());
-                        // Chain the futures sequentially to execute tasks
-                        Future<List<Void>> resultFuture = entryList.stream()
-                                .reduce(startFuture, (future, task) -> future.compose(previousResults -> {
-                                    // Perform asynchronous task
-                                    return task.execute().compose(taskResult -> {
-                                        // Append task result to previous results
-                                        previousResults.add(taskResult);
-                                        return Future.succeededFuture(previousResults);
-                                    });
-                                }),  (a,b) -> Future.succeededFuture());
-                        resultFuture.onComplete(event -> {
-                            if (event.failed()) {
-                                log.error("Promise that should always complete has failed, ignore it", event.cause());
-                            }
-                            if (event.failed()) {
-                                log.error("publishing dequeue statistics not complete, just continue", event.cause());
-                            }
-                            log.debug("Done publishing {} dequeue statistics. Took {}ms", i, currentTimeMillis() - startEpochMs);
-                            isRunning.set(false);
-                        });
+                    Future<List<Void>> startFuture = Future.succeededFuture(new ArrayList<>());
+                    // chain the futures sequentially to execute tasks
+                    Future<List<Void>> resultFuture = entryList.stream()
+                            .reduce(startFuture, (future, task) -> future.compose(previousResults -> {
+                                // perform asynchronous task
+                                return task.execute().compose(taskResult -> {
+                                    // append task result to previous results
+                                    previousResults.add(taskResult);
+                                    return Future.succeededFuture(previousResults);
+                                });
+                            }),  (a,b) -> Future.succeededFuture());
+                    resultFuture.onComplete(event -> {
+                        if (event.failed()) {
+                            log.error("publishing dequeue statistics not complete, just continue", event.cause());
+                        }
+                        log.debug("Done publishing {} dequeue statistics. Took {}ms", i, currentTimeMillis() - startEpochMs);
+                        isRunning.set(false);
+                    });
                 } catch (Throwable ex) {
                     isRunning.set(false);
                     throw ex;
