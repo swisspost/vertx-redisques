@@ -31,6 +31,7 @@ public class DequeueStatisticCollector {
      */
     public Future<Void> setDequeueStatistic(final String queueName, final DequeueStatistic dequeueStatistic) {
         Promise<Void> promise = Promise.promise();
+        log.debug("Starting to sync dequeue statistic for {}", queueName);
         sharedData.getLock(DEQUEUE_STATISTIC_LOCK_PREFIX.concat(queueName)).onComplete(lockAsyncResult -> {
             if (lockAsyncResult.failed()) {
                 log.error("Failed to lock dequeue statistic data for queue {}.", queueName, lockAsyncResult.cause());
@@ -40,6 +41,7 @@ public class DequeueStatisticCollector {
 
             final Lock lock = lockAsyncResult.result();
             final Handler<Void> releaseAndCompleteHandler = event -> {
+                log.debug("Sync dequeue statistic for {} finished", queueName);
                 lock.release();
                 promise.complete();
             };

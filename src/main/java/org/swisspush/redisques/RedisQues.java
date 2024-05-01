@@ -24,6 +24,7 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+
 import static org.swisspush.redisques.util.RedisquesAPI.*;
 import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.*;
 
@@ -272,6 +273,26 @@ public class RedisQues extends AbstractVerticle {
         registerQueueCheck();
     }
 
+    class Task {
+        private final String queueName;
+        private final DequeueStatistic dequeueStatistic;
+        Task(String queueName, DequeueStatistic dequeueStatistic) {
+            this.queueName = queueName;
+            this.dequeueStatistic = dequeueStatistic;
+        }
+        Future<Void> execute() {
+            // switch to a worker thread
+            return vertx.executeBlocking(promise -> {
+                dequeueStatisticCollector.setDequeueStatistic(queueName, dequeueStatistic).onComplete(event -> {
+                    if (event.failed()) {
+                        log.error("Future that should always succeed has failed, ignore it", event.cause());
+                    }
+                    promise.complete();
+                });
+            });
+        }
+    }
+
     private Runnable newDequeueStatisticPublisher() {
         return new Runnable() {
             final AtomicBoolean isRunning = new AtomicBoolean();
@@ -291,7 +312,7 @@ public class RedisQues extends AbstractVerticle {
                     size = localCopy.size();
                     iter = localCopy.entrySet().iterator();
 
-                    // use local copy to cleanup
+                    // use local copy to clean up
                     localCopy.forEach((queueName, dequeueStatistic) -> {
                         if (dequeueStatistic.isMarkedForRemoval()) {
                             RedisQues.this.dequeueStatistic.remove(queueName);
@@ -310,24 +331,28 @@ public class RedisQues extends AbstractVerticle {
                 resume();
             }
             void resume() {
+                // here we are executing in an event loop thread
                 try {
-                    List<Future<Void>> futureList = new ArrayList<>();
-                    vertx.executeBlocking((Handler<Promise<Void>>) promise -> {
-                        while (iter.hasNext()) {
-                            var entry = iter.next();
-                            var queueName = entry.getKey();
-                            var dequeueStatistic = entry.getValue();
-                            Future<Void> future = dequeueStatisticCollector.setDequeueStatistic(queueName, dequeueStatistic);
-                            future.onComplete(event -> i += 1);
-                            futureList.add(future);
-                        }
-                        Future.all(futureList).onComplete(event -> {
-                            if (event.failed()) {
-                                log.error("Promise that should always complete has failed, ignore it", event.cause());
-                            }
-                            promise.complete();
-                        });
-                    }).onComplete(event -> {
+                    List<Task> entryList = new ArrayList<>();
+                    while (iter.hasNext()) {
+                        var entry = iter.next();
+                        var queueName = entry.getKey();
+                        var dequeueStatistic = entry.getValue();
+                        entryList.add(new Task(queueName, dequeueStatistic));
+                    }
+
+                    Future<List<Void>> startFuture = Future.succeededFuture(new ArrayList<>());
+                    // chain the futures sequentially to execute tasks
+                    Future<List<Void>> resultFuture = entryList.stream()
+                            .reduce(startFuture, (future, task) -> future.compose(previousResults -> {
+                                // perform asynchronous task
+                                return task.execute().compose(taskResult -> {
+                                    // append task result to previous results
+                                    previousResults.add(taskResult);
+                                    return Future.succeededFuture(previousResults);
+                                });
+                            }),  (a,b) -> Future.succeededFuture());
+                    resultFuture.onComplete(event -> {
                         if (event.failed()) {
                             log.error("publishing dequeue statistics not complete, just continue", event.cause());
                         }
