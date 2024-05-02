@@ -1,6 +1,5 @@
 package org.swisspush.redisques.performance;
 
-import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import org.slf4j.Logger;
 
@@ -10,7 +9,6 @@ import java.util.List;
 
 import static java.lang.Float.NaN;
 import static java.lang.System.currentTimeMillis;
-import static java.lang.Thread.currentThread;
 import static org.slf4j.LoggerFactory.getLogger;
 
 
@@ -26,13 +24,11 @@ public class JavaGcStats {
     private static float gcFrac01 = 0, gcFrac05 = 0, gcFrac15 = 0;
 
     public JavaGcStats(Vertx vertx){
-        vertx.<Void>executeBlocking(this::initObserver, false, fut -> {
-            if( fut.failed() ) throw new RuntimeException("", fut.cause());
-        });
+        initObserver();
     }
 
     /** Fills in the values into the passed structure */
-    public void fillMeasurement(Measurement measurement) {
+    public Measurement fillMeasurement(Measurement measurement) {
         long workerHeartbeatAgeMs = currentTimeMillis() - workerHeartbeatEpochMs;
         if ( workerHeartbeatAgeMs > 60_000) {
             log.warn("Huh? No worker heartbeat since {}ms?", workerHeartbeatAgeMs);
@@ -42,27 +38,24 @@ public class JavaGcStats {
             measurement.gcFrac05 = gcFrac05;
             measurement.gcFrac15 = gcFrac15;
         }
+        return measurement;
     }
 
-    private void initObserver(Promise<Void> onDone) {
-        try {
-            assert !currentThread().getName().toUpperCase().contains("EVENTLOOP");
-            synchronized (workerInitLock) {
-                if( worker == null ){
-                    worker = new Worker();
-                    worker.setDaemon(true);
-                    worker.start();
-                }
+    private void initObserver() {
+        synchronized (workerInitLock) {
+            if( worker == null ){
+                worker = new Worker();
+                worker.setDaemon(true);
+                worker.start();
             }
-            onDone.complete();
-        } catch (Throwable ex) {
-            onDone.fail(ex);
         }
    }
 
     private /*TODO rm static*/static class Worker extends Thread {
 
-        private static final int BACKLOG = 16;
+        private static final float SAMPLES_PER_SEC = 4f / 60f;
+        private static final int RECOVER_PERIOD_MS = 5_000;
+        private static final int BACKLOG = (int) (SAMPLES_PER_SEC * (15 * 60) + .5) + 1;
         private final LongRingbuffer measuredGcTimes = new LongRingbuffer(BACKLOG);
         private final LongRingbuffer measuredEpochMs = new LongRingbuffer(BACKLOG);
         private final long tmpLongs[] = new long[BACKLOG];
@@ -75,7 +68,7 @@ public class JavaGcStats {
                 if( unexpectedEx != null ){
                     // Reset, but cool-down before risking the exception again.
                     unexpectedEx = null;
-                    sleep(5000);
+                    sleep(RECOVER_PERIOD_MS);
                 }
                 assert currentThread() == worker;
                 step();
@@ -136,7 +129,6 @@ public class JavaGcStats {
             assert gcFrac01 >= 0 && gcFrac01 <= 1 : "0 <= "+ gcFrac01 +" <= 1";
             assert gcFrac05 >= 0 && gcFrac05 <= 1 : "0 <= "+ gcFrac05 +" <= 1";
             assert gcFrac15 >= 0 && gcFrac15 <= 1 : "0 <= "+ gcFrac15 +" <= 1";
-            log.info("GC time usage:  {}/min   {}/5min   {}/15min", gcFrac01, gcFrac05, gcFrac15);
             synchronized (measurementLock) {
                 JavaGcStats.gcFrac01 = gcFrac01;
                 JavaGcStats.gcFrac05 = gcFrac05;
@@ -159,7 +151,7 @@ public class JavaGcStats {
          * <p>Example 2: If gcFrac15 is 0.03, this means that 3 percent of
          * execution time got into garbage collection.</p>
          */
-        float gcFrac01 = NaN, gcFrac05 = NaN, gcFrac15 = NaN;
+        public float gcFrac01 = NaN, gcFrac05 = NaN, gcFrac15 = NaN;
 
     }
 
