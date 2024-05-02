@@ -92,8 +92,8 @@ public class JavaGcStats {
                 long timeUpToNextPeriodMs = previousTriggerEpochMs + MEASURE_ALL_N_MILLIS - nowMs;
                 // skip a beat if we're too far behind.
                 while (timeUpToNextPeriodMs < MEASURE_ALL_N_MILLIS / 64) timeUpToNextPeriodMs += MEASURE_ALL_N_MILLIS;
-                // remind what we did to use it in next round.
-                previousTriggerEpochMs += (timeUpToNextPeriodMs + MEASURE_ALL_N_MILLIS) % MEASURE_ALL_N_MILLIS;
+                // make state usable for next round.
+                while (previousTriggerEpochMs < nowMs) previousTriggerEpochMs += MEASURE_ALL_N_MILLIS;
                 log.debug("timeUpToNextPeriodMs is {}", timeUpToNextPeriodMs);
                 sleep(timeUpToNextPeriodMs);
                 // make a beep so consumers can notice if we died.
