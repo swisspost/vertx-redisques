@@ -12,14 +12,12 @@ public class LongRingbuffer {
 
     private static final Logger log = getLogger(LongRingbuffer.class);
     private final Object pushpopLock = new Object();
-    private final int capacity;
     private final long ring[];
     private int wrCur;
     private boolean isFilled;
 
     LongRingbuffer(int capacity) {
         if (capacity < 1) throw new IllegalArgumentException("assert(capacity >= 1)");
-        this.capacity = capacity;
         this.ring = new long[capacity];
         this.wrCur = 0;
     }
@@ -29,7 +27,7 @@ public class LongRingbuffer {
             //log.trace("ring[{}] = {}", wrCur, value);
             ring[wrCur] = value;
             wrCur += 1;
-            if (wrCur >= capacity) {
+            if (wrCur >= ring.length) {
                 wrCur = 0;
                 isFilled = true;
             }
@@ -46,7 +44,7 @@ public class LongRingbuffer {
                 rangeTwoLen = 0;
             } else {
                 rangeOneOff = wrCur;
-                rangeOneLen = capacity - rangeOneOff;
+                rangeOneLen = ring.length - rangeOneOff;
                 rangeTwoOff = 0;
                 rangeTwoLen = rangeOneOff == 0 ? 0 : wrCur;
             }
