@@ -1,16 +1,11 @@
 package org.swisspush.redisques.performance;
 
-import org.slf4j.Logger;
-
-import static org.slf4j.LoggerFactory.getLogger;
-
 /**
  * <p>'long' in the class name refers to the type 'long'. It does NOT
  * say anything about how 'long' the buffer is!</p>
  */
 public class LongRingbuffer {
 
-    private static final Logger log = getLogger(LongRingbuffer.class);
     private final Object pushpopLock = new Object();
     private final long ring[];
     private int wrCur;
