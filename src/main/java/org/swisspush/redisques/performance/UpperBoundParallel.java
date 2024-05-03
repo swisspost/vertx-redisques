@@ -135,7 +135,9 @@ public class UpperBoundParallel {
                 // Unlock, to prevent thread stalls as we don't know for how long mentor
                 // is going to block.
                 req.lock.unlock();
-                log.debug("mentor.onError({}: {})", ex.getClass().getName(), ex.getMessage());
+                if (log.isDebugEnabled()) {
+                    log.debug("mentor.onError({}: {})", ex.getClass().getName(), ex.getMessage());
+                }
                 isFatalError = req.mentor.onError(ex, req.ctx);
             } finally {
                 req.lock.lock(); // Need our lock back.
