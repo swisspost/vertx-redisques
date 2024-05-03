@@ -37,7 +37,8 @@ import static org.slf4j.LoggerFactory.getLogger;
  * this, is to apply an upper bound to what we do in parallel. And thats
  * what this class tries to assist with. It wants to be that tool that
  * allows parallelity but maintains upper bounds. For stone-age
- * programmers: its nothing else than an semaphore really.
+ * programmers: It's nothing else than a semaphore really. But decorated
+ * with a vertx gift bow to make it fit better in the new framework world ;)
  */
 public class UpperBoundParallel {
 
@@ -130,6 +131,7 @@ public class UpperBoundParallel {
             req.limit.release();
             req.numInProgress -= 1;
             log.trace("onOneDone({})  {} remaining", ex != null ? "ex" : "null", req.numInProgress);
+            assert req.numInProgress >= 0 : req.numInProgress +" >= 0  (BTW: mentor MUST call 'onDone' EXACTLY once)";
             boolean isFatalError = true;
             if (ex != null) try {
                 // Unlock, to prevent thread stalls as we don't know for how long mentor
