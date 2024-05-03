@@ -28,9 +28,9 @@ import static org.slf4j.LoggerFactory.getLogger;
  * 
  * Level 3: Welcome in my world. Where reality starts to hit you sooner or
  * later and you'll realize no matter how much of those "infinite cloud
- * resources" and fancy black magic frameworks you throw at your problem,
- * it won't solve the issue (performance-is-not-an-issue? Please, just go
- * back to "Level 1" and be happy there).
+ * resources" and fancy frameworks magic you throw at your problem, it won't
+ * solve the issue. Performance-is-not-an-issue? Please, just go back to
+ * "Level 1" and be happy there.
  * 
  * This class is for "Level 3" users only. We still can utilize parallelity
  * without assuming an infinite amount of resources. A KISS approach to do
@@ -78,9 +78,9 @@ public class UpperBoundParallel {
                 if (!req.hasMore) {
                     if (req.numInProgress == 0 && !req.isDoneCalled) {
                         req.isDoneCalled = true;
-                        // give up lock to prevent starvation in case mentor is wasting time.
-                        log.debug("call 'mentor.onDone()'");
+                        // give up lock because we don't know how much time mentor will use.
                         req.lock.unlock();
+                        log.debug("call 'mentor.onDone()'");
                         try {
                             req.mentor.onDone(req.ctx);
                         } finally {
@@ -175,7 +175,7 @@ public class UpperBoundParallel {
     public static interface Mentor<Ctx> {
 
         /**
-         * @return true if more elements have to been processed. False is
+         * @return true if more elements have to be processed. False if
          * iteration source has reached its end.
          */
         boolean runOneMore(BiConsumer<Throwable, Void> onDone, Ctx ctx);

@@ -358,24 +358,24 @@ public class QueueStatisticsCollector {
                         .onSuccess(redisAPI -> {
                             redisAPI.hset(List.of(STATSKEY, queueName, obj.toString()), ev -> {
                                 if (ev.failed()) {
-                                    onDone.accept(ev.cause(), null);
+                                    onDone.accept(new RuntimeException("stack", ev.cause()), null);
                                     return;
                                 }
                                 onDone.accept(null, null);
                             });
                         })
-                        .onFailure(ex -> onDone.accept(ex, null));
+                        .onFailure(ex -> onDone.accept(new RuntimeException("stack", ex), null));
             } else {
                 redisProvider.redis()
                         .onSuccess(redisAPI -> {
                             redisAPI.hdel(List.of(STATSKEY, queueName), ev -> {
                                 if (ev.failed()) {
-                                    onDone.accept(ev.cause(), null);
+                                    onDone.accept(new RuntimeException("stack", ev.cause()), null);
                                 }
                                 onDone.accept(null, null);
                             });
                         })
-                        .onFailure(ex -> onDone.accept(ex, null));
+                        .onFailure(ex -> onDone.accept(new RuntimeException("stack", ex), null));
             }
         } catch (RuntimeException ex) {
             onDone.accept(ex, null);
@@ -644,19 +644,15 @@ public class QueueStatisticsCollector {
         event.reply(new JsonObject().put(STATUS, OK).put(STATISTIC_QUEUE_SPEED, speed));
     }
 
-    /** <p>Holds intermediate state related to a {@link #getQueueStatistics(Message, List)}
-     * request.</p> */
+    /** <p>Holds intermediate state related to a {@link #getQueueStatistics(List)}
+     *  request.</p> */
     private static class RequestCtx {
-        private Message<JsonObject> event; // origin event we have to answer
         private List<String> queueNames; // Requested queues to analyze
         private Redis conn;
         private RedisAPI redisAPI;
         private List<NumberType> queueLengthList;
         private HashMap<String, QueueStatistic> statistics; // Stats we're going to populate
         private Response redisFailStats; // failure stats we got from redis.
-
-        private int getQueueSpeed_i;
-        private Promise<Void> getQueueSpeed_promise;
     }
 
 }

@@ -135,6 +135,7 @@ public class RedisQues extends AbstractVerticle {
     private final String uid = UUID.randomUUID().toString();
 
     private MessageConsumer<String> uidMessageConsumer;
+    private UpperBoundParallel upperBoundParallel;
 
     // The queues this verticle is listening to
     private final Map<String, QueueState> myQueues = new HashMap<>();
@@ -270,6 +271,8 @@ public class RedisQues extends AbstractVerticle {
             redisProvider = new DefaultRedisProvider(vertx, configurationProvider);
         }
 
+        this.upperBoundParallel = new UpperBoundParallel(vertx);
+
         redisProvider.redis().onComplete(event -> {
             if(event.succeeded()) {
                 initialize();
@@ -282,7 +285,6 @@ public class RedisQues extends AbstractVerticle {
 
     private void initialize() {
         RedisquesConfiguration configuration = configurationProvider.configuration();
-        UpperBoundParallel upperBoundParallel = new UpperBoundParallel(vertx);
         this.queueStatisticsCollector = new QueueStatisticsCollector(
                 redisProvider, queuesPrefix, vertx, redisMonitoringReqLimit,
                 configuration.getQueueSpeedIntervalSec());
@@ -443,14 +445,13 @@ public class RedisQues extends AbstractVerticle {
 
     private void registerActiveQueueRegistrationRefresh() {
         // Periodic refresh of my registrations on active queues.
-        var upperBoundParallelity = new UpperBoundParallel/*TODO maybe do elsewhere*/(vertx);
         vertx.setPeriodic(configurationProvider.configuration().getRefreshPeriod() * 1000L, new Handler<Long>() {
             Iterator<Map.Entry<String, QueueState>> iter;
             @Override public void handle(Long timerId) {
                 // Need a copy to prevent concurrent modification issuses.
                 iter = new HashMap<>(myQueues).entrySet().iterator();
                 // Trigger only a limitted amount of requests in parallel.
-                upperBoundParallelity.request(redisMonitoringReqLimit, iter, new UpperBoundParallel.Mentor<>() {
+                upperBoundParallel.request(redisMonitoringReqLimit, iter, new UpperBoundParallel.Mentor<>() {
                     @Override public boolean runOneMore(BiConsumer<Throwable, Void> onDone, Iterator<Map.Entry<String, QueueState>> iter) {
                         handleNextQueueOfInterest(onDone);
                         return iter.hasNext();
@@ -500,8 +501,7 @@ public class RedisQues extends AbstractVerticle {
                         } else {
                             log.debug("RedisQues Removing queue {} from the list", queue);
                             myQueues.remove(queue);
-                            queueStatisticsCollector.resetQueueFailureStatistics(queue,
-                                    (ex, v) -> onDone.accept(ex, null));
+                            queueStatisticsCollector.resetQueueFailureStatistics(queue, onDone);
                         }
                     });
                 });
