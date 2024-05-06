@@ -577,27 +577,33 @@ public class RedisQues extends AbstractVerticle {
     }
 
     private void registerQueueCheck() {
-        Runnable[] onDone = {null};
-        int checkIntervalMs = configurationProvider.configuration().getCheckIntervalTimerMs();
-        periodicSkipScheduler.setPeriodic(checkIntervalMs, onDone_ -> {
-            onDone[0] = onDone_;
-        });
-        Future.succeededFuture().compose(nonsense -> {
-        }).compose(nonsense -> {
-            return redisProvider.connection();
-        }).compose(conn -> {
-            int checkInterval = configurationProvider.configuration().getCheckInterval();
-            Request req = Request.cmd(SET, queueCheckLastexecKey, currentTimeMillis(), "NX", "EX", checkInterval);
-            return conn.send(req);
-        }).compose(ignoredRedisResponse -> {
-            log.info("periodic queue check is triggered now");
-            return checkQueues();
-        }).compose(nonsense -> {
-            onDone[0].run();
-            return null;
-        }).onFailure(ex -> {
-            log.error("TODO error handling", ex);
-        });
+        new Object() {
+            void run() {
+                int checkIntervalMs = configurationProvider.configuration().getCheckIntervalTimerMs();
+                periodicSkipScheduler.setPeriodic(checkIntervalMs, this::onPeriodicTaskTriggered);
+            }
+            void onPeriodicTaskTriggered(Runnable onDone) {
+                redisProvider.connection().onSuccess(conn -> onRedisConnectionReady(conn, onDone)).onFailure(ex -> {
+                    log.error("TODO error handling", new Exception(ex));
+                    onDone.run();
+                });
+            }
+            void onRedisConnectionReady(Redis conn, Runnable onDone) {
+                int checkInterval = configurationProvider.configuration().getCheckInterval();
+                Request req = Request.cmd(SET, queueCheckLastexecKey, currentTimeMillis(), "NX", "EX", checkInterval);
+                conn.send(req).onSuccess(ignored -> onRedisCmdDone(onDone)).onFailure(ex -> {
+                    log.error("Unexpected queue check result", new Exception(ex));
+                    onDone.run();
+                });
+            }
+            void onRedisCmdDone(Runnable onDone) {
+                log.info("periodic queue check is triggered now");
+                checkQueues().onComplete(ev -> {
+                    if (ev.failed()) log.error("TODO error handling", ev.cause());
+                    onDone.run();
+                });
+            }
+        }.run();
     }
 
     private void unsupportedOperation(String operation, Message<JsonObject> event) {
