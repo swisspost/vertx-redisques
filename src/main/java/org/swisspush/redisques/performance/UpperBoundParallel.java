@@ -74,7 +74,6 @@ public class UpperBoundParallel {
             while (true) {
                 if (req.isFatalError) {
                     log.debug("return from 'resume()' because isFatalError");
-                    req.limit.release();
                     return;
                 }
                 if (!req.hasMore) {
