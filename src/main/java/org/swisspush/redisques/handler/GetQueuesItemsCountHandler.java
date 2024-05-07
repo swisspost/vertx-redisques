@@ -5,7 +5,9 @@ import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
+import io.vertx.core.eventbus.EventBus;
 import io.vertx.core.eventbus.Message;
+import io.vertx.core.eventbus.ReplyFailure;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.redis.client.Command;
@@ -65,7 +67,10 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
 
     @Override
     public void handle(AsyncResult<Response> handleQueues) {
-        if (true) throw new NoStacktraceException(/*TODO*/"not impl yet aoqör5hgjuaöoiwetrjaöelk");
+        if (redisRequestQuota.availablePermits() <= 0) {
+            event.fail(507, "Server too busy. Rejecting this GetQueuesItemsCount request");
+            return;
+        }
         if (!handleQueues.succeeded()) {
             log.warn("Concealed error", new Exception(handleQueues.cause()));
             event.reply(new JsonObject().put(STATUS, ERROR));

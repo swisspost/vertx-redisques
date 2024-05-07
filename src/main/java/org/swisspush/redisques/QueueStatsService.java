@@ -1,17 +1,21 @@
 package org.swisspush.redisques;
 
-import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.EventBus;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import org.slf4j.Logger;
+import org.swisspush.redisques.exception.NoStacktraceException;
 import org.swisspush.redisques.util.DequeueStatistic;
 import org.swisspush.redisques.util.DequeueStatisticCollector;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
@@ -20,7 +24,12 @@ import static java.lang.Long.compare;
 import static java.lang.System.currentTimeMillis;
 import static java.util.Collections.emptyList;
 import static org.slf4j.LoggerFactory.getLogger;
-import static org.swisspush.redisques.util.RedisquesAPI.*;
+import static org.swisspush.redisques.util.RedisquesAPI.MONITOR_QUEUE_NAME;
+import static org.swisspush.redisques.util.RedisquesAPI.MONITOR_QUEUE_SIZE;
+import static org.swisspush.redisques.util.RedisquesAPI.OK;
+import static org.swisspush.redisques.util.RedisquesAPI.QUEUES;
+import static org.swisspush.redisques.util.RedisquesAPI.STATUS;
+import static org.swisspush.redisques.util.RedisquesAPI.buildGetQueuesItemsCountOperation;
 
 
 /**
@@ -101,11 +110,11 @@ public class QueueStatsService {
         JsonObject operation = buildGetQueuesItemsCountOperation(filter);
         eventBus.<JsonObject>request(redisquesAddress, operation, ev -> {
             if (ev.failed()) {
-                onDone.accept(new Exception("eventBus.request()", ev.cause()), req);
+                Throwable ex = ev.cause();
+                onDone.accept(new NoStacktraceException("error_QzkCACMbAgCgOwIA", ex), req);
                 return;
             }
-            Message<JsonObject> msg = ev.result();
-            JsonObject body = msg.body();
+            JsonObject body = ev.result().body();
             String status = body.getString(STATUS);
             if (!OK.equals(status)) {
                 onDone.accept(new Exception("Unexpected status " + status), null);

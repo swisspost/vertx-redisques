@@ -20,7 +20,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.swisspush.redisques.QueueStatsService;
 import org.swisspush.redisques.QueueStatsService.GetQueueStatsMentor;
-import org.swisspush.redisques.util.DequeueStatistic;
 import org.swisspush.redisques.util.DequeueStatisticCollector;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 import org.swisspush.redisques.util.RedisquesAPI;
@@ -31,6 +30,7 @@ import org.swisspush.redisques.util.StatusCode;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.Semaphore;
@@ -534,33 +534,56 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
 
         @Override
         public void onQueueStatistics(List<QueueStatsService.Queue> queues, RoutingContext ctx) {
-            var rsp = ctx.request().response();
-            rsp.putHeader(CONTENT_TYPE, APPLICATION_JSON);
-            rsp.setChunked(true);
-            rsp.write("{\"queues\": [");
-            JsonObject queueJson = new JsonObject();
-            boolean isFirst = true;
-            for (QueueStatsService.Queue queue : queues) {
-                rsp.write(isFirst ? "" : ",");
-                isFirst = false;
-                queueJson.clear();
-                queueJson.put(MONITOR_QUEUE_NAME, queue.getName());
-                queueJson.put(MONITOR_QUEUE_SIZE, queue.getSize());
-                // TODO old impl did bloat result with empty strings for whatever undocumented
-                //      reason. Those fields should be set to 'null' (or we could even skip them
-                //      entirely in JSON), as obviously the information is not available. But
-                //      we'll add the same bloat as we don't know if any downstream code now
-                //      relies on this behavior.
-                Long epochMs;
-                epochMs = queue.getLastDequeueAttemptEpochMs();
-                queueJson.put("lastDequeueAttempt", epochMs == null ? "" : formatAsUIDate(epochMs));
-                epochMs = queue.getLastDequeueSuccessEpochMs();
-                queueJson.put("lastDequeueSuccess", epochMs == null ? "" : formatAsUIDate(epochMs));
-                epochMs = queue.getNextDequeueDueTimestampEpochMs();
-                queueJson.put("nextDequeueDueTimestamp", epochMs == null ? "" : formatAsUIDate(epochMs));
-                rsp.write(queueJson.encode());
-            }
-            rsp.end("]}\n");
+            new Object() {
+                RoutingContext ctx;
+                HttpServerResponse rsp;
+                Iterator<QueueStatsService.Queue> queueSrc;
+                JsonObject queueJson = new JsonObject(); // temporary
+                boolean isFirst = true;
+                void run(RoutingContext ctx_) {
+                    ctx = ctx_;
+                    queueSrc = queues.iterator();
+                    rsp = ctx.request().response();
+                    rsp.putHeader(CONTENT_TYPE, APPLICATION_JSON);
+                    rsp.setChunked(true);
+                    rsp.write("{\"queues\": [");
+                    resumeJsonWriting();
+                }
+                void resumeJsonWriting() {
+                    while (true) {
+                        if (rsp.writeQueueFull()) {
+                            // Destination not ready. Apply backpressure, resume when there's space again.
+                            rsp.drainHandler(v -> resumeJsonWriting());
+                            return;
+                        }
+                        if (queueSrc.hasNext()) {
+                            var queue = queueSrc.next();
+                            rsp.write(isFirst ? "" : ",");
+                            isFirst = false;
+                            queueJson.clear();
+                            queueJson.put(MONITOR_QUEUE_NAME, queue.getName());
+                            queueJson.put(MONITOR_QUEUE_SIZE, queue.getSize());
+                            // TODO old impl did bloat result with empty strings for whatever undocumented
+                            //      reason. Those fields should be set to 'null' (or we could even skip them
+                            //      entirely in JSON), as obviously the information is not available. But
+                            //      we'll add the same bloat as we don't know if any downstream code now
+                            //      relies on this behavior.
+                            Long epochMs;
+                            epochMs = queue.getLastDequeueAttemptEpochMs();
+                            queueJson.put("lastDequeueAttempt", epochMs == null ? "" : formatAsUIDate(epochMs));
+                            epochMs = queue.getLastDequeueSuccessEpochMs();
+                            queueJson.put("lastDequeueSuccess", epochMs == null ? "" : formatAsUIDate(epochMs));
+                            epochMs = queue.getNextDequeueDueTimestampEpochMs();
+                            queueJson.put("nextDequeueDueTimestamp", epochMs == null ? "" : formatAsUIDate(epochMs));
+                            rsp.write(queueJson.encode());
+                            continue;
+                        }
+                        // All queues written. Time to finalize json.
+                        rsp.end("]}\n");
+                        break;
+                    }
+                }
+            }.run(ctx);
         }
 
         @Override
