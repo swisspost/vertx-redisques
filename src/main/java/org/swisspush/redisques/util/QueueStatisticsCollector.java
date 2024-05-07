@@ -147,16 +147,20 @@ public class QueueStatisticsCollector {
      * @param queueName The queue name for which the statistic values must be reset.
      */
     public void resetQueueFailureStatistics(String queueName, BiConsumer<Throwable, Void> onDone) {
-        AtomicLong failureCount = queueFailureCount.remove(queueName);
-        queueSlowDownTime.remove(queueName);
-        queueBackpressureTime.remove(queueName);
-        if (failureCount != null && failureCount.get() > 0) {
-            // there was a real failure before, therefore we will execute this
-            // cleanup as well on Redis itself as we would like to do redis operations
-            // only if necessary of course.
-            updateStatisticsInRedis(queueName, onDone);
-        }else{
-            vertx.runOnContext(nonsense -> onDone.accept(null, null));
+        try {
+            AtomicLong failureCount = queueFailureCount.remove(queueName);
+            queueSlowDownTime.remove(queueName);
+            queueBackpressureTime.remove(queueName);
+            if (failureCount != null && failureCount.get() > 0) {
+                // there was a real failure before, therefore we will execute this
+                // cleanup as well on Redis itself as we would like to do redis operations
+                // only if necessary of course.
+                updateStatisticsInRedis(queueName, onDone);
+            } else {
+                vertx.runOnContext(nonsense -> onDone.accept(null, null));
+            }
+        } catch (Exception ex) {
+            onDone.accept(ex, null);
         }
     }
 
@@ -357,11 +361,7 @@ public class QueueStatisticsCollector {
                 redisProvider.redis()
                         .onSuccess(redisAPI -> {
                             redisAPI.hset(List.of(STATSKEY, queueName, obj.toString()), ev -> {
-                                if (ev.failed()) {
-                                    onDone.accept(new RuntimeException("stack", ev.cause()), null);
-                                    return;
-                                }
-                                onDone.accept(null, null);
+                                onDone.accept(ev.failed() ? new RuntimeException("stack", ev.cause()) : null, null);
                             });
                         })
                         .onFailure(ex -> onDone.accept(new RuntimeException("stack", ex), null));
@@ -369,10 +369,7 @@ public class QueueStatisticsCollector {
                 redisProvider.redis()
                         .onSuccess(redisAPI -> {
                             redisAPI.hdel(List.of(STATSKEY, queueName), ev -> {
-                                if (ev.failed()) {
-                                    onDone.accept(new RuntimeException("stack", ev.cause()), null);
-                                }
-                                onDone.accept(null, null);
+                                onDone.accept(ev.failed() ? new RuntimeException("stack", ev.cause()) : null, null);
                             });
                         })
                         .onFailure(ex -> onDone.accept(new RuntimeException("stack", ex), null));

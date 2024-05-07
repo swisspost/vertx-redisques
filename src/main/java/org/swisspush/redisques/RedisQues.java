@@ -1039,6 +1039,11 @@ public class RedisQues extends AbstractVerticle {
             final Promise<Void> checkQueuesResult = Promise.promise();
             long limit;
             RedisAPI redisAPI;
+            AtomicInteger counter;
+            Iterator<Response> iter;
+            int iIter;
+            Promise<Void>[] promises;
+            Future<Void>[] futures;
         };
         Future.<Void>succeededFuture().<RedisAPI>compose((Void v) -> {
             log.debug("Checking queues timestamps");
@@ -1051,18 +1056,31 @@ public class RedisQues extends AbstractVerticle {
             redisAPI.zrangebyscore(Arrays.asList(queuesKey, "-inf", String.valueOf(ctx.limit)), p);
             return p.future();
         }).<Void>compose((Response queues) -> {
-            final var ctx2 = new Object() {
-                final AtomicInteger counter = new AtomicInteger(queues.size());
-                final Iterator<Response> iter = queues.iterator();
-                final List<Future<Void>> futureList = new ArrayList<>(queues.size());
-            };
-            log.trace("RedisQues update queues: {}", ctx2.counter);
+            assert ctx.counter == null;
+            assert ctx.iter == null;
+            assert ctx.promises == null;
+            assert ctx.futures == null;
+            ctx.counter = new AtomicInteger(queues.size());
+            ctx.iter = queues.iterator();
+            ctx.promises = new Promise[queues.size()];
+            ctx.futures = new Future[queues.size()];
+            // MUST pre-initialize ALL futures, so that our 'Future.all()' call knows
+            // for how many it has to wait.
+            for (int i = 0; i < ctx.futures.length; i++) {
+                ctx.promises[i] = Promise.promise();
+                ctx.futures[i] = ctx.promises[i].future();
+            }
+            log.trace("RedisQues update queues: {}", ctx.counter);
             upperBoundParallel.request(checkQueueRequestsLimit, null, new UpperBoundParallel.Mentor<Void>() {
-                @Override public boolean runOneMore(BiConsumer<Throwable, Void> onDone, Void ctx_) {
-                    if (ctx2.iter.hasNext()) {
-                        var queueObject = ctx2.iter.next();
-                        var promise = Promise.<Void>promise();
-                        ctx2.futureList.add(promise.future());
+                @Override public boolean runOneMore(BiConsumer<Throwable, Void> onDone_, Void ctx_) {
+                    if (ctx.iter.hasNext()) {
+                        var queueObject = ctx.iter.next();
+                        var promise = ctx.promises[ctx.iIter++];
+                        BiConsumer<Throwable, Void> onDone = (Throwable ex, Void v) -> {
+                            if (ex != null) promise.fail(ex);
+                            else promise.complete();
+                            onDone_.accept(ex, v);
+                        };
                         // Check if the inactive queue is not empty (i.e. the key exists)
                         final String queueName = queueObject.toString();
                         String key = queuesPrefix + queueName;
@@ -1076,14 +1094,14 @@ public class RedisQues extends AbstractVerticle {
                                 notifyConsumer(queueName).onComplete(notifyConsumerEvent -> {
                                     if( notifyConsumerEvent.failed() )
                                         log.warn("TODO error handling", new Exception(notifyConsumerEvent.cause()));
-                                    promise.complete();
+                                    onDone.accept(null, null);
                                 });
                             });
                         };
                         ctx.redisAPI.exists(Collections.singletonList(key), event -> {
                             if (event.failed() || event.result() == null) {
                                 log.error("RedisQues is unable to check existence of queue " + queueName, event.cause());
-                                promise.complete();
+                                onDone.accept(null, null);
                                 return;
                             }
                             if (event.result().toLong() == 1) {
@@ -1095,7 +1113,7 @@ public class RedisQues extends AbstractVerticle {
                                         // We should return here. See: "https://softwareengineering.stackexchange.com/a/190535"
                                     }
                                     // Ensure we clean the old queues after having updated all timestamps
-                                    if (ctx2.counter.decrementAndGet() == 0) {
+                                    if (ctx.counter.decrementAndGet() == 0) {
                                         removeOldQueues(ctx.limit).onComplete(removeOldQueuesEvent -> {
                                             if (removeOldQueuesEvent.failed())
                                                 log.warn("TODO error handling", new Exception(removeOldQueuesEvent.cause()));
@@ -1116,39 +1134,39 @@ public class RedisQues extends AbstractVerticle {
                                         return dequeueStatistic;
                                     });
                                 }
-                                if (ctx2.counter.decrementAndGet() == 0) {
+                                if (ctx.counter.decrementAndGet() == 0) {
                                     removeOldQueues(ctx.limit).onComplete(removeOldQueuesEvent -> {
                                         if( removeOldQueuesEvent.failed() )
                                             log.warn("TODO error handling", new Exception(removeOldQueuesEvent.cause()));
-                                        queueStatisticsCollector.resetQueueFailureStatistics(queueName, (ex, v) -> {
-                                            if (ex != null) promise.fail(ex);
-                                            else promise.complete();
-                                        });
+                                        queueStatisticsCollector.resetQueueFailureStatistics(queueName, onDone);
                                     });
                                 } else {
-                                    queueStatisticsCollector.resetQueueFailureStatistics(queueName, (ex, v) -> {
-                                        if (ex != null) promise.fail(ex);
-                                        else promise.complete();
-                                    });
+                                    queueStatisticsCollector.resetQueueFailureStatistics(queueName, onDone);
                                 }
                             }
                         });
                     }
-                    return ctx2.iter.hasNext();
+                    return ctx.iter.hasNext();
                 }
                 @Override public boolean onError(Throwable ex, Void ctx_) {
-                    assert false : "TODO";
-                    return false;
+                    log.warn("TODO error handling", new RuntimeException(ex));
+                    return true; // true, keep going with other queues.
                 }
                 @Override public void onDone(Void ctx_) {
-                    assert false : "TODO";
+                    assert false : "TODO anything to do here?";
                 }
             });
             var p = Promise.<Void>promise();
-            Future.all(ctx2.futureList).onComplete(ev -> {
+            Future.all(List.of(ctx.futures)).onComplete(ev -> {
                 if (ev.failed()) p.fail(ev.cause());
                 else if (ev.result().failed()) p.fail(ev.result().cause());
                 else p.complete(null);
+                // No longer used, so reduce GC graph traversal effort.
+                ctx.redisAPI = null;
+                ctx.counter = null;
+                ctx.iter = null;
+                ctx.promises = null;
+                ctx.futures = null;
             });
             return p.future();
         }).<Void>compose((Void v) -> {
