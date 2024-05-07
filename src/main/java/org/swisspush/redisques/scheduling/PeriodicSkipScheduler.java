@@ -25,18 +25,19 @@ public class PeriodicSkipScheduler {
         this.vertx = vertx;
     }
 
-    /** Convenience overload for {@link #setPeriodic(long, long, Consumer)}. */
-    public Timer setPeriodic(long periodMs, Consumer<Runnable> task) {
-        return setPeriodic(periodMs, periodMs, task);
+    /** Convenience overload for {@link #setPeriodic(long, long, String, Consumer)}. */
+    public Timer setPeriodic(long periodMs, String dbgHint, Consumer<Runnable> task) {
+        return setPeriodic(periodMs, periodMs, dbgHint, task);
     }
 
     /**
      * Same idea as {@link Vertx#setPeriodic(long, long, Handler)}. BUT prevents
      * tasks which start to overtake themself.
      */
-    public Timer setPeriodic(long initDelayMy, long periodMs, Consumer<Runnable> task) {
+    public Timer setPeriodic(long initDelayMy, long periodMs, String dbgHint, Consumer<Runnable> task) {
         var timer = new Timer(task);
         timer.id = vertx.setPeriodic(initDelayMy, periodMs, timer::onTrigger_);
+        timer.dbgHint = dbgHint;
         return timer;
     }
 
@@ -44,8 +45,8 @@ public class PeriodicSkipScheduler {
         long now = currentTimeMillis();
         boolean isPreviousStillRunning = timer.begEpochMs > timer.endEpochMs;
         if (isPreviousStillRunning) {
-            log.debug("Previous task still running. We have to NOT run in this interval. Previous did not respond for {}ms.",
-                    now - timer.begEpochMs);
+            log.debug("Have to skip run. Previous did not respond for {}ms. ({})",
+                    now - timer.begEpochMs, timer.dbgHint);
             return;
         }
         timer.begEpochMs = currentTimeMillis();
@@ -53,7 +54,7 @@ public class PeriodicSkipScheduler {
         Promise<Void> p = Promise.promise();
         var fut = p.future();
         fut.onSuccess((Void v) -> timer.onTaskDone_());
-        fut.onFailure(ex -> log.error("This is expected to be UNREACHABLE", ex));
+        fut.onFailure(ex -> log.error("This is expected to be UNREACHABLE ({})", timer.dbgHint, ex));
         timer.task.accept(p::complete);
     }
 
@@ -69,6 +70,7 @@ public class PeriodicSkipScheduler {
     public class Timer {
         private final Consumer<Runnable> task;
         private long id;
+        private String dbgHint;
         // When the last run has begun and end.
         private long begEpochMs, endEpochMs;
 

@@ -5,6 +5,7 @@ import org.slf4j.Logger;
 import org.swisspush.redisques.action.*;
 
 import java.util.List;
+import java.util.concurrent.Semaphore;
 
 public class QueueActionFactory {
 
@@ -20,13 +21,16 @@ public class QueueActionFactory {
     private final QueueStatisticsCollector queueStatisticsCollector;
     private final int memoryUsageLimitPercent;
     private final MemoryUsageProvider memoryUsageProvider;
+    private final Semaphore getQueuesItemsCountRedisRequestQuota;
 
     private final RedisquesConfigurationProvider configurationProvider;
 
     public QueueActionFactory(RedisProvider redisProvider, Vertx vertx, Logger log,
                               String queuesKey, String queuesPrefix, String consumersPrefix,
                               String locksKey, QueueStatisticsCollector queueStatisticsCollector, MemoryUsageProvider memoryUsageProvider,
-                              RedisquesConfigurationProvider configurationProvider) {
+                              RedisquesConfigurationProvider configurationProvider,
+                              Semaphore getQueuesItemsCountRedisRequestQuota
+    ) {
         this.redisProvider = redisProvider;
         this.vertx = vertx;
         this.log = log;
@@ -41,6 +45,7 @@ public class QueueActionFactory {
         this.address = configurationProvider.configuration().getAddress();
         this.queueConfigurations = configurationProvider.configuration().getQueueConfigurations();
         this.memoryUsageLimitPercent = configurationProvider.configuration().getMemoryUsageLimitPercent();
+        this.getQueuesItemsCountRedisRequestQuota = getQueuesItemsCountRedisRequestQuota;
     }
 
     public QueueAction buildQueueAction(RedisquesAPI.QueueOperation queueOperation){
@@ -77,7 +82,7 @@ public class QueueActionFactory {
                         consumersPrefix, locksKey, queueConfigurations, queueStatisticsCollector, log);
             case getQueuesItemsCount:
                 return new GetQueuesItemsCountAction(vertx, redisProvider, address, queuesKey, queuesPrefix,
-                        consumersPrefix, locksKey, queueConfigurations, queueStatisticsCollector, log);
+                        consumersPrefix, locksKey, queueConfigurations, getQueuesItemsCountRedisRequestQuota, queueStatisticsCollector, log);
             case enqueue:
                 return new EnqueueAction(vertx, redisProvider, address, queuesKey, queuesPrefix,
                         consumersPrefix, locksKey, queueConfigurations, queueStatisticsCollector, log, memoryUsageProvider,

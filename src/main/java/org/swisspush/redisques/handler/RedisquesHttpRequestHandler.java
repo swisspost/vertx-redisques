@@ -33,6 +33,7 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.Semaphore;
 import java.util.stream.Collectors;
 
 import static org.swisspush.redisques.util.HttpServerRequestUtil.*;
@@ -61,12 +62,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     private static final String EMPTY_QUEUES_PARAM = "emptyQueues";
     private static final String DELETED = "deleted";
 
-    /**
-     * <p>For why we should NOT use such date formats, see SDCISA-15311. We really
-     * should utilize ISO dates and include timezone information.</p>
-     *
-     * @deprecated TODO <a href="https://xkcd.com/1179/">about date formats</a>
-     */
+    /** @deprecated TODO <a href="https://xkcd.com/1179/">about date formats</a> */
     @Deprecated
     private static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("dd.MM.yyyy HH:mm:ss");
 
@@ -79,11 +75,12 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     private final GetQueueStatsMentor<RoutingContext> queueStatsMentor = new MyQueueStatsMentor();
 
     public static void init(Vertx vertx, RedisquesConfiguration modConfig, QueueStatisticsCollector queueStatisticsCollector,
-                            DequeueStatisticCollector dequeueStatisticCollector) {
+                            DequeueStatisticCollector dequeueStatisticCollector, Semaphore queueStatsRequestLimit) {
         log.info("Enabling http request handler: {}", modConfig.getHttpRequestHandlerEnabled());
         if (modConfig.getHttpRequestHandlerEnabled()) {
             if (modConfig.getHttpRequestHandlerPort() != null && modConfig.getHttpRequestHandlerUserHeader() != null) {
-                RedisquesHttpRequestHandler handler = new RedisquesHttpRequestHandler(vertx, modConfig, queueStatisticsCollector, dequeueStatisticCollector);
+                RedisquesHttpRequestHandler handler = new RedisquesHttpRequestHandler(vertx, modConfig,
+                        queueStatisticsCollector, dequeueStatisticCollector, queueStatsRequestLimit);
                 // in Vert.x 2x 100-continues was activated per default, in vert.x 3x it is off per default.
                 HttpServerOptions options = new HttpServerOptions().setHandle100ContinueAutomatically(true);
                 vertx.createHttpServer(options).requestHandler(handler).listen(modConfig.getHttpRequestHandlerPort(), result -> {
@@ -113,7 +110,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     }
 
     private RedisquesHttpRequestHandler(Vertx vertx, RedisquesConfiguration modConfig, QueueStatisticsCollector queueStatisticsCollector,
-                                        DequeueStatisticCollector dequeueStatisticCollector) {
+                                        DequeueStatisticCollector dequeueStatisticCollector, Semaphore queueStatsRequestLimit) {
         this.vertx = vertx;
         this.router = Router.router(vertx);
         this.eventBus = vertx.eventBus();
@@ -122,7 +119,8 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         this.enableQueueNameDecoding = modConfig.getEnableQueueNameDecoding();
         this.queueSpeedIntervalSec = modConfig.getQueueSpeedIntervalSec();
         this.queueStatisticsCollector = queueStatisticsCollector;
-        this.queueStatsService = new QueueStatsService(vertx, eventBus, redisquesAddress, queueStatisticsCollector, dequeueStatisticCollector);
+        this.queueStatsService = new QueueStatsService(vertx, eventBus, redisquesAddress,
+                queueStatisticsCollector, dequeueStatisticCollector, queueStatsRequestLimit);
 
         final String prefix = modConfig.getHttpRequestHandlerPrefix();
 
@@ -569,6 +567,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         public void onError(Throwable ex, RoutingContext ctx) {
             String exMsg = ex.getMessage();
             if (!ctx.response().ended()) {
+                log.debug("Failed to serve queue stats", ex);
                 respondWith(StatusCode.INTERNAL_SERVER_ERROR, exMsg, ctx.request());
             } else {
                 log.warn("_q938hugz_ {}", ctx.request().uri(), ex);

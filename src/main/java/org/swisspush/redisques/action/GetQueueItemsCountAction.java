@@ -31,6 +31,7 @@ public class GetQueueItemsCountAction extends AbstractQueueAction {
 
     @Override
     public void execute(Message<JsonObject> event) {
+        /* TODO this seems the handler that is timing out. */
         String queue = event.body().getJsonObject(PAYLOAD).getString(QUEUENAME);
         var p = redisProvider.redis();
         p.onSuccess(redisAPI -> redisAPI.llen(queuesPrefix + queue, new GetQueueItemsCountHandler(event)));
