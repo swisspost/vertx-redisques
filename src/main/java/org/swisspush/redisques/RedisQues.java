@@ -13,6 +13,7 @@ import io.vertx.core.eventbus.MessageConsumer;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.redis.client.Command;
+import io.vertx.redis.client.Redis;
 import io.vertx.redis.client.RedisAPI;
 import io.vertx.redis.client.Request;
 import io.vertx.redis.client.Response;
@@ -21,6 +22,7 @@ import org.slf4j.LoggerFactory;
 import org.swisspush.redisques.action.QueueAction;
 import org.swisspush.redisques.handler.RedisquesHttpRequestHandler;
 import org.swisspush.redisques.performance.UpperBoundParallel;
+import org.swisspush.redisques.scheduling.PeriodicSkipScheduler;
 import org.swisspush.redisques.util.DefaultMemoryUsageProvider;
 import org.swisspush.redisques.util.DefaultRedisProvider;
 import org.swisspush.redisques.util.DefaultRedisquesConfigurationProvider;
@@ -93,6 +95,7 @@ public class RedisQues extends AbstractVerticle {
         private RedisquesConfigurationProvider configurationProvider;
         private RedisProvider redisProvider;
         private Semaphore redisMonitoringReqLimit;
+        private Semaphore checkQueueRequestsLimit;
 
         private RedisQuesBuilder() {
             // Private, as clients should use "RedisQues.builder()" and not this class here directly.
@@ -118,12 +121,22 @@ public class RedisQues extends AbstractVerticle {
             return this;
         }
 
+        public RedisQuesBuilder withCheckQueueRequestsLimit(Semaphore limit) {
+            this.checkQueueRequestsLimit = limit;
+            return this;
+        }
+
         public RedisQues build() {
+            var farFromCommonSenseLimit = new Semaphore(Integer.MAX_VALUE);
             if (redisMonitoringReqLimit == null) {
-                redisMonitoringReqLimit = new Semaphore(Integer.MAX_VALUE);
+                redisMonitoringReqLimit = farFromCommonSenseLimit;
                 log.warn("No redis request limit provided. Fallback to legacy behavior of {}.", Integer.MAX_VALUE);
             }
-            return new RedisQues(memoryUsageProvider, configurationProvider, redisProvider, redisMonitoringReqLimit);
+            if (checkQueueRequestsLimit == null) {
+                checkQueueRequestsLimit = farFromCommonSenseLimit;
+                log.warn("No redis check queue limit provided. Fallback to legacy behavior of {}.", Integer.MAX_VALUE);
+            }
+            return new RedisQues(memoryUsageProvider, configurationProvider, redisProvider, redisMonitoringReqLimit, checkQueueRequestsLimit);
         }
     }
 
@@ -172,23 +185,29 @@ public class RedisQues extends AbstractVerticle {
 
     private Map<String, DequeueStatistic> dequeueStatistic = new ConcurrentHashMap<>();
     private boolean dequeueStatisticEnabled = false;
+    private PeriodicSkipScheduler periodicSkipScheduler;
     private final Semaphore redisMonitoringReqLimit;
+    private final Semaphore checkQueueRequestsLimit;
 
     public RedisQues() {
         log.warn("Fallback to legacy behavior and allow up to {} simultaneous requests to redis", Integer.MAX_VALUE);
-        this.redisMonitoringReqLimit = new Semaphore(Integer.MAX_VALUE);
+        var farFromCommonSenseLimit = new Semaphore(Integer.MAX_VALUE);
+        this.redisMonitoringReqLimit = farFromCommonSenseLimit;
+        this.checkQueueRequestsLimit = farFromCommonSenseLimit;
     }
 
     public RedisQues(
         MemoryUsageProvider memoryUsageProvider,
         RedisquesConfigurationProvider configurationProvider,
         RedisProvider redisProvider,
-        Semaphore redisMonitoringReqLimit
+        Semaphore redisMonitoringReqLimit,
+        Semaphore checkQueueRequestsLimit
     ) {
         this.memoryUsageProvider = memoryUsageProvider;
         this.configurationProvider = configurationProvider;
         this.redisProvider = redisProvider;
         this.redisMonitoringReqLimit = redisMonitoringReqLimit;
+        this.checkQueueRequestsLimit = checkQueueRequestsLimit;
     }
 
     public static RedisQuesBuilder builder() {
@@ -249,6 +268,10 @@ public class RedisQues extends AbstractVerticle {
 
         if (this.dequeueStatisticCollector == null) {
             this.dequeueStatisticCollector = new DequeueStatisticCollector(vertx);
+        }
+
+        if (this.periodicSkipScheduler == null) {
+            this.periodicSkipScheduler = new PeriodicSkipScheduler(vertx);
         }
 
         RedisquesConfiguration modConfig = configurationProvider.configuration();
@@ -527,7 +550,7 @@ public class RedisQues extends AbstractVerticle {
             // handle system operations
             switch (queueOperation) {
                 case check:
-                    checkQueues();
+                    checkQueues().onFailure(ex -> log.error("TODO error handling", new RuntimeException(ex)));
                     return;
                 case reset:
                     resetConsumers();
@@ -570,17 +593,16 @@ public class RedisQues extends AbstractVerticle {
 
     private void registerQueueCheck() {
         vertx.setPeriodic(configurationProvider.configuration().getCheckIntervalTimerMs(), periodicEvent -> {
-            redisProvider.connection()
-                    .onFailure(ex -> log.error("TODO error handling", new Exception(ex)))
-                    .onSuccess(conn -> {
-                        conn.send(Request.cmd(Command.SET, queueCheckLastexecKey, System.currentTimeMillis(),
-                                        "NX", "EX", configurationProvider.configuration().getCheckInterval()))
-                                .onFailure(ex -> log.error("Unexpected queue check result", new Exception(ex)))
-                                .onSuccess(response -> {
-                                    log.info("periodic queue check is triggered now");
-                                    checkQueues();
-                                });
-                    });
+            redisProvider.connection().compose((Redis conn) -> {
+                int checkInterval = configurationProvider.configuration().getCheckInterval();
+                Request req = Request.cmd(Command.SET, queueCheckLastexecKey, currentTimeMillis(), "NX", "EX", checkInterval);
+                return conn.send(req);
+            }).<Void>compose((Response todoExplainWhyThisIsIgnored) -> {
+                log.info("periodic queue check is triggered now");
+                return checkQueues();
+            }).onFailure(ex -> {
+                log.error("TODO error handling", ex);
+            });
         });
     }
 
