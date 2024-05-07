@@ -4,6 +4,7 @@ import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
 import org.slf4j.Logger;
 
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
 import static java.lang.System.currentTimeMillis;
@@ -47,10 +48,16 @@ public class PeriodicSkipScheduler {
             return;
         }
         timer.begEpochMs = currentTimeMillis();
+        boolean oldValue = timer.isPending.getAndSet(true);
+        assert !oldValue : "Why is this already pending?";
         timer.task.accept(timer::onTaskDone_);
     }
 
     private void onTaskDone(Timer timer) {
+        boolean oldVal = timer.isPending.getAndSet(false);
+        if (!oldVal) {
+            throw new IllegalStateException("MUST NOT be called multiple times!");
+        }
         timer.endEpochMs = currentTimeMillis();
     }
 
@@ -64,6 +71,7 @@ public class PeriodicSkipScheduler {
         private long id;
         // When the last run has begun and end.
         private long begEpochMs, endEpochMs;
+        private final AtomicBoolean isPending = new AtomicBoolean();
 
         private Timer(Consumer<Runnable> task) {
             this.task = task;
