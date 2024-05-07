@@ -67,10 +67,6 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
 
     @Override
     public void handle(AsyncResult<Response> handleQueues) {
-        if (redisRequestQuota.availablePermits() <= 0) {
-            event.fail(507, "Server too busy. Rejecting this GetQueuesItemsCount request");
-            return;
-        }
         if (!handleQueues.succeeded()) {
             log.warn("Concealed error", new Exception(handleQueues.cause()));
             event.reply(new JsonObject().put(STATUS, ERROR));
@@ -79,7 +75,6 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
         var ctx = new Object() {
             Redis redis;
             Iterator<String> iter;
-            /* TODO this filterByPattern is EVIL! Kill it! */
             List<String> queues = HandlerUtil.filterByPattern(handleQueues.result(), filterPattern);
             int iNumberResult;
             int[] queueLengths; /*TODO consider using primitive type*/
@@ -89,11 +84,11 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
             event.reply(new JsonObject().put(STATUS, OK).put(QUEUES, new JsonArray()));
             return;
         }
+        if (redisRequestQuota.availablePermits() <= 0) {
+            event.fail(507, "Server too busy. Rejecting this GetQueuesItemsCount request");
+            return;
+        }
         redisProvider.connection().compose((Redis redis_) -> {
-            assert redis_ != null : "redis_ != null";
-            assert ctx.redis == null : "ctx.redis == null";
-            assert ctx.iter == null : "ctx.iter == null";
-            assert ctx.queueLengths == null : "ctx.queueLengths == null";
             ctx.redis = redis_;
             ctx.queueLengths = new int[ctx.queues.size()];
             ctx.iter = ctx.queues.iterator();
