@@ -1043,7 +1043,7 @@ public class RedisQues extends AbstractVerticle {
         Future.<Void>succeededFuture().<RedisAPI>compose((Void v) -> {
             log.debug("Checking queues timestamps");
             // List all queues that look inactive (i.e. that have not been updated since 3 periods).
-            ctx.limit = System.currentTimeMillis() - 3L * configurationProvider.configuration().getRefreshPeriod() * 1000;
+            ctx.limit = currentTimeMillis() - 3L * configurationProvider.configuration().getRefreshPeriod() * 1000;
             return redisProvider.redis();
         }).<Response>compose((RedisAPI redisAPI) -> {
             ctx.redisAPI = redisAPI;
@@ -1051,86 +1051,101 @@ public class RedisQues extends AbstractVerticle {
             redisAPI.zrangebyscore(Arrays.asList(queuesKey, "-inf", String.valueOf(ctx.limit)), p);
             return p.future();
         }).<Void>compose((Response queues) -> {
-            final AtomicInteger counter = new AtomicInteger(queues.size());
-            log.trace("RedisQues update queues: {}", counter);
-            final List<Future> futureList = new ArrayList<>(queues.size());
-            for (Response queueObject : queues) {
-                final Promise<Void> promise = Promise.promise();
-                futureList.add(promise.future());
-                // Check if the inactive queue is not empty (i.e. the key exists)
-                final String queueName = queueObject.toString();
-                String key = queuesPrefix + queueName;
-                log.trace("RedisQues update queue: {}", key);
-
-                Handler<Void> refreshRegHandler = event -> {
-                    // Make sure its TTL is correctly set (replaces the previous orphan detection mechanism).
-                    refreshRegistration(queueName, refreshRegistrationEvent -> {
-                        if( refreshRegistrationEvent.failed() )
-                            log.warn("TODO error handling", new Exception(refreshRegistrationEvent.cause()));
-                        // And trigger its consumer.
-                        notifyConsumer(queueName).onComplete(notifyConsumerEvent -> {
-                            if( notifyConsumerEvent.failed() )
-                                log.warn("TODO error handling", new Exception(notifyConsumerEvent.cause()));
-                            promise.complete();
-                        });
-                    });
-                };
-                ctx.redisAPI.exists(Collections.singletonList(key), event -> {
-                    if (event.failed() || event.result() == null) {
-                        log.error("RedisQues is unable to check existence of queue " + queueName, event.cause());
-                        promise.complete();
-                        return;
-                    }
-                    if (event.result().toLong() == 1) {
-                        log.debug("Updating queue timestamp for queue '{}'", queueName);
-                        // If not empty, update the queue timestamp to keep it in the sorted set.
-                        updateTimestamp(queueName, upTsResult -> {
-                            if (upTsResult.failed()) {
-                                log.warn("Failed to update timestamps for queue '{}'", queueName, upTsResult.cause());
-                                // We should return here. See: "https://softwareengineering.stackexchange.com/a/190535"
+            final var ctx2 = new Object() {
+                final AtomicInteger counter = new AtomicInteger(queues.size());
+                final Iterator<Response> iter = queues.iterator();
+                final List<Future<Void>> futureList = new ArrayList<>(queues.size());
+            };
+            log.trace("RedisQues update queues: {}", ctx2.counter);
+            upperBoundParallel.request(checkQueueRequestsLimit, null, new UpperBoundParallel.Mentor<Void>() {
+                @Override public boolean runOneMore(BiConsumer<Throwable, Void> onDone, Void ctx_) {
+                    if (ctx2.iter.hasNext()) {
+                        var queueObject = ctx2.iter.next();
+                        var promise = Promise.<Void>promise();
+                        ctx2.futureList.add(promise.future());
+                        // Check if the inactive queue is not empty (i.e. the key exists)
+                        final String queueName = queueObject.toString();
+                        String key = queuesPrefix + queueName;
+                        log.trace("RedisQues update queue: {}", key);
+                        Handler<Void> refreshRegHandler = event -> {
+                            // Make sure its TTL is correctly set (replaces the previous orphan detection mechanism).
+                            refreshRegistration(queueName, refreshRegistrationEvent -> {
+                                if( refreshRegistrationEvent.failed() )
+                                    log.warn("TODO error handling", new Exception(refreshRegistrationEvent.cause()));
+                                // And trigger its consumer.
+                                notifyConsumer(queueName).onComplete(notifyConsumerEvent -> {
+                                    if( notifyConsumerEvent.failed() )
+                                        log.warn("TODO error handling", new Exception(notifyConsumerEvent.cause()));
+                                    promise.complete();
+                                });
+                            });
+                        };
+                        ctx.redisAPI.exists(Collections.singletonList(key), event -> {
+                            if (event.failed() || event.result() == null) {
+                                log.error("RedisQues is unable to check existence of queue " + queueName, event.cause());
+                                promise.complete();
+                                return;
                             }
-                            // Ensure we clean the old queues after having updated all timestamps
-                            if (counter.decrementAndGet() == 0) {
-                                removeOldQueues(ctx.limit).onComplete(removeOldQueuesEvent -> {
-                                    if (removeOldQueuesEvent.failed())
-                                        log.warn("TODO error handling", new Exception(removeOldQueuesEvent.cause()));
-                                    refreshRegHandler.handle(null);
+                            if (event.result().toLong() == 1) {
+                                log.debug("Updating queue timestamp for queue '{}'", queueName);
+                                // If not empty, update the queue timestamp to keep it in the sorted set.
+                                updateTimestamp(queueName, upTsResult -> {
+                                    if (upTsResult.failed()) {
+                                        log.warn("Failed to update timestamps for queue '{}'", queueName, upTsResult.cause());
+                                        // We should return here. See: "https://softwareengineering.stackexchange.com/a/190535"
+                                    }
+                                    // Ensure we clean the old queues after having updated all timestamps
+                                    if (ctx2.counter.decrementAndGet() == 0) {
+                                        removeOldQueues(ctx.limit).onComplete(removeOldQueuesEvent -> {
+                                            if (removeOldQueuesEvent.failed())
+                                                log.warn("TODO error handling", new Exception(removeOldQueuesEvent.cause()));
+                                            refreshRegHandler.handle(null);
+                                        });
+                                    } else {
+                                        refreshRegHandler.handle(null);
+                                    }
                                 });
                             } else {
-                                refreshRegHandler.handle(null);
+                                // Ensure we clean the old queues also in the case of empty queue.
+                                if (log.isTraceEnabled()) {
+                                    log.trace("RedisQues remove old queue: {}", queueName);
+                                }
+                                if (dequeueStatisticEnabled) {
+                                    dequeueStatistic.computeIfPresent(queueName, (s, dequeueStatistic) -> {
+                                        dequeueStatistic.setMarkedForRemoval();
+                                        return dequeueStatistic;
+                                    });
+                                }
+                                if (ctx2.counter.decrementAndGet() == 0) {
+                                    removeOldQueues(ctx.limit).onComplete(removeOldQueuesEvent -> {
+                                        if( removeOldQueuesEvent.failed() )
+                                            log.warn("TODO error handling", new Exception(removeOldQueuesEvent.cause()));
+                                        queueStatisticsCollector.resetQueueFailureStatistics(queueName, (ex, v) -> {
+                                            if (ex != null) promise.fail(ex);
+                                            else promise.complete();
+                                        });
+                                    });
+                                } else {
+                                    queueStatisticsCollector.resetQueueFailureStatistics(queueName, (ex, v) -> {
+                                        if (ex != null) promise.fail(ex);
+                                        else promise.complete();
+                                    });
+                                }
                             }
                         });
-                    } else {
-                        // Ensure we clean the old queues also in the case of empty queue.
-                        if (log.isTraceEnabled()) {
-                            log.trace("RedisQues remove old queue: {}", queueName);
-                        }
-                        if (dequeueStatisticEnabled) {
-                            dequeueStatistic.computeIfPresent(queueName, (s, dequeueStatistic) -> {
-                                dequeueStatistic.setMarkedForRemoval();
-                                return dequeueStatistic;
-                            });
-                        }
-                        if (counter.decrementAndGet() == 0) {
-                            removeOldQueues(ctx.limit).onComplete(removeOldQueuesEvent -> {
-                                if( removeOldQueuesEvent.failed() )
-                                    log.warn("TODO error handling", new Exception(removeOldQueuesEvent.cause()));
-                                queueStatisticsCollector.resetQueueFailureStatistics(queueName, (ex, v) -> {
-                                    if (ex != null) promise.fail(ex);
-                                    else promise.complete();
-                                });
-                            });
-                        } else {
-                            queueStatisticsCollector.resetQueueFailureStatistics(queueName, (ex, v) -> {
-                                if (ex != null) promise.fail(ex);
-                                else promise.complete();
-                            });
-                        }
                     }
-                });
-            }
+                    return ctx2.iter.hasNext();
+                }
+                @Override public boolean onError(Throwable ex, Void ctx_) {
+                    assert false : "TODO";
+                    return false;
+                }
+                @Override public void onDone(Void ctx_) {
+                    assert false : "TODO";
+                }
+            });
             var p = Promise.<Void>promise();
-            CompositeFuture.all(futureList).onComplete(ev -> {
+            Future.all(ctx2.futureList).onComplete(ev -> {
                 if (ev.failed()) p.fail(ev.cause());
                 else if (ev.result().failed()) p.fail(ev.result().cause());
                 else p.complete(null);
