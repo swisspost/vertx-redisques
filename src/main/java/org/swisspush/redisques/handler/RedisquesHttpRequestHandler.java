@@ -63,7 +63,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     private static final String EMPTY_QUEUES_PARAM = "emptyQueues";
     private static final String DELETED = "deleted";
 
-    /** @deprecated TODO <a href="https://xkcd.com/1179/">about date formats</a> */
+    /** @deprecated <a href="https://xkcd.com/1179/">about obsolete date formats</a> */
     @Deprecated
     private static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("dd.MM.yyyy HH:mm:ss");
 

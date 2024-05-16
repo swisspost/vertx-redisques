@@ -15,6 +15,7 @@ import io.vertx.redis.client.Response;
 import io.vertx.redis.client.impl.types.NumberType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.swisspush.redisques.exception.NoStacktraceException;
 import org.swisspush.redisques.performance.UpperBoundParallel;
 
 import java.util.HashMap;
@@ -361,18 +362,18 @@ public class QueueStatisticsCollector {
                 redisProvider.redis()
                         .onSuccess(redisAPI -> {
                             redisAPI.hset(List.of(STATSKEY, queueName, obj.toString()), ev -> {
-                                onDone.accept(ev.failed() ? new RuntimeException("stack", ev.cause()) : null, null);
+                                onDone.accept(ev.failed() ? new NoStacktraceException("TODO_Wn0CANwoAgAZDwIA20gC error handling", ev.cause()) : null, null);
                             });
                         })
-                        .onFailure(ex -> onDone.accept(new RuntimeException("stack", ex), null));
+                        .onFailure(ex -> onDone.accept(new NoStacktraceException("TODO_H30CACQ6AgAUWwIAoCYC error handling", ex), null));
             } else {
                 redisProvider.redis()
                         .onSuccess(redisAPI -> {
                             redisAPI.hdel(List.of(STATSKEY, queueName), ev -> {
-                                onDone.accept(ev.failed() ? new RuntimeException("stack", ev.cause()) : null, null);
+                                onDone.accept(ev.failed() ? new NoStacktraceException("TODO_Vn4CACQIAgDeLAIAUyEC error handling", ev.cause()) : null, null);
                             });
                         })
-                        .onFailure(ex -> onDone.accept(new RuntimeException("stack", ex), null));
+                        .onFailure(ex -> onDone.accept(new NoStacktraceException("TODO_Kn4CABJoAgBvaQIA7QQC error handling", ex), null));
             }
         } catch (RuntimeException ex) {
             onDone.accept(ex, null);

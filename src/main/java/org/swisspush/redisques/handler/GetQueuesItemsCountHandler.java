@@ -132,14 +132,15 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
                 }
                 var obj = new JsonObject().put(STATUS, OK).put(QUEUES, result);
                 long jsonCreateDurationMs = currentTimeMillis() - beginEpchMs;
-                log.info("Creating JSON with {} entries took {}ms", ctx.queueLengths.length, jsonCreateDurationMs);
+                log.info("Creating JSON with {} entries did block this tread for {}ms",
+                        ctx.queueLengths.length, jsonCreateDurationMs);
                 workerPromise.complete(obj);
             }, false);
         }).onSuccess((JsonObject json) -> {
             log.trace("call event.reply(json)");
             event.reply(json);
         }).onFailure(ex -> {
-            log.warn("Redis: Failed to get queue length.", new Exception(ex));
+            log.warn("Redis: Failed to get queue length (error_c3gCAEFrAgChbAIAdhwC)", ex);
             event.reply(new JsonObject().put(STATUS, ERROR));
         });
     }
