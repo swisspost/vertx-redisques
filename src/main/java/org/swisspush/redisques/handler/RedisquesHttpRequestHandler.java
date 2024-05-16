@@ -7,6 +7,7 @@ import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.eventbus.EventBus;
 import io.vertx.core.eventbus.Message;
+import io.vertx.core.eventbus.ReplyException;
 import io.vertx.core.http.HttpServerOptions;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
@@ -590,12 +591,23 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         public void onError(Throwable ex, RoutingContext ctx) {
             if (!ctx.response().headWritten()) {
                 log.debug("Failed to serve queue stats", ex);
-                respondWith(StatusCode.INTERNAL_SERVER_ERROR, ex.getMessage(), ctx.request());
+                StatusCode rspCode = tryExtractStatusCode(ex, StatusCode.INTERNAL_SERVER_ERROR);
+                respondWith(rspCode, ex.getMessage(), ctx.request());
             } else {
                 log.warn("Response already written. MUST let it run into timeout now (error_qykCAJ8aAgCSfAIA1kMC): {}", ctx.request().uri(), ex);
             }
         }
+    }
 
+    private StatusCode tryExtractStatusCode(Throwable ex, StatusCode defaultValue) {
+        for (Throwable cause = ex.getCause(); cause != null; cause = cause.getCause()) {
+            if (!(cause instanceof ReplyException)) continue;
+            ReplyException replyException = (ReplyException) cause;
+            if (replyException.failureCode() == StatusCode.INSUFFICIENT_STORAGE.getStatusCode()) {
+                return StatusCode.INSUFFICIENT_STORAGE;
+            }
+        }
+        return defaultValue;
     }
 
     /**
@@ -848,7 +860,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
 
     private void respondWith(StatusCode statusCode, String responseMessage, HttpServerRequest request) {
         final HttpServerResponse response = request.response();
-        log.info("Responding with status code {} and message: {}", statusCode, responseMessage);
+        log.info("Responding with status code {} and message '{}' to request '{}'", statusCode, responseMessage, request.uri());
         response.setStatusCode(statusCode.getStatusCode());
         response.setStatusMessage(statusCode.getStatusMessage());
         response.putHeader(CONTENT_TYPE, TEXT_PLAIN);

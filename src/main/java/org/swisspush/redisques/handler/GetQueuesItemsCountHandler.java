@@ -16,6 +16,7 @@ import io.vertx.redis.client.Request;
 import io.vertx.redis.client.Response;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.swisspush.redisques.exception.NoStackReplyException;
 import org.swisspush.redisques.exception.NoStacktraceException;
 import org.swisspush.redisques.performance.UpperBoundParallel;
 import org.swisspush.redisques.util.HandlerUtil;
@@ -85,7 +86,7 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
             return;
         }
         if (redisRequestQuota.availablePermits() <= 0) {
-            event.fail(507, "Server too busy. Rejecting this GetQueuesItemsCount request");
+            event.reply(new NoStackReplyException(ReplyFailure.RECIPIENT_FAILURE, 507, "Server too busy. Rejecting this GetQueuesItemsCount request"));
             return;
         }
         redisProvider.connection().compose((Redis redis_) -> {
