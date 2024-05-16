@@ -94,9 +94,9 @@ public class RedisQues extends AbstractVerticle {
         private MemoryUsageProvider memoryUsageProvider;
         private RedisquesConfigurationProvider configurationProvider;
         private RedisProvider redisProvider;
-        private Semaphore redisMonitoringReqLimit;
-        private Semaphore checkQueueRequestsLimit;/*TODO maybe should be removed*/
-        private Semaphore queueStatsRequestLimit;
+        private Semaphore redisMonitoringReqQuota;
+        private Semaphore checkQueueRequestsQuota;
+        private Semaphore queueStatsRequestQuota;
         private Semaphore getQueuesItemsCountRedisRequestQuota;
 
         private RedisQuesBuilder() {
@@ -118,37 +118,54 @@ public class RedisQues extends AbstractVerticle {
             return this;
         }
 
-        public RedisQuesBuilder withRedisMonitoringReqLimit(Semaphore limit) {
-            this.redisMonitoringReqLimit = limit;
+        /**
+         * How many redis requests monitoring related component will trigger
+         * simultaneously. One of those components for example is
+         * {@link QueueStatisticsCollector}.
+         */
+        public RedisQuesBuilder withRedisMonitoringReqQuota(Semaphore quota) {
+            this.redisMonitoringReqQuota = quota;
             return this;
         }
 
-        public RedisQuesBuilder withCheckQueueRequestsLimit(Semaphore limit) {
-            this.checkQueueRequestsLimit = limit;
+        /**
+         * How many redis requests {@link RedisQues#checkQueues()} will trigger
+         * simultaneously.
+         */
+        public RedisQuesBuilder withCheckQueueRequestsQuota(Semaphore quota) {
+            this.checkQueueRequestsQuota = quota;
             return this;
         }
 
-        public RedisQuesBuilder withQueueStatsRequestLimit(Semaphore limit) {
-            this.queueStatsRequestLimit = limit;
+        /**
+         * How many incoming requests {@link QueueStatsService} will accept
+         * simultaneously.
+         */
+        public RedisQuesBuilder withQueueStatsRequestQuota(Semaphore quota) {
+            this.queueStatsRequestQuota = quota;
             return this;
         }
 
-        public RedisQuesBuilder withGetQueuesItemsCountRedisRequestQuota(Semaphore limit) {
-            this.getQueuesItemsCountRedisRequestQuota = limit;
+        /**
+         * How many simultaneous redis requests will be performed maximally for
+         * {@link org.swisspush.redisques.handler.GetQueuesItemsCountHandler} requests.
+         */
+        public RedisQuesBuilder withGetQueuesItemsCountRedisRequestQuota(Semaphore quota) {
+            this.getQueuesItemsCountRedisRequestQuota = quota;
             return this;
         }
 
         public RedisQues build() {
-            if (redisMonitoringReqLimit == null) {
-                redisMonitoringReqLimit = new Semaphore(Integer.MAX_VALUE);
+            if (redisMonitoringReqQuota == null) {
+                redisMonitoringReqQuota = new Semaphore(Integer.MAX_VALUE);
                 log.warn("No redis request limit provided. Fallback to legacy behavior of {}.", Integer.MAX_VALUE);
             }
-            if (checkQueueRequestsLimit == null) {
-                checkQueueRequestsLimit = new Semaphore(Integer.MAX_VALUE);
+            if (checkQueueRequestsQuota == null) {
+                checkQueueRequestsQuota = new Semaphore(Integer.MAX_VALUE);
                 log.warn("No redis check queue limit provided. Fallback to legacy behavior of {}.", Integer.MAX_VALUE);
             }
-            if (queueStatsRequestLimit == null) {
-                queueStatsRequestLimit = new Semaphore(Integer.MAX_VALUE);
+            if (queueStatsRequestQuota == null) {
+                queueStatsRequestQuota = new Semaphore(Integer.MAX_VALUE);
                 log.warn("No redis queue stats limit provided. Fallback to legacy behavior of {}.", Integer.MAX_VALUE);
             }
             if (getQueuesItemsCountRedisRequestQuota == null) {
@@ -156,7 +173,7 @@ public class RedisQues extends AbstractVerticle {
                 log.warn("No redis getQueueItemsCount quota provided. Fallback to legacy behavior of {}.", Integer.MAX_VALUE);
             }
             return new RedisQues(memoryUsageProvider, configurationProvider, redisProvider,
-                    redisMonitoringReqLimit, checkQueueRequestsLimit, queueStatsRequestLimit,
+                    redisMonitoringReqQuota, checkQueueRequestsQuota, queueStatsRequestQuota,
                     getQueuesItemsCountRedisRequestQuota);
         }
     }
@@ -207,16 +224,16 @@ public class RedisQues extends AbstractVerticle {
     private Map<String, DequeueStatistic> dequeueStatistic = new ConcurrentHashMap<>();
     private boolean dequeueStatisticEnabled = false;
     private PeriodicSkipScheduler periodicSkipScheduler;
-    private final Semaphore redisMonitoringReqLimit;
-    private final Semaphore checkQueueRequestsLimit;
-    private final Semaphore queueStatsRequestLimit;
+    private final Semaphore redisMonitoringReqQuota;
+    private final Semaphore checkQueueRequestsQuota;
+    private final Semaphore queueStatsRequestQuota;
     private final Semaphore getQueuesItemsCountRedisRequestQuota;
 
     public RedisQues() {
         log.warn("Fallback to legacy behavior and allow up to {} simultaneous requests to redis", Integer.MAX_VALUE);
-        this.redisMonitoringReqLimit = new Semaphore(Integer.MAX_VALUE);
-        this.checkQueueRequestsLimit = new Semaphore(Integer.MAX_VALUE);
-        this.queueStatsRequestLimit = new Semaphore(Integer.MAX_VALUE);
+        this.redisMonitoringReqQuota = new Semaphore(Integer.MAX_VALUE);
+        this.checkQueueRequestsQuota = new Semaphore(Integer.MAX_VALUE);
+        this.queueStatsRequestQuota = new Semaphore(Integer.MAX_VALUE);
         this.getQueuesItemsCountRedisRequestQuota = new Semaphore(Integer.MAX_VALUE);
     }
 
@@ -224,17 +241,17 @@ public class RedisQues extends AbstractVerticle {
         MemoryUsageProvider memoryUsageProvider,
         RedisquesConfigurationProvider configurationProvider,
         RedisProvider redisProvider,
-        Semaphore redisMonitoringReqLimit,
-        Semaphore checkQueueRequestsLimit,
-        Semaphore queueStatsRequestLimit,
+        Semaphore redisMonitoringReqQuota,
+        Semaphore checkQueueRequestsQuota,
+        Semaphore queueStatsRequestQuota,
         Semaphore getQueuesItemsCountRedisRequestQuota
     ) {
         this.memoryUsageProvider = memoryUsageProvider;
         this.configurationProvider = configurationProvider;
         this.redisProvider = redisProvider;
-        this.redisMonitoringReqLimit = redisMonitoringReqLimit;
-        this.checkQueueRequestsLimit = checkQueueRequestsLimit;
-        this.queueStatsRequestLimit = queueStatsRequestLimit;
+        this.redisMonitoringReqQuota = redisMonitoringReqQuota;
+        this.checkQueueRequestsQuota = checkQueueRequestsQuota;
+        this.queueStatsRequestQuota = queueStatsRequestQuota;
         this.getQueuesItemsCountRedisRequestQuota = getQueuesItemsCountRedisRequestQuota;
     }
 
@@ -338,11 +355,11 @@ public class RedisQues extends AbstractVerticle {
     private void initialize() {
         RedisquesConfiguration configuration = configurationProvider.configuration();
         this.queueStatisticsCollector = new QueueStatisticsCollector(
-                redisProvider, queuesPrefix, vertx, redisMonitoringReqLimit,
+                redisProvider, queuesPrefix, vertx, redisMonitoringReqQuota,
                 configuration.getQueueSpeedIntervalSec());
 
         RedisquesHttpRequestHandler.init(vertx, configuration, queueStatisticsCollector,
-                dequeueStatisticCollector, queueStatsRequestLimit);
+                dequeueStatisticCollector, queueStatsRequestQuota);
 
         // only initialize memoryUsageProvider when not provided in the constructor
         if (memoryUsageProvider == null) {
@@ -1085,7 +1102,7 @@ public class RedisQues extends AbstractVerticle {
             // MUST pre-initialize ALL futures, so that our 'Future.all()' call knows
             log.trace("RedisQues update queues: {}", ctx.counter);
             var p = Promise.<Void>promise();
-            upperBoundParallel.request(checkQueueRequestsLimit, null, new UpperBoundParallel.Mentor<Void>() {
+            upperBoundParallel.request(checkQueueRequestsQuota, null, new UpperBoundParallel.Mentor<Void>() {
                 @Override public boolean runOneMore(BiConsumer<Throwable, Void> onDone, Void ctx_) {
                     if (ctx.iter.hasNext()) {
                         var queueObject = ctx.iter.next();

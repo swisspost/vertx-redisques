@@ -2,7 +2,6 @@ package org.swisspush.redisques;
 
 import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.EventBus;
-import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import org.slf4j.Logger;
@@ -49,7 +48,7 @@ public class QueueStatsService {
     private final String redisquesAddress;
     private final QueueStatisticsCollector queueStatisticsCollector;
     private final DequeueStatisticCollector dequeueStatisticCollector;
-    private final Semaphore incomingRequestLimit;
+    private final Semaphore incomingRequestQuota;
 
     public QueueStatsService(
             Vertx vertx,
@@ -57,30 +56,31 @@ public class QueueStatsService {
             String redisquesAddress,
             QueueStatisticsCollector queueStatisticsCollector,
             DequeueStatisticCollector dequeueStatisticCollector,
-            Semaphore incomingRequestLimit
+            Semaphore incomingRequestQuota
     ) {
         this.vertx = vertx;
         this.eventBus = eventBus;
         this.redisquesAddress = redisquesAddress;
         this.queueStatisticsCollector = queueStatisticsCollector;
         this.dequeueStatisticCollector = dequeueStatisticCollector;
-        this.incomingRequestLimit = incomingRequestLimit;
+        this.incomingRequestQuota = incomingRequestQuota;
     }
 
     public <CTX> void getQueueStats(CTX mCtx, GetQueueStatsMentor<CTX> mentor) {
-        if (!incomingRequestLimit.tryAcquire()) {
+        if (!incomingRequestQuota.tryAcquire()) {
             var ex = new RuntimeException("Server too busy to handle yet-another-queue-stats-request now");
             vertx.runOnContext(v -> mentor.onError(ex, mCtx));
             return;
-        } else try {
+        }
+        AtomicBoolean isCompleted = new AtomicBoolean();
+        try {
             var req0 = new GetQueueStatsRequest<CTX>();
-            AtomicBoolean isCompleted = new AtomicBoolean();
             BiConsumer<Throwable, List<Queue>> onDone = (Throwable ex, List<Queue> ans) -> {
                 if (!isCompleted.compareAndSet(false, true)) {
                     if (log.isInfoEnabled()) log.info("", new RuntimeException("onDone MUST be called ONCE only", ex));
                     return;
                 }
-                incomingRequestLimit.release();
+                incomingRequestQuota.release();
                 if (ex != null) mentor.onError(ex, mCtx);
                 else mentor.onQueueStatistics(ans, mCtx);
             };
@@ -100,8 +100,12 @@ public class QueueStatsService {
                 });
             });
         } catch (Exception ex) {
-            incomingRequestLimit.release();
-            throw ex;
+            if (!isCompleted.compareAndSet(false, true)) {
+                if (log.isInfoEnabled()) log.info("onDone MUST be called ONCE only", ex);
+                return;
+            }
+            incomingRequestQuota.release();
+            vertx.runOnContext(v -> mentor.onError(ex, mCtx));
         }
     }
 
@@ -110,8 +114,7 @@ public class QueueStatsService {
         JsonObject operation = buildGetQueuesItemsCountOperation(filter);
         eventBus.<JsonObject>request(redisquesAddress, operation, ev -> {
             if (ev.failed()) {
-                Throwable ex = ev.cause();
-                onDone.accept(new NoStacktraceException("error_QzkCACMbAgCgOwIA", ex), req);
+                onDone.accept(new NoStacktraceException("error_QzkCACMbAgCgOwIA", ev.cause()), req);
                 return;
             }
             JsonObject body = ev.result().body();

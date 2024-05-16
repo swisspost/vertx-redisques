@@ -72,20 +72,20 @@ public class QueueStatisticsCollector {
     private final RedisProvider redisProvider;
     private final String queuePrefix;
     private final Vertx vertx;
-    private final Semaphore redisRequestLimit;
+    private final Semaphore redisRequestQuota;
     private final UpperBoundParallel upperBoundParallel;
 
     public QueueStatisticsCollector(
         RedisProvider redisProvider,
         String queuePrefix,
         Vertx vertx,
-        Semaphore redisRequestLimit,
+        Semaphore redisRequestQuota,
         int speedIntervalSec
     ) {
         this.redisProvider = redisProvider;
         this.queuePrefix = queuePrefix;
         this.vertx = vertx;
-        this.redisRequestLimit = redisRequestLimit;
+        this.redisRequestQuota = redisRequestQuota;
         this.upperBoundParallel = new UpperBoundParallel(vertx);
         speedStatisticsScheduler(speedIntervalSec);
     }
@@ -175,7 +175,7 @@ public class QueueStatisticsCollector {
             onDone.accept(null, null);
             return;
         }
-        upperBoundParallel.request(redisRequestLimit, null, new UpperBoundParallel.Mentor<Void>() {
+        upperBoundParallel.request(redisRequestQuota, null, new UpperBoundParallel.Mentor<Void>() {
             int i = 0;
             final int size = queues.size();
             @Override public boolean runOneMore(BiConsumer<Throwable, Void> onDone, Void ctx) {
