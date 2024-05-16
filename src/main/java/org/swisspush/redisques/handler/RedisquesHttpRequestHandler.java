@@ -588,12 +588,11 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
 
         @Override
         public void onError(Throwable ex, RoutingContext ctx) {
-            String exMsg = ex.getMessage();
-            if (!ctx.response().ended()) {
+            if (!ctx.response().headWritten()) {
                 log.debug("Failed to serve queue stats", ex);
-                respondWith(StatusCode.INTERNAL_SERVER_ERROR, exMsg, ctx.request());
+                respondWith(StatusCode.INTERNAL_SERVER_ERROR, ex.getMessage(), ctx.request());
             } else {
-                log.warn("_q938hugz_ {}", ctx.request().uri(), ex);
+                log.warn("Response already written. MUST let it run into timeout now (error_qykCAJ8aAgCSfAIA1kMC): {}", ctx.request().uri(), ex);
             }
         }
 
