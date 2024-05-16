@@ -69,17 +69,17 @@ public class QueueStatsService {
 
     public <CTX> void getQueueStats(CTX mCtx, GetQueueStatsMentor<CTX> mentor) {
         if (!incomingRequestLimit.tryAcquire()) {
-            vertx.runOnContext(v -> {
-                var ex = new RuntimeException("Server too busy to handle yet-another-queue-stats-request now");
-                mentor.onError(ex, mCtx);
-            });
+            var ex = new RuntimeException("Server too busy to handle yet-another-queue-stats-request now");
+            vertx.runOnContext(v -> mentor.onError(ex, mCtx));
             return;
         } else try {
             var req0 = new GetQueueStatsRequest<CTX>();
             AtomicBoolean isCompleted = new AtomicBoolean();
             BiConsumer<Throwable, List<Queue>> onDone = (Throwable ex, List<Queue> ans) -> {
-                if (!isCompleted.compareAndSet(false, true))
-                    return/*TODO maybe throw here*/;
+                if (!isCompleted.compareAndSet(false, true)) {
+                    if (log.isInfoEnabled()) log.info("", new RuntimeException("onDone MUST be called ONCE only", ex));
+                    return;
+                }
                 incomingRequestLimit.release();
                 if (ex != null) mentor.onError(ex, mCtx);
                 else mentor.onQueueStatistics(ans, mCtx);
@@ -117,7 +117,7 @@ public class QueueStatsService {
             JsonObject body = ev.result().body();
             String status = body.getString(STATUS);
             if (!OK.equals(status)) {
-                onDone.accept(new Exception("Unexpected status " + status), null);
+                onDone.accept(new NoStacktraceException("error_aXACAPcbAgBLGgIABnAC: " + status), null);
                 return;
             }
             JsonArray queuesJsonArr = body.getJsonArray(QUEUES);
