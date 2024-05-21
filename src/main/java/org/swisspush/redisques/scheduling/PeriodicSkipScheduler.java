@@ -49,7 +49,6 @@ public class PeriodicSkipScheduler {
             return;
         }
         timer.begEpochMs = currentTimeMillis();
-        timer.task.accept(timer::onTaskDone_);
         Promise<Void> p = Promise.promise();
         var fut = p.future();
         fut.onSuccess((Void v) -> timer.onTaskDone_());
