@@ -15,6 +15,10 @@ class ThriftyExceptionFactory implements ExceptionFactory {
     ThriftyExceptionFactory() {
     }
 
+    public Exception newException(String message, Throwable cause) {
+        return new NoStacktraceException(message, cause);
+    }
+
     @Override
     public ReplyException newReplyException(ReplyFailure failureType, int failureCode, String message) {
         return new NoStackReplyException(failureType, failureCode, message);

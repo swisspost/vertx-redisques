@@ -18,6 +18,8 @@ import io.vertx.core.eventbus.ReplyFailure;
  */
 public interface ExceptionFactory {
 
+    public Exception newException(String message, Throwable cause);
+
     public ReplyException newReplyException(ReplyFailure failureType, int failureCode, String message);
 
 
