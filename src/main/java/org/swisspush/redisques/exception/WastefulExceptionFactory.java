@@ -13,6 +13,9 @@ import io.vertx.core.eventbus.ReplyFailure;
  */
 class WastefulExceptionFactory implements ExceptionFactory {
 
+    WastefulExceptionFactory() {
+    }
+
     @Override
     public ReplyException newReplyException(ReplyFailure failureType, int failureCode, String message) {
         return new ReplyException(failureType, failureCode, message);

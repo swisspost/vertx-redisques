@@ -12,6 +12,9 @@ import io.vertx.core.eventbus.ReplyFailure;
  */
 class ThriftyExceptionFactory implements ExceptionFactory {
 
+    ThriftyExceptionFactory() {
+    }
+
     @Override
     public ReplyException newReplyException(ReplyFailure failureType, int failureCode, String message) {
         return new NoStackReplyException(failureType, failureCode, message);
