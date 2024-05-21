@@ -24,9 +24,4 @@ class ThriftyRedisQuesExceptionFactory implements RedisQuesExceptionFactory {
         return new NoStacktraceException(message, cause);
     }
 
-    @Override
-    public ReplyException newReplyException(ReplyFailure failureType, int failureCode, String message) {
-        return new NoStackReplyException(failureType, failureCode, message);
-    }
-
 }

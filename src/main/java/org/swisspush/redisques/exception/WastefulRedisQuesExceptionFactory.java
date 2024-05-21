@@ -25,9 +25,4 @@ class WastefulRedisQuesExceptionFactory implements RedisQuesExceptionFactory {
         return new RuntimeException(message, cause);
     }
 
-    @Override
-    public ReplyException newReplyException(ReplyFailure failureType, int failureCode, String message) {
-        return new ReplyException(failureType, failureCode, message);
-    }
-
 }
