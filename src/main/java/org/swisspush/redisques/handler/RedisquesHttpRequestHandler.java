@@ -7,7 +7,6 @@ import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.eventbus.EventBus;
 import io.vertx.core.eventbus.Message;
-import io.vertx.core.eventbus.ReplyException;
 import io.vertx.core.http.HttpServerOptions;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
@@ -21,6 +20,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.swisspush.redisques.QueueStatsService;
 import org.swisspush.redisques.QueueStatsService.GetQueueStatsMentor;
+import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
+import org.swisspush.redisques.util.DequeueStatistic;
 import org.swisspush.redisques.util.DequeueStatisticCollector;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 import org.swisspush.redisques.util.RedisquesAPI;
@@ -31,10 +32,8 @@ import org.swisspush.redisques.util.StatusCode;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.Date;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.Semaphore;
 import java.util.stream.Collectors;
 
 import static org.swisspush.redisques.util.HttpServerRequestUtil.*;
@@ -63,7 +62,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     private static final String EMPTY_QUEUES_PARAM = "emptyQueues";
     private static final String DELETED = "deleted";
 
-    /** @deprecated <a href="https://xkcd.com/1179/">about obsolete date formats</a> */
+    /** @deprecated <a href="https://imgs.xkcd.com/comics/iso_8601_2x.png">about obsolete date formats</a> */
     @Deprecated
     private static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("dd.MM.yyyy HH:mm:ss");
 
@@ -72,16 +71,19 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     private final boolean enableQueueNameDecoding;
     private final int queueSpeedIntervalSec;
     private final QueueStatisticsCollector queueStatisticsCollector;
+    private final RedisQuesExceptionFactory exceptionFactory;
     private final QueueStatsService queueStatsService;
     private final GetQueueStatsMentor<RoutingContext> queueStatsMentor = new MyQueueStatsMentor();
 
-    public static void init(Vertx vertx, RedisquesConfiguration modConfig, QueueStatisticsCollector queueStatisticsCollector,
-                            DequeueStatisticCollector dequeueStatisticCollector, Semaphore queueStatsRequestLimit) {
+    public static void init(
+        Vertx vertx, RedisquesConfiguration modConfig, QueueStatisticsCollector queueStatisticsCollector,
+        DequeueStatisticCollector dequeueStatisticCollector, RedisQuesExceptionFactory exceptionFactory
+    ) {
         log.info("Enabling http request handler: {}", modConfig.getHttpRequestHandlerEnabled());
         if (modConfig.getHttpRequestHandlerEnabled()) {
             if (modConfig.getHttpRequestHandlerPort() != null && modConfig.getHttpRequestHandlerUserHeader() != null) {
-                RedisquesHttpRequestHandler handler = new RedisquesHttpRequestHandler(vertx, modConfig,
-                        queueStatisticsCollector, dequeueStatisticCollector, queueStatsRequestLimit);
+                var handler = new RedisquesHttpRequestHandler(
+                        vertx, modConfig, queueStatisticsCollector, dequeueStatisticCollector, exceptionFactory);
                 // in Vert.x 2x 100-continues was activated per default, in vert.x 3x it is off per default.
                 HttpServerOptions options = new HttpServerOptions().setHandle100ContinueAutomatically(true);
                 vertx.createHttpServer(options).requestHandler(handler).listen(modConfig.getHttpRequestHandlerPort(), result -> {
@@ -110,8 +112,13 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         return Result.ok(false);
     }
 
-    private RedisquesHttpRequestHandler(Vertx vertx, RedisquesConfiguration modConfig, QueueStatisticsCollector queueStatisticsCollector,
-                                        DequeueStatisticCollector dequeueStatisticCollector, Semaphore queueStatsRequestLimit) {
+    private RedisquesHttpRequestHandler(
+        Vertx vertx,
+        RedisquesConfiguration modConfig,
+        QueueStatisticsCollector queueStatisticsCollector,
+        DequeueStatisticCollector dequeueStatisticCollector,
+        RedisQuesExceptionFactory exceptionFactory
+    ) {
         this.vertx = vertx;
         this.router = Router.router(vertx);
         this.eventBus = vertx.eventBus();
@@ -120,8 +127,8 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         this.enableQueueNameDecoding = modConfig.getEnableQueueNameDecoding();
         this.queueSpeedIntervalSec = modConfig.getQueueSpeedIntervalSec();
         this.queueStatisticsCollector = queueStatisticsCollector;
-        this.queueStatsService = new QueueStatsService(vertx, eventBus, redisquesAddress,
-                queueStatisticsCollector, dequeueStatisticCollector, queueStatsRequestLimit);
+        this.exceptionFactory = exceptionFactory;
+        this.queueStatsService = new QueueStatsService(vertx, eventBus, redisquesAddress, queueStatisticsCollector, dequeueStatisticCollector, exceptionFactory);
 
         final String prefix = modConfig.getHttpRequestHandlerPrefix();
 
@@ -535,80 +542,44 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
 
         @Override
         public void onQueueStatistics(List<QueueStatsService.Queue> queues, RoutingContext ctx) {
-            new Object() {
-                RoutingContext ctx;
-                HttpServerResponse rsp;
-                Iterator<QueueStatsService.Queue> queueSrc;
-                JsonObject queueJson = new JsonObject(); // temporary
-                boolean isFirst = true;
-                void run(RoutingContext ctx_) {
-                    ctx = ctx_;
-                    queueSrc = queues.iterator();
-                    rsp = ctx.request().response();
-                    rsp.putHeader(CONTENT_TYPE, APPLICATION_JSON);
-                    rsp.setChunked(true);
-                    rsp.write("{\"queues\": [");
-                    resumeJsonWriting();
-                }
-                void resumeJsonWriting() {
-                    while (true) {
-                        if (rsp.writeQueueFull()) {
-                            // Destination not ready. Apply backpressure, resume when there's space again.
-                            rsp.drainHandler(v -> resumeJsonWriting());
-                            return;
-                        }
-                        if (queueSrc.hasNext()) {
-                            var queue = queueSrc.next();
-                            rsp.write(isFirst ? "" : ",");
-                            isFirst = false;
-                            queueJson.clear();
-                            queueJson.put(MONITOR_QUEUE_NAME, queue.getName());
-                            queueJson.put(MONITOR_QUEUE_SIZE, queue.getSize());
-                            // TODO old impl did bloat result with empty strings for whatever undocumented
-                            //      reason. Those fields should be set to 'null' (or we could even skip them
-                            //      entirely in JSON), as obviously the information is not available. But
-                            //      we'll add the same bloat as we don't know if any downstream code now
-                            //      relies on this behavior.
-                            Long epochMs;
-                            epochMs = queue.getLastDequeueAttemptEpochMs();
-                            queueJson.put("lastDequeueAttempt", epochMs == null ? "" : formatAsUIDate(epochMs));
-                            epochMs = queue.getLastDequeueSuccessEpochMs();
-                            queueJson.put("lastDequeueSuccess", epochMs == null ? "" : formatAsUIDate(epochMs));
-                            epochMs = queue.getNextDequeueDueTimestampEpochMs();
-                            queueJson.put("nextDequeueDueTimestamp", epochMs == null ? "" : formatAsUIDate(epochMs));
-                            rsp.write(queueJson.encode());
-                            continue;
-                        }
-                        // All queues written. Time to finalize json.
-                        rsp.end("]}\n");
-                        break;
-                    }
-                }
-            }.run(ctx);
+            var rsp = ctx.request().response();
+            rsp.putHeader(CONTENT_TYPE, APPLICATION_JSON);
+            rsp.setChunked(true);
+            rsp.write("{\"queues\": [");
+            JsonObject queueJson = new JsonObject();
+            boolean isFirst = true;
+            for (QueueStatsService.Queue queue : queues) {
+                rsp.write(isFirst ? "" : ",");
+                isFirst = false;
+                queueJson.clear();
+                queueJson.put(MONITOR_QUEUE_NAME, queue.getName());
+                queueJson.put(MONITOR_QUEUE_SIZE, queue.getSize());
+                // TODO old impl did bloat result with empty strings for whatever undocumented
+                //      reason. Those fields should be set to 'null' (or we could even skip them
+                //      entirely in JSON), as obviously the information is not available. But
+                //      we'll add the same bloat as we don't know if any downstream code now
+                //      relies on this behavior.
+                Long epochMs;
+                epochMs = queue.getLastDequeueAttemptEpochMs();
+                queueJson.put("lastDequeueAttempt", epochMs == null ? "" : formatAsUIDate(epochMs));
+                epochMs = queue.getLastDequeueSuccessEpochMs();
+                queueJson.put("lastDequeueSuccess", epochMs == null ? "" : formatAsUIDate(epochMs));
+                epochMs = queue.getNextDequeueDueTimestampEpochMs();
+                queueJson.put("nextDequeueDueTimestamp", epochMs == null ? "" : formatAsUIDate(epochMs));
+                rsp.write(queueJson.encode());
+            }
+            rsp.end("]}\n");
         }
 
         @Override
         public void onError(Throwable ex, RoutingContext ctx) {
-            if (!ctx.response().headWritten()) {
-                log.debug("Failed to serve queue stats", ex);
-                StatusCode rspCode = tryExtractStatusCode(ex, StatusCode.INTERNAL_SERVER_ERROR);
-                respondWith(rspCode, ex.getMessage(), ctx.request());
+            if (!ctx.response().ended()) {
+                respondWith(StatusCode.INTERNAL_SERVER_ERROR, ex.getMessage(), ctx.request());
             } else {
-                log.warn("Response already written. MUST let it run into timeout now (error_qykCAJ8aAgCSfAIA1kMC): {}", ctx.request().uri(), ex);
+                log.warn("TODO error handling {}", ctx.request().uri(), exceptionFactory.newException(ex));
             }
         }
-    }
 
-    private StatusCode tryExtractStatusCode(Throwable ex, StatusCode defaultValue) {
-        for (Throwable cause = ex.getCause(); cause != null; cause = cause.getCause()) {
-            if (!(cause instanceof ReplyException)) continue;
-            ReplyException replyException = (ReplyException) cause;
-            int errCode = replyException.failureCode();
-            if (errCode == StatusCode.TOO_MANY_REQUESTS.getStatusCode()) {
-                return StatusCode.TOO_MANY_REQUESTS;
-            }
-        }
-        return defaultValue;
     }
 
     /**
@@ -861,7 +832,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
 
     private void respondWith(StatusCode statusCode, String responseMessage, HttpServerRequest request) {
         final HttpServerResponse response = request.response();
-        log.info("Responding with status code {} and message '{}' to request '{}'", statusCode, responseMessage, request.uri());
+        log.info("Responding with status code {} and message: {}", statusCode, responseMessage);
         response.setStatusCode(statusCode.getStatusCode());
         response.setStatusMessage(statusCode.getStatusMessage());
         response.putHeader(CONTENT_TYPE, TEXT_PLAIN);

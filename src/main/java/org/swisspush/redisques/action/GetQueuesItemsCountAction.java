@@ -4,13 +4,12 @@ import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonObject;
 import org.slf4j.Logger;
-import org.swisspush.redisques.exception.ExceptionFactory;
+import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.handler.GetQueuesItemsCountHandler;
 import org.swisspush.redisques.util.*;
 
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.Semaphore;
 import java.util.regex.Pattern;
 
 import static org.swisspush.redisques.util.RedisquesAPI.*;
@@ -20,8 +19,7 @@ import static org.swisspush.redisques.util.RedisquesAPI.*;
  */
 public class GetQueuesItemsCountAction extends AbstractQueueAction {
 
-    private final ExceptionFactory exceptionFactory;
-    private final Semaphore redisRequestQuota;
+    private final RedisQuesExceptionFactory exceptionFactory;
 
     public GetQueuesItemsCountAction(
             Vertx vertx,
@@ -32,15 +30,13 @@ public class GetQueuesItemsCountAction extends AbstractQueueAction {
             String consumersPrefix,
             String locksKey,
             List<QueueConfiguration> queueConfigurations,
-            ExceptionFactory exceptionFactory,
-            Semaphore redisRequestQuota,
+            RedisQuesExceptionFactory exceptionFactory,
             QueueStatisticsCollector queueStatisticsCollector,
             Logger log
     ) {
         super(vertx, redisProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey, queueConfigurations,
                 queueStatisticsCollector, log);
         this.exceptionFactory = exceptionFactory;
-        this.redisRequestQuota = redisRequestQuota;
     }
 
     @Override
@@ -52,8 +48,8 @@ public class GetQueuesItemsCountAction extends AbstractQueueAction {
         } else {
             redisProvider.redis().onSuccess(redisAPI -> redisAPI.zrangebyscore(List.of(queuesKey,
                                     String.valueOf(getMaxAgeTimestamp()), "+inf"),
-                            new GetQueuesItemsCountHandler(vertx, event, filterPattern.getOk(),
-                                    queuesPrefix, redisProvider, exceptionFactory, redisRequestQuota)))
+                            new GetQueuesItemsCountHandler(event, filterPattern.getOk(),
+                                    queuesPrefix, redisProvider, exceptionFactory)))
                     .onFailure(ex -> replyErrorMessageHandler(event).handle(ex));
         }
     }

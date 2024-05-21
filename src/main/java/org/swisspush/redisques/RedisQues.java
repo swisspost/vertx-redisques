@@ -14,17 +14,14 @@ import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.redis.client.Command;
 import io.vertx.redis.client.Redis;
-import io.vertx.redis.client.RedisAPI;
 import io.vertx.redis.client.Request;
 import io.vertx.redis.client.Response;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.swisspush.redisques.action.QueueAction;
-import org.swisspush.redisques.exception.ExceptionFactory;
-import org.swisspush.redisques.exception.NoStacktraceException;
+import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.handler.RedisquesHttpRequestHandler;
 import org.swisspush.redisques.performance.UpperBoundParallel;
-import org.swisspush.redisques.scheduling.PeriodicSkipScheduler;
 import org.swisspush.redisques.util.DefaultMemoryUsageProvider;
 import org.swisspush.redisques.util.DefaultRedisProvider;
 import org.swisspush.redisques.util.DefaultRedisquesConfigurationProvider;
@@ -57,7 +54,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
 
 import static java.lang.System.currentTimeMillis;
-import static org.swisspush.redisques.exception.ExceptionFactory.newThriftyExceptionFactory;
+import static org.swisspush.redisques.exception.RedisQuesExceptionFactory.newThriftyExceptionFactory;
 import static org.swisspush.redisques.util.RedisquesAPI.ERROR;
 import static org.swisspush.redisques.util.RedisquesAPI.MESSAGE;
 import static org.swisspush.redisques.util.RedisquesAPI.OK;
@@ -97,11 +94,8 @@ public class RedisQues extends AbstractVerticle {
         private MemoryUsageProvider memoryUsageProvider;
         private RedisquesConfigurationProvider configurationProvider;
         private RedisProvider redisProvider;
-        private ExceptionFactory exceptionFactory;
-        private Semaphore redisMonitoringReqQuota;
-        private Semaphore checkQueueRequestsQuota;
-        private Semaphore queueStatsRequestQuota;
-        private Semaphore getQueuesItemsCountRedisRequestQuota;
+        private RedisQuesExceptionFactory exceptionFactory;
+        private Semaphore redisMonitoringReqLimit;
 
         private RedisQuesBuilder() {
             // Private, as clients should use "RedisQues.builder()" and not this class here directly.
@@ -117,50 +111,18 @@ public class RedisQues extends AbstractVerticle {
             return this;
         }
 
+        public RedisQuesBuilder withExceptionFactory(RedisQuesExceptionFactory exceptionFactory) {
+            this.exceptionFactory = exceptionFactory;
+            return this;
+        }
+
         public RedisQuesBuilder withRedisProvider(RedisProvider redisProvider) {
             this.redisProvider = redisProvider;
             return this;
         }
 
-        public RedisQuesBuilder withExceptionFactory(ExceptionFactory exceptionFactory) {
-            this.exceptionFactory = exceptionFactory;
-            return this;
-        }
-
-        /**
-         * How many redis requests monitoring related component will trigger
-         * simultaneously. One of those components for example is
-         * {@link QueueStatisticsCollector}.
-         */
-        public RedisQuesBuilder withRedisMonitoringReqQuota(Semaphore quota) {
-            this.redisMonitoringReqQuota = quota;
-            return this;
-        }
-
-        /**
-         * How many redis requests {@link RedisQues#checkQueues()} will trigger
-         * simultaneously.
-         */
-        public RedisQuesBuilder withCheckQueueRequestsQuota(Semaphore quota) {
-            this.checkQueueRequestsQuota = quota;
-            return this;
-        }
-
-        /**
-         * How many incoming requests {@link QueueStatsService} will accept
-         * simultaneously.
-         */
-        public RedisQuesBuilder withQueueStatsRequestQuota(Semaphore quota) {
-            this.queueStatsRequestQuota = quota;
-            return this;
-        }
-
-        /**
-         * How many simultaneous redis requests will be performed maximally for
-         * {@link org.swisspush.redisques.handler.GetQueuesItemsCountHandler} requests.
-         */
-        public RedisQuesBuilder withGetQueuesItemsCountRedisRequestQuota(Semaphore quota) {
-            this.getQueuesItemsCountRedisRequestQuota = quota;
+        public RedisQuesBuilder withRedisMonitoringReqLimit(Semaphore limit) {
+            this.redisMonitoringReqLimit = limit;
             return this;
         }
 
@@ -168,25 +130,11 @@ public class RedisQues extends AbstractVerticle {
             if (exceptionFactory == null) {
                 exceptionFactory = newThriftyExceptionFactory();
             }
-            if (redisMonitoringReqQuota == null) {
-                redisMonitoringReqQuota = new Semaphore(Integer.MAX_VALUE);
+            if (redisMonitoringReqLimit == null) {
+                redisMonitoringReqLimit = new Semaphore(Integer.MAX_VALUE);
                 log.warn("No redis request limit provided. Fallback to legacy behavior of {}.", Integer.MAX_VALUE);
             }
-            if (checkQueueRequestsQuota == null) {
-                checkQueueRequestsQuota = new Semaphore(Integer.MAX_VALUE);
-                log.warn("No redis check queue limit provided. Fallback to legacy behavior of {}.", Integer.MAX_VALUE);
-            }
-            if (queueStatsRequestQuota == null) {
-                queueStatsRequestQuota = new Semaphore(Integer.MAX_VALUE);
-                log.warn("No redis queue stats limit provided. Fallback to legacy behavior of {}.", Integer.MAX_VALUE);
-            }
-            if (getQueuesItemsCountRedisRequestQuota == null) {
-                getQueuesItemsCountRedisRequestQuota = new Semaphore(Integer.MAX_VALUE);
-                log.warn("No redis getQueueItemsCount quota provided. Fallback to legacy behavior of {}.", Integer.MAX_VALUE);
-            }
-            return new RedisQues(memoryUsageProvider, configurationProvider, redisProvider, exceptionFactory,
-                    redisMonitoringReqQuota, checkQueueRequestsQuota, queueStatsRequestQuota,
-                    getQueuesItemsCountRedisRequestQuota);
+            return new RedisQues(memoryUsageProvider, configurationProvider, redisProvider, exceptionFactory, redisMonitoringReqLimit);
         }
     }
 
@@ -235,40 +183,27 @@ public class RedisQues extends AbstractVerticle {
 
     private Map<String, DequeueStatistic> dequeueStatistic = new ConcurrentHashMap<>();
     private boolean dequeueStatisticEnabled = false;
-    private PeriodicSkipScheduler periodicSkipScheduler;
-    private final ExceptionFactory exceptionFactory;
-    private final Semaphore redisMonitoringReqQuota;
-    private final Semaphore checkQueueRequestsQuota;
-    private final Semaphore queueStatsRequestQuota;
-    private final Semaphore getQueuesItemsCountRedisRequestQuota;
+    private final RedisQuesExceptionFactory exceptionFactory;
+    private final Semaphore redisMonitoringReqLimit;
 
     public RedisQues() {
         log.warn("Fallback to legacy behavior and allow up to {} simultaneous requests to redis", Integer.MAX_VALUE);
         this.exceptionFactory = newThriftyExceptionFactory();
-        this.redisMonitoringReqQuota = new Semaphore(Integer.MAX_VALUE);
-        this.checkQueueRequestsQuota = new Semaphore(Integer.MAX_VALUE);
-        this.queueStatsRequestQuota = new Semaphore(Integer.MAX_VALUE);
-        this.getQueuesItemsCountRedisRequestQuota = new Semaphore(Integer.MAX_VALUE);
+        this.redisMonitoringReqLimit = new Semaphore(Integer.MAX_VALUE);
     }
 
     public RedisQues(
         MemoryUsageProvider memoryUsageProvider,
         RedisquesConfigurationProvider configurationProvider,
         RedisProvider redisProvider,
-        ExceptionFactory exceptionFactory,
-        Semaphore redisMonitoringReqQuota,
-        Semaphore checkQueueRequestsQuota,
-        Semaphore queueStatsRequestQuota,
-        Semaphore getQueuesItemsCountRedisRequestQuota
+        RedisQuesExceptionFactory exceptionFactory,
+        Semaphore redisMonitoringReqLimit
     ) {
         this.memoryUsageProvider = memoryUsageProvider;
         this.configurationProvider = configurationProvider;
         this.redisProvider = redisProvider;
         this.exceptionFactory = exceptionFactory;
-        this.redisMonitoringReqQuota = redisMonitoringReqQuota;
-        this.checkQueueRequestsQuota = checkQueueRequestsQuota;
-        this.queueStatsRequestQuota = queueStatsRequestQuota;
-        this.getQueuesItemsCountRedisRequestQuota = getQueuesItemsCountRedisRequestQuota;
+        this.redisMonitoringReqLimit = redisMonitoringReqLimit;
     }
 
     public static RedisQuesBuilder builder() {
@@ -331,10 +266,6 @@ public class RedisQues extends AbstractVerticle {
             this.dequeueStatisticCollector = new DequeueStatisticCollector(vertx);
         }
 
-        if (this.periodicSkipScheduler == null) {
-            this.periodicSkipScheduler = new PeriodicSkipScheduler(vertx);
-        }
-
         RedisquesConfiguration modConfig = configurationProvider.configuration();
         log.info("Starting Redisques module with configuration: {}", configurationProvider.configuration());
 
@@ -371,11 +302,11 @@ public class RedisQues extends AbstractVerticle {
     private void initialize() {
         RedisquesConfiguration configuration = configurationProvider.configuration();
         this.queueStatisticsCollector = new QueueStatisticsCollector(
-                redisProvider, queuesPrefix, vertx, redisMonitoringReqQuota,
-                configuration.getQueueSpeedIntervalSec());
+                redisProvider, queuesPrefix, vertx, redisMonitoringReqLimit,
+                exceptionFactory, configuration.getQueueSpeedIntervalSec());
 
-        RedisquesHttpRequestHandler.init(vertx, configuration, queueStatisticsCollector,
-                dequeueStatisticCollector, queueStatsRequestQuota);
+        RedisquesHttpRequestHandler.init(
+            vertx, configuration, queueStatisticsCollector, dequeueStatisticCollector, exceptionFactory);
 
         // only initialize memoryUsageProvider when not provided in the constructor
         if (memoryUsageProvider == null) {
@@ -383,10 +314,9 @@ public class RedisQues extends AbstractVerticle {
                     configurationProvider.configuration().getMemoryUsageCheckIntervalSec());
         }
 
-        assert getQueuesItemsCountRedisRequestQuota != null;
         queueActionFactory = new QueueActionFactory(redisProvider, vertx, log,
                 queuesKey, queuesPrefix, consumersPrefix, locksKey, queueStatisticsCollector, memoryUsageProvider,
-                configurationProvider, exceptionFactory, getQueuesItemsCountRedisRequestQuota);
+                exceptionFactory, configurationProvider);
 
         queueActions.put(addQueueItem, queueActionFactory.buildQueueAction(addQueueItem));
         queueActions.put(deleteQueueItem, queueActionFactory.buildQueueAction(deleteQueueItem));
@@ -513,6 +443,7 @@ public class RedisQues extends AbstractVerticle {
                                 return task.execute().compose(taskResult -> {
                                     // append task result to previous results
                                     previousResults.add(taskResult);
+                                    i.incrementAndGet();
                                     return Future.succeededFuture(previousResults);
                                 });
                             }),  (a,b) -> Future.succeededFuture());
@@ -533,61 +464,68 @@ public class RedisQues extends AbstractVerticle {
 
     private void registerActiveQueueRegistrationRefresh() {
         // Periodic refresh of my registrations on active queues.
-        var periodMs = configurationProvider.configuration().getRefreshPeriod() * 1000L;
-        periodicSkipScheduler.setPeriodic(periodMs, "registerActiveQueueRegistrationRefresh", onDone_ -> {
-            AtomicInteger numPending = new AtomicInteger();
-            Runnable onDone = () -> {
-                var remaining = numPending.decrementAndGet();
-                assert remaining >= 0 : "Why is remaining " + remaining;
-                if (remaining == 0) onDone_.run();
-            };
-            boolean foundAtLeastOne = false;
-            for (Map.Entry<String, QueueState> entry : myQueues.entrySet()) {
-                if (entry.getValue() == QueueState.CONSUMING) continue;
-                foundAtLeastOne = true;
-
-                numPending.incrementAndGet();
-                final String queue = entry.getKey();
+        vertx.setPeriodic(configurationProvider.configuration().getRefreshPeriod() * 1000L, new Handler<Long>() {
+            Iterator<Map.Entry<String, QueueState>> iter;
+            @Override public void handle(Long timerId) {
+                // Need a copy to prevent concurrent modification issuses.
+                iter = new HashMap<>(myQueues).entrySet().iterator();
+                // Trigger only a limitted amount of requests in parallel.
+                upperBoundParallel.request(redisMonitoringReqLimit, iter, new UpperBoundParallel.Mentor<>() {
+                    @Override public boolean runOneMore(BiConsumer<Throwable, Void> onDone, Iterator<Map.Entry<String, QueueState>> iter) {
+                        handleNextQueueOfInterest(onDone);
+                        return iter.hasNext();
+                    }
+                    @Override public boolean onError(Throwable ex, Iterator<Map.Entry<String, QueueState>> iter) {
+                        if (log.isWarnEnabled()) log.warn("TODO error handling", exceptionFactory.newException(ex));
+                        return false;
+                    }
+                    @Override public void onDone(Iterator<Map.Entry<String, QueueState>> iter) {/*no-op*/}
+                });
+            }
+            void handleNextQueueOfInterest(BiConsumer<Throwable, Void> onDone) {
+                while (iter.hasNext()) {
+                    var entry = iter.next();
+                    if (entry.getValue() != QueueState.CONSUMING) continue;
+                    checkIfImStillTheRegisteredConsumer(entry.getKey(), onDone);
+                    return;
+                }
+                // no entry found. we're done.
+                onDone.accept(null, null);
+            }
+            void checkIfImStillTheRegisteredConsumer(String queue, BiConsumer<Throwable, Void> onDone) {
                 // Check if I am still the registered consumer
                 String consumerKey = consumersPrefix + queue;
-                if (log.isTraceEnabled()) {
-                    log.trace("RedisQues refresh queues get: {}", consumerKey);
-                }
-                redisProvider.redis().onSuccess(redisAPI -> redisAPI.get(consumerKey, getConsumerEvent -> {
-                            if (getConsumerEvent.failed()) {
-                                log.warn("Failed to get queue consumer for queue '{}'. But we'll continue anyway :)", queue, getConsumerEvent.cause());
-                                // We should return here. See: "https://softwareengineering.stackexchange.com/a/190535"
-                            }
-                            final String consumer = Objects.toString(getConsumerEvent.result(), "");
-                            if (uid.equals(consumer)) {
-                                log.debug("RedisQues Periodic consumer refresh for active queue {}", queue);
-                                refreshRegistration(queue, ev -> {
-                                    if (ev.failed())
-                                        log.warn("TODO_1WoCAD1bAgBRBwIA9yQC error handling", ev.cause());
-                                    updateTimestamp(queue, updateTimestampEv -> {
-                                        if (updateTimestampEv.failed()) log.warn(
-                                                "TODO_mWoCAARJAgDTXAIASwUC error handling", updateTimestampEv.cause());
-                                        onDone.run();
-                                    });
-                                });
-                            } else {
-                                log.debug("RedisQues Removing queue {} from the list", queue);
-                                myQueues.remove(queue);
-                                queueStatisticsCollector.resetQueueFailureStatistics(queue, (Throwable ex, Void v) -> {
-                                    if (ex != null) log.warn("TODO_RGsCAA4CAgDdWAIAVRMC error handling", ex);
-                                    onDone.run();
-                                });
-                            }
-                        }))
-                        .onFailure(ex -> {
-                            log.error("Redis: Failed to registerActiveQueueRegistrationRefresh", ex);
-                            onDone.run();
-                        });
-
-            }
-            if (!foundAtLeastOne) {
-                numPending.incrementAndGet();
-                onDone.run();
+                log.trace("RedisQues refresh queues get: {}", consumerKey);
+                redisProvider.redis().onComplete( ev1 -> {
+                    if (ev1.failed()) {
+                        onDone.accept(exceptionFactory.newException("TODO error handling", ev1.cause()), null);
+                        return;
+                    }
+                    var redisAPI = ev1.result();
+                    redisAPI.get(consumerKey, getConsumerEvent -> {
+                        if (getConsumerEvent.failed()) {
+                            Throwable ex = exceptionFactory.newException(
+                                    "Failed to get queue consumer for queue '" + queue + "'", getConsumerEvent.cause());
+                            onDone.accept(ex, null);
+                            return;
+                        }
+                        final String consumer = Objects.toString(getConsumerEvent.result(), "");
+                        if (uid.equals(consumer)) {
+                            log.debug("RedisQues Periodic consumer refresh for active queue {}", queue);
+                            refreshRegistration(queue, ev -> {
+                                if (ev.failed()) {
+                                    onDone.accept(exceptionFactory.newException("TODO error handling", ev.cause()), null);
+                                    return;
+                                }
+                                updateTimestamp(queue, ev3 -> onDone.accept(ev3.failed() ? ev3.cause() : null, null));
+                            });
+                        } else {
+                            log.debug("RedisQues Removing queue {} from the list", queue);
+                            myQueues.remove(queue);
+                            queueStatisticsCollector.resetQueueFailureStatistics(queue, onDone);
+                        }
+                    });
+                });
             }
         });
     }
@@ -609,7 +547,11 @@ public class RedisQues extends AbstractVerticle {
             // handle system operations
             switch (queueOperation) {
                 case check:
-                    checkQueues().onFailure(ex -> log.warn("TODO_e2UCAGlXAgBAZQIAlBcC error handling", ex));
+                    checkQueues().onFailure(ex -> {
+                        if (log.isWarnEnabled()) {
+                            log.warn("TODO error handling", exceptionFactory.newException(ex));
+                        }
+                    });
                     return;
                 case reset:
                     resetConsumers();
@@ -650,17 +592,18 @@ public class RedisQues extends AbstractVerticle {
         return configurationProvider.configuration().getRefreshPeriod();
     }
 
+
     private void registerQueueCheck() {
         vertx.setPeriodic(configurationProvider.configuration().getCheckIntervalTimerMs(), periodicEvent -> {
             redisProvider.connection().compose((Redis conn) -> {
                 int checkInterval = configurationProvider.configuration().getCheckInterval();
-                Request req = Request.cmd(Command.SET, queueCheckLastexecKey, currentTimeMillis(), "NX", "EX", checkInterval);
+                Request req = Request.cmd(Command.SET, queueCheckLastexecKey, System.currentTimeMillis(), "NX", "EX", checkInterval);
                 return conn.send(req);
             }).<Void>compose((Response todoExplainWhyThisIsIgnored) -> {
                 log.info("periodic queue check is triggered now");
                 return checkQueues();
-            }).onFailure(ex -> {
-                log.warn("TODO_WmYCAIxGAgB0aAIA4yoC error handling", ex);
+            }).onFailure((Throwable ex) -> {
+                if (log.isErrorEnabled()) log.error("TODO error handling", exceptionFactory.newException(ex));
             });
         });
     }
@@ -681,10 +624,10 @@ public class RedisQues extends AbstractVerticle {
 
     private void gracefulStop(final Handler<Void> doneHandler) {
         consumersMessageConsumer.unregister(event -> uidMessageConsumer.unregister(unregisterEvent -> {
-            if( event.failed() ) log.warn("TODO_FWsCAAE0AgCPRQIA8QgC error handling", event.cause());
+            if (event.failed()) log.warn("TODO error handling", exceptionFactory.newException(event.cause()));
             unregisterConsumers(false).onComplete(unregisterConsumersEvent -> {
                 if( unregisterEvent.failed() )
-                    log.warn("TODO_82sCAAczAgCQVgIA6E0C error handling", unregisterEvent.cause());
+                    log.warn("TODO error handling", exceptionFactory.newException(unregisterEvent.cause()));
                 stoppedHandler = doneHandler;
                 if (myQueues.keySet().isEmpty()) {
                     doneHandler.handle(null);
@@ -704,7 +647,7 @@ public class RedisQues extends AbstractVerticle {
             if (force || entry.getValue() == QueueState.READY) {
                 log.trace("RedisQues unregister consumers queue: {}", queue);
                 refreshRegistration(queue, event -> {
-                    if( event.failed() ) log.warn("TODO_12sCABtNAgAqKAIAWg0C error handling", event.cause());
+                    if (event.failed()) log.warn("TODO error handling", exceptionFactory.newException(event.cause()));
                     // Make sure that I am still the registered consumer
                     String consumerKey = consumersPrefix + queue;
                     log.trace("RedisQues unregister consumers get: {}", consumerKey);
@@ -730,7 +673,7 @@ public class RedisQues extends AbstractVerticle {
             }
         }
         CompositeFuture.all(futureList).onComplete(ev -> {
-            if( ev.failed() ) log.warn("TODO_m2sCABpzAgCHbQIA5TYC error handling", ev.cause());
+            if (ev.failed()) log.warn("TODO error handling", exceptionFactory.newException(ev.cause()));
             result.complete();
         });
         return result.future();
@@ -802,8 +745,8 @@ public class RedisQues extends AbstractVerticle {
                                 }
                                 log.debug("RedisQues Starting to consume queue {}", queueName);
                                 readQueue(queueName).onComplete(readQueueEvent -> {
-                                    if( readQueueEvent.failed() )
-                                        log.warn("TODO_aWwCACYIAgCpZwIA8RgC error handling", readQueueEvent.cause());
+                                    if (readQueueEvent.failed())
+                                        log.warn("TODO error handling", exceptionFactory.newException(readQueueEvent.cause()));
                                     promise.complete();
                                 });
                             } else {
@@ -815,8 +758,8 @@ public class RedisQues extends AbstractVerticle {
                             log.debug("Registration for queue {} has changed to {}", queueName, consumer);
                             myQueues.remove(queueName);
                             notifyConsumer(queueName).onComplete(notifyConsumerEvent -> {
-                                if( notifyConsumerEvent.failed() )
-                                    log.warn("TODO_Q2wCAHFYAgCgRQIA8yoC error handling", notifyConsumerEvent.cause());
+                                if (notifyConsumerEvent.failed())
+                                    log.warn("TODO error handling", exceptionFactory.newException(notifyConsumerEvent.cause()));
                                 promise.complete();
                             });
                         }
@@ -855,8 +798,9 @@ public class RedisQues extends AbstractVerticle {
         log.trace("RedisQues read queue lindex: {}", queueKey);
 
         isQueueLocked(queueName).onComplete(lockAnswer -> {
-            if( lockAnswer.failed() )
-                throw new NoStacktraceException("TODO_o2wCACFRAgAAKAIAMUUC error handling " + queueName, lockAnswer.cause());
+            if (lockAnswer.failed()) {
+                throw exceptionFactory.newRuntimeException("TODO error handling " + queueName, lockAnswer.cause());
+            }
             boolean locked = lockAnswer.result();
             if (!locked) {
                 redisProvider.redis().onSuccess(redisAPI -> redisAPI.lindex(queueKey, "0", answer -> {
@@ -894,12 +838,12 @@ public class RedisQues extends AbstractVerticle {
                                             if (answer1.succeeded() && answer1.result() != null && answer1.result().toInteger() > 0) {
                                                 notifyConsumer(queueName).onComplete(event1 -> {
                                                     if( event1.failed() )
-                                                        log.warn("TODO_d20CAD8wAgCbZQIAvSgC error handling", event1.cause());
+                                                        log.warn("TODO error handling", exceptionFactory.newException(event1.cause()));
                                                     promise.complete();
                                                 });
                                             } else {
                                                 if( answer1.failed() )
-                                                    log.warn("TODO_bm0CAEFuAgBcUAIAfQ8C error handling", answer1.cause());
+                                                    log.warn("TODO error handling", exceptionFactory.newException(answer1.cause()));
                                                 promise.complete();
                                             }
                                         });
@@ -909,7 +853,7 @@ public class RedisQues extends AbstractVerticle {
                                     if (stoppedHandler != null) {
                                         unregisterConsumers(false).onComplete(event -> {
                                             if( event.failed() )
-                                                log.warn("TODO_GW0CAMUlAgDcJgIAzncC error handling", event.cause());
+                                                log.warn("TODO error handling", exceptionFactory.newException(event.cause()));
                                             if (myQueues.isEmpty()) {
                                                 stoppedHandler.handle(null);
                                             }
@@ -968,7 +912,7 @@ public class RedisQues extends AbstractVerticle {
                 log.debug("RedisQues re-notify the consumer of queue '{}' at {}", queueName, new Date(System.currentTimeMillis()));
             }
             notifyConsumer(queueName).onComplete(event -> {
-                if( event.failed() ) log.warn("TODO_6m0CAExTAgCYSgIAnxkC error handling", event.cause());
+                if (event.failed()) log.warn("TODO error handling", exceptionFactory.newException(event.cause()));
                 // reset the queue state to be consumed by {@link RedisQues#consume(String)}
                 myQueues.put(queueName, QueueState.READY);
             });
@@ -982,7 +926,7 @@ public class RedisQues extends AbstractVerticle {
         }
         timer.executeDelayedMax(processorDelayMax).onComplete(delayed -> {
             if (delayed.failed()) {
-                log.error("Delayed execution has failed.", new Exception(delayed.cause()));
+                log.error("Delayed execution has failed.", exceptionFactory.newException(delayed.cause()));
                 // TODO: May we should call handler with failed state now.
                 return;
             }
@@ -1005,7 +949,7 @@ public class RedisQues extends AbstractVerticle {
                     }
                 } else {
                     log.info("RedisQues QUEUE_ERROR: Consumer failed {} queue: {}",
-                            uid, queue, new Exception(reply.cause()));
+                            uid, queue, exceptionFactory.newException(reply.cause()));
                     success = Boolean.FALSE;
                 }
 
@@ -1094,55 +1038,45 @@ public class RedisQues extends AbstractVerticle {
      * This uses a sorted set of queue names scored by last update timestamp.
      */
     private Future<Void> checkQueues() {
-        final var ctx = new Object() {
-            final Promise<Void> checkQueuesResult = Promise.promise();
-            long limit;
-            RedisAPI redisAPI;
-            AtomicInteger counter;
-            Iterator<Response> iter;
-        };
-        Future.<Void>succeededFuture().<RedisAPI>compose((Void v) -> {
-            log.debug("Checking queues timestamps");
-            // List all queues that look inactive (i.e. that have not been updated since 3 periods).
-            ctx.limit = currentTimeMillis() - 3L * configurationProvider.configuration().getRefreshPeriod() * 1000;
-            return redisProvider.redis();
-        }).<Response>compose((RedisAPI redisAPI) -> {
-            ctx.redisAPI = redisAPI;
-            var p = Promise.<Response>promise();
-            redisAPI.zrangebyscore(Arrays.asList(queuesKey, "-inf", String.valueOf(ctx.limit)), p);
-            return p.future();
-        }).<Void>compose((Response queues) -> {
-            assert ctx.counter == null;
-            assert ctx.iter == null;
-            ctx.counter = new AtomicInteger(queues.size());
-            ctx.iter = queues.iterator();
-            log.trace("RedisQues update queues: {}", ctx.counter);
-            var p = Promise.<Void>promise();
-            upperBoundParallel.request(checkQueueRequestsQuota, null, new UpperBoundParallel.Mentor<Void>() {
-                @Override public boolean runOneMore(BiConsumer<Throwable, Void> onDone, Void ctx_) {
-                    if (ctx.iter.hasNext()) {
-                        var queueObject = ctx.iter.next();
+        final Promise<Void> result = Promise.promise();
+        log.debug("Checking queues timestamps");
+        // List all queues that look inactive (i.e. that have not been updated since 3 periods).
+        final long limit = System.currentTimeMillis() - 3L * configurationProvider.configuration().getRefreshPeriod() * 1000;
+        redisProvider.redis().onSuccess(redisAPI -> redisAPI.zrangebyscore(Arrays.asList(queuesKey, "-inf", String.valueOf(limit)), answer -> {
+                    Response queues = answer.result();
+                    if (answer.failed() || queues == null) {
+                        log.error("RedisQues is unable to get list of queues", answer.cause());
+                        result.complete();
+                        return;
+                    }
+                    final AtomicInteger counter = new AtomicInteger(queues.size());
+                    log.trace("RedisQues update queues: {}", counter);
+                    final List<Future> futureList = new ArrayList<>(queues.size());
+                    for (Response queueObject : queues) {
+                        final Promise<Void> promise = Promise.promise();
+                        futureList.add(promise.future());
                         // Check if the inactive queue is not empty (i.e. the key exists)
                         final String queueName = queueObject.toString();
                         String key = queuesPrefix + queueName;
                         log.trace("RedisQues update queue: {}", key);
+
                         Handler<Void> refreshRegHandler = event -> {
                             // Make sure its TTL is correctly set (replaces the previous orphan detection mechanism).
                             refreshRegistration(queueName, refreshRegistrationEvent -> {
                                 if( refreshRegistrationEvent.failed() )
-                                    log.warn("TODO_V2kCANpoAgAqHwIA3TIC error handling", refreshRegistrationEvent.cause());
+                                    log.warn("TODO error handling", new Exception(refreshRegistrationEvent.cause()));
                                 // And trigger its consumer.
                                 notifyConsumer(queueName).onComplete(notifyConsumerEvent -> {
                                     if( notifyConsumerEvent.failed() )
-                                        log.warn("TODO_3WkCACRTAgDbdwIAAEwC error handling", notifyConsumerEvent.cause());
-                                    onDone.accept(null, null);
+                                        log.warn("TODO error handling", new Exception(notifyConsumerEvent.cause()));
+                                    promise.complete();
                                 });
                             });
                         };
-                        ctx.redisAPI.exists(Collections.singletonList(key), event -> {
+                        redisAPI.exists(Collections.singletonList(key), event -> {
                             if (event.failed() || event.result() == null) {
                                 log.error("RedisQues is unable to check existence of queue " + queueName, event.cause());
-                                onDone.accept(null, null);
+                                promise.complete();
                                 return;
                             }
                             if (event.result().toLong() == 1) {
@@ -1154,10 +1088,10 @@ public class RedisQues extends AbstractVerticle {
                                         // We should return here. See: "https://softwareengineering.stackexchange.com/a/190535"
                                     }
                                     // Ensure we clean the old queues after having updated all timestamps
-                                    if (ctx.counter.decrementAndGet() == 0) {
-                                        removeOldQueues(ctx.limit).onComplete(removeOldQueuesEvent -> {
+                                    if (counter.decrementAndGet() == 0) {
+                                        removeOldQueues(limit).onComplete(removeOldQueuesEvent -> {
                                             if (removeOldQueuesEvent.failed())
-                                                log.warn("TODO_i2kCAChDAgDrbAIAIWcC error handling", removeOldQueuesEvent.cause());
+                                                log.warn("TODO error handling", exceptionFactory.newException(removeOldQueuesEvent.cause()));
                                             refreshRegHandler.handle(null);
                                         });
                                     } else {
@@ -1175,42 +1109,34 @@ public class RedisQues extends AbstractVerticle {
                                         return dequeueStatistic;
                                     });
                                 }
-                                if (ctx.counter.decrementAndGet() == 0) {
-                                    removeOldQueues(ctx.limit).onComplete(removeOldQueuesEvent -> {
+                                if (counter.decrementAndGet() == 0) {
+                                    removeOldQueues(limit).onComplete(removeOldQueuesEvent -> {
                                         if( removeOldQueuesEvent.failed() )
-                                            log.warn("TODO_aGoCAOtOAgAnbQIA4zQC error handling", removeOldQueuesEvent.cause());
-                                        queueStatisticsCollector.resetQueueFailureStatistics(queueName, onDone);
+                                            log.warn("TODO error handling", exceptionFactory.newException(removeOldQueuesEvent.cause()));
+                                        queueStatisticsCollector.resetQueueFailureStatistics(queueName, (ex, v) -> {
+                                            if (ex != null) promise.fail(ex);
+                                            else promise.complete();
+                                        });
                                     });
                                 } else {
-                                    queueStatisticsCollector.resetQueueFailureStatistics(queueName, onDone);
+                                    queueStatisticsCollector.resetQueueFailureStatistics(queueName, (ex, v) -> {
+                                        if (ex != null) promise.fail(ex);
+                                        else promise.complete();
+                                    });
                                 }
                             }
                         });
                     }
-                    return ctx.iter.hasNext();
-                }
-                @Override public boolean onError(Throwable ex, Void ctx_) {
-                    log.warn("TODO_LWoCABp8AgAiIQIAlC4C error handling", ex);
-                    return true; // true, keep going with other queues.
-                }
-                @Override public void onDone(Void ctx_) {
-                    // No longer used, so reduce GC graph traversal effort.
-                    ctx.redisAPI = null;
-                    ctx.counter = null;
-                    ctx.iter = null;
-                    // Mark this composition step as completed.
-                    p.complete();
-                }
-            });
-            return p.future();
-        }).<Void>compose((Void v) -> {
-            ctx.checkQueuesResult.complete();
-            return Future.succeededFuture();
-        }).onFailure(ex -> {
-            log.debug("Redis: Failed to checkQueues", ex);
-            ctx.checkQueuesResult.fail(ex);
-        });
-        return ctx.checkQueuesResult.future();
+                    CompositeFuture.all(futureList).onComplete(ev1 -> {
+                        if( ev1.failed() ) log.warn("Cannot happen", exceptionFactory.newException(ev1.cause()));
+                        result.complete();
+                    });
+                }))
+                .onFailure(throwable -> {
+                    log.warn("Redis: Failed to checkQueues", exceptionFactory.newException(throwable));
+                    result.complete();
+                });
+        return result.future();
     }
 
     /**
@@ -1224,7 +1150,7 @@ public class RedisQues extends AbstractVerticle {
         redisProvider.redis()
                 .onSuccess(redisAPI -> {
                     redisAPI.zremrangebyscore(queuesKey, "-inf", String.valueOf(limit), event -> {
-                        if( event.failed() ) log.warn("TODO_92oCAP5SAgCcOgIAMW8C error handling", event.cause());
+                        if (event.failed()) log.warn("TODO error handling", exceptionFactory.newException(event.cause()));
                         promise.complete();
                     });
                 })
