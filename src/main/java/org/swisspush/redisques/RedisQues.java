@@ -20,6 +20,7 @@ import io.vertx.redis.client.Response;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.swisspush.redisques.action.QueueAction;
+import org.swisspush.redisques.exception.ExceptionFactory;
 import org.swisspush.redisques.exception.NoStacktraceException;
 import org.swisspush.redisques.handler.RedisquesHttpRequestHandler;
 import org.swisspush.redisques.performance.UpperBoundParallel;
@@ -56,6 +57,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
 
 import static java.lang.System.currentTimeMillis;
+import static org.swisspush.redisques.exception.ExceptionFactory.newThriftyExceptionFactory;
 import static org.swisspush.redisques.util.RedisquesAPI.ERROR;
 import static org.swisspush.redisques.util.RedisquesAPI.MESSAGE;
 import static org.swisspush.redisques.util.RedisquesAPI.OK;
@@ -95,6 +97,7 @@ public class RedisQues extends AbstractVerticle {
         private MemoryUsageProvider memoryUsageProvider;
         private RedisquesConfigurationProvider configurationProvider;
         private RedisProvider redisProvider;
+        private ExceptionFactory exceptionFactory;
         private Semaphore redisMonitoringReqQuota;
         private Semaphore checkQueueRequestsQuota;
         private Semaphore queueStatsRequestQuota;
@@ -116,6 +119,11 @@ public class RedisQues extends AbstractVerticle {
 
         public RedisQuesBuilder withRedisProvider(RedisProvider redisProvider) {
             this.redisProvider = redisProvider;
+            return this;
+        }
+
+        public RedisQuesBuilder withExceptionFactory(ExceptionFactory exceptionFactory) {
+            this.exceptionFactory = exceptionFactory;
             return this;
         }
 
@@ -157,6 +165,9 @@ public class RedisQues extends AbstractVerticle {
         }
 
         public RedisQues build() {
+            if (exceptionFactory == null) {
+                exceptionFactory = newThriftyExceptionFactory();
+            }
             if (redisMonitoringReqQuota == null) {
                 redisMonitoringReqQuota = new Semaphore(Integer.MAX_VALUE);
                 log.warn("No redis request limit provided. Fallback to legacy behavior of {}.", Integer.MAX_VALUE);
@@ -173,7 +184,7 @@ public class RedisQues extends AbstractVerticle {
                 getQueuesItemsCountRedisRequestQuota = new Semaphore(Integer.MAX_VALUE);
                 log.warn("No redis getQueueItemsCount quota provided. Fallback to legacy behavior of {}.", Integer.MAX_VALUE);
             }
-            return new RedisQues(memoryUsageProvider, configurationProvider, redisProvider,
+            return new RedisQues(memoryUsageProvider, configurationProvider, redisProvider, exceptionFactory,
                     redisMonitoringReqQuota, checkQueueRequestsQuota, queueStatsRequestQuota,
                     getQueuesItemsCountRedisRequestQuota);
         }
@@ -225,6 +236,7 @@ public class RedisQues extends AbstractVerticle {
     private Map<String, DequeueStatistic> dequeueStatistic = new ConcurrentHashMap<>();
     private boolean dequeueStatisticEnabled = false;
     private PeriodicSkipScheduler periodicSkipScheduler;
+    private final ExceptionFactory exceptionFactory;
     private final Semaphore redisMonitoringReqQuota;
     private final Semaphore checkQueueRequestsQuota;
     private final Semaphore queueStatsRequestQuota;
@@ -232,6 +244,7 @@ public class RedisQues extends AbstractVerticle {
 
     public RedisQues() {
         log.warn("Fallback to legacy behavior and allow up to {} simultaneous requests to redis", Integer.MAX_VALUE);
+        this.exceptionFactory = newThriftyExceptionFactory();
         this.redisMonitoringReqQuota = new Semaphore(Integer.MAX_VALUE);
         this.checkQueueRequestsQuota = new Semaphore(Integer.MAX_VALUE);
         this.queueStatsRequestQuota = new Semaphore(Integer.MAX_VALUE);
@@ -242,6 +255,7 @@ public class RedisQues extends AbstractVerticle {
         MemoryUsageProvider memoryUsageProvider,
         RedisquesConfigurationProvider configurationProvider,
         RedisProvider redisProvider,
+        ExceptionFactory exceptionFactory,
         Semaphore redisMonitoringReqQuota,
         Semaphore checkQueueRequestsQuota,
         Semaphore queueStatsRequestQuota,
@@ -250,6 +264,7 @@ public class RedisQues extends AbstractVerticle {
         this.memoryUsageProvider = memoryUsageProvider;
         this.configurationProvider = configurationProvider;
         this.redisProvider = redisProvider;
+        this.exceptionFactory = exceptionFactory;
         this.redisMonitoringReqQuota = redisMonitoringReqQuota;
         this.checkQueueRequestsQuota = checkQueueRequestsQuota;
         this.queueStatsRequestQuota = queueStatsRequestQuota;
@@ -371,7 +386,7 @@ public class RedisQues extends AbstractVerticle {
         assert getQueuesItemsCountRedisRequestQuota != null;
         queueActionFactory = new QueueActionFactory(redisProvider, vertx, log,
                 queuesKey, queuesPrefix, consumersPrefix, locksKey, queueStatisticsCollector, memoryUsageProvider,
-                configurationProvider, getQueuesItemsCountRedisRequestQuota);
+                configurationProvider, exceptionFactory, getQueuesItemsCountRedisRequestQuota);
 
         queueActions.put(addQueueItem, queueActionFactory.buildQueueAction(addQueueItem));
         queueActions.put(deleteQueueItem, queueActionFactory.buildQueueAction(deleteQueueItem));
@@ -446,7 +461,8 @@ public class RedisQues extends AbstractVerticle {
             final AtomicBoolean isRunning = new AtomicBoolean();
             Iterator<Map.Entry<String, DequeueStatistic>> iter;
             long startEpochMs;
-            int i, size;
+            AtomicInteger i = new AtomicInteger();
+            int size;
             public void run() {
                 if (!isRunning.compareAndSet(false, true)) {
                     log.warn("Previous publish run still in progress at idx {} of {} since {}ms",
@@ -467,7 +483,7 @@ public class RedisQues extends AbstractVerticle {
                         }
                     });
 
-                    i = 0;
+                    i.set(0);
                     startEpochMs = currentTimeMillis();
                     if (size > 5_000) log.warn("Going to report {} dequeue statistics towards collector", size);
                     else if (size > 500) log.info("Going to report {} dequeue statistics towards collector", size);

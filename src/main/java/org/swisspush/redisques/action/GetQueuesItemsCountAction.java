@@ -4,6 +4,7 @@ import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonObject;
 import org.slf4j.Logger;
+import org.swisspush.redisques.exception.ExceptionFactory;
 import org.swisspush.redisques.handler.GetQueuesItemsCountHandler;
 import org.swisspush.redisques.util.*;
 
@@ -19,6 +20,7 @@ import static org.swisspush.redisques.util.RedisquesAPI.*;
  */
 public class GetQueuesItemsCountAction extends AbstractQueueAction {
 
+    private final ExceptionFactory exceptionFactory;
     private final Semaphore redisRequestQuota;
 
     public GetQueuesItemsCountAction(
@@ -30,12 +32,14 @@ public class GetQueuesItemsCountAction extends AbstractQueueAction {
             String consumersPrefix,
             String locksKey,
             List<QueueConfiguration> queueConfigurations,
+            ExceptionFactory exceptionFactory,
             Semaphore redisRequestQuota,
             QueueStatisticsCollector queueStatisticsCollector,
             Logger log
     ) {
         super(vertx, redisProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey, queueConfigurations,
                 queueStatisticsCollector, log);
+        this.exceptionFactory = exceptionFactory;
         this.redisRequestQuota = redisRequestQuota;
     }
 
@@ -49,7 +53,7 @@ public class GetQueuesItemsCountAction extends AbstractQueueAction {
             redisProvider.redis().onSuccess(redisAPI -> redisAPI.zrangebyscore(List.of(queuesKey,
                                     String.valueOf(getMaxAgeTimestamp()), "+inf"),
                             new GetQueuesItemsCountHandler(vertx, event, filterPattern.getOk(),
-                                    queuesPrefix, redisProvider, redisRequestQuota)))
+                                    queuesPrefix, redisProvider, exceptionFactory, redisRequestQuota)))
                     .onFailure(ex -> replyErrorMessageHandler(event).handle(ex));
         }
     }

@@ -16,11 +16,14 @@ import io.vertx.redis.client.Request;
 import io.vertx.redis.client.Response;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.swisspush.redisques.action.GetQueuesItemsCountAction;
+import org.swisspush.redisques.exception.ExceptionFactory;
 import org.swisspush.redisques.exception.NoStackReplyException;
 import org.swisspush.redisques.exception.NoStacktraceException;
 import org.swisspush.redisques.performance.UpperBoundParallel;
 import org.swisspush.redisques.util.HandlerUtil;
 import org.swisspush.redisques.util.RedisProvider;
+import org.swisspush.redisques.util.RedisquesAPI.QueueOperation;
 
 import java.util.Iterator;
 import java.util.List;
@@ -47,6 +50,7 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
     private final String queuesPrefix;
     private final RedisProvider redisProvider;
     private final UpperBoundParallel upperBoundParallel;
+    private final ExceptionFactory exceptionFactory;
     private final Semaphore redisRequestQuota;
 
     public GetQueuesItemsCountHandler(
@@ -55,6 +59,7 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
             Optional<Pattern> filterPattern,
             String queuesPrefix,
             RedisProvider redisProvider,
+            ExceptionFactory exceptionFactory,
             Semaphore redisRequestQuota
     ) {
         this.vertx = vertx;
@@ -63,6 +68,7 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
         this.queuesPrefix = queuesPrefix;
         this.redisProvider = redisProvider;
         this.upperBoundParallel = new UpperBoundParallel(vertx);
+        this.exceptionFactory = exceptionFactory;
         this.redisRequestQuota = redisRequestQuota;
     }
 
@@ -78,7 +84,7 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
             Iterator<String> iter;
             List<String> queues = HandlerUtil.filterByPattern(handleQueues.result(), filterPattern);
             int iNumberResult;
-            int[] queueLengths; /*TODO consider using primitive type*/
+            int[] queueLengths;
         };
         if (ctx.queues.isEmpty()) {
             log.debug("Queue count evaluation with empty queues");
@@ -86,7 +92,8 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
             return;
         }
         if (redisRequestQuota.availablePermits() <= 0) {
-            event.reply(new NoStackReplyException(ReplyFailure.RECIPIENT_FAILURE, 507, "Server too busy. Rejecting this GetQueuesItemsCount request"));
+            event.reply(exceptionFactory.newReplyException(ReplyFailure.RECIPIENT_FAILURE, 429,
+                    "Too many simultaneous '" + GetQueuesItemsCountHandler.class.getSimpleName() + "' requests in progress"));
             return;
         }
         redisProvider.connection().compose((Redis redis_) -> {

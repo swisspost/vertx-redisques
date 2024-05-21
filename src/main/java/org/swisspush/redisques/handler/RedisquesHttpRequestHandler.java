@@ -603,8 +603,9 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         for (Throwable cause = ex.getCause(); cause != null; cause = cause.getCause()) {
             if (!(cause instanceof ReplyException)) continue;
             ReplyException replyException = (ReplyException) cause;
-            if (replyException.failureCode() == StatusCode.INSUFFICIENT_STORAGE.getStatusCode()) {
-                return StatusCode.INSUFFICIENT_STORAGE;
+            int errCode = replyException.failureCode();
+            if (errCode == StatusCode.TOO_MANY_REQUESTS.getStatusCode()) {
+                return StatusCode.TOO_MANY_REQUESTS;
             }
         }
         return defaultValue;
