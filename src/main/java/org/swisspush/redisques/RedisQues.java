@@ -187,8 +187,8 @@ public class RedisQues extends AbstractVerticle {
     private final Semaphore redisMonitoringReqLimit;
 
     public RedisQues() {
-        log.warn("Fallback to legacy behavior and allow up to {} simultaneous requests to redis", Integer.MAX_VALUE);
         this.exceptionFactory = newThriftyExceptionFactory();
+        log.warn("Fallback to legacy behavior and allow up to {} simultaneous requests to redis", Integer.MAX_VALUE);
         this.redisMonitoringReqLimit = new Semaphore(Integer.MAX_VALUE);
     }
 
