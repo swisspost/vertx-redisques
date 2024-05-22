@@ -1,6 +1,5 @@
 package org.swisspush.redisques.util;
 
-import io.vertx.core.CompositeFuture;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
@@ -17,6 +16,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.swisspush.redisques.performance.UpperBoundParallel;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -27,7 +27,6 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
-import java.util.stream.Collectors;
 
 import static java.lang.System.currentTimeMillis;
 import static org.swisspush.redisques.util.RedisquesAPI.MONITOR_QUEUE_NAME;
@@ -495,6 +494,27 @@ public class QueueStatisticsCollector {
         return promise.future();
     }
 
+    class Task {
+        private final String queueName;
+        private final RequestCtx ctx;
+        Task(RequestCtx ctx, String queueName) {
+            this.queueName = queueName;
+            this.ctx = ctx;
+        }
+        Future<NumberType> execute() {
+            // switch to a worker thread
+            return vertx.executeBlocking(promise -> {
+                ctx.conn.send(Request.cmd(Command.LLEN, queuePrefix + queueName)).onComplete(event -> {
+                    if (event.failed()){
+                        promise.fail(event.cause());
+                        return;
+                    }
+                    promise.complete((NumberType) event.result());
+                });
+            });
+        }
+    }
+
     /** <p>Query queue lengths.</p> */
     Future<Void> step2(RequestCtx ctx) {
         assert ctx.conn != null;
@@ -508,10 +528,25 @@ public class QueueStatisticsCollector {
                 log.debug(fmt1, numQueues);
             }
             long begRedisRequestsEpochMs = currentTimeMillis();
-            List<Future> responses = ctx.queueNames.stream()
-                    .map(queue -> ctx.conn.send(Request.cmd(Command.LLEN, queuePrefix + queue)))
-                    .collect(Collectors.toList());
-            CompositeFuture.all(responses).onComplete( ev -> {
+
+            List<Task> taskList = new ArrayList<>();
+
+            ctx.queueNames.forEach(queueName -> taskList.add(new Task(ctx, queueName)));
+
+            Future<List<NumberType>> startFuture = Future.succeededFuture(new ArrayList<>());
+            // chain the futures sequentially to execute tasks
+            Future<List<NumberType>> resultFuture = taskList.stream()
+                    .reduce(startFuture, (future, task) -> future.compose(previousResults -> {
+                        // perform asynchronous task
+                        return task.execute().compose(taskResult -> {
+                            // append task result to previous results
+                            previousResults.add(taskResult);
+                            return Future.succeededFuture(previousResults);
+                        });
+                    }),  (a,b) -> Future.succeededFuture());
+
+
+            resultFuture.onComplete( ev -> {
                 long durRedisRequestsMs = currentTimeMillis() - begRedisRequestsEpochMs;
                 String fmt2 = "All those {} redis requests took {}ms";
                 if (durRedisRequestsMs > 3000) {
@@ -523,7 +558,7 @@ public class QueueStatisticsCollector {
                     executeBlockingPromise.fail(new Exception("Unexpected queue length result", ev.cause()));
                     return;
                 }
-                List<NumberType> queueLengthList = ev.result().list();
+                List<NumberType> queueLengthList = ev.result();
                 if (queueLengthList == null) {
                     executeBlockingPromise.fail("Unexpected queue length result: null");
                     return;
