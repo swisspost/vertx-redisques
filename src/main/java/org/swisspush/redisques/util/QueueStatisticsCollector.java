@@ -154,7 +154,7 @@ public class QueueStatisticsCollector {
             // cleanup as well on Redis itself as we would like to do redis operations
             // only if necessary of course.
             updateStatisticsInRedis(queueName, onDone);
-        }else{
+        } else {
             vertx.runOnContext(nonsense -> onDone.accept(null, null));
         }
     }
@@ -456,7 +456,6 @@ public class QueueStatisticsCollector {
      * registered). Therefore this method must be used with care and not be called too often!
      *
      * @param queues The queues for which we are interested in the statistics
-     *
      * @return A Future
      */
 
@@ -479,7 +478,9 @@ public class QueueStatisticsCollector {
         return promise.future();
     }
 
-    /** <p>init redis connection.</p> */
+    /**
+     * <p>init redis connection.</p>
+     */
     Future<Void> step1(RequestCtx ctx) {
         final Promise<Void> promise = Promise.promise();
         redisProvider.connection()
@@ -494,18 +495,20 @@ public class QueueStatisticsCollector {
         return promise.future();
     }
 
-    class Task {
+    class WorkerThreadTask {
         private final String queueName;
         private final RequestCtx ctx;
-        Task(RequestCtx ctx, String queueName) {
+
+        WorkerThreadTask(RequestCtx ctx, String queueName) {
             this.queueName = queueName;
             this.ctx = ctx;
         }
+
         Future<NumberType> execute() {
             // switch to a worker thread
             return vertx.executeBlocking(promise -> {
                 ctx.conn.send(Request.cmd(Command.LLEN, queuePrefix + queueName)).onComplete(event -> {
-                    if (event.failed()){
+                    if (event.failed()) {
                         promise.fail(event.cause());
                         return;
                     }
@@ -520,7 +523,7 @@ public class QueueStatisticsCollector {
         assert ctx.conn != null;
         int numQueues = ctx.queueNames.size();
 
-        return vertx.executeBlocking(executeBlockingPromise ->{
+        return vertx.executeBlocking(executeBlockingPromise -> {
             String fmt1 = "About to perform {} requests to redis just for monitoring";
             if (numQueues > 256) {
                 log.warn(fmt1, numQueues);
@@ -529,24 +532,24 @@ public class QueueStatisticsCollector {
             }
             long begRedisRequestsEpochMs = currentTimeMillis();
 
-            List<Task> taskList = new ArrayList<>();
+            List<WorkerThreadTask> workerThreadTaskList = new ArrayList<>();
 
-            ctx.queueNames.forEach(queueName -> taskList.add(new Task(ctx, queueName)));
+            ctx.queueNames.forEach(queueName -> workerThreadTaskList.add(new WorkerThreadTask(ctx, queueName)));
 
             Future<List<NumberType>> startFuture = Future.succeededFuture(new ArrayList<>());
             // chain the futures sequentially to execute tasks
-            Future<List<NumberType>> resultFuture = taskList.stream()
-                    .reduce(startFuture, (future, task) -> future.compose(previousResults -> {
+            Future<List<NumberType>> resultFuture = workerThreadTaskList.stream()
+                    .reduce(startFuture, (future, workerThreadTask) -> future.compose(previousResults -> {
                         // perform asynchronous task
-                        return task.execute().compose(taskResult -> {
+                        return workerThreadTask.execute().compose(taskResult -> {
                             // append task result to previous results
                             previousResults.add(taskResult);
                             return Future.succeededFuture(previousResults);
                         });
-                    }),  (a,b) -> Future.succeededFuture());
+                    }), (a, b) -> Future.succeededFuture());
 
 
-            resultFuture.onComplete( ev -> {
+            resultFuture.onComplete(ev -> {
                 long durRedisRequestsMs = currentTimeMillis() - begRedisRequestsEpochMs;
                 String fmt2 = "All those {} redis requests took {}ms";
                 if (durRedisRequestsMs > 3000) {
