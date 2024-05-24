@@ -8,9 +8,7 @@ import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.redis.client.Command;
-import io.vertx.redis.client.Redis;
 import io.vertx.redis.client.Request;
-import io.vertx.redis.client.impl.RequestImpl;
 import io.vertx.redis.client.impl.types.NumberType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,6 +18,7 @@ import java.util.Optional;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.util.HandlerUtil;
 import org.swisspush.redisques.util.RedisProvider;
 import org.swisspush.redisques.util.RedisquesAPI;
@@ -34,17 +33,20 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
     private final Optional<Pattern> filterPattern;
     private final String queuesPrefix;
     private final RedisProvider redisProvider;
+    private final RedisQuesExceptionFactory exceptionFactory;
 
     public GetQueuesItemsCountHandler(
             Message<JsonObject> event,
             Optional<Pattern> filterPattern,
             String queuesPrefix,
-            RedisProvider redisProvider
+            RedisProvider redisProvider,
+            RedisQuesExceptionFactory exceptionFactory
     ) {
         this.event = event;
         this.filterPattern = filterPattern;
         this.queuesPrefix = queuesPrefix;
         this.redisProvider = redisProvider;
+        this.exceptionFactory = exceptionFactory;
     }
 
     @Override
@@ -63,13 +65,13 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
                         .map(queue -> conn.send(Request.cmd(Command.LLEN, queuesPrefix + queue)))
                         .collect(Collectors.toList());
                 CompositeFuture.all(responses).onFailure(ex -> {
-                    log.error("Unexpected queue length result", new Exception(ex));
+                    log.error("Unexpected queue length result", exceptionFactory.newException(ex));
                     event.reply(new JsonObject().put(STATUS, ERROR));
                 }).onSuccess(compositeFuture -> {
                     List<NumberType> queueLengthList = compositeFuture.list();
                     if (queueLengthList == null) {
                         log.error("Unexpected queue length result null",
-                                new Exception(compositeFuture.cause()));
+                                exceptionFactory.newException(compositeFuture.cause()));
                         event.reply(new JsonObject().put(STATUS, ERROR));
                         return;
                     }
@@ -90,12 +92,12 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
                             .put(QUEUES, result));
                 });
             }).onFailure(ex -> {
-                log.warn("Redis: Failed to get queue length.", new Exception(ex));
+                log.warn("Redis: Failed to get queue length.", exceptionFactory.newException(ex));
                 event.reply(new JsonObject().put(STATUS, ERROR));
             });
 
         } else {
-            log.warn("Concealed error", new Exception(handleQueues.cause()));
+            log.warn("Concealed error", exceptionFactory.newException(handleQueues.cause()));
             event.reply(new JsonObject().put(STATUS, ERROR));
         }
     }

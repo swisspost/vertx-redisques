@@ -15,6 +15,7 @@ import io.vertx.redis.client.Response;
 import io.vertx.redis.client.impl.types.NumberType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.performance.UpperBoundParallel;
 
 import java.util.HashMap;
@@ -73,6 +74,7 @@ public class QueueStatisticsCollector {
     private final String queuePrefix;
     private final Vertx vertx;
     private final Semaphore redisRequestLimit;
+    private final RedisQuesExceptionFactory exceptionFactory;
     private final UpperBoundParallel upperBoundParallel;
 
     public QueueStatisticsCollector(
@@ -80,12 +82,14 @@ public class QueueStatisticsCollector {
         String queuePrefix,
         Vertx vertx,
         Semaphore redisRequestLimit,
+        RedisQuesExceptionFactory exceptionFactory,
         int speedIntervalSec
     ) {
         this.redisProvider = redisProvider;
         this.queuePrefix = queuePrefix;
         this.vertx = vertx;
         this.redisRequestLimit = redisRequestLimit;
+        this.exceptionFactory = exceptionFactory;
         this.upperBoundParallel = new UpperBoundParallel(vertx);
         speedStatisticsScheduler(speedIntervalSec);
     }
@@ -357,25 +361,18 @@ public class QueueStatisticsCollector {
                 redisProvider.redis()
                         .onSuccess(redisAPI -> {
                             redisAPI.hset(List.of(STATSKEY, queueName, obj.toString()), ev -> {
-                                if (ev.failed()) {
-                                    onDone.accept(new RuntimeException("stack", ev.cause()), null);
-                                    return;
-                                }
-                                onDone.accept(null, null);
+                                onDone.accept(ev.failed() ? exceptionFactory.newException("redisAPI.hset() failed", ev.cause()) : null, null);
                             });
                         })
-                        .onFailure(ex -> onDone.accept(new RuntimeException("stack", ex), null));
+                        .onFailure(ex -> onDone.accept(exceptionFactory.newException("redisProvider.redis() failed", ex), null));
             } else {
                 redisProvider.redis()
                         .onSuccess(redisAPI -> {
                             redisAPI.hdel(List.of(STATSKEY, queueName), ev -> {
-                                if (ev.failed()) {
-                                    onDone.accept(new RuntimeException("stack", ev.cause()), null);
-                                }
-                                onDone.accept(null, null);
+                                onDone.accept(ev.failed() ? exceptionFactory.newException("redisAPI.hdel() failed", ev.cause()) : null, null);
                             });
                         })
-                        .onFailure(ex -> onDone.accept(new RuntimeException("stack", ex), null));
+                        .onFailure(ex -> onDone.accept(exceptionFactory.newException("redisProvider.redis() failed", ex), null));
             }
         } catch (RuntimeException ex) {
             onDone.accept(ex, null);
