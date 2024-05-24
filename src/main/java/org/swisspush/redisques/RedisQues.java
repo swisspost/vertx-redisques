@@ -14,7 +14,6 @@ import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.redis.client.Command;
 import io.vertx.redis.client.Redis;
-import io.vertx.redis.client.Redis;
 import io.vertx.redis.client.RedisAPI;
 import io.vertx.redis.client.Request;
 import io.vertx.redis.client.Response;
@@ -22,8 +21,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.swisspush.redisques.action.QueueAction;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
-import org.swisspush.redisques.exception.ExceptionFactory;
-import org.swisspush.redisques.exception.NoStacktraceException;
 import org.swisspush.redisques.handler.RedisquesHttpRequestHandler;
 import org.swisspush.redisques.performance.UpperBoundParallel;
 import org.swisspush.redisques.scheduling.PeriodicSkipScheduler;
@@ -1173,19 +1170,22 @@ public class RedisQues extends AbstractVerticle {
                         Handler<Void> refreshRegHandler = event -> {
                             // Make sure its TTL is correctly set (replaces the previous orphan detection mechanism).
                             refreshRegistration(queueName, refreshRegistrationEvent -> {
-                                if( refreshRegistrationEvent.failed() )
-                                    log.warn("TODO_V2kCANpoAgAqHwIA3TIC error handling", refreshRegistrationEvent.cause());
+                                if (refreshRegistrationEvent.failed()) log.warn("TODO error handling",
+                                        exceptionFactory.newException("refreshRegistration(" + queueName + ") failed",
+                                        refreshRegistrationEvent.cause()));
                                 // And trigger its consumer.
                                 notifyConsumer(queueName).onComplete(notifyConsumerEvent -> {
-                                    if( notifyConsumerEvent.failed() )
-                                        log.warn("TODO_3WkCACRTAgDbdwIAAEwC error handling", notifyConsumerEvent.cause());
+                                    if (notifyConsumerEvent.failed()) log.warn("TODO error handling",
+                                            exceptionFactory.newException("notifyConsumer(" + queueName + ") failed",
+                                            notifyConsumerEvent.cause()));
                                     onDone.accept(null, null);
                                 });
                             });
                         };
                         ctx.redisAPI.exists(Collections.singletonList(key), event -> {
                             if (event.failed() || event.result() == null) {
-                                log.error("RedisQues is unable to check existence of queue " + queueName, event.cause());
+                                log.error("RedisQues is unable to check existence of queue " + queueName,
+                                    exceptionFactory.newException("redisAPI.exists(" + key + ") failed", event.cause()));
                                 onDone.accept(null, null);
                                 return;
                             }
@@ -1194,8 +1194,10 @@ public class RedisQues extends AbstractVerticle {
                                 // If not empty, update the queue timestamp to keep it in the sorted set.
                                 updateTimestamp(queueName, upTsResult -> {
                                     if (upTsResult.failed()) {
-                                        log.warn("Failed to update timestamps for queue '{}'", queueName, upTsResult.cause());
-                                        // We should return here. See: "https://softwareengineering.stackexchange.com/a/190535"
+                                        log.warn("Failed to update timestamps for queue '{}'", queueName,
+                                            exceptionFactory.newException("updateTimestamp(" + queueName + ") failed",
+                                            upTsResult.cause()));
+                                        return;
                                     }
                                     // Ensure we clean the old queues after having updated all timestamps
                                     if (ctx.counter.decrementAndGet() == 0) {

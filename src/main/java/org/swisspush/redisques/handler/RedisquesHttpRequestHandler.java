@@ -554,7 +554,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
                 RoutingContext ctx;
                 HttpServerResponse rsp;
                 Iterator<QueueStatsService.Queue> queueSrc;
-                JsonObject queueJson = new JsonObject(); // temporary
+                JsonObject queueJson = new JsonObject();
                 boolean isFirst = true;
                 void run(RoutingContext ctx_) {
                     ctx = ctx_;
