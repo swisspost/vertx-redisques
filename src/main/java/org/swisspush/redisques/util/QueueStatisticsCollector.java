@@ -15,6 +15,7 @@ import io.vertx.redis.client.Response;
 import io.vertx.redis.client.impl.types.NumberType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.exception.NoStacktraceException;
 import org.swisspush.redisques.performance.UpperBoundParallel;
 
@@ -73,6 +74,7 @@ public class QueueStatisticsCollector {
     private final RedisProvider redisProvider;
     private final String queuePrefix;
     private final Vertx vertx;
+    private final RedisQuesExceptionFactory exceptionFactory;
     private final Semaphore redisRequestQuota;
     private final UpperBoundParallel upperBoundParallel;
 
@@ -80,12 +82,14 @@ public class QueueStatisticsCollector {
         RedisProvider redisProvider,
         String queuePrefix,
         Vertx vertx,
+        RedisQuesExceptionFactory exceptionFactory,
         Semaphore redisRequestQuota,
         int speedIntervalSec
     ) {
         this.redisProvider = redisProvider;
         this.queuePrefix = queuePrefix;
         this.vertx = vertx;
+        this.exceptionFactory = exceptionFactory;
         this.redisRequestQuota = redisRequestQuota;
         this.upperBoundParallel = new UpperBoundParallel(vertx);
         speedStatisticsScheduler(speedIntervalSec);
@@ -362,18 +366,18 @@ public class QueueStatisticsCollector {
                 redisProvider.redis()
                         .onSuccess(redisAPI -> {
                             redisAPI.hset(List.of(STATSKEY, queueName, obj.toString()), ev -> {
-                                onDone.accept(ev.failed() ? new NoStacktraceException("TODO_Wn0CANwoAgAZDwIA20gC error handling", ev.cause()) : null, null);
+                                onDone.accept(ev.failed() ? exceptionFactory.newException("redisAPI.hset() failed", ev.cause()) : null, null);
                             });
                         })
-                        .onFailure(ex -> onDone.accept(new NoStacktraceException("TODO_H30CACQ6AgAUWwIAoCYC error handling", ex), null));
+                        .onFailure(ex -> onDone.accept(exceptionFactory.newException("redisProvider.redis() failed", ex), null));
             } else {
                 redisProvider.redis()
                         .onSuccess(redisAPI -> {
                             redisAPI.hdel(List.of(STATSKEY, queueName), ev -> {
-                                onDone.accept(ev.failed() ? new NoStacktraceException("TODO_Vn4CACQIAgDeLAIAUyEC error handling", ev.cause()) : null, null);
+                                onDone.accept(ev.failed() ? exceptionFactory.newException("redisAPI.hdel() failed", ev.cause()) : null, null);
                             });
                         })
-                        .onFailure(ex -> onDone.accept(new NoStacktraceException("TODO_Kn4CABJoAgBvaQIA7QQC error handling", ex), null));
+                        .onFailure(ex -> onDone.accept(exceptionFactory.newException("redisProvider.redis() failed", ex), null));
             }
         } catch (RuntimeException ex) {
             onDone.accept(ex, null);

@@ -21,6 +21,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.swisspush.redisques.QueueStatsService;
 import org.swisspush.redisques.QueueStatsService.GetQueueStatsMentor;
+import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
+import org.swisspush.redisques.util.DequeueStatistic;
 import org.swisspush.redisques.util.DequeueStatisticCollector;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 import org.swisspush.redisques.util.RedisquesAPI;
@@ -63,7 +65,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     private static final String EMPTY_QUEUES_PARAM = "emptyQueues";
     private static final String DELETED = "deleted";
 
-    /** @deprecated <a href="https://xkcd.com/1179/">about obsolete date formats</a> */
+    /** @deprecated <a href="https://imgs.xkcd.com/comics/iso_8601_2x.png">about obsolete date formats</a> */
     @Deprecated
     private static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("dd.MM.yyyy HH:mm:ss");
 
@@ -72,16 +74,21 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     private final boolean enableQueueNameDecoding;
     private final int queueSpeedIntervalSec;
     private final QueueStatisticsCollector queueStatisticsCollector;
+    private final RedisQuesExceptionFactory exceptionFactory;
     private final QueueStatsService queueStatsService;
     private final GetQueueStatsMentor<RoutingContext> queueStatsMentor = new MyQueueStatsMentor();
 
-    public static void init(Vertx vertx, RedisquesConfiguration modConfig, QueueStatisticsCollector queueStatisticsCollector,
-                            DequeueStatisticCollector dequeueStatisticCollector, Semaphore queueStatsRequestLimit) {
+    public static void init(
+        Vertx vertx, RedisquesConfiguration modConfig, QueueStatisticsCollector queueStatisticsCollector,
+        DequeueStatisticCollector dequeueStatisticCollector, RedisQuesExceptionFactory exceptionFactory,
+        Semaphore queueStatsRequestQuota
+    ) {
         log.info("Enabling http request handler: {}", modConfig.getHttpRequestHandlerEnabled());
         if (modConfig.getHttpRequestHandlerEnabled()) {
             if (modConfig.getHttpRequestHandlerPort() != null && modConfig.getHttpRequestHandlerUserHeader() != null) {
-                RedisquesHttpRequestHandler handler = new RedisquesHttpRequestHandler(vertx, modConfig,
-                        queueStatisticsCollector, dequeueStatisticCollector, queueStatsRequestLimit);
+                var handler = new RedisquesHttpRequestHandler(
+                        vertx, modConfig, queueStatisticsCollector, dequeueStatisticCollector,
+                        exceptionFactory, queueStatsRequestQuota);
                 // in Vert.x 2x 100-continues was activated per default, in vert.x 3x it is off per default.
                 HttpServerOptions options = new HttpServerOptions().setHandle100ContinueAutomatically(true);
                 vertx.createHttpServer(options).requestHandler(handler).listen(modConfig.getHttpRequestHandlerPort(), result -> {
@@ -110,8 +117,14 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         return Result.ok(false);
     }
 
-    private RedisquesHttpRequestHandler(Vertx vertx, RedisquesConfiguration modConfig, QueueStatisticsCollector queueStatisticsCollector,
-                                        DequeueStatisticCollector dequeueStatisticCollector, Semaphore queueStatsRequestLimit) {
+    private RedisquesHttpRequestHandler(
+        Vertx vertx,
+        RedisquesConfiguration modConfig,
+        QueueStatisticsCollector queueStatisticsCollector,
+        DequeueStatisticCollector dequeueStatisticCollector,
+        RedisQuesExceptionFactory exceptionFactory,
+        Semaphore queueStatsRequestQuota
+    ) {
         this.vertx = vertx;
         this.router = Router.router(vertx);
         this.eventBus = vertx.eventBus();
@@ -120,8 +133,10 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         this.enableQueueNameDecoding = modConfig.getEnableQueueNameDecoding();
         this.queueSpeedIntervalSec = modConfig.getQueueSpeedIntervalSec();
         this.queueStatisticsCollector = queueStatisticsCollector;
-        this.queueStatsService = new QueueStatsService(vertx, eventBus, redisquesAddress,
-                queueStatisticsCollector, dequeueStatisticCollector, queueStatsRequestLimit);
+        this.exceptionFactory = exceptionFactory;
+        this.queueStatsService = new QueueStatsService(
+                vertx, eventBus, redisquesAddress, queueStatisticsCollector, dequeueStatisticCollector,
+                exceptionFactory, queueStatsRequestQuota);
 
         final String prefix = modConfig.getHttpRequestHandlerPrefix();
 
@@ -590,11 +605,12 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         @Override
         public void onError(Throwable ex, RoutingContext ctx) {
             if (!ctx.response().headWritten()) {
-                log.debug("Failed to serve queue stats", ex);
+                log.debug("TODO error handling {}", ctx.request().uri(), exceptionFactory.newException(
+                    "Failed to serve queue stats", ex));
                 StatusCode rspCode = tryExtractStatusCode(ex, StatusCode.INTERNAL_SERVER_ERROR);
                 respondWith(rspCode, ex.getMessage(), ctx.request());
             } else {
-                log.warn("Response already written. MUST let it run into timeout now (error_qykCAJ8aAgCSfAIA1kMC): {}", ctx.request().uri(), ex);
+                log.warn("TODO error handling {}", ctx.request().uri(), exceptionFactory.newException(ex));
             }
         }
     }

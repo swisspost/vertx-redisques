@@ -1,11 +1,9 @@
 package org.swisspush.redisques.handler;
 
 import io.vertx.core.AsyncResult;
-import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
-import io.vertx.core.eventbus.EventBus;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.eventbus.ReplyFailure;
 import io.vertx.core.json.JsonArray;
@@ -16,14 +14,9 @@ import io.vertx.redis.client.Request;
 import io.vertx.redis.client.Response;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.swisspush.redisques.action.GetQueuesItemsCountAction;
-import org.swisspush.redisques.exception.ExceptionFactory;
-import org.swisspush.redisques.exception.NoStackReplyException;
-import org.swisspush.redisques.exception.NoStacktraceException;
 import org.swisspush.redisques.performance.UpperBoundParallel;
 import org.swisspush.redisques.util.HandlerUtil;
 import org.swisspush.redisques.util.RedisProvider;
-import org.swisspush.redisques.util.RedisquesAPI.QueueOperation;
 
 import java.util.Iterator;
 import java.util.List;
@@ -32,6 +25,8 @@ import java.util.concurrent.Semaphore;
 import java.util.function.BiConsumer;
 import java.util.regex.Pattern;
 
+import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
+
 import static java.lang.System.currentTimeMillis;
 import static org.swisspush.redisques.util.RedisquesAPI.ERROR;
 import static org.swisspush.redisques.util.RedisquesAPI.MONITOR_QUEUE_NAME;
@@ -39,6 +34,7 @@ import static org.swisspush.redisques.util.RedisquesAPI.MONITOR_QUEUE_SIZE;
 import static org.swisspush.redisques.util.RedisquesAPI.OK;
 import static org.swisspush.redisques.util.RedisquesAPI.QUEUES;
 import static org.swisspush.redisques.util.RedisquesAPI.STATUS;
+
 
 public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>> {
 
@@ -50,7 +46,7 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
     private final String queuesPrefix;
     private final RedisProvider redisProvider;
     private final UpperBoundParallel upperBoundParallel;
-    private final ExceptionFactory exceptionFactory;
+    private final RedisQuesExceptionFactory exceptionFactory;
     private final Semaphore redisRequestQuota;
 
     public GetQueuesItemsCountHandler(
@@ -59,7 +55,7 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
             Optional<Pattern> filterPattern,
             String queuesPrefix,
             RedisProvider redisProvider,
-            ExceptionFactory exceptionFactory,
+            RedisQuesExceptionFactory exceptionFactory,
             Semaphore redisRequestQuota
     ) {
         this.vertx = vertx;
@@ -75,11 +71,11 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
     @Override
     public void handle(AsyncResult<Response> handleQueues) {
         if (!handleQueues.succeeded()) {
-            log.warn("Concealed error", new Exception(handleQueues.cause()));
+            log.warn("Concealed error", exceptionFactory.newException(handleQueues.cause()));
             event.reply(new JsonObject().put(STATUS, ERROR));
             return;
         }
-        var ctx = new Object() {
+        var ctx = new Object(){
             Redis redis;
             Iterator<String> iter;
             List<String> queues = HandlerUtil.filterByPattern(handleQueues.result(), filterPattern);
@@ -96,26 +92,28 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
                     "Too many simultaneous '" + GetQueuesItemsCountHandler.class.getSimpleName() + "' requests in progress"));
             return;
         }
-        redisProvider.connection().compose((Redis redis_) -> {
+        redisProvider.connection().<Void>compose((Redis redis_) -> {
             ctx.redis = redis_;
             ctx.queueLengths = new int[ctx.queues.size()];
             ctx.iter = ctx.queues.iterator();
             var p = Promise.<Void>promise();
             upperBoundParallel.request(redisRequestQuota, null, new UpperBoundParallel.Mentor<Void>() {
                 @Override public boolean runOneMore(BiConsumer<Throwable, Void> onDone, Void unused) {
+                    /*TODO rename 'onDone' to 'onLlenDone' or similar*/
                     if (ctx.iter.hasNext()) {
                         String queue = ctx.iter.next();
                         int iNum = ctx.iNumberResult++;
                         ctx.redis.send(Request.cmd(Command.LLEN, queuesPrefix + queue)).onSuccess((Response rsp) -> {
                             ctx.queueLengths[iNum] = rsp.toInteger();
                             onDone.accept(null, null);
-                        }).onFailure(ex -> {
+                        }).onFailure((Throwable ex) -> {
                             onDone.accept(ex, null);
                         });
                     }
                     return ctx.iter.hasNext();
                 }
                 @Override public boolean onError(Throwable ex, Void ctx_) {
+                    /*TODO use exceptionFactory*/
                     log.error("Unexpected queue length result", new Exception(ex));
                     event.reply(new JsonObject().put(STATUS, ERROR));
                     return false;
@@ -125,11 +123,12 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
                 }
             });
             return p.future();
-        }).compose((Void v) -> {
+        }).<JsonObject>compose((Void v) -> {
             /*going to waste another threads time to produce those garbage objects*/
             return vertx.<JsonObject>executeBlocking((Promise<JsonObject> workerPromise) -> {
                 assert !Thread.currentThread().getName().toUpperCase().contains("EVENTLOOP");
                 long beginEpchMs = currentTimeMillis();
+
                 JsonArray result = new JsonArray();
                 for (int i = 0; i < ctx.queueLengths.length; ++i) {
                     String queueName = ctx.queues.get(i);
@@ -146,8 +145,8 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
         }).onSuccess((JsonObject json) -> {
             log.trace("call event.reply(json)");
             event.reply(json);
-        }).onFailure(ex -> {
-            log.warn("Redis: Failed to get queue length (error_c3gCAEFrAgChbAIAdhwC)", ex);
+        }).onFailure((Throwable ex) -> {
+            log.warn("Redis: Failed to get queue length.", exceptionFactory.newException(ex));
             event.reply(new JsonObject().put(STATUS, ERROR));
         });
     }

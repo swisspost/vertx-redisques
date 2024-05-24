@@ -4,7 +4,7 @@ import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonObject;
 import org.slf4j.Logger;
-import org.swisspush.redisques.exception.ExceptionFactory;
+import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.handler.GetQueuesItemsCountHandler;
 import org.swisspush.redisques.util.*;
 
@@ -20,7 +20,7 @@ import static org.swisspush.redisques.util.RedisquesAPI.*;
  */
 public class GetQueuesItemsCountAction extends AbstractQueueAction {
 
-    private final ExceptionFactory exceptionFactory;
+    private final RedisQuesExceptionFactory exceptionFactory;
     private final Semaphore redisRequestQuota;
 
     public GetQueuesItemsCountAction(
@@ -32,7 +32,7 @@ public class GetQueuesItemsCountAction extends AbstractQueueAction {
             String consumersPrefix,
             String locksKey,
             List<QueueConfiguration> queueConfigurations,
-            ExceptionFactory exceptionFactory,
+            RedisQuesExceptionFactory exceptionFactory,
             Semaphore redisRequestQuota,
             QueueStatisticsCollector queueStatisticsCollector,
             Logger log

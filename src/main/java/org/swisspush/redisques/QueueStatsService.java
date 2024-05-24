@@ -5,6 +5,7 @@ import io.vertx.core.eventbus.EventBus;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import org.slf4j.Logger;
+import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.exception.NoStacktraceException;
 import org.swisspush.redisques.util.DequeueStatistic;
 import org.swisspush.redisques.util.DequeueStatisticCollector;
@@ -48,21 +49,24 @@ public class QueueStatsService {
     private final String redisquesAddress;
     private final QueueStatisticsCollector queueStatisticsCollector;
     private final DequeueStatisticCollector dequeueStatisticCollector;
+    private final RedisQuesExceptionFactory exceptionFactory;
     private final Semaphore incomingRequestQuota;
 
     public QueueStatsService(
-            Vertx vertx,
-            EventBus eventBus,
-            String redisquesAddress,
-            QueueStatisticsCollector queueStatisticsCollector,
-            DequeueStatisticCollector dequeueStatisticCollector,
-            Semaphore incomingRequestQuota
+        Vertx vertx,
+        EventBus eventBus,
+        String redisquesAddress,
+        QueueStatisticsCollector queueStatisticsCollector,
+        DequeueStatisticCollector dequeueStatisticCollector,
+        RedisQuesExceptionFactory exceptionFactory,
+        Semaphore incomingRequestQuota
     ) {
         this.vertx = vertx;
         this.eventBus = eventBus;
         this.redisquesAddress = redisquesAddress;
         this.queueStatisticsCollector = queueStatisticsCollector;
         this.dequeueStatisticCollector = dequeueStatisticCollector;
+        this.exceptionFactory = exceptionFactory;
         this.incomingRequestQuota = incomingRequestQuota;
     }
 
@@ -114,13 +118,17 @@ public class QueueStatsService {
         JsonObject operation = buildGetQueuesItemsCountOperation(filter);
         eventBus.<JsonObject>request(redisquesAddress, operation, ev -> {
             if (ev.failed()) {
-                onDone.accept(new NoStacktraceException("error_QzkCACMbAgCgOwIA", ev.cause()), req);
+                Throwable ex = exceptionFactory.newException("eventBus.request()", ev.cause());
+                assert ex != null;
+                onDone.accept(ex, null);
                 return;
             }
             JsonObject body = ev.result().body();
             String status = body.getString(STATUS);
             if (!OK.equals(status)) {
-                onDone.accept(new NoStacktraceException("error_aXACAPcbAgBLGgIABnAC: " + status), null);
+                Throwable ex = exceptionFactory.newException("Unexpected status " + status);
+                assert ex != null;
+                onDone.accept(ex, null);
                 return;
             }
             JsonArray queuesJsonArr = body.getJsonArray(QUEUES);
