@@ -6,7 +6,6 @@ import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import org.slf4j.Logger;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
-import org.swisspush.redisques.exception.NoStacktraceException;
 import org.swisspush.redisques.util.DequeueStatistic;
 import org.swisspush.redisques.util.DequeueStatisticCollector;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
@@ -20,6 +19,7 @@ import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
 
+import static io.vertx.core.eventbus.ReplyFailure.RECIPIENT_FAILURE;
 import static java.lang.Long.compare;
 import static java.lang.System.currentTimeMillis;
 import static java.util.Collections.emptyList;
@@ -72,7 +72,8 @@ public class QueueStatsService {
 
     public <CTX> void getQueueStats(CTX mCtx, GetQueueStatsMentor<CTX> mentor) {
         if (!incomingRequestQuota.tryAcquire()) {
-            var ex = new NoStacktraceException("Server too busy to handle yet-another-queue-stats-request now (error_bG8CAJJ3AgCKMwIAPBUC)");
+            Throwable ex = exceptionFactory.newReplyException(RECIPIENT_FAILURE, 429,
+                    "Server too busy to handle yet-another-queue-stats-request now");
             vertx.runOnContext(v -> mentor.onError(ex, mCtx));
             return;
         }

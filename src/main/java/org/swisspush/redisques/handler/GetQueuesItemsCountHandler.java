@@ -98,23 +98,21 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
             ctx.iter = ctx.queues.iterator();
             var p = Promise.<Void>promise();
             upperBoundParallel.request(redisRequestQuota, null, new UpperBoundParallel.Mentor<Void>() {
-                @Override public boolean runOneMore(BiConsumer<Throwable, Void> onDone, Void unused) {
-                    /*TODO rename 'onDone' to 'onLlenDone' or similar*/
+                @Override public boolean runOneMore(BiConsumer<Throwable, Void> onLLenDone, Void unused) {
                     if (ctx.iter.hasNext()) {
                         String queue = ctx.iter.next();
                         int iNum = ctx.iNumberResult++;
                         ctx.redis.send(Request.cmd(Command.LLEN, queuesPrefix + queue)).onSuccess((Response rsp) -> {
                             ctx.queueLengths[iNum] = rsp.toInteger();
-                            onDone.accept(null, null);
+                            onLLenDone.accept(null, null);
                         }).onFailure((Throwable ex) -> {
-                            onDone.accept(ex, null);
+                            onLLenDone.accept(ex, null);
                         });
                     }
                     return ctx.iter.hasNext();
                 }
                 @Override public boolean onError(Throwable ex, Void ctx_) {
-                    /*TODO use exceptionFactory*/
-                    log.error("Unexpected queue length result", new Exception(ex));
+                    log.error("Unexpected queue length result", exceptionFactory.newException(ex));
                     event.reply(new JsonObject().put(STATUS, ERROR));
                     return false;
                 }
