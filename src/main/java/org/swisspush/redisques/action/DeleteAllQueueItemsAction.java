@@ -42,7 +42,9 @@ public class DeleteAllQueueItemsAction extends AbstractQueueAction {
                     // 1st: We don't, to keep backward compatibility
                     // 2nd: We don't, to may unlock below.
                 }
-                queueStatisticsCollector.resetQueueFailureStatistics(queue);
+                queueStatisticsCollector.resetQueueFailureStatistics(queue, (Throwable ex, Void v) -> {
+                    if (ex != null) log.warn("TODO_2958iouhj error handling", ex);
+                });
                 if (unlock) {
                     redisAPI.hdel(Arrays.asList(locksKey, queue), unlockReply -> {
                         if (unlockReply.failed()) {

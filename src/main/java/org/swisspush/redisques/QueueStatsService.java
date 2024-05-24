@@ -6,6 +6,7 @@ import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import org.slf4j.Logger;
+import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.util.DequeueStatistic;
 import org.swisspush.redisques.util.DequeueStatisticCollector;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
@@ -37,14 +38,22 @@ public class QueueStatsService {
     private final String redisquesAddress;
     private final QueueStatisticsCollector queueStatisticsCollector;
     private final DequeueStatisticCollector dequeueStatisticCollector;
+    private final RedisQuesExceptionFactory exceptionFactory;
 
-    public QueueStatsService(Vertx vertx, EventBus eventBus, String redisquesAddress, QueueStatisticsCollector queueStatisticsCollector,
-                             DequeueStatisticCollector dequeueStatisticCollector) {
+    public QueueStatsService(
+        Vertx vertx,
+        EventBus eventBus,
+        String redisquesAddress,
+        QueueStatisticsCollector queueStatisticsCollector,
+        DequeueStatisticCollector dequeueStatisticCollector,
+        RedisQuesExceptionFactory exceptionFactory
+    ) {
         this.vertx = vertx;
         this.eventBus = eventBus;
         this.redisquesAddress = redisquesAddress;
         this.queueStatisticsCollector = queueStatisticsCollector;
         this.dequeueStatisticCollector = dequeueStatisticCollector;
+        this.exceptionFactory = exceptionFactory;
     }
 
     public <CTX> void getQueueStats(CTX mCtx, GetQueueStatsMentor<CTX> mentor) {
@@ -71,14 +80,18 @@ public class QueueStatsService {
         JsonObject operation = buildGetQueuesItemsCountOperation(filter);
         eventBus.<JsonObject>request(redisquesAddress, operation, ev -> {
             if (ev.failed()) {
-                onDone.accept(new Exception("eventBus.request()", ev.cause()), null);
+                Throwable ex = exceptionFactory.newException("eventBus.request()", ev.cause());
+                assert ex != null;
+                onDone.accept(ex, null);
                 return;
             }
             Message<JsonObject> msg = ev.result();
             JsonObject body = msg.body();
             String status = body.getString(STATUS);
             if (!OK.equals(status)) {
-                onDone.accept(new Exception("Unexpected status " + status), null);
+                Throwable ex = exceptionFactory.newException("Unexpected status " + status);
+                assert ex != null;
+                onDone.accept(ex, null);
                 return;
             }
             JsonArray queuesJsonArr = body.getJsonArray(QUEUES);

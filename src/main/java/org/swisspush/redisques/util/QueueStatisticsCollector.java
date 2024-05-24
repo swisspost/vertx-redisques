@@ -7,10 +7,16 @@ import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
-import io.vertx.redis.client.*;
+import io.vertx.redis.client.Command;
+import io.vertx.redis.client.Redis;
+import io.vertx.redis.client.RedisAPI;
+import io.vertx.redis.client.Request;
+import io.vertx.redis.client.Response;
 import io.vertx.redis.client.impl.types.NumberType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
+import org.swisspush.redisques.performance.UpperBoundParallel;
 
 import java.util.HashMap;
 import java.util.Iterator;
@@ -19,11 +25,21 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
 
 import static java.lang.System.currentTimeMillis;
-import static org.swisspush.redisques.util.RedisquesAPI.*;
+import static org.swisspush.redisques.util.RedisquesAPI.MONITOR_QUEUE_NAME;
+import static org.swisspush.redisques.util.RedisquesAPI.MONITOR_QUEUE_SIZE;
+import static org.swisspush.redisques.util.RedisquesAPI.OK;
+import static org.swisspush.redisques.util.RedisquesAPI.QUEUENAME;
+import static org.swisspush.redisques.util.RedisquesAPI.STATISTIC_QUEUE_BACKPRESSURE;
+import static org.swisspush.redisques.util.RedisquesAPI.STATISTIC_QUEUE_FAILURES;
+import static org.swisspush.redisques.util.RedisquesAPI.STATISTIC_QUEUE_SLOWDOWN;
+import static org.swisspush.redisques.util.RedisquesAPI.STATISTIC_QUEUE_SPEED;
+import static org.swisspush.redisques.util.RedisquesAPI.STATUS;
 
 /**
  * Class StatisticsCollector helps collecting statistics information about queue handling and
@@ -57,12 +73,24 @@ public class QueueStatisticsCollector {
     private final RedisProvider redisProvider;
     private final String queuePrefix;
     private final Vertx vertx;
+    private final Semaphore redisRequestLimit;
+    private final RedisQuesExceptionFactory exceptionFactory;
+    private final UpperBoundParallel upperBoundParallel;
 
-    public QueueStatisticsCollector(RedisProvider redisProvider,
-                                    String queuePrefix, Vertx vertx, int speedIntervalSec) {
+    public QueueStatisticsCollector(
+        RedisProvider redisProvider,
+        String queuePrefix,
+        Vertx vertx,
+        Semaphore redisRequestLimit,
+        RedisQuesExceptionFactory exceptionFactory,
+        int speedIntervalSec
+    ) {
         this.redisProvider = redisProvider;
         this.queuePrefix = queuePrefix;
         this.vertx = vertx;
+        this.redisRequestLimit = redisRequestLimit;
+        this.exceptionFactory = exceptionFactory;
+        this.upperBoundParallel = new UpperBoundParallel(vertx);
         speedStatisticsScheduler(speedIntervalSec);
     }
 
@@ -122,7 +150,7 @@ public class QueueStatisticsCollector {
      *
      * @param queueName The queue name for which the statistic values must be reset.
      */
-    public void resetQueueFailureStatistics(String queueName) {
+    public void resetQueueFailureStatistics(String queueName, BiConsumer<Throwable, Void> onDone) {
         AtomicLong failureCount = queueFailureCount.remove(queueName);
         queueSlowDownTime.remove(queueName);
         queueBackpressureTime.remove(queueName);
@@ -130,7 +158,9 @@ public class QueueStatisticsCollector {
             // there was a real failure before, therefore we will execute this
             // cleanup as well on Redis itself as we would like to do redis operations
             // only if necessary of course.
-            updateStatisticsInRedis(queueName);
+            updateStatisticsInRedis(queueName, onDone);
+        }else{
+            vertx.runOnContext(nonsense -> onDone.accept(null, null));
         }
     }
 
@@ -140,14 +170,27 @@ public class QueueStatisticsCollector {
      *
      * @param queues The list of queue names for which the statistic values must be reset.
      */
-    public void resetQueueStatistics(JsonArray queues) {
+    public void resetQueueStatistics(JsonArray queues, BiConsumer<Throwable, Void> onDone) {
         if (queues == null || queues.isEmpty()) {
+            onDone.accept(null, null);
             return;
         }
-        final int size = queues.size();
-        for (int i = 0; i < size; i++) {
-            resetQueueFailureStatistics(queues.getString(i));
-        }
+        upperBoundParallel.request(redisRequestLimit, null, new UpperBoundParallel.Mentor<Void>() {
+            int i = 0;
+            final int size = queues.size();
+            @Override public boolean runOneMore(BiConsumer<Throwable, Void> onDone, Void ctx) {
+                String queueName = queues.getString(i++);
+                resetQueueFailureStatistics(queueName, onDone);
+                return i >= size;
+            }
+            @Override public boolean onError(Throwable ex, Void ctx) {
+                onDone.accept(ex, null);
+                return false;
+            }
+            @Override public void onDone(Void ctx) {
+                onDone.accept(null, null);
+            }
+        });
     }
 
     /**
@@ -156,14 +199,14 @@ public class QueueStatisticsCollector {
      *
      * @param queueName The name of the queue for which success must be processed.
      */
-    public void queueMessageSuccess(String queueName) {
+    public void queueMessageSuccess(String queueName, BiConsumer<Throwable, Void> onDone) {
         // count the number of messages per queue for interval speed evaluation.
         AtomicLong messageCtr = queueMessageSpeedCtr.putIfAbsent(queueName, new AtomicLong(1));
         if (messageCtr != null) {
             messageCtr.incrementAndGet();
         }
         // whenever there is a message successfully sent, our failure statistics could be reset as well
-        resetQueueFailureStatistics(queueName);
+        resetQueueFailureStatistics(queueName, onDone);
     }
 
     /**
@@ -200,7 +243,9 @@ public class QueueStatisticsCollector {
         if (failureCount != null) {
             newFailureCount = failureCount.addAndGet(1);
         }
-        updateStatisticsInRedis(queueName);
+        updateStatisticsInRedis(queueName, (ex, nothing) -> {
+            if (ex != null) log.warn("TODO error handling", ex);
+        });
         return newFailureCount;
     }
 
@@ -233,11 +278,15 @@ public class QueueStatisticsCollector {
     public void setQueueBackPressureTime(String queueName, long time) {
         if (time > 0) {
             queueBackpressureTime.put(queueName, time);
-            updateStatisticsInRedis(queueName);
+            updateStatisticsInRedis(queueName, (ex, v) -> {
+                if (ex != null) log.warn("TODO error handling (findme_q39h8ugjoh)", ex);
+            });
         } else {
             Long lastTime = queueBackpressureTime.remove(queueName);
             if (lastTime != null) {
-                updateStatisticsInRedis(queueName);
+                updateStatisticsInRedis(queueName, (ex, v) -> {
+                    if (ex != null) log.warn("TODO error handling (findme_39587zg)", ex);
+                });
             }
         }
     }
@@ -264,13 +313,16 @@ public class QueueStatisticsCollector {
      * @param time      The slowdown time in ms
      */
     public void setQueueSlowDownTime(String queueName, long time) {
+        BiConsumer<Throwable, Void> onDone = (ex, v) -> {
+            if (ex != null) log.warn("TODO_q9587hg3otuhj error handling", ex);
+        };
         if (time > 0) {
             queueSlowDownTime.put(queueName, time);
-            updateStatisticsInRedis(queueName);
+            updateStatisticsInRedis(queueName, onDone);
         } else {
             Long lastTime = queueSlowDownTime.remove(queueName);
             if (lastTime != null) {
-                updateStatisticsInRedis(queueName);
+                updateStatisticsInRedis(queueName, onDone);
             }
         }
     }
@@ -295,31 +347,35 @@ public class QueueStatisticsCollector {
      * If there are no valid useful data available eg. all 0, the corresponding
      * statistics entry is removed from redis
      */
-    private void updateStatisticsInRedis(String queueName) {
-        long failures = getQueueFailureCount(queueName);
-        long slowDownTime = getQueueSlowDownTime(queueName);
-        long backpressureTime = getQueueBackPressureTime(queueName);
-        if (failures > 0 || slowDownTime > 0 || backpressureTime > 0) {
-            JsonObject obj = new JsonObject();
-            obj.put(QUEUENAME, queueName);
-            obj.put(QUEUE_FAILURES, failures);
-            obj.put(QUEUE_SLOWDOWNTIME, slowDownTime);
-            obj.put(QUEUE_BACKPRESSURE, backpressureTime);
-            redisProvider.redis()
-                    .onSuccess(redisAPI -> {
-                        redisAPI.hset(List.of(STATSKEY, queueName, obj.toString()), ev -> {
-                            if( ev.failed() ) log.warn("TODO error handling", new Exception(ev.cause()));
-                        });
-                    })
-                    .onFailure(ex -> log.error("Redis: Error in updateStatisticsInRedis", ex));
-        } else {
-            redisProvider.redis()
-                    .onSuccess(redisAPI -> {
-                        redisAPI.hdel(List.of(STATSKEY, queueName), ev -> {
-                            if (ev.failed()) log.warn("TODO error handling", new Exception(ev.cause()));
-                        });
-                    })
-                    .onFailure(ex -> log.error("Redis: Error in updateStatisticsInRedis", ex));
+    private void updateStatisticsInRedis(String queueName, BiConsumer<Throwable, Void> onDone) {
+        try {
+            long failures = getQueueFailureCount(queueName);
+            long slowDownTime = getQueueSlowDownTime(queueName);
+            long backpressureTime = getQueueBackPressureTime(queueName);
+            if (failures > 0 || slowDownTime > 0 || backpressureTime > 0) {
+                JsonObject obj = new JsonObject();
+                obj.put(QUEUENAME, queueName);
+                obj.put(QUEUE_FAILURES, failures);
+                obj.put(QUEUE_SLOWDOWNTIME, slowDownTime);
+                obj.put(QUEUE_BACKPRESSURE, backpressureTime);
+                redisProvider.redis()
+                        .onSuccess(redisAPI -> {
+                            redisAPI.hset(List.of(STATSKEY, queueName, obj.toString()), ev -> {
+                                onDone.accept(ev.failed() ? exceptionFactory.newException("redisAPI.hset() failed", ev.cause()) : null, null);
+                            });
+                        })
+                        .onFailure(ex -> onDone.accept(exceptionFactory.newException("redisProvider.redis() failed", ex), null));
+            } else {
+                redisProvider.redis()
+                        .onSuccess(redisAPI -> {
+                            redisAPI.hdel(List.of(STATSKEY, queueName), ev -> {
+                                onDone.accept(ev.failed() ? exceptionFactory.newException("redisAPI.hdel() failed", ev.cause()) : null, null);
+                            });
+                        })
+                        .onFailure(ex -> onDone.accept(exceptionFactory.newException("redisProvider.redis() failed", ex), null));
+            }
+        } catch (RuntimeException ex) {
+            onDone.accept(ex, null);
         }
     }
 
@@ -585,10 +641,9 @@ public class QueueStatisticsCollector {
         event.reply(new JsonObject().put(STATUS, OK).put(STATISTIC_QUEUE_SPEED, speed));
     }
 
-    /** <p>Holds intermediate state related to a {@link #getQueueStatistics(Message, List)}
-     * request.</p> */
+    /** <p>Holds intermediate state related to a {@link #getQueueStatistics(List)}
+     *  request.</p> */
     private static class RequestCtx {
-        private Message<JsonObject> event; // origin event we have to answer
         private List<String> queueNames; // Requested queues to analyze
         private Redis conn;
         private RedisAPI redisAPI;
