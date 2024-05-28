@@ -879,8 +879,11 @@ public class RedisQues extends AbstractVerticle {
 
         vertx.setTimer(retryInSeconds * 1000L, timerId -> {
             if (dequeueStatisticEnabled) {
-                long retryDelayInMills = retryInSeconds * 1000L;
-                dequeueStatistic.get(queueName).setNextDequeueDueTimestamp(System.currentTimeMillis() + retryDelayInMills);
+                dequeueStatistic.computeIfPresent(queueName, (s, dequeueStatistic) -> {
+                    long retryDelayInMills = retryInSeconds * 1000L;
+                    dequeueStatistic.setNextDequeueDueTimestamp(System.currentTimeMillis() + retryDelayInMills);
+                    return dequeueStatistic;
+                });
             }
             if (log.isDebugEnabled()) {
                 log.debug("RedisQues re-notify the consumer of queue '{}' at {}", queueName, new Date(System.currentTimeMillis()));
@@ -918,8 +921,11 @@ public class RedisQues extends AbstractVerticle {
                 if (reply.succeeded()) {
                     success = OK.equals(reply.result().body().getString(STATUS));
                     if (success && dequeueStatisticEnabled) {
-                        dequeueStatistic.get(queue).setLastDequeueSuccessTimestamp(System.currentTimeMillis());
-                        dequeueStatistic.get(queue).setNextDequeueDueTimestamp(null);
+                        dequeueStatistic.computeIfPresent(queue, (s, dequeueStatistic) -> {
+                            dequeueStatistic.setLastDequeueSuccessTimestamp(System.currentTimeMillis());
+                            dequeueStatistic.setNextDequeueDueTimestamp(null);
+                            return dequeueStatistic;
+                        });
                     }
                 } else {
                     log.info("RedisQues QUEUE_ERROR: Consumer failed {} queue: {}",
