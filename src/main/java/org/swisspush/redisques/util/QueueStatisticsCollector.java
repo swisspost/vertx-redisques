@@ -16,6 +16,7 @@ import io.vertx.redis.client.impl.types.NumberType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
+import org.swisspush.redisques.exception.NoStacktraceException;
 import org.swisspush.redisques.performance.UpperBoundParallel;
 
 import java.util.HashMap;
@@ -73,23 +74,23 @@ public class QueueStatisticsCollector {
     private final RedisProvider redisProvider;
     private final String queuePrefix;
     private final Vertx vertx;
-    private final Semaphore redisRequestLimit;
     private final RedisQuesExceptionFactory exceptionFactory;
+    private final Semaphore redisRequestQuota;
     private final UpperBoundParallel upperBoundParallel;
 
     public QueueStatisticsCollector(
         RedisProvider redisProvider,
         String queuePrefix,
         Vertx vertx,
-        Semaphore redisRequestLimit,
         RedisQuesExceptionFactory exceptionFactory,
+        Semaphore redisRequestQuota,
         int speedIntervalSec
     ) {
         this.redisProvider = redisProvider;
         this.queuePrefix = queuePrefix;
         this.vertx = vertx;
-        this.redisRequestLimit = redisRequestLimit;
         this.exceptionFactory = exceptionFactory;
+        this.redisRequestQuota = redisRequestQuota;
         this.upperBoundParallel = new UpperBoundParallel(vertx);
         speedStatisticsScheduler(speedIntervalSec);
     }
@@ -151,16 +152,20 @@ public class QueueStatisticsCollector {
      * @param queueName The queue name for which the statistic values must be reset.
      */
     public void resetQueueFailureStatistics(String queueName, BiConsumer<Throwable, Void> onDone) {
-        AtomicLong failureCount = queueFailureCount.remove(queueName);
-        queueSlowDownTime.remove(queueName);
-        queueBackpressureTime.remove(queueName);
-        if (failureCount != null && failureCount.get() > 0) {
-            // there was a real failure before, therefore we will execute this
-            // cleanup as well on Redis itself as we would like to do redis operations
-            // only if necessary of course.
-            updateStatisticsInRedis(queueName, onDone);
-        }else{
-            vertx.runOnContext(nonsense -> onDone.accept(null, null));
+        try {
+            AtomicLong failureCount = queueFailureCount.remove(queueName);
+            queueSlowDownTime.remove(queueName);
+            queueBackpressureTime.remove(queueName);
+            if (failureCount != null && failureCount.get() > 0) {
+                // there was a real failure before, therefore we will execute this
+                // cleanup as well on Redis itself as we would like to do redis operations
+                // only if necessary of course.
+                updateStatisticsInRedis(queueName, onDone);
+            } else {
+                vertx.runOnContext(nonsense -> onDone.accept(null, null));
+            }
+        } catch (Exception ex) {
+            onDone.accept(ex, null);
         }
     }
 
@@ -175,7 +180,7 @@ public class QueueStatisticsCollector {
             onDone.accept(null, null);
             return;
         }
-        upperBoundParallel.request(redisRequestLimit, null, new UpperBoundParallel.Mentor<Void>() {
+        upperBoundParallel.request(redisRequestQuota, null, new UpperBoundParallel.Mentor<Void>() {
             int i = 0;
             final int size = queues.size();
             @Override public boolean runOneMore(BiConsumer<Throwable, Void> onDone, Void ctx) {

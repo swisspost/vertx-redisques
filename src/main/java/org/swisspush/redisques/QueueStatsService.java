@@ -2,7 +2,6 @@ package org.swisspush.redisques;
 
 import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.EventBus;
-import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import org.slf4j.Logger;
@@ -11,14 +10,26 @@ import org.swisspush.redisques.util.DequeueStatistic;
 import org.swisspush.redisques.util.DequeueStatisticCollector;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
 
+import static io.vertx.core.eventbus.ReplyFailure.RECIPIENT_FAILURE;
 import static java.lang.Long.compare;
 import static java.lang.System.currentTimeMillis;
 import static java.util.Collections.emptyList;
 import static org.slf4j.LoggerFactory.getLogger;
-import static org.swisspush.redisques.util.RedisquesAPI.*;
+import static org.swisspush.redisques.util.RedisquesAPI.MONITOR_QUEUE_NAME;
+import static org.swisspush.redisques.util.RedisquesAPI.MONITOR_QUEUE_SIZE;
+import static org.swisspush.redisques.util.RedisquesAPI.OK;
+import static org.swisspush.redisques.util.RedisquesAPI.QUEUES;
+import static org.swisspush.redisques.util.RedisquesAPI.STATUS;
+import static org.swisspush.redisques.util.RedisquesAPI.buildGetQueuesItemsCountOperation;
 
 
 /**
@@ -39,6 +50,7 @@ public class QueueStatsService {
     private final QueueStatisticsCollector queueStatisticsCollector;
     private final DequeueStatisticCollector dequeueStatisticCollector;
     private final RedisQuesExceptionFactory exceptionFactory;
+    private final Semaphore incomingRequestQuota;
 
     public QueueStatsService(
         Vertx vertx,
@@ -46,7 +58,8 @@ public class QueueStatsService {
         String redisquesAddress,
         QueueStatisticsCollector queueStatisticsCollector,
         DequeueStatisticCollector dequeueStatisticCollector,
-        RedisQuesExceptionFactory exceptionFactory
+        RedisQuesExceptionFactory exceptionFactory,
+        Semaphore incomingRequestQuota
     ) {
         this.vertx = vertx;
         this.eventBus = eventBus;
@@ -54,25 +67,51 @@ public class QueueStatsService {
         this.queueStatisticsCollector = queueStatisticsCollector;
         this.dequeueStatisticCollector = dequeueStatisticCollector;
         this.exceptionFactory = exceptionFactory;
+        this.incomingRequestQuota = incomingRequestQuota;
     }
 
     public <CTX> void getQueueStats(CTX mCtx, GetQueueStatsMentor<CTX> mentor) {
-        var req0 = new GetQueueStatsRequest<CTX>();
-        req0.mCtx = mCtx;
-        req0.mentor = mentor;
-        fetchQueueNamesAndSize(req0, (ex1, req1) -> {
-            if (ex1 != null) { req1.mentor.onError(ex1, req1.mCtx); return; }
-            // Prepare a list of queue names as it is needed to fetch retryDetails.
-            req1.queueNames = new ArrayList<>(req1.queues.size());
-            for (Queue q : req1.queues) req1.queueNames.add(q.name);
-            fetchRetryDetails(req1, (ex2, req2) -> {
-                if (ex2 != null) { req2.mentor.onError(ex2, req2.mCtx); return; }
-                attachDequeueStats(req2, (ex3, req3) -> {
-                    if (ex3 != null) { req3.mentor.onError(ex3, req3.mCtx); return; }
-                    req3.mentor.onQueueStatistics(req3.queues, req3.mCtx);
+        if (!incomingRequestQuota.tryAcquire()) {
+            Throwable ex = exceptionFactory.newReplyException(RECIPIENT_FAILURE, 429,
+                    "Server too busy to handle yet-another-queue-stats-request now");
+            vertx.runOnContext(v -> mentor.onError(ex, mCtx));
+            return;
+        }
+        AtomicBoolean isCompleted = new AtomicBoolean();
+        try {
+            var req0 = new GetQueueStatsRequest<CTX>();
+            BiConsumer<Throwable, List<Queue>> onDone = (Throwable ex, List<Queue> ans) -> {
+                if (!isCompleted.compareAndSet(false, true)) {
+                    if (log.isInfoEnabled()) log.info("", new RuntimeException("onDone MUST be called ONCE only", ex));
+                    return;
+                }
+                incomingRequestQuota.release();
+                if (ex != null) mentor.onError(ex, mCtx);
+                else mentor.onQueueStatistics(ans, mCtx);
+            };
+            req0.mCtx = mCtx;
+            req0.mentor = mentor;
+            fetchQueueNamesAndSize(req0, (ex1, req1) -> {
+                if (ex1 != null) { onDone.accept(ex1, null); return; }
+                // Prepare a list of queue names as it is needed to fetch retryDetails.
+                req1.queueNames = new ArrayList<>(req1.queues.size());
+                for (Queue q : req1.queues) req1.queueNames.add(q.name);
+                fetchRetryDetails(req1, (ex2, req2) -> {
+                    if (ex2 != null) { onDone.accept(ex2, null); return; }
+                    attachDequeueStats(req2, (ex3, req3) -> {
+                        if (ex3 != null) { onDone.accept(ex3, null); return; }
+                        onDone.accept(null, req3.queues);
+                    });
                 });
             });
-        });
+        } catch (Exception ex) {
+            if (!isCompleted.compareAndSet(false, true)) {
+                if (log.isInfoEnabled()) log.info("onDone MUST be called ONCE only", ex);
+                return;
+            }
+            incomingRequestQuota.release();
+            vertx.runOnContext(v -> mentor.onError(ex, mCtx));
+        }
     }
 
     private <CTX> void fetchQueueNamesAndSize(GetQueueStatsRequest<CTX> req, BiConsumer<Throwable, GetQueueStatsRequest<CTX>> onDone) {
@@ -85,8 +124,7 @@ public class QueueStatsService {
                 onDone.accept(ex, null);
                 return;
             }
-            Message<JsonObject> msg = ev.result();
-            JsonObject body = msg.body();
+            JsonObject body = ev.result().body();
             String status = body.getString(STATUS);
             if (!OK.equals(status)) {
                 Throwable ex = exceptionFactory.newException("Unexpected status " + status);

@@ -16,12 +16,25 @@ class ThriftyRedisQuesExceptionFactory implements RedisQuesExceptionFactory {
     }
 
     public Exception newException(String message, Throwable cause) {
+        // This impl exists for speed. So why even bother creating new instances
+        // if we can use already existing ones. If caller really needs another
+        // instance, he should use another implementation of this factory.
+        if (cause instanceof Exception) return (Exception) cause;
         return new NoStacktraceException(message, cause);
     }
 
     @Override
     public RuntimeException newRuntimeException(String message, Throwable cause) {
+        // This impl exists for speed. So why even bother creating new instances
+        // if we can use already existing ones. If caller really needs another
+        // instance, he should use another implementation of this factory.
+        if (cause instanceof RuntimeException) return (RuntimeException) cause;
         return new NoStacktraceException(message, cause);
+    }
+
+    @Override
+    public ReplyException newReplyException(ReplyFailure failureType, int failureCode, String msg) {
+        return new NoStackReplyException(failureType, failureCode, msg);
     }
 
 }

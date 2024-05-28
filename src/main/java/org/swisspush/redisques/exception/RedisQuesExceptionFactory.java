@@ -30,6 +30,8 @@ public interface RedisQuesExceptionFactory {
 
     public RuntimeException newRuntimeException(String message, Throwable cause);
 
+    public ReplyException newReplyException(ReplyFailure failureType, int failureCode, String msg);
+
 
     /**
      * See {@link ThriftyRedisQuesExceptionFactory}.
