@@ -3,8 +3,10 @@ package org.swisspush.redisques.util;
 import io.vertx.core.Vertx;
 import org.slf4j.Logger;
 import org.swisspush.redisques.action.*;
+import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 
 import java.util.List;
+import java.util.concurrent.Semaphore;
 
 public class QueueActionFactory {
 
@@ -20,13 +22,25 @@ public class QueueActionFactory {
     private final QueueStatisticsCollector queueStatisticsCollector;
     private final int memoryUsageLimitPercent;
     private final MemoryUsageProvider memoryUsageProvider;
+    private final RedisQuesExceptionFactory exceptionFactory;
+    private final Semaphore getQueuesItemsCountRedisRequestQuota;
 
     private final RedisquesConfigurationProvider configurationProvider;
 
-    public QueueActionFactory(RedisProvider redisProvider, Vertx vertx, Logger log,
-                              String queuesKey, String queuesPrefix, String consumersPrefix,
-                              String locksKey, QueueStatisticsCollector queueStatisticsCollector, MemoryUsageProvider memoryUsageProvider,
-                              RedisquesConfigurationProvider configurationProvider) {
+    public QueueActionFactory(
+        RedisProvider redisProvider,
+        Vertx vertx,
+        Logger log,
+        String queuesKey,
+        String queuesPrefix,
+        String consumersPrefix,
+        String locksKey,
+        MemoryUsageProvider memoryUsageProvider,
+        QueueStatisticsCollector queueStatisticsCollector,
+        RedisQuesExceptionFactory exceptionFactory,
+        RedisquesConfigurationProvider configurationProvider,
+        Semaphore getQueuesItemsCountRedisRequestQuota
+    ) {
         this.redisProvider = redisProvider;
         this.vertx = vertx;
         this.log = log;
@@ -34,13 +48,14 @@ public class QueueActionFactory {
         this.queuesPrefix = queuesPrefix;
         this.consumersPrefix = consumersPrefix;
         this.locksKey = locksKey;
-        this.queueStatisticsCollector = queueStatisticsCollector;
         this.memoryUsageProvider = memoryUsageProvider;
+        this.queueStatisticsCollector = queueStatisticsCollector;
+        this.exceptionFactory = exceptionFactory;
         this.configurationProvider = configurationProvider;
-
         this.address = configurationProvider.configuration().getAddress();
         this.queueConfigurations = configurationProvider.configuration().getQueueConfigurations();
         this.memoryUsageLimitPercent = configurationProvider.configuration().getMemoryUsageLimitPercent();
+        this.getQueuesItemsCountRedisRequestQuota = getQueuesItemsCountRedisRequestQuota;
     }
 
     public QueueAction buildQueueAction(RedisquesAPI.QueueOperation queueOperation){
@@ -77,7 +92,8 @@ public class QueueActionFactory {
                         consumersPrefix, locksKey, queueConfigurations, queueStatisticsCollector, log);
             case getQueuesItemsCount:
                 return new GetQueuesItemsCountAction(vertx, redisProvider, address, queuesKey, queuesPrefix,
-                        consumersPrefix, locksKey, queueConfigurations, queueStatisticsCollector, log);
+                        consumersPrefix, locksKey, queueConfigurations, exceptionFactory,
+                        getQueuesItemsCountRedisRequestQuota, queueStatisticsCollector, log);
             case enqueue:
                 return new EnqueueAction(vertx, redisProvider, address, queuesKey, queuesPrefix,
                         consumersPrefix, locksKey, queueConfigurations, queueStatisticsCollector, log, memoryUsageProvider,
