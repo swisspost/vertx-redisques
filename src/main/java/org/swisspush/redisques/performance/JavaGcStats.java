@@ -185,10 +185,12 @@ public class JavaGcStats {
          * requested information is not (or not yet) available.</p>
          *
          * <p>Example 1: If gcFrac05 is 0.25, this means that one fourth of the
-         * execution time got into garbage collection.</p>
+         * execution time got into garbage collection during the past 5
+         * minutes.</p>
          *
          * <p>Example 2: If gcFrac15 is 0.03, this means that 3 percent of
-         * execution time got into garbage collection.</p>
+         * execution time got into garbage collection during the past 15
+         * minutes.</p>
          */
         public float gcFrac01 = NaN, gcFrac05 = NaN, gcFrac15 = NaN;
 

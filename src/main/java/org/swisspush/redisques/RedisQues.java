@@ -438,26 +438,6 @@ public class RedisQues extends AbstractVerticle {
         registerQueueCheck();
     }
 
-    class Task {
-        private final String queueName;
-        private final DequeueStatistic dequeueStatistic;
-        Task(String queueName, DequeueStatistic dequeueStatistic) {
-            this.queueName = queueName;
-            this.dequeueStatistic = dequeueStatistic;
-        }
-        Future<Void> execute() {
-            // switch to a worker thread
-            return vertx.executeBlocking(promise -> {
-                dequeueStatisticCollector.setDequeueStatistic(queueName, dequeueStatistic).onComplete(event -> {
-                    if (event.failed()) {
-                        log.error("Future that should always succeed has failed, ignore it", event.cause());
-                    }
-                    promise.complete();
-                });
-            });
-        }
-    }
-
     private Runnable newDequeueStatisticPublisher() {
         return new Runnable() {
             final AtomicBoolean isRunning = new AtomicBoolean();
@@ -499,32 +479,37 @@ public class RedisQues extends AbstractVerticle {
             void resume() {
                 // here we are executing in an event loop thread
                 try {
-                    List<Task> entryList = new ArrayList<>();
-                    while (iter.hasNext()) {
-                        var entry = iter.next();
-                        var queueName = entry.getKey();
-                        var dequeueStatistic = entry.getValue();
-                        entryList.add(new Task(queueName, dequeueStatistic));
-                    }
-
-                    Future<List<Void>> startFuture = Future.succeededFuture(new ArrayList<>());
-                    // chain the futures sequentially to execute tasks
-                    Future<List<Void>> resultFuture = entryList.stream()
-                            .reduce(startFuture, (future, task) -> future.compose(previousResults -> {
-                                // perform asynchronous task
-                                return task.execute().compose(taskResult -> {
-                                    // append task result to previous results
-                                    previousResults.add(taskResult);
+                    upperBoundParallel.request(redisMonitoringReqQuota, null, new UpperBoundParallel.Mentor<Void>() {
+                        @Override public boolean runOneMore(BiConsumer<Throwable, Void> onDone, Void unused) {
+                            if (iter.hasNext()) {
+                                var entry = iter.next();
+                                String queueName = entry.getKey();
+                                DequeueStatistic dequeueStatistic = entry.getValue();
+                                vertx.<Void>executeBlocking(onBlockingDone -> {
+                                    dequeueStatisticCollector.setDequeueStatistic(queueName, dequeueStatistic).onComplete(event -> {
+                                        if (event.failed()) {
+                                            log.error("Future that should always succeed has failed, ignore it",
+                                                    exceptionFactory.newException(event.cause()));
+                                        }
+                                        onBlockingDone.complete();
+                                    });
+                                }, (AsyncResult<Void> ev) -> {
                                     i.incrementAndGet();
-                                    return Future.succeededFuture(previousResults);
+                                    onDone.accept(ev.cause(), ev.result());
                                 });
-                            }),  (a,b) -> Future.succeededFuture());
-                    resultFuture.onComplete(event -> {
-                        if (event.failed()) {
-                            log.error("publishing dequeue statistics not complete, just continue", event.cause());
+                            }
+                            return iter.hasNext();
                         }
-                        log.debug("Done publishing {} dequeue statistics. Took {}ms", i, currentTimeMillis() - startEpochMs);
-                        isRunning.set(false);
+                        @Override public boolean onError(Throwable ex, Void ctx) {
+                            isRunning.set(false);
+                            log.error("publishing dequeue statistics not complete, just continue", ex);
+                            return false;
+                        }
+                        @Override public void onDone(Void ctx) {
+                            isRunning.set(false);
+                            log.debug("Done publishing {} dequeue statistics. Took {}ms", i, currentTimeMillis() - startEpochMs);
+                            assert false : "TODO";
+                        }
                     });
                 } catch (Throwable ex) {
                     isRunning.set(false);
