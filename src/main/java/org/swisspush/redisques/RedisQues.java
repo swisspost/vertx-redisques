@@ -1,5 +1,6 @@
 package org.swisspush.redisques;
 
+import com.google.common.base.Strings;
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.CompositeFuture;
@@ -24,20 +25,7 @@ import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.handler.RedisquesHttpRequestHandler;
 import org.swisspush.redisques.performance.UpperBoundParallel;
 import org.swisspush.redisques.scheduling.PeriodicSkipScheduler;
-import org.swisspush.redisques.util.DefaultMemoryUsageProvider;
-import org.swisspush.redisques.util.DefaultRedisProvider;
-import org.swisspush.redisques.util.DefaultRedisquesConfigurationProvider;
-import org.swisspush.redisques.util.DequeueStatistic;
-import org.swisspush.redisques.util.DequeueStatisticCollector;
-import org.swisspush.redisques.util.MemoryUsageProvider;
-import org.swisspush.redisques.util.QueueActionFactory;
-import org.swisspush.redisques.util.QueueConfiguration;
-import org.swisspush.redisques.util.QueueStatisticsCollector;
-import org.swisspush.redisques.util.RedisProvider;
-import org.swisspush.redisques.util.RedisQuesTimer;
-import org.swisspush.redisques.util.RedisUtils;
-import org.swisspush.redisques.util.RedisquesConfiguration;
-import org.swisspush.redisques.util.RedisquesConfigurationProvider;
+import org.swisspush.redisques.util.*;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -230,6 +218,7 @@ public class RedisQues extends AbstractVerticle {
     private MemoryUsageProvider memoryUsageProvider;
     private QueueActionFactory queueActionFactory;
     private RedisquesConfigurationProvider configurationProvider;
+    private RedisMonitor redisMonitor;
 
     private Map<QueueOperation, QueueAction> queueActions = new HashMap<>();
 
@@ -436,6 +425,19 @@ public class RedisQues extends AbstractVerticle {
 
         registerActiveQueueRegistrationRefresh();
         registerQueueCheck();
+        registerMetricsGathering(configuration);
+    }
+
+    private void registerMetricsGathering(RedisquesConfiguration configuration){
+        String metricsAddress = configuration.getPublishMetricsAddress();
+        if(Strings.isNullOrEmpty(metricsAddress)) {
+            return;
+        }
+        String metricStorageName = configuration.getMetricStorageName();
+        int metricRefreshPeriod = configuration.getMetricRefreshPeriod();
+
+        redisMonitor = new RedisMonitor(vertx, redisProvider, metricsAddress, metricStorageName, metricRefreshPeriod);
+        redisMonitor.start();
     }
 
     class Task {
@@ -700,6 +702,10 @@ public class RedisQues extends AbstractVerticle {
     @Override
     public void stop() {
         unregisterConsumers(true);
+        if(redisMonitor != null) {
+            redisMonitor.stop();
+            redisMonitor = null;
+        }
     }
 
     private void gracefulStop(final Handler<Void> doneHandler) {

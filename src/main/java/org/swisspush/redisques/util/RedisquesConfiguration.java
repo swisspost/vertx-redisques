@@ -1,5 +1,6 @@
 package org.swisspush.redisques.util;
 
+import com.google.common.base.Strings;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.redis.client.RedisClientType;
@@ -22,6 +23,9 @@ public class RedisquesConfiguration {
     private final String configurationUpdatedAddress;
     private final String redisPrefix;
     private final String processorAddress;
+    private final String publishMetricsAddress;
+    private final String metricStorageName;
+    private final int metricRefreshPeriod;
     private final int refreshPeriod;
     private final List<String> redisHosts;
     private final List<Integer> redisPorts;
@@ -55,6 +59,8 @@ public class RedisquesConfiguration {
 
     private static final int DEFAULT_CHECK_INTERVAL_S = 60; // 60s
     private static final int DEFAULT_PROCESSOR_TIMEOUT_MS = 240000; // 240s
+    private static final int DEFAULT_METRIC_REFRESH_PERIOD_S = 10; // 10s
+    private static final String DEFAULT_METRIC_STORAGE_NAME = "queue";
     private static final long DEFAULT_PROCESSOR_DELAY_MAX = 0;
     private static final int DEFAULT_REDIS_MAX_POOL_SIZE = 200;
     private static final int DEFAULT_REDIS_RECONNECT_ATTEMPTS = 0;
@@ -77,6 +83,9 @@ public class RedisquesConfiguration {
     public static final String PROP_CONFIGURATION_UPDATED_ADDRESS = "configuration-updated-address";
     public static final String PROP_REDIS_PREFIX = "redis-prefix";
     public static final String PROP_PROCESSOR_ADDRESS = "processor-address";
+    public static final String PROP_PUBLISH_METRICS_ADDRESS = "publish-metrics-address";
+    public static final String PROP_METRIC_STORAGE_NAME = "metric-storage-name";
+    public static final String PROP_METRIC_REFRESH_PERIOD = "metric-refresh-period";
     public static final String PROP_REFRESH_PERIOD = "refresh-period";
     public static final String PROP_REDIS_HOST = "redisHost";
     public static final String PROP_REDIS_HOST_LIST = "redisHosts";
@@ -128,15 +137,18 @@ public class RedisquesConfiguration {
      * @deprecated
      */
     @Deprecated(since = "3.0.31")
-    public RedisquesConfiguration(String address, String configurationUpdatedAddress, String redisPrefix, String processorAddress, int refreshPeriod,
+    public RedisquesConfiguration(String address, String configurationUpdatedAddress, String redisPrefix, String processorAddress,
+                                  String publishMetricsAddress, String metricStorageName, int metricRefreshPeriod, int refreshPeriod,
                                   String redisHost, int redisPort, String redisAuth, int checkInterval,
                                   int processorTimeout, long processorDelayMax, boolean httpRequestHandlerEnabled,
                                   boolean httpRequestHandlerAuthenticationEnabled, String httpRequestHandlerPrefix,
                                   String httpRequestHandlerUsername, String httpRequestHandlerPassword,
                                   Integer httpRequestHandlerPort, String httpRequestHandlerUserHeader,
                                   List<QueueConfiguration> queueConfigurations, boolean enableQueueNameDecoding) {
-        this(address, configurationUpdatedAddress, redisPrefix, processorAddress, refreshPeriod, Collections.singletonList(redisHost), Collections.singletonList(redisPort),
-                RedisClientType.STANDALONE, redisAuth, null, null, false, checkInterval, processorTimeout, processorDelayMax, httpRequestHandlerEnabled,
+        this(address, configurationUpdatedAddress, redisPrefix, processorAddress, publishMetricsAddress, metricStorageName,
+                metricRefreshPeriod, refreshPeriod, Collections.singletonList(redisHost), Collections.singletonList(redisPort),
+                RedisClientType.STANDALONE, redisAuth, null, null, false, checkInterval,
+                processorTimeout, processorDelayMax, httpRequestHandlerEnabled,
                 httpRequestHandlerAuthenticationEnabled, httpRequestHandlerPrefix, httpRequestHandlerUsername,
                 httpRequestHandlerPassword, httpRequestHandlerPort, httpRequestHandlerUserHeader, queueConfigurations,
                 enableQueueNameDecoding, DEFAULT_REDIS_MAX_POOL_SIZE, DEFAULT_REDIS_MAX_POOL_WAIT_SIZE,
@@ -149,15 +161,18 @@ public class RedisquesConfiguration {
      * Constructor with username and password (Redis ACL)
      * The parameter redisClustered is false
      */
-    public RedisquesConfiguration(String address, String configurationUpdatedAddress, String redisPrefix, String processorAddress, int refreshPeriod,
-                                  String redisHost, int redisPort, String redisPassword, String redisUser, boolean redisEnableTls, int checkInterval,
-                                  int processorTimeout, long processorDelayMax, boolean httpRequestHandlerEnabled,
+    public RedisquesConfiguration(String address, String configurationUpdatedAddress, String redisPrefix, String processorAddress,
+                                  String publishMetricsAddress, String metricStorageName, int metricRefreshPeriod, int refreshPeriod,
+                                  String redisHost, int redisPort, String redisPassword, String redisUser, boolean redisEnableTls,
+                                  int checkInterval, int processorTimeout, long processorDelayMax, boolean httpRequestHandlerEnabled,
                                   boolean httpRequestHandlerAuthenticationEnabled, String httpRequestHandlerPrefix,
                                   String httpRequestHandlerUsername, String httpRequestHandlerPassword,
                                   Integer httpRequestHandlerPort, String httpRequestHandlerUserHeader,
                                   List<QueueConfiguration> queueConfigurations, boolean enableQueueNameDecoding) {
-        this(address, configurationUpdatedAddress, redisPrefix, processorAddress, refreshPeriod, Collections.singletonList(redisHost), Collections.singletonList(redisPort),
-                RedisClientType.STANDALONE, null, redisPassword, redisUser, redisEnableTls, checkInterval, processorTimeout, processorDelayMax, httpRequestHandlerEnabled,
+        this(address, configurationUpdatedAddress, redisPrefix, processorAddress, publishMetricsAddress, metricStorageName,
+                metricRefreshPeriod, refreshPeriod, Collections.singletonList(redisHost), Collections.singletonList(redisPort),
+                RedisClientType.STANDALONE, null, redisPassword, redisUser, redisEnableTls, checkInterval,
+                processorTimeout, processorDelayMax, httpRequestHandlerEnabled,
                 httpRequestHandlerAuthenticationEnabled, httpRequestHandlerPrefix, httpRequestHandlerUsername,
                 httpRequestHandlerPassword, httpRequestHandlerPort, httpRequestHandlerUserHeader, queueConfigurations,
                 enableQueueNameDecoding, DEFAULT_REDIS_MAX_POOL_SIZE, DEFAULT_REDIS_MAX_POOL_WAIT_SIZE,
@@ -169,15 +184,19 @@ public class RedisquesConfiguration {
     /**
      * Constructor with username and password (Redis ACL)
      */
-    public RedisquesConfiguration(String address, String configurationUpdatedAddress, String redisPrefix, String processorAddress, int refreshPeriod,
-                                  String redisHost, int redisPort, RedisClientType redisClientType, String redisPassword, String redisUser, boolean redisEnableTls, int checkInterval,
+    public RedisquesConfiguration(String address, String configurationUpdatedAddress, String redisPrefix, String processorAddress,
+                                  String publishMetricsAddress, String metricStorageName, int metricRefreshPeriod, int refreshPeriod,
+                                  String redisHost, int redisPort, RedisClientType redisClientType, String redisPassword,
+                                  String redisUser, boolean redisEnableTls, int checkInterval,
                                   int processorTimeout, long processorDelayMax, boolean httpRequestHandlerEnabled,
                                   boolean httpRequestHandlerAuthenticationEnabled, String httpRequestHandlerPrefix,
                                   String httpRequestHandlerUsername, String httpRequestHandlerPassword,
                                   Integer httpRequestHandlerPort, String httpRequestHandlerUserHeader,
                                   List<QueueConfiguration> queueConfigurations, boolean enableQueueNameDecoding) {
-        this(address, configurationUpdatedAddress, redisPrefix, processorAddress, refreshPeriod, Collections.singletonList(redisHost), Collections.singletonList(redisPort),
-                redisClientType, null, redisPassword, redisUser, redisEnableTls, checkInterval, processorTimeout, processorDelayMax, httpRequestHandlerEnabled,
+        this(address, configurationUpdatedAddress, redisPrefix, processorAddress, publishMetricsAddress, metricStorageName,
+                metricRefreshPeriod, refreshPeriod, Collections.singletonList(redisHost), Collections.singletonList(redisPort),
+                redisClientType, null, redisPassword, redisUser, redisEnableTls, checkInterval, processorTimeout,
+                processorDelayMax, httpRequestHandlerEnabled,
                 httpRequestHandlerAuthenticationEnabled, httpRequestHandlerPrefix, httpRequestHandlerUsername,
                 httpRequestHandlerPassword, httpRequestHandlerPort, httpRequestHandlerUserHeader, queueConfigurations,
                 enableQueueNameDecoding, DEFAULT_REDIS_MAX_POOL_SIZE, DEFAULT_REDIS_MAX_POOL_WAIT_SIZE,
@@ -186,8 +205,10 @@ public class RedisquesConfiguration {
                 DEFAULT_REDIS_POOL_RECYCLE_TIMEOUT_MS, DEFAULT_DEQUEUE_STATISTIC_REPORT_INTERVAL_SEC);
     }
 
-    private RedisquesConfiguration(String address, String configurationUpdatedAddress, String redisPrefix, String processorAddress, int refreshPeriod,
-                                   List<String> redisHosts, List<Integer> redisPorts, RedisClientType redisClientType, String redisAuth, String redisPassword, String redisUser, boolean redisEnableTls, int checkInterval,
+    private RedisquesConfiguration(String address, String configurationUpdatedAddress, String redisPrefix, String processorAddress,
+                                   String publishMetricsAddress, String metricStorageName, int metricRefreshPeriod, int refreshPeriod,
+                                   List<String> redisHosts, List<Integer> redisPorts, RedisClientType redisClientType,
+                                   String redisAuth, String redisPassword, String redisUser, boolean redisEnableTls, int checkInterval,
                                    int processorTimeout, long processorDelayMax, boolean httpRequestHandlerEnabled,
                                    boolean httpRequestHandlerAuthenticationEnabled, String httpRequestHandlerPrefix,
                                    String httpRequestHandlerUsername, String httpRequestHandlerPassword,
@@ -201,6 +222,7 @@ public class RedisquesConfiguration {
         this.configurationUpdatedAddress = configurationUpdatedAddress;
         this.redisPrefix = redisPrefix;
         this.processorAddress = processorAddress;
+        this.publishMetricsAddress = publishMetricsAddress;
         this.refreshPeriod = refreshPeriod;
         this.redisHosts = redisHosts;
         this.redisPorts = redisPorts;
@@ -213,6 +235,21 @@ public class RedisquesConfiguration {
         this.maxPoolWaitSize = maxPoolWaitSize;
         this.maxPipelineWaitSize = maxPipelineWaitSize;
         Logger log = LoggerFactory.getLogger(RedisquesConfiguration.class);
+
+        String maybeEmptyMetricStorageName = Strings.nullToEmpty(metricStorageName).trim();
+        if(Strings.isNullOrEmpty(maybeEmptyMetricStorageName)) {
+            this.metricStorageName = DEFAULT_METRIC_STORAGE_NAME;
+        } else {
+            this.metricStorageName = maybeEmptyMetricStorageName;
+        }
+
+        if (metricRefreshPeriod >= 1) {
+            this.metricRefreshPeriod = metricRefreshPeriod;
+        } else {
+            log.warn("Overridden metricRefreshPeriod of {} is not valid. Using default value of {} instead.",
+                    metricRefreshPeriod, DEFAULT_METRIC_REFRESH_PERIOD_S);
+            this.metricRefreshPeriod = DEFAULT_METRIC_REFRESH_PERIOD_S;
+        }
 
         if (checkInterval > 0) {
             this.checkInterval = checkInterval;
@@ -282,8 +319,9 @@ public class RedisquesConfiguration {
 
     private RedisquesConfiguration(RedisquesConfigurationBuilder builder) {
         this(builder.address, builder.configurationUpdatedAddress, builder.redisPrefix,
-                builder.processorAddress, builder.refreshPeriod, builder.redisHosts, builder.redisPorts, builder.redisClientType,
-                builder.redisAuth, builder.redisPassword, builder.redisUser, builder.redisEnableTls, builder.checkInterval,
+                builder.processorAddress, builder.publishMetricsAddress, builder.metricStorageName, builder.metricRefreshPeriod,
+                builder.refreshPeriod, builder.redisHosts, builder.redisPorts, builder.redisClientType, builder.redisAuth,
+                builder.redisPassword, builder.redisUser, builder.redisEnableTls, builder.checkInterval,
                 builder.processorTimeout, builder.processorDelayMax, builder.httpRequestHandlerEnabled,
                 builder.httpRequestHandlerAuthenticationEnabled, builder.httpRequestHandlerPrefix,
                 builder.httpRequestHandlerUsername, builder.httpRequestHandlerPassword, builder.httpRequestHandlerPort,
@@ -305,6 +343,9 @@ public class RedisquesConfiguration {
         obj.put(PROP_CONFIGURATION_UPDATED_ADDRESS, getConfigurationUpdatedAddress());
         obj.put(PROP_REDIS_PREFIX, getRedisPrefix());
         obj.put(PROP_PROCESSOR_ADDRESS, getProcessorAddress());
+        obj.put(PROP_PUBLISH_METRICS_ADDRESS, getPublishMetricsAddress());
+        obj.put(PROP_METRIC_STORAGE_NAME, getMetricStorageName());
+        obj.put(PROP_METRIC_REFRESH_PERIOD, getMetricRefreshPeriod());
         obj.put(PROP_REFRESH_PERIOD, getRefreshPeriod());
         obj.put(PROP_REDIS_HOST, getRedisHost());
         obj.put(PROP_REDIS_HOST_LIST, getRedisHosts());
@@ -353,6 +394,15 @@ public class RedisquesConfiguration {
         }
         if (json.containsKey(PROP_PROCESSOR_ADDRESS)) {
             builder.processorAddress(json.getString(PROP_PROCESSOR_ADDRESS));
+        }
+        if (json.containsKey(PROP_PUBLISH_METRICS_ADDRESS)) {
+            builder.publishMetricsAddress(json.getString(PROP_PUBLISH_METRICS_ADDRESS));
+        }
+        if (json.containsKey(PROP_METRIC_REFRESH_PERIOD)) {
+            builder.metricRefreshPeriod(json.getInteger(PROP_METRIC_REFRESH_PERIOD));
+        }
+        if (json.containsKey(PROP_METRIC_STORAGE_NAME)) {
+            builder.metricStorageName(json.getString(PROP_METRIC_STORAGE_NAME));
         }
         if (json.containsKey(PROP_REFRESH_PERIOD)) {
             builder.refreshPeriod(json.getInteger(PROP_REFRESH_PERIOD));
@@ -470,6 +520,18 @@ public class RedisquesConfiguration {
 
     public String getProcessorAddress() {
         return processorAddress;
+    }
+
+    public String getPublishMetricsAddress() {
+        return publishMetricsAddress;
+    }
+
+    public String getMetricStorageName() {
+        return metricStorageName;
+    }
+
+    public int getMetricRefreshPeriod() {
+        return metricRefreshPeriod;
     }
 
     public int getRefreshPeriod() {
@@ -643,6 +705,9 @@ public class RedisquesConfiguration {
         private String configurationUpdatedAddress;
         private String redisPrefix;
         private String processorAddress;
+        private String publishMetricsAddress;
+        private String metricStorageName;
+        private int metricRefreshPeriod;
         private int refreshPeriod;
         private List<String> redisHosts;
         private List<Integer>  redisPorts;
@@ -680,6 +745,7 @@ public class RedisquesConfiguration {
             this.configurationUpdatedAddress = "redisques-configuration-updated";
             this.redisPrefix = "redisques:";
             this.processorAddress = "redisques-processor";
+            this.metricRefreshPeriod = 10;
             this.refreshPeriod = 10;
             this.redisHosts = Collections.singletonList("localhost");
             this.redisPorts = Collections.singletonList(6379);
@@ -726,6 +792,21 @@ public class RedisquesConfiguration {
 
         public RedisquesConfigurationBuilder processorAddress(String processorAddress) {
             this.processorAddress = processorAddress;
+            return this;
+        }
+
+        public RedisquesConfigurationBuilder publishMetricsAddress(String publishMetricsAddress) {
+            this.publishMetricsAddress = publishMetricsAddress;
+            return this;
+        }
+
+        public RedisquesConfigurationBuilder metricStorageName(String metricStorageName) {
+            this.metricStorageName = metricStorageName;
+            return this;
+        }
+
+        public RedisquesConfigurationBuilder metricRefreshPeriod(int metricRefreshPeriod) {
+            this.metricRefreshPeriod = metricRefreshPeriod;
             return this;
         }
 
