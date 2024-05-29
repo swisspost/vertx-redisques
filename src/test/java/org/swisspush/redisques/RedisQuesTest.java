@@ -1,7 +1,9 @@
 package org.swisspush.redisques;
 
 import io.vertx.core.DeploymentOptions;
+import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
+import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.ext.unit.Async;
@@ -10,14 +12,12 @@ import io.vertx.ext.unit.junit.Timeout;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
-import org.swisspush.redisques.util.DefaultRedisquesConfigurationProvider;
-import org.swisspush.redisques.util.QueueConfiguration;
-import org.swisspush.redisques.util.RedisquesConfiguration;
-import org.swisspush.redisques.util.TestMemoryUsageProvider;
+import org.swisspush.redisques.util.*;
 import redis.clients.jedis.Jedis;
 
 import java.util.Collections;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.swisspush.redisques.util.RedisquesAPI.*;
 
@@ -42,6 +42,9 @@ public class RedisQuesTest extends AbstractTestCase {
         JsonObject config = RedisquesConfiguration.with()
                 .processorAddress(PROCESSOR_ADDRESS)
                 .refreshPeriod(2)
+                .publishMetricsAddress("my-metrics-eb-address")
+                .metricStorageName("foobar")
+                .metricRefreshPeriod(2)
                 .memoryUsageLimitPercent(80)
                 .queueConfigurations(Collections.singletonList(new QueueConfiguration()
                         .withPattern("queue.*")
@@ -60,6 +63,20 @@ public class RedisQuesTest extends AbstractTestCase {
             log.info("vert.x Deploy - " + redisQues.getClass().getSimpleName() + " was successful.");
             jedis = new Jedis("localhost", 6379, 5000);
         }));
+    }
+
+    @Test
+    public void testPublishRedisMetrics(TestContext context) {
+        Async async = context.async();
+        AtomicBoolean messageReceived = new AtomicBoolean(false);
+
+        vertx.eventBus().localConsumer("my-metrics-eb-address", (Handler<Message<JsonObject>>) message -> {
+            context.assertTrue(message.body().getString("name").startsWith("redis.foobar."));
+            if(!messageReceived.get()) {
+                messageReceived.set(true);
+                async.complete();
+            }
+        });
     }
 
     @Test
