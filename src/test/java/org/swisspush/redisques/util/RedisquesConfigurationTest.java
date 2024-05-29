@@ -146,7 +146,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(json.getJsonArray(PROP_QUEUE_CONFIGURATIONS).getList().size(), 0);
         testContext.assertEquals(json.getInteger(PROP_QUEUE_SPEED_INTERVAL_SEC), 60);
         testContext.assertEquals(json.getInteger(PROP_MEMORY_USAGE_LIMIT_PCT), 100);
-        testContext.assertEquals(json.getInteger(PROP_DEQUEUE_STATISTIC_REPORT_INTERVAL_SEC), 30);
+        testContext.assertEquals(json.getInteger(PROP_DEQUEUE_STATISTIC_REPORT_INTERVAL_SEC), -1);
         testContext.assertNull(json.getString(PROP_PUBLISH_METRICS_ADDRESS));
         testContext.assertEquals(json.getString(PROP_METRIC_STORAGE_NAME), "queue");
     }
@@ -249,7 +249,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getQueueConfigurations().size(), 0);
         testContext.assertEquals(config.getQueueSpeedIntervalSec(), 60);
         testContext.assertEquals(config.getMemoryUsageLimitPercent(), 100);
-        testContext.assertEquals(config.getDequeueStatisticReportIntervalSec(), 30);
+        testContext.assertEquals(config.getDequeueStatisticReportIntervalSec(), -1);
         testContext.assertNull(config.getPublishMetricsAddress());
         testContext.assertEquals(config.getMetricStorageName(), "queue");
     }

@@ -75,6 +75,7 @@ The following configuration values are available:
 | httpRequestHandlerPort                  | 7070                            | The port of the HTTP API                                                                                                                                                                        |
 | httpRequestHandlerUserHeader            | x-rp-usr                        | The name of the header property where the user information is provided. Used for the HTTP API                                                                                                   |
 | queueConfigurations                     |                                 | Configure retry intervals and enqueue delaying for queue patterns                                                                                                                               |
+| dequeueStatisticReportIntervalSec       | -1                              | The interval [s] to publish the dequeue statistics into shared map. Use **-1** to not publish at all. In a hazelcast-cluster environment need config Semaphore first, see: [Semaphore Config](#Semaphore Config) |
 | publish-metrics-address                 |                                 | The EventBus address to send collected redis metrics to                                                                                                                                         |
 | metric-storage-name                     | queue                           | The name of the storage used in the published metrics                                                                                                                                           |
 | metric-refresh-period                   | 10                              | The frequency [s] of collecting metrics from redis database                                                                                                                                     |
@@ -1028,6 +1029,15 @@ is returned (eg. 60 seconds by default)
   "speed": 42,
   "unitSec": 60
 }
+```
+
+### Semaphore Config
+If you are running in a Hazelcast cluster, the semaphore default permit must set to **1**.
+https://github.com/vert-x3/vertx-hazelcast/blob/master/src/main/asciidoc/index.adoc#using-an-existing-hazelcast-cluster
+
+```java
+SemaphoreConfig semaphoreConfig = new SemaphoreConfig().setInitialPermits(1).setJDKCompatible(false).setName("__vertx.*");
+hazelcastConfig.getCPSubsystemConfig().addSemaphoreConfig(semaphoreConfig);
 ```
 
 

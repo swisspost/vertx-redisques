@@ -43,7 +43,9 @@ public class BulkDeleteQueuesAction extends AbstractQueueAction {
         }
         var p = redisProvider.redis();
         p.onSuccess(redisAPI -> redisAPI.del(buildQueueKeys(queues), delManyReply -> {
-            queueStatisticsCollector.resetQueueStatistics(queues);
+            queueStatisticsCollector.resetQueueStatistics(queues, (Throwable ex, Void v) -> {
+                if (ex != null) log.warn("TODO_q93258hu38 error handling", ex);
+            });
             if (delManyReply.succeeded()) {
                 event.reply(createOkReply().put(VALUE, delManyReply.result().toLong()));
             } else {

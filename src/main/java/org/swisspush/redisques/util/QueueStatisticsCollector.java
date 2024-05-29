@@ -1,6 +1,5 @@
 package org.swisspush.redisques.util;
 
-import io.vertx.core.CompositeFuture;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
@@ -15,7 +14,11 @@ import io.vertx.redis.client.Response;
 import io.vertx.redis.client.impl.types.NumberType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
+import org.swisspush.redisques.exception.NoStacktraceException;
+import org.swisspush.redisques.performance.UpperBoundParallel;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -23,9 +26,11 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.stream.Collectors;
+import java.util.function.BiConsumer;
 
+import static java.lang.System.currentTimeMillis;
 import static org.swisspush.redisques.util.RedisquesAPI.MONITOR_QUEUE_NAME;
 import static org.swisspush.redisques.util.RedisquesAPI.MONITOR_QUEUE_SIZE;
 import static org.swisspush.redisques.util.RedisquesAPI.OK;
@@ -59,23 +64,33 @@ public class QueueStatisticsCollector {
     private final static String QUEUE_FAILURES = "failures";
     private final static String QUEUE_BACKPRESSURE = "backpressureTime";
     private final static String QUEUE_SLOWDOWNTIME = "slowdownTime";
-    private final static String QUEUE_DEQUEUE_STATISTIC = "dequeueStatistic";
 
     private final Map<String, AtomicLong> queueFailureCount = new HashMap<>();
     private final Map<String, Long> queueBackpressureTime = new HashMap<>();
     private final Map<String, Long> queueSlowDownTime = new HashMap<>();
-    private final Map<String, DequeueStatistic> dequeueStatistics = new HashMap<>();
     private final ConcurrentMap<String, AtomicLong> queueMessageSpeedCtr = new ConcurrentHashMap<>();
     private volatile Map<String, Long> queueMessageSpeed = new HashMap<>();
     private final RedisProvider redisProvider;
     private final String queuePrefix;
     private final Vertx vertx;
+    private final RedisQuesExceptionFactory exceptionFactory;
+    private final Semaphore redisRequestQuota;
+    private final UpperBoundParallel upperBoundParallel;
 
-    public QueueStatisticsCollector(RedisProvider redisProvider,
-                                    String queuePrefix, Vertx vertx, int speedIntervalSec) {
+    public QueueStatisticsCollector(
+        RedisProvider redisProvider,
+        String queuePrefix,
+        Vertx vertx,
+        RedisQuesExceptionFactory exceptionFactory,
+        Semaphore redisRequestQuota,
+        int speedIntervalSec
+    ) {
         this.redisProvider = redisProvider;
         this.queuePrefix = queuePrefix;
         this.vertx = vertx;
+        this.exceptionFactory = exceptionFactory;
+        this.redisRequestQuota = redisRequestQuota;
+        this.upperBoundParallel = new UpperBoundParallel(vertx);
         speedStatisticsScheduler(speedIntervalSec);
     }
 
@@ -135,15 +150,21 @@ public class QueueStatisticsCollector {
      *
      * @param queueName The queue name for which the statistic values must be reset.
      */
-    public void resetQueueFailureStatistics(String queueName) {
-        AtomicLong failureCount = queueFailureCount.remove(queueName);
-        queueSlowDownTime.remove(queueName);
-        queueBackpressureTime.remove(queueName);
-        if (failureCount != null && failureCount.get() > 0) {
-            // there was a real failure before, therefore we will execute this
-            // cleanup as well on Redis itself as we would like to do redis operations
-            // only if necessary of course.
-            updateStatisticsInRedis(queueName);
+    public void resetQueueFailureStatistics(String queueName, BiConsumer<Throwable, Void> onDone) {
+        try {
+            AtomicLong failureCount = queueFailureCount.remove(queueName);
+            queueSlowDownTime.remove(queueName);
+            queueBackpressureTime.remove(queueName);
+            if (failureCount != null && failureCount.get() > 0) {
+                // there was a real failure before, therefore we will execute this
+                // cleanup as well on Redis itself as we would like to do redis operations
+                // only if necessary of course.
+                updateStatisticsInRedis(queueName, onDone);
+            } else {
+                vertx.runOnContext(nonsense -> onDone.accept(null, null));
+            }
+        } catch (Exception ex) {
+            onDone.accept(ex, null);
         }
     }
 
@@ -153,14 +174,27 @@ public class QueueStatisticsCollector {
      *
      * @param queues The list of queue names for which the statistic values must be reset.
      */
-    public void resetQueueStatistics(JsonArray queues) {
+    public void resetQueueStatistics(JsonArray queues, BiConsumer<Throwable, Void> onDone) {
         if (queues == null || queues.isEmpty()) {
+            onDone.accept(null, null);
             return;
         }
-        final int size = queues.size();
-        for (int i = 0; i < size; i++) {
-            resetQueueFailureStatistics(queues.getString(i));
-        }
+        upperBoundParallel.request(redisRequestQuota, null, new UpperBoundParallel.Mentor<Void>() {
+            int i = 0;
+            final int size = queues.size();
+            @Override public boolean runOneMore(BiConsumer<Throwable, Void> onDone, Void ctx) {
+                String queueName = queues.getString(i++);
+                resetQueueFailureStatistics(queueName, onDone);
+                return i >= size;
+            }
+            @Override public boolean onError(Throwable ex, Void ctx) {
+                onDone.accept(ex, null);
+                return false;
+            }
+            @Override public void onDone(Void ctx) {
+                onDone.accept(null, null);
+            }
+        });
     }
 
     /**
@@ -169,14 +203,14 @@ public class QueueStatisticsCollector {
      *
      * @param queueName The name of the queue for which success must be processed.
      */
-    public void queueMessageSuccess(String queueName) {
+    public void queueMessageSuccess(String queueName, BiConsumer<Throwable, Void> onDone) {
         // count the number of messages per queue for interval speed evaluation.
         AtomicLong messageCtr = queueMessageSpeedCtr.putIfAbsent(queueName, new AtomicLong(1));
         if (messageCtr != null) {
             messageCtr.incrementAndGet();
         }
         // whenever there is a message successfully sent, our failure statistics could be reset as well
-        resetQueueFailureStatistics(queueName);
+        resetQueueFailureStatistics(queueName, onDone);
     }
 
     /**
@@ -213,7 +247,9 @@ public class QueueStatisticsCollector {
         if (failureCount != null) {
             newFailureCount = failureCount.addAndGet(1);
         }
-        updateStatisticsInRedis(queueName);
+        updateStatisticsInRedis(queueName, (ex, nothing) -> {
+            if (ex != null) log.warn("TODO error handling", ex);
+        });
         return newFailureCount;
     }
 
@@ -246,11 +282,15 @@ public class QueueStatisticsCollector {
     public void setQueueBackPressureTime(String queueName, long time) {
         if (time > 0) {
             queueBackpressureTime.put(queueName, time);
-            updateStatisticsInRedis(queueName);
+            updateStatisticsInRedis(queueName, (ex, v) -> {
+                if (ex != null) log.warn("TODO error handling (findme_q39h8ugjoh)", ex);
+            });
         } else {
             Long lastTime = queueBackpressureTime.remove(queueName);
             if (lastTime != null) {
-                updateStatisticsInRedis(queueName);
+                updateStatisticsInRedis(queueName, (ex, v) -> {
+                    if (ex != null) log.warn("TODO error handling (findme_39587zg)", ex);
+                });
             }
         }
     }
@@ -277,13 +317,16 @@ public class QueueStatisticsCollector {
      * @param time      The slowdown time in ms
      */
     public void setQueueSlowDownTime(String queueName, long time) {
+        BiConsumer<Throwable, Void> onDone = (ex, v) -> {
+            if (ex != null) log.warn("TODO_q9587hg3otuhj error handling", ex);
+        };
         if (time > 0) {
             queueSlowDownTime.put(queueName, time);
-            updateStatisticsInRedis(queueName);
+            updateStatisticsInRedis(queueName, onDone);
         } else {
             Long lastTime = queueSlowDownTime.remove(queueName);
             if (lastTime != null) {
-                updateStatisticsInRedis(queueName);
+                updateStatisticsInRedis(queueName, onDone);
             }
         }
     }
@@ -303,62 +346,40 @@ public class QueueStatisticsCollector {
     }
 
     /**
-     * Sets the {@link DequeueStatistic} for the given queue. Note that this is done in memory
-     * but as well persisted in redis.
-     *
-     * @param queueName The name of the queue for which the stats must be set.
-     * @param dequeueStatistic The {@link DequeueStatistic}
-     */
-    public void setDequeueStatistic(String queueName, DequeueStatistic dequeueStatistic) {
-        if (!dequeueStatistic.isEmpty()) {
-            dequeueStatistics.put(queueName, dequeueStatistic);
-            updateStatisticsInRedis(queueName);
-        }
-    }
-
-    /**
-     * Retrieves the current {@link DequeueStatistic} of the given queue we have in memory for this redisques instance.
-     * <p>
-     * @param queueName The queue name for which we want to retrieve the current failure count
-     * @return The last {@link DequeueStatistic}
-     */
-    private DequeueStatistic getDequeueStatistic(String queueName) {
-        return dequeueStatistics.getOrDefault(queueName, new DequeueStatistic());
-    }
-
-    /**
      * Write all the collected failure statistics for the given Queue to
      * redis for later usage if somebody requests the queue statistics.
      * If there are no valid useful data available eg. all 0, the corresponding
      * statistics entry is removed from redis
      */
-    private void updateStatisticsInRedis(String queueName) {
-        long failures = getQueueFailureCount(queueName);
-        long slowDownTime = getQueueSlowDownTime(queueName);
-        long backpressureTime = getQueueBackPressureTime(queueName);
-        DequeueStatistic dequeueStatistic = getDequeueStatistic(queueName);
-        if (failures > 0 || slowDownTime > 0 || backpressureTime > 0 || !dequeueStatistic.isEmpty()) {
-            JsonObject obj = new JsonObject();
-            obj.put(QUEUENAME, queueName);
-            obj.put(QUEUE_FAILURES, failures);
-            obj.put(QUEUE_SLOWDOWNTIME, slowDownTime);
-            obj.put(QUEUE_BACKPRESSURE, backpressureTime);
-            obj.put(QUEUE_DEQUEUE_STATISTIC, JsonObject.mapFrom(dequeueStatistic));
-            redisProvider.redis()
-                    .onSuccess(redisAPI -> {
-                        redisAPI.hset(List.of(STATSKEY, queueName, obj.toString()), ev -> {
-                            if( ev.failed() ) log.warn("TODO error handling", new Exception(ev.cause()));
-                        });
-                    })
-                    .onFailure(ex -> log.error("Redis: Error in updateStatisticsInRedis", ex));
-        } else {
-            redisProvider.redis()
-                    .onSuccess(redisAPI -> {
-                        redisAPI.hdel(List.of(STATSKEY, queueName), ev -> {
-                            if (ev.failed()) log.warn("TODO error handling", new Exception(ev.cause()));
-                        });
-                    })
-                    .onFailure(ex -> log.error("Redis: Error in updateStatisticsInRedis", ex));
+    private void updateStatisticsInRedis(String queueName, BiConsumer<Throwable, Void> onDone) {
+        try {
+            long failures = getQueueFailureCount(queueName);
+            long slowDownTime = getQueueSlowDownTime(queueName);
+            long backpressureTime = getQueueBackPressureTime(queueName);
+            if (failures > 0 || slowDownTime > 0 || backpressureTime > 0) {
+                JsonObject obj = new JsonObject();
+                obj.put(QUEUENAME, queueName);
+                obj.put(QUEUE_FAILURES, failures);
+                obj.put(QUEUE_SLOWDOWNTIME, slowDownTime);
+                obj.put(QUEUE_BACKPRESSURE, backpressureTime);
+                redisProvider.redis()
+                        .onSuccess(redisAPI -> {
+                            redisAPI.hset(List.of(STATSKEY, queueName, obj.toString()), ev -> {
+                                onDone.accept(ev.failed() ? exceptionFactory.newException("redisAPI.hset() failed", ev.cause()) : null, null);
+                            });
+                        })
+                        .onFailure(ex -> onDone.accept(exceptionFactory.newException("redisProvider.redis() failed", ex), null));
+            } else {
+                redisProvider.redis()
+                        .onSuccess(redisAPI -> {
+                            redisAPI.hdel(List.of(STATSKEY, queueName), ev -> {
+                                onDone.accept(ev.failed() ? exceptionFactory.newException("redisAPI.hdel() failed", ev.cause()) : null, null);
+                            });
+                        })
+                        .onFailure(ex -> onDone.accept(exceptionFactory.newException("redisProvider.redis() failed", ex), null));
+            }
+        } catch (RuntimeException ex) {
+            onDone.accept(ex, null);
         }
     }
 
@@ -373,7 +394,6 @@ public class QueueStatisticsCollector {
         private long backpressureTime;
         private long slowdownTime;
         private long speed;
-        private JsonObject dequeueStatistic;
 
         QueueStatistic(String queueName) {
             this.queueName = queueName;
@@ -419,14 +439,6 @@ public class QueueStatisticsCollector {
             this.speed = 0;
         }
 
-        void setDequeueStatistic(DequeueStatistic dequeueStatistic) {
-            if (dequeueStatistic != null && !dequeueStatistic.isEmpty()) {
-                this.dequeueStatistic = JsonObject.mapFrom(dequeueStatistic);
-                return;
-            }
-            this.dequeueStatistic = JsonObject.mapFrom(new DequeueStatistic());
-        }
-
         JsonObject getAsJsonObject() {
             return new JsonObject()
                     .put(MONITOR_QUEUE_NAME, queueName)
@@ -434,8 +446,7 @@ public class QueueStatisticsCollector {
                     .put(STATISTIC_QUEUE_FAILURES, failures)
                     .put(STATISTIC_QUEUE_BACKPRESSURE, backpressureTime)
                     .put(STATISTIC_QUEUE_SLOWDOWN, slowdownTime)
-                    .put(STATISTIC_QUEUE_SPEED, speed)
-                    .put(QUEUE_DEQUEUE_STATISTIC, dequeueStatistic);
+                    .put(STATISTIC_QUEUE_SPEED, speed);
         }
     }
 
@@ -447,7 +458,6 @@ public class QueueStatisticsCollector {
      * registered). Therefore this method must be used with care and not be called too often!
      *
      * @param queues The queues for which we are interested in the statistics
-     *
      * @return A Future
      */
 
@@ -461,18 +471,20 @@ public class QueueStatisticsCollector {
         var ctx = new RequestCtx();
         ctx.queueNames = queues;
         step1(ctx).compose(
-                jsonObject1 -> step2(ctx).compose(
-                        jsonObject2 -> step3(ctx).compose(
-                                jsonObject3 -> step4(ctx).compose(
-                                        jsonObject4 -> step5(ctx).compose(
-                                                jsonObject5 -> step6(ctx))
+                nothing1 -> step2(ctx).compose(
+                        nothing2 -> step3(ctx).compose(
+                                nothing3 -> step4(ctx).compose(
+                                        nothing4 -> step5(ctx).compose(
+                                                nothing5 -> step6(ctx))
                                 )))).onComplete(promise);
         return promise.future();
     }
 
-    /** <p>init redis connection.</p> */
-    Future<JsonObject> step1(RequestCtx ctx) {
-        final Promise<JsonObject> promise = Promise.promise();
+    /**
+     * <p>init redis connection.</p>
+     */
+    Future<Void> step1(RequestCtx ctx) {
+        final Promise<Void> promise = Promise.promise();
         redisProvider.connection()
                 .onFailure(throwable -> {
                     promise.fail(new Exception("Redis: Failed to get queue length.", throwable));
@@ -485,39 +497,93 @@ public class QueueStatisticsCollector {
         return promise.future();
     }
 
-    /** <p>Query queue lengths.</p> */
-    Future<JsonObject> step2(RequestCtx ctx) {
-        assert ctx.conn != null;
-        final Promise<JsonObject> promise = Promise.promise();
-        List<Future> responses = ctx.queueNames.stream()
-                .map(queue -> ctx.conn.send(Request.cmd(Command.LLEN, queuePrefix + queue)))
-                .collect(Collectors.toList());
-        CompositeFuture.all(responses)
-                .onFailure(ex -> {
-                    promise.fail("Unexpected queue length result");
-                })
-                .onSuccess(compositeFuture -> {
-                    List<NumberType> queueLengthList = compositeFuture.list();
-                    if (queueLengthList == null) {
-                        promise.fail("Unexpected queue length result: null");
+    class WorkerThreadTask {
+        private final String queueName;
+        private final RequestCtx ctx;
+
+        WorkerThreadTask(RequestCtx ctx, String queueName) {
+            this.queueName = queueName;
+            this.ctx = ctx;
+        }
+
+        Future<NumberType> execute() {
+            // switch to a worker thread
+            return vertx.executeBlocking(promise -> {
+                ctx.conn.send(Request.cmd(Command.LLEN, queuePrefix + queueName)).onComplete(event -> {
+                    if (event.failed()) {
+                        promise.fail(event.cause());
                         return;
                     }
-                    if (queueLengthList.size() != ctx.queueNames.size()) {
-                        String err = "Unexpected queue length result with unequal size " +
-                                ctx.queueNames.size() + " : " + queueLengthList.size();
-                        promise.fail(err);
-                        return;
-                    }
-                    ctx.queueLengthList = queueLengthList;
-                    promise.complete();
+                    promise.complete((NumberType) event.result());
                 });
-        return promise.future();
+            });
+        }
+    }
+
+    /** <p>Query queue lengths.</p> */
+    Future<Void> step2(RequestCtx ctx) {
+        assert ctx.conn != null;
+        int numQueues = ctx.queueNames.size();
+
+        return vertx.executeBlocking(executeBlockingPromise -> {
+            String fmt1 = "About to perform {} requests to redis just for monitoring";
+            if (numQueues > 256) {
+                log.warn(fmt1, numQueues);
+            } else {
+                log.debug(fmt1, numQueues);
+            }
+            long begRedisRequestsEpochMs = currentTimeMillis();
+
+            List<WorkerThreadTask> workerThreadTaskList = new ArrayList<>();
+
+            ctx.queueNames.forEach(queueName -> workerThreadTaskList.add(new WorkerThreadTask(ctx, queueName)));
+
+            Future<List<NumberType>> startFuture = Future.succeededFuture(new ArrayList<>());
+            // chain the futures sequentially to execute tasks
+            Future<List<NumberType>> resultFuture = workerThreadTaskList.stream()
+                    .reduce(startFuture, (future, workerThreadTask) -> future.compose(previousResults -> {
+                        // perform asynchronous task
+                        return workerThreadTask.execute().compose(taskResult -> {
+                            // append task result to previous results
+                            previousResults.add(taskResult);
+                            return Future.succeededFuture(previousResults);
+                        });
+                    }), (a, b) -> Future.succeededFuture());
+
+
+            resultFuture.onComplete(ev -> {
+                long durRedisRequestsMs = currentTimeMillis() - begRedisRequestsEpochMs;
+                String fmt2 = "All those {} redis requests took {}ms";
+                if (durRedisRequestsMs > 3000) {
+                    log.warn(fmt2, numQueues, durRedisRequestsMs);
+                } else {
+                    log.debug(fmt2, numQueues, durRedisRequestsMs);
+                }
+                if (ev.failed()) {
+                    executeBlockingPromise.fail(new Exception("Unexpected queue length result", ev.cause()));
+                    return;
+                }
+                List<NumberType> queueLengthList = ev.result();
+                if (queueLengthList == null) {
+                    executeBlockingPromise.fail("Unexpected queue length result: null");
+                    return;
+                }
+                if (queueLengthList.size() != ctx.queueNames.size()) {
+                    String err = "Unexpected queue length result with unequal size " +
+                            ctx.queueNames.size() + " : " + queueLengthList.size();
+                    executeBlockingPromise.fail(err);
+                    return;
+                }
+                ctx.queueLengthList = queueLengthList;
+                executeBlockingPromise.complete();
+            });
+
+        });
     }
 
     /** <p>init queue statistics.</p> */
-    Future<JsonObject> step3(RequestCtx ctx) {
+    Future<Void> step3(RequestCtx ctx) {
         assert ctx.queueLengthList != null;
-        final Promise<JsonObject> promise = Promise.promise();
         // populate the list of queue statistics in a Hashmap for later fast merging
         ctx.statistics = new HashMap<>(ctx.queueNames.size());
         for (int i = 0; i < ctx.queueNames.size(); i++) {
@@ -526,13 +592,12 @@ public class QueueStatisticsCollector {
             qs.setMessageSpeed(getQueueSpeed(qs.queueName));
             ctx.statistics.put(qs.queueName, qs);
         }
-        promise.complete();
-        return promise.future();
+        return Future.succeededFuture();
     }
 
     /** <p>init a resAPI instance we need to get more details.</p> */
-    Future<JsonObject> step4(RequestCtx ctx){
-        final Promise<JsonObject> promise = Promise.promise();
+    Future<Void> step4(RequestCtx ctx){
+        final Promise<Void> promise = Promise.promise();
         redisProvider.redis()
                 .onFailure(throwable -> {
                     promise.fail(new Exception("Redis: Error in getQueueStatistics", throwable));
@@ -549,54 +614,50 @@ public class QueueStatisticsCollector {
      * <p>retrieve all available failure statistics from Redis and merge them
      * together with the previous populated common queue statistics map</p>
      */
-    Future<JsonObject> step5(RequestCtx ctx) {
+    Future<Void> step5(RequestCtx ctx) {
         assert ctx.redisAPI != null;
         assert ctx.statistics != null;
-        final Promise<JsonObject> promise = Promise.promise();
-        ctx.redisAPI.hvals(STATSKEY, statisticsSet -> {
-            if( statisticsSet == null || statisticsSet.failed() ){
-                promise.fail(new RuntimeException("statistics queue evaluation failed",
+
+        return vertx.executeBlocking(executeBlockingPromise -> ctx.redisAPI.hvals(STATSKEY, statisticsSet -> {
+            if (statisticsSet == null || statisticsSet.failed()) {
+                executeBlockingPromise.fail(new RuntimeException("statistics queue evaluation failed",
                         statisticsSet == null ? null : statisticsSet.cause()));
                 return;
             }
             ctx.redisFailStats = statisticsSet.result();
             assert ctx.redisFailStats != null;
-            promise.complete();
-        });
-        return promise.future();
+            executeBlockingPromise.complete();
+        }));
     }
 
     /** <p>put received statistics data to the former prepared statistics objects per
      *  queue.</p> */
     Future<JsonObject> step6(RequestCtx ctx){
         assert ctx.redisFailStats != null;
-        final Promise<JsonObject> promise = Promise.promise();
-        for (Response response : ctx.redisFailStats) {
-            JsonObject jObj = new JsonObject(response.toString());
-            String queueName = jObj.getString(QUEUENAME);
-            QueueStatistic queueStatistic = ctx.statistics.get(queueName);
-            if (queueStatistic != null) {
-                // if it isn't there, there is obviously no statistic needed
-                queueStatistic.setFailures(jObj.getLong(QUEUE_FAILURES, 0L));
-                queueStatistic.setBackpressureTime(jObj.getLong(QUEUE_BACKPRESSURE, 0L));
-                queueStatistic.setSlowdownTime(jObj.getLong(QUEUE_SLOWDOWNTIME, 0L));
-                if (jObj.containsKey(QUEUE_DEQUEUE_STATISTIC)) {
-                    queueStatistic.setDequeueStatistic(jObj.getJsonObject(QUEUE_DEQUEUE_STATISTIC).mapTo(DequeueStatistic.class));
+        return vertx.executeBlocking(executeBlockingPromise -> {
+            for (Response response : ctx.redisFailStats) {
+                JsonObject jObj = new JsonObject(response.toString());
+                String queueName = jObj.getString(QUEUENAME);
+                QueueStatistic queueStatistic = ctx.statistics.get(queueName);
+                if (queueStatistic != null) {
+                    // if it isn't there, there is obviously no statistic needed
+                    queueStatistic.setFailures(jObj.getLong(QUEUE_FAILURES, 0L));
+                    queueStatistic.setBackpressureTime(jObj.getLong(QUEUE_BACKPRESSURE, 0L));
+                    queueStatistic.setSlowdownTime(jObj.getLong(QUEUE_SLOWDOWNTIME, 0L));
                 }
             }
-        }
-        // build the final resulting statistics list from the former merged queue
-        // values from various sources
-        JsonArray result = new JsonArray();
-        for (String queueName : ctx.queueNames) {
-            QueueStatistic stats = ctx.statistics.get(queueName);
-            if (stats != null) {
-                result.add(stats.getAsJsonObject());
+            // build the final resulting statistics list from the former merged queue
+            // values from various sources
+            JsonArray result = new JsonArray();
+            for (String queueName : ctx.queueNames) {
+                QueueStatistic stats = ctx.statistics.get(queueName);
+                if (stats != null) {
+                    result.add(stats.getAsJsonObject());
+                }
             }
-        }
-        promise.complete(new JsonObject().put(STATUS, OK)
-                .put(RedisquesAPI.QUEUES, result));
-        return promise.future();
+            executeBlockingPromise.complete(new JsonObject().put(STATUS, OK)
+                    .put(RedisquesAPI.QUEUES, result));
+        });
     }
 
     /**
@@ -622,10 +683,9 @@ public class QueueStatisticsCollector {
         event.reply(new JsonObject().put(STATUS, OK).put(STATISTIC_QUEUE_SPEED, speed));
     }
 
-    /** <p>Holds intermediate state related to a {@link #getQueueStatistics(Message, List)}
-     * request.</p> */
+    /** <p>Holds intermediate state related to a {@link #getQueueStatistics(List)}
+     *  request.</p> */
     private static class RequestCtx {
-        private Message<JsonObject> event; // origin event we have to answer
         private List<String> queueNames; // Requested queues to analyze
         private Redis conn;
         private RedisAPI redisAPI;
