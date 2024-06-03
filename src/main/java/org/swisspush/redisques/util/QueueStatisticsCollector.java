@@ -7,15 +7,12 @@ import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.redis.client.Command;
-import io.vertx.redis.client.Redis;
 import io.vertx.redis.client.RedisAPI;
-import io.vertx.redis.client.Request;
 import io.vertx.redis.client.Response;
 import io.vertx.redis.client.impl.types.NumberType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
-import org.swisspush.redisques.exception.NoStacktraceException;
 import org.swisspush.redisques.performance.UpperBoundParallel;
 
 import java.util.ArrayList;
@@ -485,13 +482,12 @@ public class QueueStatisticsCollector {
      */
     Future<Void> step1(RequestCtx ctx) {
         final Promise<Void> promise = Promise.promise();
-        redisProvider.connection()
+        redisProvider.redis()
                 .onFailure(throwable -> {
                     promise.fail(new Exception("Redis: Failed to get queue length.", throwable));
                 })
                 .onSuccess(conn -> {
                     assert conn != null;
-                    ctx.conn = conn;
                     promise.complete();
                 });
         return promise.future();
@@ -509,7 +505,7 @@ public class QueueStatisticsCollector {
         Future<NumberType> execute() {
             // switch to a worker thread
             return vertx.executeBlocking(promise -> {
-                ctx.conn.send(Request.cmd(Command.LLEN, queuePrefix + queueName)).onComplete(event -> {
+                ctx.redisAPI.send(Command.LLEN, queuePrefix + queueName).onComplete(event -> {
                     if (event.failed()) {
                         promise.fail(event.cause());
                         return;
@@ -522,7 +518,7 @@ public class QueueStatisticsCollector {
 
     /** <p>Query queue lengths.</p> */
     Future<Void> step2(RequestCtx ctx) {
-        assert ctx.conn != null;
+        assert ctx.redisAPI != null;
         int numQueues = ctx.queueNames.size();
 
         return vertx.executeBlocking(executeBlockingPromise -> {
@@ -687,7 +683,6 @@ public class QueueStatisticsCollector {
      *  request.</p> */
     private static class RequestCtx {
         private List<String> queueNames; // Requested queues to analyze
-        private Redis conn;
         private RedisAPI redisAPI;
         private List<NumberType> queueLengthList;
         private HashMap<String, QueueStatistic> statistics; // Stats we're going to populate
