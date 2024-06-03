@@ -470,10 +470,9 @@ public class QueueStatisticsCollector {
         step1(ctx).compose(
                 nothing1 -> step2(ctx).compose(
                         nothing2 -> step3(ctx).compose(
-                                nothing3 -> step4(ctx).compose(
-                                        nothing4 -> step5(ctx).compose(
-                                                nothing5 -> step6(ctx))
-                                )))).onComplete(promise);
+                                        nothing3 -> step4(ctx).compose(
+                                                nothing4 -> step5(ctx))
+                                ))).onComplete(promise);
         return promise.future();
     }
 
@@ -486,8 +485,9 @@ public class QueueStatisticsCollector {
                 .onFailure(throwable -> {
                     promise.fail(new Exception("Redis: Failed to get queue length.", throwable));
                 })
-                .onSuccess(conn -> {
-                    assert conn != null;
+                .onSuccess(redisAPI -> {
+                    assert redisAPI != null;
+                    ctx.redisAPI = redisAPI;
                     promise.complete();
                 });
         return promise.future();
@@ -591,26 +591,11 @@ public class QueueStatisticsCollector {
         return Future.succeededFuture();
     }
 
-    /** <p>init a resAPI instance we need to get more details.</p> */
-    Future<Void> step4(RequestCtx ctx){
-        final Promise<Void> promise = Promise.promise();
-        redisProvider.redis()
-                .onFailure(throwable -> {
-                    promise.fail(new Exception("Redis: Error in getQueueStatistics", throwable));
-                })
-                .onSuccess(redisAPI -> {
-                    assert redisAPI != null;
-                    ctx.redisAPI = redisAPI;
-                    promise.complete();
-                });
-        return promise.future();
-    }
-
     /**
      * <p>retrieve all available failure statistics from Redis and merge them
      * together with the previous populated common queue statistics map</p>
      */
-    Future<Void> step5(RequestCtx ctx) {
+    Future<Void> step4(RequestCtx ctx) {
         assert ctx.redisAPI != null;
         assert ctx.statistics != null;
 
@@ -628,7 +613,7 @@ public class QueueStatisticsCollector {
 
     /** <p>put received statistics data to the former prepared statistics objects per
      *  queue.</p> */
-    Future<JsonObject> step6(RequestCtx ctx){
+    Future<JsonObject> step5(RequestCtx ctx){
         assert ctx.redisFailStats != null;
         return vertx.executeBlocking(executeBlockingPromise -> {
             for (Response response : ctx.redisFailStats) {
