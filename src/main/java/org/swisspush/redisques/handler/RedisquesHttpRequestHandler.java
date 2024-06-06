@@ -997,7 +997,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
                         }
                     } else {
                         String error = "Error gathering names of active queues";
-                        log.error(error, reply.cause());
+                        log.error(error, exceptionFactory.newException(reply.cause()));
                         respondWith(StatusCode.INTERNAL_SERVER_ERROR, error, ctx.request());
                     }
                 });
