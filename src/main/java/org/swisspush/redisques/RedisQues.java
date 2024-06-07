@@ -14,9 +14,7 @@ import io.vertx.core.eventbus.MessageConsumer;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.redis.client.Command;
-import io.vertx.redis.client.Redis;
 import io.vertx.redis.client.RedisAPI;
-import io.vertx.redis.client.Request;
 import io.vertx.redis.client.Response;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -677,10 +675,9 @@ public class RedisQues extends AbstractVerticle {
 
     private void registerQueueCheck() {
         vertx.setPeriodic(configurationProvider.configuration().getCheckIntervalTimerMs(), periodicEvent -> {
-            redisProvider.connection().<Response>compose((Redis conn) -> {
+            redisProvider.redis().<Response>compose((RedisAPI redisAPI) -> {
                 int checkInterval = configurationProvider.configuration().getCheckInterval();
-                Request req = Request.cmd(Command.SET, queueCheckLastexecKey, currentTimeMillis(), "NX", "EX", checkInterval);
-                return conn.send(req);
+                return redisAPI.send(Command.SET, queueCheckLastexecKey, String.valueOf(currentTimeMillis()), "NX", "EX", String.valueOf(checkInterval));
             }).<Void>compose((Response todoExplainWhyThisIsIgnored) -> {
                 log.info("periodic queue check is triggered now");
                 return checkQueues();

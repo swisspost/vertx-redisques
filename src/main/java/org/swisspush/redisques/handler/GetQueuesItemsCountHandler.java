@@ -9,8 +9,7 @@ import io.vertx.core.eventbus.ReplyFailure;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.redis.client.Command;
-import io.vertx.redis.client.Redis;
-import io.vertx.redis.client.Request;
+import io.vertx.redis.client.RedisAPI;
 import io.vertx.redis.client.Response;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -76,7 +75,7 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
             return;
         }
         var ctx = new Object(){
-            Redis redis;
+            RedisAPI redis;
             Iterator<String> iter;
             List<String> queues = HandlerUtil.filterByPattern(handleQueues.result(), filterPattern);
             int iNumberResult;
@@ -92,7 +91,8 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
                     "Too many simultaneous '" + GetQueuesItemsCountHandler.class.getSimpleName() + "' requests in progress"));
             return;
         }
-        redisProvider.connection().<Void>compose((Redis redis_) -> {
+
+        redisProvider.redis().<Void>compose((RedisAPI redis_) -> {
             ctx.redis = redis_;
             ctx.queueLengths = new int[ctx.queues.size()];
             ctx.iter = ctx.queues.iterator();
@@ -102,7 +102,7 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
                     if (ctx.iter.hasNext()) {
                         String queue = ctx.iter.next();
                         int iNum = ctx.iNumberResult++;
-                        ctx.redis.send(Request.cmd(Command.LLEN, queuesPrefix + queue)).onSuccess((Response rsp) -> {
+                        ctx.redis.send(Command.LLEN, queuesPrefix + queue).onSuccess((Response rsp) -> {
                             ctx.queueLengths[iNum] = rsp.toInteger();
                             onLLenDone.accept(null, null);
                         }).onFailure((Throwable ex) -> {

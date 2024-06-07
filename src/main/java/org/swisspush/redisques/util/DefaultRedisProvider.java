@@ -47,15 +47,6 @@ public class DefaultRedisProvider implements RedisProvider {
         }
     }
 
-    @Override
-    public Future<Redis> connection() {
-        if (redis != null) {
-            return Future.succeededFuture(redis);
-        } else {
-            return setupRedisClient().compose(redisAPI -> Future.succeededFuture(redis));
-        }
-    }
-
     private boolean reconnectEnabled() {
         return configurationProvider.configuration().getRedisReconnectAttempts() != 0;
     }
