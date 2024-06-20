@@ -522,12 +522,7 @@ public class QueueStatisticsCollector {
         int numQueues = ctx.queueNames.size();
 
         return vertx.executeBlocking(executeBlockingPromise -> {
-            String fmt1 = "About to perform {} requests to redis just for monitoring";
-            if (numQueues > 256) {
-                log.warn(fmt1, numQueues);
-            } else {
-                log.debug(fmt1, numQueues);
-            }
+            log.debug("About to perform {} requests to redis just for monitoring", numQueues);
             long begRedisRequestsEpochMs = currentTimeMillis();
 
             List<WorkerThreadTask> workerThreadTaskList = new ArrayList<>();
