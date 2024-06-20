@@ -537,6 +537,7 @@ public class RedisQues extends AbstractVerticle {
     private void registerActiveQueueRegistrationRefresh() {
         // Periodic refresh of my registrations on active queues.
         var periodMs = configurationProvider.configuration().getRefreshPeriod() * 1000L;
+        log.info("registerActiveQueueRegistrationRefresh() every {}ms", periodMs);
         periodicSkipScheduler.setPeriodic(periodMs, "registerActiveQueueRegistrationRefresh", new Consumer<Runnable>() {
             Iterator<Map.Entry<String, QueueState>> iter;
             @Override public void accept(Runnable onPeriodicDone) {
