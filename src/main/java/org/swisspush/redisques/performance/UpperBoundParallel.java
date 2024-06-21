@@ -1,6 +1,7 @@
 package org.swisspush.redisques.performance;
 
 import io.vertx.core.Vertx;
+import io.vertx.core.impl.NoStackTraceThrowable;
 import org.slf4j.Logger;
 
 import java.util.concurrent.Semaphore;

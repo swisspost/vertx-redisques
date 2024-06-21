@@ -70,7 +70,7 @@ public class PeriodicSkipScheduler {
         private long id;
         private String dbgHint;
         // When the last run has begun and end.
-        private volatile long begEpochMs, endEpochMs; // TODO remove volatile
+        private long begEpochMs, endEpochMs;
 
         private Timer(Consumer<Runnable> task) {
             this.task = task;

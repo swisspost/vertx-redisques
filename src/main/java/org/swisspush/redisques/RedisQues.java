@@ -11,6 +11,7 @@ import io.vertx.core.eventbus.DeliveryOptions;
 import io.vertx.core.eventbus.EventBus;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.eventbus.MessageConsumer;
+import io.vertx.core.impl.NoStackTraceThrowable;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.redis.client.Command;
@@ -537,7 +538,6 @@ public class RedisQues extends AbstractVerticle {
     private void registerActiveQueueRegistrationRefresh() {
         // Periodic refresh of my registrations on active queues.
         var periodMs = configurationProvider.configuration().getRefreshPeriod() * 1000L;
-        log.info("registerActiveQueueRegistrationRefresh() every {}ms", periodMs);
         periodicSkipScheduler.setPeriodic(periodMs, "registerActiveQueueRegistrationRefresh", new Consumer<Runnable>() {
             Iterator<Map.Entry<String, QueueState>> iter;
             @Override public void accept(Runnable onPeriodicDone) {
@@ -1250,16 +1250,32 @@ public class RedisQues extends AbstractVerticle {
                     return ctx.iter.hasNext();
                 }
                 @Override public boolean onError(Throwable ex, Void ctx_) {
+                    for (Throwable waitQueFullEx = ex; waitQueFullEx != null; waitQueFullEx = waitQueFullEx.getCause()) {
+                        if (!(waitQueFullEx instanceof NoStackTraceThrowable)) continue;
+                        if (!"Redis waiting queue is full".equals(waitQueFullEx.getMessage())) continue;
+                        // Trying to continue (aka return true) makes no sense as our redis
+                        // client is out of resources and continuing just will make load
+                        // situation worse. So we abort in the case of this special exception.
+                        makeGcLifeEasier();
+                        p.fail(exceptionFactory.newException(ex));
+                        return false;
+                    }
                     log.warn("TODO error handling", exceptionFactory.newException(ex));
-                    return true; // true, keep going with other queues.
+                    // Still not sure if it is a good idea to ignore errors and try to respond
+                    // with half-baked results. But will keep it this way because old code [1]
+                    // did without any comment that would have explained why.
+                    // [1]: https://github.com/swisspost/vertx-redisques/blob/v3.0.33/src/main/java/org/swisspush/redisques/RedisQues.java
+                    return true; // true, aka keep going with other queues.
                 }
                 @Override public void onDone(Void ctx_) {
+                    makeGcLifeEasier();
+                    p.complete(); // Mark this composition step as completed.
+                }
+                private void makeGcLifeEasier() {
                     // No longer used, so reduce GC graph traversal effort.
                     ctx.redisAPI = null;
                     ctx.counter = null;
                     ctx.iter = null;
-                    // Mark this composition step as completed.
-                    p.complete();
                 }
             });
             return p.future();
