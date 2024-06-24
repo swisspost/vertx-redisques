@@ -1,10 +1,8 @@
 package org.swisspush.redisques.performance;
 
-import io.vertx.core.Future;
-import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
-import io.vertx.core.impl.NoStackTraceThrowable;
 import org.slf4j.Logger;
+import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -50,10 +48,12 @@ public class UpperBoundParallel {
     private static final Logger log = getLogger(UpperBoundParallel.class);
     private static final long RETRY_DELAY_IF_LIMIT_REACHED_MS = 8;
     private final Vertx vertx;
+    private final RedisQuesExceptionFactory exceptionFactory;
 
-    public UpperBoundParallel(Vertx vertx) {
+    public UpperBoundParallel(Vertx vertx, RedisQuesExceptionFactory exceptionFactory) {
         assert vertx != null;
         this.vertx = vertx;
+        this.exceptionFactory = exceptionFactory;
     }
 
     public <Ctx> void request(Semaphore limit, Ctx ctx, Mentor<Ctx> mentor) {
@@ -77,7 +77,7 @@ public class UpperBoundParallel {
             // Enqueue as much we can.
             while (true) {
                 if (req.isFatalError) {
-                    log.debug("return from 'resume()' because isFatalError");
+                    log.trace("return from 'resume()' because isFatalError");
                     return;
                 }
                 if (!req.hasMore) {
@@ -137,7 +137,7 @@ public class UpperBoundParallel {
                     // We couldn't even trigger one single task. No resources available to
                     // handle any more requests. This caller has to try later.
                     req.isFatalError = true;
-                    Exception ex = new Exception("No more resources to handle yet another request now.");
+                    Exception ex = exceptionFactory.newException("No more resources to handle yet another request now.");
                     req.mentor.onError(ex, req.ctx);
                     return;
                 }else{

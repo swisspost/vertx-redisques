@@ -6,6 +6,7 @@ import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.eventbus.ReplyException;
+import io.vertx.core.eventbus.ReplyFailure;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.redis.client.Command;
@@ -62,7 +63,7 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
         this.filterPattern = filterPattern;
         this.queuesPrefix = queuesPrefix;
         this.redisProvider = redisProvider;
-        this.upperBoundParallel = new UpperBoundParallel(vertx);
+        this.upperBoundParallel = new UpperBoundParallel(vertx, exceptionFactory);
         this.exceptionFactory = exceptionFactory;
         this.redisRequestQuota = redisRequestQuota;
     }
@@ -87,7 +88,7 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
             return;
         }
         if (redisRequestQuota.availablePermits() <= 0) {
-            event.reply(exceptionFactory.newReplyException(RECIPIENT_FAILURE, 429,
+            event.reply(exceptionFactory.newReplyException(ReplyFailure.RECIPIENT_FAILURE, 429,
                     "Too many simultaneous '" + GetQueuesItemsCountHandler.class.getSimpleName() + "' requests in progress"));
             return;
         }

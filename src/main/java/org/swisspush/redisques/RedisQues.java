@@ -344,7 +344,7 @@ public class RedisQues extends AbstractVerticle {
             redisProvider = new DefaultRedisProvider(vertx, configurationProvider);
         }
 
-        this.upperBoundParallel = new UpperBoundParallel(vertx);
+        this.upperBoundParallel = new UpperBoundParallel(vertx, exceptionFactory);
 
         redisProvider.redis().onComplete(event -> {
             if(event.succeeded()) {
@@ -551,6 +551,7 @@ public class RedisQues extends AbstractVerticle {
                     }
                     @Override public boolean onError(Throwable ex, Iterator<Map.Entry<String, QueueState>> iter) {
                         if (log.isWarnEnabled()) log.warn("TODO error handling", exceptionFactory.newException(ex));
+                        onPeriodicDone.run();
                         return false;
                     }
                     @Override public void onDone(Iterator<Map.Entry<String, QueueState>> iter) {
