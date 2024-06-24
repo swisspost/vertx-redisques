@@ -5,7 +5,7 @@ import io.vertx.core.Handler;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.Message;
-import io.vertx.core.eventbus.ReplyFailure;
+import io.vertx.core.eventbus.ReplyException;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.redis.client.Command;
@@ -13,6 +13,7 @@ import io.vertx.redis.client.RedisAPI;
 import io.vertx.redis.client.Response;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.performance.UpperBoundParallel;
 import org.swisspush.redisques.util.HandlerUtil;
 import org.swisspush.redisques.util.RedisProvider;
@@ -24,8 +25,7 @@ import java.util.concurrent.Semaphore;
 import java.util.function.BiConsumer;
 import java.util.regex.Pattern;
 
-import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
-
+import static io.vertx.core.eventbus.ReplyFailure.RECIPIENT_FAILURE;
 import static java.lang.System.currentTimeMillis;
 import static org.swisspush.redisques.util.RedisquesAPI.ERROR;
 import static org.swisspush.redisques.util.RedisquesAPI.MONITOR_QUEUE_NAME;
@@ -87,7 +87,7 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
             return;
         }
         if (redisRequestQuota.availablePermits() <= 0) {
-            event.reply(exceptionFactory.newReplyException(ReplyFailure.RECIPIENT_FAILURE, 429,
+            event.reply(exceptionFactory.newReplyException(RECIPIENT_FAILURE, 429,
                     "Too many simultaneous '" + GetQueuesItemsCountHandler.class.getSimpleName() + "' requests in progress"));
             return;
         }
@@ -112,8 +112,7 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
                     return ctx.iter.hasNext();
                 }
                 @Override public boolean onError(Throwable ex, Void ctx_) {
-                    log.error("Unexpected queue length result", exceptionFactory.newException(ex));
-                    event.reply(new JsonObject().put(STATUS, ERROR));
+                    p.fail(exceptionFactory.newException("Unexpected queue length result", ex));
                     return false;
                 }
                 @Override public void onDone(Void ctx_) {
@@ -148,9 +147,19 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
         }).onSuccess((JsonObject json) -> {
             log.trace("call event.reply(json)");
             event.reply(json);
-        }).onFailure((Throwable ex) -> {
-            log.warn("Redis: Failed to get queue length.", exceptionFactory.newException(ex));
-            event.reply(new JsonObject().put(STATUS, ERROR));
+        }).onFailure((Throwable origEx) -> {
+            // For whatever reason 'event' cannot transport a regular exception. So
+            // we have to squeeze it into a ReplyException.
+            int failureCode = 500;
+            for (Throwable thr = origEx; thr != null; thr = thr.getCause()) {
+                if (thr instanceof io.vertx.core.impl.NoStackTraceThrowable && "Redis waiting queue is full".equals(thr.getMessage())) {
+                    failureCode = 429;
+                    break;
+                }
+            }
+            ReplyException replyEx = exceptionFactory.newReplyException(RECIPIENT_FAILURE, failureCode, ERROR);
+            replyEx.initCause(origEx);
+            event.reply(replyEx);
         });
     }
 

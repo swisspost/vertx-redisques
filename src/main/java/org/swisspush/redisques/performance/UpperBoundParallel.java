@@ -1,10 +1,13 @@
 package org.swisspush.redisques.performance;
 
+import io.vertx.core.Future;
+import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.impl.NoStackTraceThrowable;
 import org.slf4j.Logger;
 
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BiConsumer;
@@ -82,7 +85,7 @@ public class UpperBoundParallel {
                         req.isDoneCalled = true;
                         // give up lock because we don't know how much time mentor will use.
                         req.lock.unlock();
-                        log.debug("call 'mentor.onDone()'");
+                        //log.debug("call 'mentor.onDone()'");
                         try {
                             req.mentor.onDone(req.ctx);
                         } finally {
@@ -93,10 +96,16 @@ public class UpperBoundParallel {
                     }
                     return;
                 }
-                if (!req.limit.tryAcquire()) {
+                if (req.numTokensAvailForOurself > 0) {
+                    // We still have a token reserved for ourself. Use those first before acquiring
+                    // new ones. Explanation see comment in 'onOneDone()'.
+                    assert req.numTokensAvailForOurself == 1 : "TODO is this always true? "+ req.numTokensAvailForOurself;
+                    req.numTokensAvailForOurself -= 1;
+                }else if (!req.limit.tryAcquire()) {
                     log.debug("redis request limit reached. Need to pause now.");
                     break; // Go to end of loop to schedule a run later.
                 }
+                req.hasStarted = true;
                 req.numInProgress += 1;
                 boolean hasMore = true;
                 try {
@@ -105,7 +114,14 @@ public class UpperBoundParallel {
                     // waiting for our lock).
                     req.lock.unlock();
                     log.trace("mentor.runOneMore()  numInProgress={}", req.numInProgress);
-                    hasMore = req.mentor.runOneMore(req::onOneDone_, req.ctx);
+                    hasMore = req.mentor.runOneMore(new BiConsumer<>() {
+                        // this boolean is just for paranoia, in case mentor tries to call back too often.
+                        final AtomicBoolean isCalled = new AtomicBoolean();
+                        @Override public void accept(Throwable ex, Void ret) {
+                            if (!isCalled.compareAndSet(false, true)) return;
+                            req.onOneDone_(ex, ret);
+                        }
+                    }, req.ctx);
                 } catch (RuntimeException ex) {
                     onOneDone(req, ex);
                 } finally {
@@ -117,8 +133,18 @@ public class UpperBoundParallel {
             }
             assert req.numInProgress >= 0 : req.numInProgress;
             if (req.numInProgress == 0) {
-                // Looks as we could not even fire a single event. Need to try later.
-                vertx.setTimer(RETRY_DELAY_IF_LIMIT_REACHED_MS, nonsense -> resume(req));
+                if (!req.hasStarted) {
+                    // We couldn't even trigger one single task. No resources available to
+                    // handle any more requests. This caller has to try later.
+                    req.isFatalError = true;
+                    Exception ex = new Exception("No more resources to handle yet another request now.");
+                    req.mentor.onError(ex, req.ctx);
+                    return;
+                }else{
+                    // Why couldn't we fire a single event this turn? Try later.
+                    assert false : "TODO can this happen?";
+                    vertx.setTimer(RETRY_DELAY_IF_LIMIT_REACHED_MS, nonsense -> resume(req));
+                }
             }
         } finally {
             req.worker = null;
@@ -129,8 +155,21 @@ public class UpperBoundParallel {
     private <Ctx> void onOneDone(Request<Ctx> req, Throwable ex) {
         req.lock.lock();
         try {
-            req.limit.release();
+            // Do NOT release that token yet. instead mark the token as "ready-to-be-used".
+            // To signalize 'resume()' that we do not need to 'acquire' another token from
+            // 'limit' and we instead can re-use that one we acquired earlier.
+            // Reasoning:
+            // Originally we did just 'release' the token back to the pool and then acquired
+            // another one later in 'resume()'. But this is problematic, as in this case we
+            // give yet more incoming requests a chance to also start their processing.
+            // Which in the end runs us into resource exhaustion. Because we will start more
+            // and more requests and have no tokens free to complete the already running
+            // requests. So by keeping that token we already got reserved to ourself, we
+            // can apply backpressure to new incoming requests. This allows us to complete
+            // the already running requests.
             req.numInProgress -= 1;
+            req.numTokensAvailForOurself += 1;
+            // ^^-- Token transfer only consists of those two statements.
             log.trace("onOneDone({})  {} remaining", ex != null ? "ex" : "null", req.numInProgress);
             assert req.numInProgress >= 0 : req.numInProgress + " >= 0  (BTW: mentor MUST call 'onDone' EXACTLY once)";
             boolean isFatalError = true;
@@ -141,7 +180,7 @@ public class UpperBoundParallel {
                 if (log.isDebugEnabled()) {
                     log.debug("mentor.onError({}: {})", ex.getClass().getName(), ex.getMessage());
                 }
-                isFatalError = req.mentor.onError(ex, req.ctx);
+                isFatalError = !req.mentor.onError(ex, req.ctx);
             } finally {
                 req.lock.lock(); // Need our lock back.
                 req.isFatalError = isFatalError;
@@ -159,7 +198,9 @@ public class UpperBoundParallel {
         private final Semaphore limit;
         private Thread worker = null;
         private int numInProgress = 0;
+        private int numTokensAvailForOurself = 0;
         private boolean hasMore = true;
+        private boolean hasStarted = false; // true, as soon we could start at least once.
         private boolean isFatalError = false;
         private boolean isDoneCalled = false;
 

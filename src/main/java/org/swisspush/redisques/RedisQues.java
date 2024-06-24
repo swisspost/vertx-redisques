@@ -1194,8 +1194,8 @@ public class RedisQues extends AbstractVerticle {
                         };
                         ctx.redisAPI.exists(Collections.singletonList(key), event -> {
                             if (event.failed() || event.result() == null) {
-                                log.error("RedisQues is unable to check existence of queue " + queueName,
-                                    exceptionFactory.newException("redisAPI.exists(" + key + ") failed", event.cause()));
+                                //log.error("RedisQues is unable to check existence of queue " + queueName,
+                                //    exceptionFactory.newException("redisAPI.exists(" + key + ") failed", event.cause()));
                                 onDone.accept(null, null);
                                 return;
                             }
