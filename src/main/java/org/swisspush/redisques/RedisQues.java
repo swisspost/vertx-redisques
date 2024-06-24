@@ -232,6 +232,7 @@ public class RedisQues extends AbstractVerticle {
     private final Semaphore queueStatsRequestQuota;
     private final Semaphore getQueuesItemsCountRedisRequestQuota;
     private static final AtomicReference<BurstSquasher<Object[]>> checkExistsFailLogger = new AtomicReference<>();
+    private static final AtomicReference<BurstSquasher<Throwable>> checkQueueOwnerLogger = new AtomicReference<>();
 
     public RedisQues() {
         this(null, null, null, newThriftyExceptionFactory(), new Semaphore(Integer.MAX_VALUE),
@@ -550,7 +551,10 @@ public class RedisQues extends AbstractVerticle {
                         return iter.hasNext();
                     }
                     @Override public boolean onError(Throwable ex, Iterator<Map.Entry<String, QueueState>> iter) {
-                        if (log.isWarnEnabled()) log.warn("TODO error handling", exceptionFactory.newException(ex));
+                        checkQueueOwnerLogger.compareAndSet(null, new BurstSquasher<>(vertx, (int count, Throwable ex_) -> {
+                            log.warn("TODO error handling", ex_);
+                        }));
+                        checkQueueOwnerLogger.get().logSomewhen(exceptionFactory.newException(ex));
                         onPeriodicDone.run();
                         return false;
                     }

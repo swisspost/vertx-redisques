@@ -4,6 +4,7 @@ import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonObject;
 import org.slf4j.Logger;
+import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.handler.GetQueuesHandler;
 import org.swisspush.redisques.util.*;
 
@@ -17,8 +18,8 @@ import static org.swisspush.redisques.util.RedisquesAPI.*;
 public class GetQueuesAction extends AbstractQueueAction {
 
     public GetQueuesAction(
-            Vertx vertx, RedisProvider redisProvider, String address, String queuesKey,
-            String queuesPrefix, String consumersPrefix, String locksKey,
+            Vertx vertx, RedisProvider redisProvider,
+            String address, String queuesKey, String queuesPrefix, String consumersPrefix, String locksKey,
             List<QueueConfiguration> queueConfigurations, QueueStatisticsCollector queueStatisticsCollector,
             Logger log
     ) {
