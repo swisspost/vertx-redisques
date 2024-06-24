@@ -271,12 +271,6 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         respondWith(StatusCode.METHOD_NOT_ALLOWED, ctx.request());
     }
 
-    private void toggleReady(RoutingContext ctx) {
-        log.error("xxx toggle ready");
-        vertx.eventBus().publish("redis_ready", null);
-        ctx.response().end();
-    }
-
     private void listEndpoints(RoutingContext ctx) {
         JsonObject result = new JsonObject();
         JsonArray items = new JsonArray();
