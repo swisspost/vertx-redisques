@@ -1,0 +1,91 @@
+package org.swisspush.redisques.performance;
+
+import io.vertx.core.Vertx;
+
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
+
+import static java.lang.Math.max;
+import static java.lang.System.currentTimeMillis;
+
+public class BurstSquasher<Ctx> {
+
+    private final Vertx vertx;
+    private final Action<Ctx> action;
+    private final Lock mutx = new ReentrantLock();
+    private final int minDelayMs, maxDelayMs;
+    private long prevPublishEpchMs;
+    private int count;
+    private long maxCheckTimer;
+    private Ctx mostRecentCtx;
+
+    public BurstSquasher(Vertx vertx, Action<Ctx> action) {
+        this(vertx, action, 1000, 10000);
+    }
+
+    public BurstSquasher(Vertx vertx, Action<Ctx> action, int minDelayMs, int maxDelayMs) {
+        assert vertx != null;
+        assert action != null;
+        assert minDelayMs >= 1000;
+        assert maxDelayMs <= 86400000;
+        this.vertx = vertx;
+        this.action = action;
+        this.minDelayMs = max(1000, minDelayMs);
+        this.maxDelayMs = Math.min(maxDelayMs, 86400000);
+    }
+
+    private void maxLimitCheck(Long nonsesne) {
+        boolean isPublish = false;
+        int countLocalCpy = -1;
+        long now = currentTimeMillis();
+        mutx.lock();
+        try {
+            maxCheckTimer = 0;
+            long durationSincePrevPublishMs = now - prevPublishEpchMs;
+            if (count > 0 && durationSincePrevPublishMs > maxDelayMs) {
+                isPublish = true;
+                prevPublishEpchMs = now;
+                countLocalCpy = count;
+                count = 0;
+            }else {
+                maxCheckTimer = vertx.setTimer(max(1000, maxDelayMs - durationSincePrevPublishMs), this::maxLimitCheck);
+            }
+        } finally {
+            mutx.unlock();
+        }
+        if (isPublish) {
+            action.perform(countLocalCpy, mostRecentCtx);
+        }
+    }
+
+    public void logSomewhen(Ctx ctx) {
+        boolean isPublish = false;
+        int countLocalCpy = -1;
+        long now = currentTimeMillis();
+        mutx.lock();
+        try {
+            mostRecentCtx = ctx;
+            count += 1;
+            long durationSincePrevPublishMs = now - prevPublishEpchMs;
+            if (durationSincePrevPublishMs > minDelayMs) {
+                isPublish = true;
+                prevPublishEpchMs = now;
+                countLocalCpy = count;
+                count = 0;
+            } else if (maxCheckTimer == 0) {
+                maxCheckTimer = vertx.setTimer((Math.min(1000, maxDelayMs - durationSincePrevPublishMs)), this::maxLimitCheck);
+            }
+        } finally {
+            mutx.unlock();
+        }
+        if (isPublish) {
+            action.perform(countLocalCpy, mostRecentCtx);
+        }
+    }
+
+
+    public static interface Action<Ctx> {
+        public void perform(int count, Ctx ctx);
+    }
+
+}

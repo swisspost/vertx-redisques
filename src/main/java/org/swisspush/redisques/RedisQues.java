@@ -22,6 +22,7 @@ import org.slf4j.LoggerFactory;
 import org.swisspush.redisques.action.QueueAction;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.handler.RedisquesHttpRequestHandler;
+import org.swisspush.redisques.performance.BurstSquasher;
 import org.swisspush.redisques.performance.UpperBoundParallel;
 import org.swisspush.redisques.scheduling.PeriodicSkipScheduler;
 import org.swisspush.redisques.util.*;
@@ -40,6 +41,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
@@ -229,14 +231,12 @@ public class RedisQues extends AbstractVerticle {
     private final Semaphore checkQueueRequestsQuota;
     private final Semaphore queueStatsRequestQuota;
     private final Semaphore getQueuesItemsCountRedisRequestQuota;
+    private static final AtomicReference<BurstSquasher<ErrorContext>> checkExistsFailLogger = new AtomicReference<>();
 
     public RedisQues() {
-        this.exceptionFactory = newThriftyExceptionFactory();
+        this(null, null, null, newThriftyExceptionFactory(), new Semaphore(Integer.MAX_VALUE),
+                new Semaphore(Integer.MAX_VALUE), new Semaphore(Integer.MAX_VALUE), new Semaphore(Integer.MAX_VALUE));
         log.warn("Fallback to legacy behavior and allow up to {} simultaneous requests to redis", Integer.MAX_VALUE);
-        this.redisMonitoringReqQuota = new Semaphore(Integer.MAX_VALUE);
-        this.checkQueueRequestsQuota = new Semaphore(Integer.MAX_VALUE);
-        this.queueStatsRequestQuota = new Semaphore(Integer.MAX_VALUE);
-        this.getQueuesItemsCountRedisRequestQuota = new Semaphore(Integer.MAX_VALUE);
     }
 
     public RedisQues(
@@ -1195,8 +1195,12 @@ public class RedisQues extends AbstractVerticle {
                         };
                         ctx.redisAPI.exists(Collections.singletonList(key), event -> {
                             if (event.failed() || event.result() == null) {
-                                //log.error("RedisQues is unable to check existence of queue " + queueName,
-                                //    exceptionFactory.newException("redisAPI.exists(" + key + ") failed", event.cause()));
+                                checkExistsFailLogger.compareAndSet(null, new BurstSquasher<>(vertx, (int count, ErrorContext ctx) -> {
+                                    log.error("RedisQues was {} times unable to check existence of some queue like {}",
+                                        count, ctx.queueName, ctx.ex);
+                                }));
+                                checkExistsFailLogger.get().logSomewhen(new ErrorContext(queueName, key,
+                                        exceptionFactory.newException("redisAPI.exists(...) failed", event.cause())));
                                 onDone.accept(null, null);
                                 return;
                             }
@@ -1320,6 +1324,13 @@ public class RedisQues extends AbstractVerticle {
             }
         }
         return null;
+    }
+
+    private static class ErrorContext {
+        String queueName; String key; Throwable ex;
+        public ErrorContext(String queueName, String key, Throwable ex) {
+            this.queueName = queueName; this.key = key; this.ex = ex;
+        }
     }
 
     private class FailedAsyncResult<Response> implements AsyncResult<Response> {

@@ -85,7 +85,7 @@ public class UpperBoundParallel {
                         req.isDoneCalled = true;
                         // give up lock because we don't know how much time mentor will use.
                         req.lock.unlock();
-                        //log.debug("call 'mentor.onDone()'");
+                        log.trace("call 'mentor.onDone()'");
                         try {
                             req.mentor.onDone(req.ctx);
                         } finally {
@@ -119,7 +119,7 @@ public class UpperBoundParallel {
                         final AtomicBoolean isCalled = new AtomicBoolean();
                         @Override public void accept(Throwable ex, Void ret) {
                             if (!isCalled.compareAndSet(false, true)) return;
-                            req.onOneDone_(ex, ret);
+                            onOneDone(req, ex);
                         }
                     }, req.ctx);
                 } catch (RuntimeException ex) {
@@ -137,7 +137,8 @@ public class UpperBoundParallel {
                     // We couldn't even trigger one single task. No resources available to
                     // handle any more requests. This caller has to try later.
                     req.isFatalError = true;
-                    Exception ex = exceptionFactory.newException("No more resources to handle yet another request now.");
+                    Exception ex = exceptionFactory.newResourceExhaustionException(
+                            "No more resources to handle yet another request now.", null);
                     req.mentor.onError(ex, req.ctx);
                     return;
                 }else{
@@ -208,10 +209,6 @@ public class UpperBoundParallel {
             this.ctx = ctx;
             this.mentor = mentor;
             this.limit = limit;
-        }
-
-        public void onOneDone_(Throwable ex, Void result) {
-            onOneDone(this, ex);
         }
     }
 

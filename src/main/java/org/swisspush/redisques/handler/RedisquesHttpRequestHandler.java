@@ -22,6 +22,7 @@ import org.slf4j.LoggerFactory;
 import org.swisspush.redisques.QueueStatsService;
 import org.swisspush.redisques.QueueStatsService.GetQueueStatsMentor;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
+import org.swisspush.redisques.performance.BurstSquasher;
 import org.swisspush.redisques.util.DequeueStatistic;
 import org.swisspush.redisques.util.DequeueStatisticCollector;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
@@ -37,6 +38,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 import static org.swisspush.redisques.util.HttpServerRequestUtil.*;
@@ -77,6 +79,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     private final RedisQuesExceptionFactory exceptionFactory;
     private final QueueStatsService queueStatsService;
     private final GetQueueStatsMentor<RoutingContext> queueStatsMentor = new MyQueueStatsMentor();
+    private static final AtomicReference<BurstSquasher<ErrorContext>> failedToServeQueueStatsLogger = new AtomicReference<>();
 
     public static void init(
         Vertx vertx, RedisquesConfiguration modConfig, QueueStatisticsCollector queueStatisticsCollector,
@@ -605,8 +608,11 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         @Override
         public void onError(Throwable ex, RoutingContext ctx) {
             if (!ctx.response().headWritten()) {
-                log.debug("TODO error handling {}", ctx.request().uri(), exceptionFactory.newException(
-                    "Failed to serve queue stats", ex));
+                failedToServeQueueStatsLogger.compareAndSet(null, new BurstSquasher<>(vertx, (int count, ErrorContext c) -> {
+                    log.debug("TODO error handling {}", c.uri, exceptionFactory.newException(
+                            "Failed to serve queue stats "+ count +" times", c.ex));
+                }));
+                failedToServeQueueStatsLogger.get().logSomewhen(new ErrorContext(ctx.request().uri(), ex));
                 StatusCode rspCode = tryExtractStatusCode(ex, StatusCode.INTERNAL_SERVER_ERROR);
                 respondWith(rspCode, ex.getMessage(), ctx.request());
             } else {
@@ -1022,5 +1028,14 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
                 });
     }
 
+
+    private static class ErrorContext {
+        String uri;
+        Throwable ex;
+        public ErrorContext(String uri, Throwable ex) {
+            this.uri = uri;
+            this.ex = ex;
+        }
+    }
 
 }

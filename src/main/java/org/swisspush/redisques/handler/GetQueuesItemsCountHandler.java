@@ -137,10 +137,10 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
                 var obj = new JsonObject().put(STATUS, OK).put(QUEUES, result);
                 long jsonCreateDurationMs = currentTimeMillis() - beginEpchMs;
                 if (jsonCreateDurationMs > 10) {
-                    log.info("Creating JSON with {} entries did block this tread for {}ms",
+                    log.info("Creating JSON with {} entries did block this thread for {}ms",
                             ctx.queueLengths.length, jsonCreateDurationMs);
                 }else{
-                    log.debug("Creating JSON with {} entries did block this tread for {}ms",
+                    log.debug("Creating JSON with {} entries did block this thread for {}ms",
                             ctx.queueLengths.length, jsonCreateDurationMs);
                 }
                 workerPromise.complete(obj);
@@ -153,10 +153,10 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
             // we have to squeeze it into a ReplyException.
             int failureCode = 500;
             for (Throwable thr = origEx; thr != null; thr = thr.getCause()) {
-                if (thr instanceof io.vertx.core.impl.NoStackTraceThrowable && "Redis waiting queue is full".equals(thr.getMessage())) {
-                    failureCode = 429;
-                    break;
-                }
+                if (!(thr instanceof io.vertx.core.impl.NoStackTraceThrowable)) continue;
+                if (!("Redis waiting queue is full".equals(thr.getMessage()))) continue;
+                failureCode = 429;
+                break;
             }
             ReplyException replyEx = exceptionFactory.newReplyException(RECIPIENT_FAILURE, failureCode, ERROR);
             replyEx.initCause(origEx);
