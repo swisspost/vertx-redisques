@@ -184,8 +184,10 @@ public class UpperBoundParallel {
                 req.lock.lock(); // Need our lock back.
                 req.isFatalError = isFatalError;
                 // Need to release our token now. As we won't do it later anymore.
-                req.numTokensAvailForOurself -= 1;
-                req.limit.release();
+                if (isFatalError) {
+                    req.numTokensAvailForOurself -= 1;
+                    req.limit.release();
+                }
             }
         } finally {
             req.lock.unlock();

@@ -77,7 +77,7 @@ public class BurstSquasher<Ctx> {
             mostRecentCtx = ctx;
             count += 1;
             durationSincePrevPublishMs = now - prevPublishEpchMs;
-            if (durationSincePrevPublishMs > minDelayMs) {
+            if (durationSincePrevPublishMs >= minDelayMs) {
                 isPublish = true;
                 prevPublishEpchMs = now;
                 countLocalCpy = count;
