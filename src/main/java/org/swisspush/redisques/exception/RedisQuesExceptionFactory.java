@@ -2,7 +2,6 @@ package org.swisspush.redisques.exception;
 
 import io.vertx.core.eventbus.ReplyException;
 import io.vertx.core.eventbus.ReplyFailure;
-import net.bytebuddy.implementation.bytecode.Throw;
 
 
 /**

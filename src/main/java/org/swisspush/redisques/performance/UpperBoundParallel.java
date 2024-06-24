@@ -46,7 +46,6 @@ import static org.slf4j.LoggerFactory.getLogger;
 public class UpperBoundParallel {
 
     private static final Logger log = getLogger(UpperBoundParallel.class);
-    private static final long RETRY_DELAY_IF_LIMIT_REACHED_MS = 8;
     private final Vertx vertx;
     private final RedisQuesExceptionFactory exceptionFactory;
 
@@ -99,7 +98,6 @@ public class UpperBoundParallel {
                 if (req.numTokensAvailForOurself > 0) {
                     // We still have a token reserved for ourself. Use those first before acquiring
                     // new ones. Explanation see comment in 'onOneDone()'.
-                    assert req.numTokensAvailForOurself == 1 : "TODO is this always true? "+ req.numTokensAvailForOurself;
                     req.numTokensAvailForOurself -= 1;
                 }else if (!req.limit.tryAcquire()) {
                     log.debug("redis request limit reached. Need to pause now.");
@@ -142,9 +140,9 @@ public class UpperBoundParallel {
                     req.mentor.onError(ex, req.ctx);
                     return;
                 }else{
-                    // Why couldn't we fire a single event this turn? Try later.
-                    assert false : "TODO can this happen?";
-                    vertx.setTimer(RETRY_DELAY_IF_LIMIT_REACHED_MS, nonsense -> resume(req));
+                    log.error("If you see this log, some unreachable code got reached. numInProgress={}, hasStarted={}",
+                        req.numInProgress, req.hasStarted);
+                    vertx.setTimer(4000, nonsense -> resume(req));
                 }
             }
         } finally {
@@ -185,6 +183,9 @@ public class UpperBoundParallel {
             } finally {
                 req.lock.lock(); // Need our lock back.
                 req.isFatalError = isFatalError;
+                // Need to release our token now. As we won't do it later anymore.
+                req.numTokensAvailForOurself -= 1;
+                req.limit.release();
             }
         } finally {
             req.lock.unlock();
@@ -192,7 +193,7 @@ public class UpperBoundParallel {
         }
     }
 
-    private final class Request<Ctx> {
+    private static final class Request<Ctx> {
         private final Ctx ctx;
         private final Mentor<Ctx> mentor;
         private final Lock lock = new ReentrantLock();
