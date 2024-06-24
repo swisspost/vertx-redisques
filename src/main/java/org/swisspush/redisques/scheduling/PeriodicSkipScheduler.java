@@ -53,7 +53,16 @@ public class PeriodicSkipScheduler {
         var fut = p.future();
         fut.onSuccess((Void v) -> timer.onTaskDone_());
         fut.onFailure(ex -> log.error("This is expected to be UNREACHABLE ({})", timer.dbgHint, ex));
-        timer.task.accept(p::complete);
+        try {
+            timer.task.accept(p::complete);
+        } catch (Exception ex) {
+            if (log.isDebugEnabled()) {
+                log.debug("Task has failed ({})", timer.dbgHint, ex);
+            } else {
+                log.info("Task has failed ({}): {}", timer.dbgHint, ex.getMessage());
+            }
+            p.tryComplete();
+        }
     }
 
     private void onTaskDone(Timer timer) {
