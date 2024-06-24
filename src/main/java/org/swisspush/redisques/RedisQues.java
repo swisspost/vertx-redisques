@@ -231,7 +231,7 @@ public class RedisQues extends AbstractVerticle {
     private final Semaphore checkQueueRequestsQuota;
     private final Semaphore queueStatsRequestQuota;
     private final Semaphore getQueuesItemsCountRedisRequestQuota;
-    private static final AtomicReference<BurstSquasher<ErrorContext>> checkExistsFailLogger = new AtomicReference<>();
+    private static final AtomicReference<BurstSquasher<Object[]>> checkExistsFailLogger = new AtomicReference<>();
 
     public RedisQues() {
         this(null, null, null, newThriftyExceptionFactory(), new Semaphore(Integer.MAX_VALUE),
@@ -1195,12 +1195,12 @@ public class RedisQues extends AbstractVerticle {
                         };
                         ctx.redisAPI.exists(Collections.singletonList(key), event -> {
                             if (event.failed() || event.result() == null) {
-                                checkExistsFailLogger.compareAndSet(null, new BurstSquasher<>(vertx, (int count, ErrorContext ctx) -> {
+                                checkExistsFailLogger.compareAndSet(null, new BurstSquasher<>(vertx, (int count, Object[] detail) -> {
                                     log.error("RedisQues was {} times unable to check existence of some queue like {}",
-                                        count, ctx.queueName, ctx.ex);
+                                        count, detail[0], (Throwable)detail[1]);
                                 }));
-                                checkExistsFailLogger.get().logSomewhen(new ErrorContext(queueName, key,
-                                        exceptionFactory.newException("redisAPI.exists(...) failed", event.cause())));
+                                checkExistsFailLogger.get().logSomewhen(new Object[]{
+                                        queueName, exceptionFactory.newException("redisAPI.exists(...) failed", event.cause())});
                                 onDone.accept(null, null);
                                 return;
                             }
@@ -1324,13 +1324,6 @@ public class RedisQues extends AbstractVerticle {
             }
         }
         return null;
-    }
-
-    private static class ErrorContext {
-        String queueName; String key; Throwable ex;
-        public ErrorContext(String queueName, String key, Throwable ex) {
-            this.queueName = queueName; this.key = key; this.ex = ex;
-        }
     }
 
     private class FailedAsyncResult<Response> implements AsyncResult<Response> {
