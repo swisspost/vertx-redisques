@@ -16,7 +16,7 @@ public class BurstSquasher<Ctx> {
     private final int minDelayMs, maxDelayMs;
     private long prevPublishEpchMs;
     private int count;
-    private long maxCheckTimer;
+    private boolean maxCheckerIsRunning;
     private Ctx mostRecentCtx;
 
     public BurstSquasher(Vertx vertx, Action<Ctx> action) {
@@ -35,23 +35,28 @@ public class BurstSquasher<Ctx> {
     }
 
     private void maxLimitCheck(Long nonsesne) {
-        boolean isPublish = false;
+        boolean isPublish = false, maxCheckerNeedsToRunAgain = false;
+        long durationSincePrevPublishMs;
         int countLocalCpy = -1;
         long now = currentTimeMillis();
         mutx.lock();
         try {
-            maxCheckTimer = 0;
-            long durationSincePrevPublishMs = now - prevPublishEpchMs;
-            if (count > 0 && durationSincePrevPublishMs > maxDelayMs) {
+            maxCheckerIsRunning = false;
+            durationSincePrevPublishMs = now - prevPublishEpchMs;
+            if (count > 0 && durationSincePrevPublishMs >= maxDelayMs) {
                 isPublish = true;
                 prevPublishEpchMs = now;
                 countLocalCpy = count;
                 count = 0;
-            }else {
-                maxCheckTimer = vertx.setTimer(max(1000, maxDelayMs - durationSincePrevPublishMs), this::maxLimitCheck);
+            } else if (count > 0) {
+                maxCheckerIsRunning = true;
+                maxCheckerNeedsToRunAgain = true;
             }
         } finally {
             mutx.unlock();
+        }
+        if (maxCheckerNeedsToRunAgain) {
+            vertx.setTimer(max(1000, maxDelayMs - durationSincePrevPublishMs), this::maxLimitCheck);
         }
         if (isPublish) {
             action.perform(countLocalCpy, mostRecentCtx);
@@ -59,24 +64,29 @@ public class BurstSquasher<Ctx> {
     }
 
     public void logSomewhen(Ctx ctx) {
-        boolean isPublish = false;
+        boolean isPublish = false, maxCheckerNeedsStart = false;
         int countLocalCpy = -1;
+        long durationSincePrevPublishMs;
         long now = currentTimeMillis();
         mutx.lock();
         try {
             mostRecentCtx = ctx;
             count += 1;
-            long durationSincePrevPublishMs = now - prevPublishEpchMs;
+            durationSincePrevPublishMs = now - prevPublishEpchMs;
             if (durationSincePrevPublishMs > minDelayMs) {
                 isPublish = true;
                 prevPublishEpchMs = now;
                 countLocalCpy = count;
                 count = 0;
-            } else if (maxCheckTimer == 0) {
-                maxCheckTimer = vertx.setTimer((Math.min(1000, maxDelayMs - durationSincePrevPublishMs)), this::maxLimitCheck);
+            } else if (!maxCheckerIsRunning) {
+                maxCheckerNeedsStart = true;
+                maxCheckerIsRunning = true;
             }
         } finally {
             mutx.unlock();
+        }
+        if (maxCheckerNeedsStart) {
+            vertx.setTimer((Math.min(1000, maxDelayMs - durationSincePrevPublishMs)), this::maxLimitCheck);
         }
         if (isPublish) {
             action.perform(countLocalCpy, mostRecentCtx);
