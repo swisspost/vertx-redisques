@@ -31,20 +31,39 @@ public class DefaultRedisProvider implements RedisProvider {
     private final AtomicBoolean connecting = new AtomicBoolean();
     private RedisConnection client;
 
+    private RedisReadyProvider readyProvider;
+
     private final AtomicReference<Promise<RedisAPI>> connectPromiseRef = new AtomicReference<>();
 
     public DefaultRedisProvider(Vertx vertx, RedisquesConfigurationProvider configurationProvider) {
         this.vertx = vertx;
         this.configurationProvider = configurationProvider;
+
+        maybeInitRedisReadyProvider();
+    }
+
+    private void maybeInitRedisReadyProvider() {
+        RedisquesConfiguration configuration = configurationProvider.configuration();
+        if (configuration.getRedisReadyCheckIntervalMs() > 0) {
+            this.readyProvider = new DefaultRedisReadyProvider(vertx, configuration.getRedisReadyCheckIntervalMs());
+        }
     }
 
     @Override
     public Future<RedisAPI> redis() {
-        if (redisAPI != null) {
-            return Future.succeededFuture(redisAPI);
-        } else {
+        if(redisAPI == null) {
             return setupRedisClient();
         }
+        if(readyProvider == null) {
+            return Future.succeededFuture(redisAPI);
+        }
+        return readyProvider.ready(redisAPI).compose(ready -> {
+            if (ready) {
+                return Future.succeededFuture(redisAPI);
+            }
+            return Future.failedFuture("Not yet ready!");
+
+        }, Future::failedFuture);
     }
 
     private boolean reconnectEnabled() {

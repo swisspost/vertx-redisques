@@ -20,6 +20,7 @@ public class RedisQuesRunner {
                 .httpRequestHandlerEnabled(true)
                 .redisReconnectAttempts(-1)
                 .redisPoolRecycleTimeoutMs(-1)
+                .redisReadyCheckIntervalMs(10000)
                 .build().asJsonObject();
 
         Vertx.vertx().deployVerticle(new RedisQues(), new DeploymentOptions().setConfig(configuration),
