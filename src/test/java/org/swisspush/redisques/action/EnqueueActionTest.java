@@ -1,22 +1,17 @@
 package org.swisspush.redisques.action;
 
 import io.vertx.core.Future;
-import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
-import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonObject;
 import io.vertx.ext.unit.TestContext;
 import io.vertx.ext.unit.junit.VertxUnitRunner;
-import io.vertx.redis.client.RedisAPI;
 import io.vertx.redis.client.impl.types.BulkType;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mockito;
 import org.slf4j.Logger;
-import org.swisspush.redisques.util.MemoryUsageProvider;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
-import org.swisspush.redisques.util.RedisProvider;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -31,33 +26,26 @@ import static org.mockito.Mockito.*;
  * @author https://github.com/mcweba [Marc-Andre Weber]
  */
 @RunWith(VertxUnitRunner.class)
-public class EnqueueActionTest {
-
-    private RedisAPI redisAPI;
-    private RedisProvider redisProvider;
-
-    private Vertx vertx;
-
-    private MemoryUsageProvider memoryUsageProvider;
-
-    private Message<JsonObject> message;
-    private EnqueueAction action;
+public class EnqueueActionTest extends AbstractQueueActionTest {
 
     @Before
-    public void setup(TestContext context) {
-        redisAPI = Mockito.mock(RedisAPI.class);
-        redisProvider = Mockito.mock(RedisProvider.class);
-        when(redisProvider.redis()).thenReturn(Future.succeededFuture(redisAPI));
-
-        memoryUsageProvider = Mockito.mock(MemoryUsageProvider.class);
-        when(memoryUsageProvider.currentMemoryUsagePercentage()).thenReturn(Optional.empty());
-        vertx = Vertx.vertx();
-
-        message = Mockito.mock(Message.class);
-
+    @Override
+    public void setup() {
+        super.setup();
         action = new EnqueueAction(vertx, redisProvider,
                 "addr", "q-", "prefix-", "c-", "l-",
                 new ArrayList<>(), Mockito.mock(QueueStatisticsCollector.class), Mockito.mock(Logger.class), memoryUsageProvider, 80);
+    }
+
+    @Test
+    public void testEnqueueWhenRedisIsNotReady(TestContext context){
+        when(redisProvider.redis()).thenReturn(Future.failedFuture("not ready"));
+        when(message.body()).thenReturn(new JsonObject(Buffer.buffer("{\"operation\":\"enqueue\",\"payload\":{\"queuename\":\"someQueue\"},\"message\":\"hello\"}")));
+
+        action.execute(message);
+
+        verify(message, times(1)).reply(eq(new JsonObject(Buffer.buffer("{\"status\":\"error\",\"message\":\"RedisQues QUEUE_ERROR: Error while enqueueing message into queue someQueue\"}"))));
+        verifyNoInteractions(redisAPI);
     }
 
     @Test
