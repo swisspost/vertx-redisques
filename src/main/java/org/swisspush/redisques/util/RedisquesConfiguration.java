@@ -52,6 +52,7 @@ public class RedisquesConfiguration {
     private final int queueSpeedIntervalSec;
     private final int memoryUsageLimitPercent;
     private final int memoryUsageCheckIntervalSec;
+    private final int redisReadyCheckIntervalMs;
     private final int redisReconnectAttempts;
     private final int redisReconnectDelaySec;
     private final int redisPoolRecycleTimeoutMs;
@@ -78,6 +79,7 @@ public class RedisquesConfiguration {
     private static final int DEFAULT_MEMORY_USAGE_LIMIT_PCT = 100;
     private static final int DEFAULT_MEMORY_USAGE_CHECK_INTERVAL_SEC = 60;
     private static final int DEFAULT_DEQUEUE_STATISTIC_REPORT_INTERVAL_SEC = -1;
+    private static final int DEFAULT_REDIS_READY_CHECK_INTERVAL_MS = -1;
 
     public static final String PROP_ADDRESS = "address";
     public static final String PROP_CONFIGURATION_UPDATED_ADDRESS = "configuration-updated-address";
@@ -121,6 +123,7 @@ public class RedisquesConfiguration {
     public static final String PROP_QUEUE_SPEED_INTERVAL_SEC = "queueSpeedIntervalSec";
     public static final String PROP_MEMORY_USAGE_LIMIT_PCT = "memoryUsageLimitPercent";
     public static final String PROP_MEMORY_USAGE_CHECK_INTERVAL_SEC = "memoryUsageCheckIntervalSec";
+    public static final String PROP_REDIS_READY_CHECK_INTERVAL_MS = "redisReadyCheckIntervalMs";
     public static final String PROP_DEQUEUE_STATISTIC_REPORT_INTERVAL_SEC = "dequeueStatisticReportIntervalSec";
 
     /**
@@ -154,7 +157,8 @@ public class RedisquesConfiguration {
                 enableQueueNameDecoding, DEFAULT_REDIS_MAX_POOL_SIZE, DEFAULT_REDIS_MAX_POOL_WAIT_SIZE,
                 DEFAULT_REDIS_MAX_PIPELINE_WAIT_SIZE, DEFAULT_QUEUE_SPEED_INTERVAL_SEC, DEFAULT_MEMORY_USAGE_LIMIT_PCT,
                 DEFAULT_MEMORY_USAGE_CHECK_INTERVAL_SEC, DEFAULT_REDIS_RECONNECT_ATTEMPTS, DEFAULT_REDIS_RECONNECT_DELAY_SEC,
-                DEFAULT_REDIS_POOL_RECYCLE_TIMEOUT_MS, DEFAULT_DEQUEUE_STATISTIC_REPORT_INTERVAL_SEC);
+                DEFAULT_REDIS_POOL_RECYCLE_TIMEOUT_MS, DEFAULT_DEQUEUE_STATISTIC_REPORT_INTERVAL_SEC,
+                DEFAULT_REDIS_READY_CHECK_INTERVAL_MS);
     }
 
     /**
@@ -178,7 +182,8 @@ public class RedisquesConfiguration {
                 enableQueueNameDecoding, DEFAULT_REDIS_MAX_POOL_SIZE, DEFAULT_REDIS_MAX_POOL_WAIT_SIZE,
                 DEFAULT_REDIS_MAX_PIPELINE_WAIT_SIZE, DEFAULT_QUEUE_SPEED_INTERVAL_SEC, DEFAULT_MEMORY_USAGE_LIMIT_PCT,
                 DEFAULT_MEMORY_USAGE_CHECK_INTERVAL_SEC, DEFAULT_REDIS_RECONNECT_ATTEMPTS, DEFAULT_REDIS_RECONNECT_DELAY_SEC,
-                DEFAULT_REDIS_POOL_RECYCLE_TIMEOUT_MS, DEFAULT_DEQUEUE_STATISTIC_REPORT_INTERVAL_SEC);
+                DEFAULT_REDIS_POOL_RECYCLE_TIMEOUT_MS, DEFAULT_DEQUEUE_STATISTIC_REPORT_INTERVAL_SEC,
+                DEFAULT_REDIS_READY_CHECK_INTERVAL_MS);
     }
 
     /**
@@ -202,7 +207,8 @@ public class RedisquesConfiguration {
                 enableQueueNameDecoding, DEFAULT_REDIS_MAX_POOL_SIZE, DEFAULT_REDIS_MAX_POOL_WAIT_SIZE,
                 DEFAULT_REDIS_MAX_PIPELINE_WAIT_SIZE, DEFAULT_QUEUE_SPEED_INTERVAL_SEC, DEFAULT_MEMORY_USAGE_LIMIT_PCT,
                 DEFAULT_MEMORY_USAGE_CHECK_INTERVAL_SEC, DEFAULT_REDIS_RECONNECT_ATTEMPTS, DEFAULT_REDIS_RECONNECT_DELAY_SEC,
-                DEFAULT_REDIS_POOL_RECYCLE_TIMEOUT_MS, DEFAULT_DEQUEUE_STATISTIC_REPORT_INTERVAL_SEC);
+                DEFAULT_REDIS_POOL_RECYCLE_TIMEOUT_MS, DEFAULT_DEQUEUE_STATISTIC_REPORT_INTERVAL_SEC,
+                DEFAULT_REDIS_READY_CHECK_INTERVAL_MS);
     }
 
     private RedisquesConfiguration(String address, String configurationUpdatedAddress, String redisPrefix, String processorAddress,
@@ -217,7 +223,7 @@ public class RedisquesConfiguration {
                                    int maxPoolSize, int maxPoolWaitSize, int maxPipelineWaitSize,
                                    int queueSpeedIntervalSec, int memoryUsageLimitPercent, int memoryUsageCheckIntervalSec,
                                    int redisReconnectAttempts, int redisReconnectDelaySec, int redisPoolRecycleTimeoutMs,
-                                   int dequeueStatisticReportIntervalSec) {
+                                   int dequeueStatisticReportIntervalSec, int redisReadyCheckIntervalMs) {
         this.address = address;
         this.configurationUpdatedAddress = configurationUpdatedAddress;
         this.redisPrefix = redisPrefix;
@@ -311,6 +317,7 @@ public class RedisquesConfiguration {
 
         this.redisPoolRecycleTimeoutMs = redisPoolRecycleTimeoutMs;
         this.dequeueStatisticReportIntervalSec = dequeueStatisticReportIntervalSec;
+        this.redisReadyCheckIntervalMs = redisReadyCheckIntervalMs;
     }
 
     public static RedisquesConfigurationBuilder with() {
@@ -334,7 +341,8 @@ public class RedisquesConfiguration {
                 builder.redisReconnectAttempts,
                 builder.redisReconnectDelaySec,
                 builder.redisPoolRecycleTimeoutMs,
-                builder.dequeueStatisticReportIntervalSec);
+                builder.dequeueStatisticReportIntervalSec,
+                builder.redisReadyCheckIntervalMs);
     }
 
     public JsonObject asJsonObject() {
@@ -377,6 +385,7 @@ public class RedisquesConfiguration {
         obj.put(PROP_QUEUE_SPEED_INTERVAL_SEC, getQueueSpeedIntervalSec());
         obj.put(PROP_MEMORY_USAGE_LIMIT_PCT, getMemoryUsageLimitPercent());
         obj.put(PROP_MEMORY_USAGE_CHECK_INTERVAL_SEC, getMemoryUsageCheckIntervalSec());
+        obj.put(PROP_REDIS_READY_CHECK_INTERVAL_MS, getRedisReadyCheckIntervalMs());
         obj.put(PROP_DEQUEUE_STATISTIC_REPORT_INTERVAL_SEC, getDequeueStatisticReportIntervalSec());
         return obj;
     }
@@ -499,6 +508,9 @@ public class RedisquesConfiguration {
         }
         if (json.containsKey(PROP_MEMORY_USAGE_CHECK_INTERVAL_SEC)) {
             builder.memoryUsageCheckIntervalSec(json.getInteger(PROP_MEMORY_USAGE_CHECK_INTERVAL_SEC));
+        }
+        if (json.containsKey(PROP_REDIS_READY_CHECK_INTERVAL_MS)) {
+            builder.redisReadyCheckIntervalMs(json.getInteger(PROP_REDIS_READY_CHECK_INTERVAL_MS));
         }
         if (json.containsKey(PROP_DEQUEUE_STATISTIC_REPORT_INTERVAL_SEC)) {
             builder.dequeueStatisticReportIntervalSec(json.getInteger(PROP_DEQUEUE_STATISTIC_REPORT_INTERVAL_SEC));
@@ -684,6 +696,10 @@ public class RedisquesConfiguration {
         return memoryUsageCheckIntervalSec;
     }
 
+    public int getRedisReadyCheckIntervalMs() {
+        return redisReadyCheckIntervalMs;
+    }
+
     @Override
     public String toString() {
         return asJsonObject().toString();
@@ -739,6 +755,7 @@ public class RedisquesConfiguration {
 
         private int memoryUsageLimitPercent;
         private int memoryUsageCheckIntervalSec;
+        private int redisReadyCheckIntervalMs;
 
         public RedisquesConfigurationBuilder() {
             this.address = "redisques";
@@ -773,6 +790,7 @@ public class RedisquesConfiguration {
             this.memoryUsageLimitPercent = DEFAULT_MEMORY_USAGE_LIMIT_PCT;
             this.memoryUsageCheckIntervalSec = DEFAULT_MEMORY_USAGE_CHECK_INTERVAL_SEC;
             this.dequeueStatisticReportIntervalSec = DEFAULT_DEQUEUE_STATISTIC_REPORT_INTERVAL_SEC;
+            this.redisReadyCheckIntervalMs = DEFAULT_REDIS_READY_CHECK_INTERVAL_MS;
         }
 
         public RedisquesConfigurationBuilder address(String address) {
@@ -962,6 +980,11 @@ public class RedisquesConfiguration {
 
         public RedisquesConfigurationBuilder memoryUsageCheckIntervalSec(int memoryUsageCheckIntervalSec) {
             this.memoryUsageCheckIntervalSec = memoryUsageCheckIntervalSec;
+            return this;
+        }
+
+        public RedisquesConfigurationBuilder redisReadyCheckIntervalMs(int redisReadyCheckIntervalMs) {
+            this.redisReadyCheckIntervalMs = redisReadyCheckIntervalMs;
             return this;
         }
 

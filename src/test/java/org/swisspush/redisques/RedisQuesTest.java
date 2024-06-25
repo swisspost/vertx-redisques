@@ -46,6 +46,7 @@ public class RedisQuesTest extends AbstractTestCase {
                 .metricStorageName("foobar")
                 .metricRefreshPeriod(2)
                 .memoryUsageLimitPercent(80)
+                .redisReadyCheckIntervalMs(2000)
                 .queueConfigurations(Collections.singletonList(new QueueConfiguration()
                         .withPattern("queue.*")
                         .withRetryIntervals(2, 7, 12, 17, 22, 27, 32, 37, 42, 47, 52))

@@ -147,6 +147,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(json.getInteger(PROP_QUEUE_SPEED_INTERVAL_SEC), 60);
         testContext.assertEquals(json.getInteger(PROP_MEMORY_USAGE_LIMIT_PCT), 100);
         testContext.assertEquals(json.getInteger(PROP_DEQUEUE_STATISTIC_REPORT_INTERVAL_SEC), -1);
+        testContext.assertEquals(json.getInteger(PROP_REDIS_READY_CHECK_INTERVAL_MS), -1);
         testContext.assertNull(json.getString(PROP_PUBLISH_METRICS_ADDRESS));
         testContext.assertEquals(json.getString(PROP_METRIC_STORAGE_NAME), "queue");
     }
@@ -176,6 +177,7 @@ public class RedisquesConfigurationTest {
                 .queueSpeedIntervalSec(1)
                 .memoryUsageLimitPercent(55)
                 .dequeueStatisticReportIntervalSec(44)
+                .redisReadyCheckIntervalMs(5000)
                 .publishMetricsAddress("eventbus-addr-1")
                 .metricStorageName("queue")
                 .build();
@@ -209,6 +211,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(json.getInteger(PROP_QUEUE_SPEED_INTERVAL_SEC), 1);
         testContext.assertEquals(json.getInteger(PROP_MEMORY_USAGE_LIMIT_PCT), 55);
         testContext.assertEquals(json.getInteger(PROP_DEQUEUE_STATISTIC_REPORT_INTERVAL_SEC), 44);
+        testContext.assertEquals(json.getInteger(PROP_REDIS_READY_CHECK_INTERVAL_MS), 5000);
         testContext.assertEquals(json.getString(PROP_PUBLISH_METRICS_ADDRESS), "eventbus-addr-1");
         testContext.assertEquals(json.getString(PROP_METRIC_STORAGE_NAME), "queue");
         // queue configurations
@@ -250,6 +253,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getQueueSpeedIntervalSec(), 60);
         testContext.assertEquals(config.getMemoryUsageLimitPercent(), 100);
         testContext.assertEquals(config.getDequeueStatisticReportIntervalSec(), -1);
+        testContext.assertEquals(config.getRedisReadyCheckIntervalMs(), -1);
         testContext.assertNull(config.getPublishMetricsAddress());
         testContext.assertEquals(config.getMetricStorageName(), "queue");
     }
@@ -281,6 +285,7 @@ public class RedisquesConfigurationTest {
         json.put(PROP_QUEUE_SPEED_INTERVAL_SEC, 1);
         json.put(PROP_MEMORY_USAGE_LIMIT_PCT, 75);
         json.put(PROP_DEQUEUE_STATISTIC_REPORT_INTERVAL_SEC, 22);
+        json.put(PROP_REDIS_READY_CHECK_INTERVAL_MS, 1500);
         json.put(PROP_METRIC_STORAGE_NAME, "queue");
         json.put(PROP_PUBLISH_METRICS_ADDRESS, "eventbus-addr-1");
         json.put(PROP_QUEUE_CONFIGURATIONS, new JsonArray(Collections.singletonList(
@@ -313,6 +318,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getQueueSpeedIntervalSec(), 1);
         testContext.assertEquals(config.getMemoryUsageLimitPercent(), 75);
         testContext.assertEquals(config.getDequeueStatisticReportIntervalSec(), 22);
+        testContext.assertEquals(config.getRedisReadyCheckIntervalMs(), 1500);
         testContext.assertEquals(config.getPublishMetricsAddress(), "eventbus-addr-1");
         testContext.assertEquals(config.getMetricStorageName(), "queue");
 
