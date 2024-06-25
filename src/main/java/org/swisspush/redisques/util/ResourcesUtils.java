@@ -33,16 +33,17 @@ public class ResourcesUtils {
      * @throws RuntimeException when {@code exceptionWhenNotFound} is set to true and resource cannot be loaded
      * @return The content of the resource or null
      */
-    public static String loadResource(String resourceName, boolean exceptionWhenNotFound) {
+    public static String loadUtf8ResourceAsString(String resourceName, boolean exceptionWhenNotFound) {
         try {
             URL url = Resources.getResource(resourceName);
             return Resources.toString(url, Charsets.UTF_8);
         } catch (Exception e) {
-            log.error("Error loading resource '{}'", resourceName, e);
             if(exceptionWhenNotFound){
                 throw new RuntimeException("Error loading required resource '"+resourceName+"'");
+            } else {
+                log.error("Error loading resource '{}'", resourceName, e);
+                return null;
             }
-            return null;
         }
     }
 }

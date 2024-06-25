@@ -24,8 +24,8 @@ import static org.mockito.Mockito.*;
 @RunWith(VertxUnitRunner.class)
 public class DefaultRedisReadyProviderTest {
 
-    private final String REDIS_INFO_LOADING = ResourcesUtils.loadResource("redis_info_persistance_loading_1", true);
-    private final String REDIS_INFO_NOT_LOADING = ResourcesUtils.loadResource("redis_info_persistance_loading_0", true);
+    private final String REDIS_INFO_LOADING = ResourcesUtils.loadUtf8ResourceAsString("redis_info_persistance_loading_1", true);
+    private final String REDIS_INFO_NOT_LOADING = ResourcesUtils.loadUtf8ResourceAsString("redis_info_persistance_loading_0", true);
 
     private Vertx vertx;
     private RedisAPI redisAPI;
