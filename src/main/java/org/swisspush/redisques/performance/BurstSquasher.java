@@ -8,6 +8,21 @@ import java.util.concurrent.locks.ReentrantLock;
 import static java.lang.Math.max;
 import static java.lang.System.currentTimeMillis;
 
+/**
+ * <p>Reduces peaks of events which occur in a small amount of time.</p>
+ *
+ * <p>Here an example use-case:</p>
+ *
+ * <p>Error logs most of the time do NOT log at all. But as soon something
+ * happens, they often produce TONNS of logs within a very small amount of time.
+ * But the issue is this: To be helpful for analysis such logs MUST include enough
+ * information (for example CHAINED stack traces) to be useful. But the problem
+ * here is that logging "a few thousand" such stack traces causes performance
+ * issues within the logging systems. Plus there is no use to have the same
+ * stack trace several thousand times within the same second. So the idea is
+ * to maximally log ONE such stacktrace which contains a count of how many times
+ * it has occurred in place of logging the same a few thousand times.</p>
+ */
 public class BurstSquasher<Ctx> {
 
     private final Vertx vertx;
