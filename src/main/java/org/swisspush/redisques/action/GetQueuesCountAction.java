@@ -44,7 +44,7 @@ public class GetQueuesCountAction extends GetQueuesAction {
             getQueues(event, true, result);
         } else {
             redisProvider.redis().onSuccess(redisAPI -> redisAPI.zcount(queuesKey, String.valueOf(getMaxAgeTimestamp()),
-                            String.valueOf(Double.MAX_VALUE), new GetQueuesCountHandler(event, exceptionFactory)))
+                            String.valueOf(Double.MAX_VALUE), new GetQueuesCountHandler(event)))
                     .onFailure(ex -> replyErrorMessageHandler(event).handle(ex));
         }
     }

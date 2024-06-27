@@ -113,7 +113,8 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
                     return ctx.iter.hasNext();
                 }
                 @Override public boolean onError(Throwable ex, Void ctx_) {
-                    p.fail(exceptionFactory.newException("Unexpected queue length result", ex));
+                    log.error("Unexpected queue length result", exceptionFactory.newException(ex));
+                    event.reply(new JsonObject().put(STATUS, ERROR));
                     return false;
                 }
                 @Override public void onDone(Void ctx_) {
@@ -148,19 +149,9 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
         }).onSuccess((JsonObject json) -> {
             log.trace("call event.reply(json)");
             event.reply(json);
-        }).onFailure((Throwable origEx) -> {
-            // For whatever reason 'event' cannot transport a regular exception. So
-            // we have to squeeze it into a ReplyException.
-            int failureCode = 500;
-            for (Throwable thr = origEx; thr != null; thr = thr.getCause()) {
-                if (!(thr instanceof io.vertx.core.impl.NoStackTraceThrowable)) continue;
-                if (!("Redis waiting queue is full".equals(thr.getMessage()))) continue;
-                failureCode = 429;
-                break;
-            }
-            ReplyException replyEx = exceptionFactory.newReplyException(RECIPIENT_FAILURE, failureCode, ERROR);
-            replyEx.initCause(origEx);
-            event.reply(replyEx);
+        }).onFailure((Throwable ex) -> {
+            log.warn("Redis: Failed to get queue length.", exceptionFactory.newException(ex));
+            event.reply(new JsonObject().put(STATUS, ERROR));
         });
     }
 
