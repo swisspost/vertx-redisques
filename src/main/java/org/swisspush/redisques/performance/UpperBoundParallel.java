@@ -2,10 +2,8 @@ package org.swisspush.redisques.performance;
 
 import io.vertx.core.Vertx;
 import org.slf4j.Logger;
-import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 
 import java.util.concurrent.Semaphore;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BiConsumer;
@@ -46,13 +44,12 @@ import static org.slf4j.LoggerFactory.getLogger;
 public class UpperBoundParallel {
 
     private static final Logger log = getLogger(UpperBoundParallel.class);
+    private static final long RETRY_DELAY_IF_LIMIT_REACHED_MS = 8;
     private final Vertx vertx;
-    private final RedisQuesExceptionFactory exceptionFactory;
 
-    public UpperBoundParallel(Vertx vertx, RedisQuesExceptionFactory exceptionFactory) {
+    public UpperBoundParallel(Vertx vertx) {
         assert vertx != null;
         this.vertx = vertx;
-        this.exceptionFactory = exceptionFactory;
     }
 
     public <Ctx> void request(Semaphore limit, Ctx ctx, Mentor<Ctx> mentor) {
@@ -76,7 +73,7 @@ public class UpperBoundParallel {
             // Enqueue as much we can.
             while (true) {
                 if (req.isFatalError) {
-                    log.trace("return from 'resume()' because isFatalError");
+                    log.debug("return from 'resume()' because isFatalError");
                     return;
                 }
                 if (!req.hasMore) {
@@ -84,7 +81,7 @@ public class UpperBoundParallel {
                         req.isDoneCalled = true;
                         // give up lock because we don't know how much time mentor will use.
                         req.lock.unlock();
-                        log.trace("call 'mentor.onDone()'");
+                        log.debug("call 'mentor.onDone()'");
                         try {
                             req.mentor.onDone(req.ctx);
                         } finally {
@@ -95,15 +92,10 @@ public class UpperBoundParallel {
                     }
                     return;
                 }
-                if (req.numTokensAvailForOurself > 0) {
-                    // We still have a token reserved for ourself. Use those first before acquiring
-                    // new ones. Explanation see comment in 'onOneDone()'.
-                    req.numTokensAvailForOurself -= 1;
-                }else if (!req.limit.tryAcquire()) {
+                if (!req.limit.tryAcquire()) {
                     log.debug("redis request limit reached. Need to pause now.");
                     break; // Go to end of loop to schedule a run later.
                 }
-                req.hasStarted = true;
                 req.numInProgress += 1;
                 boolean hasMore = true;
                 try {
@@ -112,14 +104,7 @@ public class UpperBoundParallel {
                     // waiting for our lock).
                     req.lock.unlock();
                     log.trace("mentor.runOneMore()  numInProgress={}", req.numInProgress);
-                    hasMore = req.mentor.runOneMore(new BiConsumer<>() {
-                        // this boolean is just for paranoia, in case mentor tries to call back too often.
-                        final AtomicBoolean isCalled = new AtomicBoolean();
-                        @Override public void accept(Throwable ex, Void ret) {
-                            if (!isCalled.compareAndSet(false, true)) return;
-                            onOneDone(req, ex);
-                        }
-                    }, req.ctx);
+                    hasMore = req.mentor.runOneMore(req::onOneDone_, req.ctx);
                 } catch (RuntimeException ex) {
                     onOneDone(req, ex);
                 } finally {
@@ -131,19 +116,8 @@ public class UpperBoundParallel {
             }
             assert req.numInProgress >= 0 : req.numInProgress;
             if (req.numInProgress == 0) {
-                if (!req.hasStarted) {
-                    // We couldn't even trigger one single task. No resources available to
-                    // handle any more requests. This caller has to try later.
-                    req.isFatalError = true;
-                    Exception ex = exceptionFactory.newResourceExhaustionException(
-                            "No more resources to handle yet another request now.", null);
-                    req.mentor.onError(ex, req.ctx);
-                    return;
-                }else{
-                    log.error("If you see this log, some unreachable code got reached. numInProgress={}, hasStarted={}",
-                        req.numInProgress, req.hasStarted);
-                    vertx.setTimer(4000, nonsense -> resume(req));
-                }
+                // Looks as we could not even fire a single event. Need to try later.
+                vertx.setTimer(RETRY_DELAY_IF_LIMIT_REACHED_MS, nonsense -> resume(req));
             }
         } finally {
             req.worker = null;
@@ -154,21 +128,8 @@ public class UpperBoundParallel {
     private <Ctx> void onOneDone(Request<Ctx> req, Throwable ex) {
         req.lock.lock();
         try {
-            // Do NOT release that token yet. instead mark the token as "ready-to-be-used".
-            // To signalize 'resume()' that we do not need to 'acquire' another token from
-            // 'limit' and we instead can re-use that one we acquired earlier.
-            // Reasoning:
-            // Originally we did just 'release' the token back to the pool and then acquired
-            // another one later in 'resume()'. But this is problematic, as in this case we
-            // give yet more incoming requests a chance to also start their processing.
-            // Which in the end runs us into resource exhaustion. Because we will start more
-            // and more requests and have no tokens free to complete the already running
-            // requests. So by keeping that token we already got reserved to ourself, we
-            // can apply backpressure to new incoming requests. This allows us to complete
-            // the already running requests.
+            req.limit.release();
             req.numInProgress -= 1;
-            req.numTokensAvailForOurself += 1;
-            // ^^-- Token transfer only consists of those two statements.
             log.trace("onOneDone({})  {} remaining", ex != null ? "ex" : "null", req.numInProgress);
             assert req.numInProgress >= 0 : req.numInProgress + " >= 0  (BTW: mentor MUST call 'onDone' EXACTLY once)";
             boolean isFatalError = true;
@@ -179,15 +140,10 @@ public class UpperBoundParallel {
                 if (log.isDebugEnabled()) {
                     log.debug("mentor.onError({}: {})", ex.getClass().getName(), ex.getMessage());
                 }
-                isFatalError = !req.mentor.onError(ex, req.ctx);
+                isFatalError = req.mentor.onError(ex, req.ctx);
             } finally {
                 req.lock.lock(); // Need our lock back.
                 req.isFatalError = isFatalError;
-                // Need to release our token now. As we won't do it later anymore.
-                if (isFatalError) {
-                    req.numTokensAvailForOurself -= 1;
-                    req.limit.release();
-                }
             }
         } finally {
             req.lock.unlock();
@@ -195,16 +151,14 @@ public class UpperBoundParallel {
         }
     }
 
-    private static final class Request<Ctx> {
+    private final class Request<Ctx> {
         private final Ctx ctx;
         private final Mentor<Ctx> mentor;
         private final Lock lock = new ReentrantLock();
         private final Semaphore limit;
         private Thread worker = null;
         private int numInProgress = 0;
-        private int numTokensAvailForOurself = 0;
         private boolean hasMore = true;
-        private boolean hasStarted = false; // true, as soon we could start at least once.
         private boolean isFatalError = false;
         private boolean isDoneCalled = false;
 
@@ -212,6 +166,10 @@ public class UpperBoundParallel {
             this.ctx = ctx;
             this.mentor = mentor;
             this.limit = limit;
+        }
+
+        public void onOneDone_(Throwable ex, Void result) {
+            onOneDone(this, ex);
         }
     }
 

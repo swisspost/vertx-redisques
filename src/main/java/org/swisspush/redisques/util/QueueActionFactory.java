@@ -85,9 +85,8 @@ public class QueueActionFactory {
                 return new GetQueuesAction(vertx, redisProvider, address, queuesKey, queuesPrefix,
                         consumersPrefix, locksKey, queueConfigurations, queueStatisticsCollector, log);
             case getQueuesCount:
-                return new GetQueuesCountAction(vertx, redisProvider, exceptionFactory, address,
-                    queuesKey, queuesPrefix, consumersPrefix, locksKey, queueConfigurations,
-                    queueStatisticsCollector, log);
+                return new GetQueuesCountAction(vertx, redisProvider, address, queuesKey, queuesPrefix,
+                        consumersPrefix, locksKey, queueConfigurations, queueStatisticsCollector, log);
             case getQueueItemsCount:
                 return new GetQueueItemsCountAction(vertx, redisProvider, address, queuesKey, queuesPrefix,
                         consumersPrefix, locksKey, queueConfigurations, queueStatisticsCollector, log);

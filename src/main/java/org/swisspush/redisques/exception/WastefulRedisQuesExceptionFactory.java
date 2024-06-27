@@ -30,9 +30,4 @@ class WastefulRedisQuesExceptionFactory implements RedisQuesExceptionFactory {
         return new ReplyException(failureType, failureCode, msg);
     }
 
-    @Override
-    public ResourceExhaustionException newResourceExhaustionException(String msg, Throwable cause) {
-        return new ResourceExhaustionException(msg, cause);
-    }
-
 }

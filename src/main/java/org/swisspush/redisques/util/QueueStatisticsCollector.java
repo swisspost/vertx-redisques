@@ -87,7 +87,7 @@ public class QueueStatisticsCollector {
         this.vertx = vertx;
         this.exceptionFactory = exceptionFactory;
         this.redisRequestQuota = redisRequestQuota;
-        this.upperBoundParallel = new UpperBoundParallel(vertx, exceptionFactory);
+        this.upperBoundParallel = new UpperBoundParallel(vertx);
         speedStatisticsScheduler(speedIntervalSec);
     }
 

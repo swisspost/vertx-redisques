@@ -5,7 +5,6 @@ import io.vertx.core.Handler;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.Message;
-import io.vertx.core.eventbus.ReplyException;
 import io.vertx.core.eventbus.ReplyFailure;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
@@ -14,7 +13,6 @@ import io.vertx.redis.client.RedisAPI;
 import io.vertx.redis.client.Response;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.performance.UpperBoundParallel;
 import org.swisspush.redisques.util.HandlerUtil;
 import org.swisspush.redisques.util.RedisProvider;
@@ -26,7 +24,8 @@ import java.util.concurrent.Semaphore;
 import java.util.function.BiConsumer;
 import java.util.regex.Pattern;
 
-import static io.vertx.core.eventbus.ReplyFailure.RECIPIENT_FAILURE;
+import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
+
 import static java.lang.System.currentTimeMillis;
 import static org.swisspush.redisques.util.RedisquesAPI.ERROR;
 import static org.swisspush.redisques.util.RedisquesAPI.MONITOR_QUEUE_NAME;
@@ -63,7 +62,7 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
         this.filterPattern = filterPattern;
         this.queuesPrefix = queuesPrefix;
         this.redisProvider = redisProvider;
-        this.upperBoundParallel = new UpperBoundParallel(vertx, exceptionFactory);
+        this.upperBoundParallel = new UpperBoundParallel(vertx);
         this.exceptionFactory = exceptionFactory;
         this.redisRequestQuota = redisRequestQuota;
     }
@@ -138,10 +137,10 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
                 var obj = new JsonObject().put(STATUS, OK).put(QUEUES, result);
                 long jsonCreateDurationMs = currentTimeMillis() - beginEpchMs;
                 if (jsonCreateDurationMs > 10) {
-                    log.info("Creating JSON with {} entries did block this thread for {}ms",
+                    log.info("Creating JSON with {} entries did block this tread for {}ms",
                             ctx.queueLengths.length, jsonCreateDurationMs);
                 }else{
-                    log.debug("Creating JSON with {} entries did block this thread for {}ms",
+                    log.debug("Creating JSON with {} entries did block this tread for {}ms",
                             ctx.queueLengths.length, jsonCreateDurationMs);
                 }
                 workerPromise.complete(obj);

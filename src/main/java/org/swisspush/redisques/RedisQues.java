@@ -21,7 +21,6 @@ import org.slf4j.LoggerFactory;
 import org.swisspush.redisques.action.QueueAction;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.handler.RedisquesHttpRequestHandler;
-import org.swisspush.redisques.performance.BurstSquasher;
 import org.swisspush.redisques.performance.UpperBoundParallel;
 import org.swisspush.redisques.scheduling.PeriodicSkipScheduler;
 import org.swisspush.redisques.util.*;
@@ -40,7 +39,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
@@ -230,13 +228,14 @@ public class RedisQues extends AbstractVerticle {
     private final Semaphore checkQueueRequestsQuota;
     private final Semaphore queueStatsRequestQuota;
     private final Semaphore getQueuesItemsCountRedisRequestQuota;
-    private static final AtomicReference<BurstSquasher<Object[]>> checkExistsFailLogger = new AtomicReference<>();
-    private static final AtomicReference<BurstSquasher<Throwable>> checkQueueOwnerLogger = new AtomicReference<>();
 
     public RedisQues() {
-        this(null, null, null, newThriftyExceptionFactory(), new Semaphore(Integer.MAX_VALUE),
-                new Semaphore(Integer.MAX_VALUE), new Semaphore(Integer.MAX_VALUE), new Semaphore(Integer.MAX_VALUE));
+        this.exceptionFactory = newThriftyExceptionFactory();
         log.warn("Fallback to legacy behavior and allow up to {} simultaneous requests to redis", Integer.MAX_VALUE);
+        this.redisMonitoringReqQuota = new Semaphore(Integer.MAX_VALUE);
+        this.checkQueueRequestsQuota = new Semaphore(Integer.MAX_VALUE);
+        this.queueStatsRequestQuota = new Semaphore(Integer.MAX_VALUE);
+        this.getQueuesItemsCountRedisRequestQuota = new Semaphore(Integer.MAX_VALUE);
     }
 
     public RedisQues(
@@ -344,7 +343,7 @@ public class RedisQues extends AbstractVerticle {
             redisProvider = new DefaultRedisProvider(vertx, configurationProvider);
         }
 
-        this.upperBoundParallel = new UpperBoundParallel(vertx, exceptionFactory);
+        this.upperBoundParallel = new UpperBoundParallel(vertx);
 
         redisProvider.redis().onComplete(event -> {
             if(event.succeeded()) {
@@ -550,11 +549,7 @@ public class RedisQues extends AbstractVerticle {
                         return iter.hasNext();
                     }
                     @Override public boolean onError(Throwable ex, Iterator<Map.Entry<String, QueueState>> iter) {
-                        checkQueueOwnerLogger.compareAndSet(null, new BurstSquasher<>(vertx, (int count, Throwable ex_) -> {
-                            log.warn("TODO error handling", ex_);
-                        }));
-                        checkQueueOwnerLogger.get().logSomewhen(exceptionFactory.newException(ex));
-                        onPeriodicDone.run();
+                        if (log.isWarnEnabled()) log.warn("TODO error handling", exceptionFactory.newException(ex));
                         return false;
                     }
                     @Override public void onDone(Iterator<Map.Entry<String, QueueState>> iter) {
@@ -1198,12 +1193,8 @@ public class RedisQues extends AbstractVerticle {
                         };
                         ctx.redisAPI.exists(Collections.singletonList(key), event -> {
                             if (event.failed() || event.result() == null) {
-                                checkExistsFailLogger.compareAndSet(null, new BurstSquasher<>(vertx, (int count, Object[] detail) -> {
-                                    log.error("RedisQues was {} times unable to check existence of some queue like {}",
-                                        count, detail[0], (Throwable)detail[1]);
-                                }));
-                                checkExistsFailLogger.get().logSomewhen(new Object[]{
-                                        queueName, exceptionFactory.newException("redisAPI.exists(...) failed", event.cause())});
+                                log.error("RedisQues is unable to check existence of queue " + queueName,
+                                    exceptionFactory.newException("redisAPI.exists(" + key + ") failed", event.cause()));
                                 onDone.accept(null, null);
                                 return;
                             }
@@ -1258,24 +1249,16 @@ public class RedisQues extends AbstractVerticle {
                     return ctx.iter.hasNext();
                 }
                 @Override public boolean onError(Throwable ex, Void ctx_) {
-                    // Old code [1] for whatever reason did just continue after an error.
-                    // Nevertheless, I'll now change it to abort (aka return false). Due to
-                    // the absence of comments I have no idea what those half-baked results
-                    // where used for. See also [2] about this decision.
-                    // [1]: https://github.com/swisspost/vertx-redisques/blob/v3.0.33/src/main/java/org/swisspush/redisques/RedisQues.java
-                    // [2]: https://github.com/swisspost/vertx-redisques/issues/192
-                    reduceGcGraphTraversalEffort();
-                    p.fail(exceptionFactory.newException(ex));
-                    return false;
+                    log.warn("TODO error handling", exceptionFactory.newException(ex));
+                    return true; // true, keep going with other queues.
                 }
                 @Override public void onDone(Void ctx_) {
-                    reduceGcGraphTraversalEffort();
-                    p.complete(); // Mark this composition step as completed.
-                }
-                private void reduceGcGraphTraversalEffort() {
+                    // No longer used, so reduce GC graph traversal effort.
                     ctx.redisAPI = null;
                     ctx.counter = null;
                     ctx.iter = null;
+                    // Mark this composition step as completed.
+                    p.complete();
                 }
             });
             return p.future();

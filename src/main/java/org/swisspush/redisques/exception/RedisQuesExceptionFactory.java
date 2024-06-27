@@ -47,6 +47,4 @@ public interface RedisQuesExceptionFactory {
         return new WastefulRedisQuesExceptionFactory();
     }
 
-    ResourceExhaustionException newResourceExhaustionException(String msg, Throwable cause);
-
 }
