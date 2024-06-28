@@ -62,7 +62,7 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
         this.filterPattern = filterPattern;
         this.queuesPrefix = queuesPrefix;
         this.redisProvider = redisProvider;
-        this.upperBoundParallel = new UpperBoundParallel(vertx);
+        this.upperBoundParallel = new UpperBoundParallel(vertx, exceptionFactory);
         this.exceptionFactory = exceptionFactory;
         this.redisRequestQuota = redisRequestQuota;
     }

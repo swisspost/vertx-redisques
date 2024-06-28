@@ -37,4 +37,12 @@ class ThriftyRedisQuesExceptionFactory implements RedisQuesExceptionFactory {
         return new NoStackReplyException(failureType, failureCode, msg);
     }
 
+    @Override
+    public ResourceExhaustionException newResourceExhaustionException(String msg, Throwable cause) {
+        if (cause instanceof ResourceExhaustionException) return (ResourceExhaustionException) cause;
+        return new ResourceExhaustionException(msg, cause) {
+            @Override public Throwable fillInStackTrace() { return this; }
+        };
+    }
+
 }
