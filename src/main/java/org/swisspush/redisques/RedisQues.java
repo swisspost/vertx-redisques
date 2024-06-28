@@ -343,7 +343,7 @@ public class RedisQues extends AbstractVerticle {
             redisProvider = new DefaultRedisProvider(vertx, configurationProvider);
         }
 
-        this.upperBoundParallel = new UpperBoundParallel(vertx);
+        this.upperBoundParallel = new UpperBoundParallel(vertx, exceptionFactory);
 
         redisProvider.redis().onComplete(event -> {
             if(event.succeeded()) {
