@@ -99,7 +99,7 @@ public class UpperBoundParallel {
                     // We still have a token reserved for ourself. Use those first before acquiring
                     // new ones. Explanation see comment in 'onOneDone()'.
                     req.numTokensAvailForOurself -= 1;
-                }else if (!req.limit.tryAcquire()) {
+                } else if (!req.limit.tryAcquire()) {
                     log.debug("redis request limit reached. Need to pause now.");
                     break; // Go to end of loop to schedule a run later.
                 }
@@ -139,7 +139,7 @@ public class UpperBoundParallel {
                             "No more resources to handle yet another request now.", null);
                     req.mentor.onError(ex, req.ctx);
                     return;
-                }else{
+                } else {
                     log.error("If you see this log, some unreachable code got reached. numInProgress={}, hasStarted={}",
                         req.numInProgress, req.hasStarted);
                     vertx.setTimer(4000, nonsense -> resume(req));
