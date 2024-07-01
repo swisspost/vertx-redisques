@@ -701,7 +701,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
             }
             eventBus.request(redisquesAddress, buildGetQueueItemsOperation(queue, limitParam), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
                 if (reply.failed()) {
-                    log.error("Received failed message for listQueueItemsOperation", reply.cause());
+                    log.error("Received failed message for listQueueItemsOperation", exceptionFactory.newException(reply.cause()));
                     respondWith(StatusCode.INTERNAL_SERVER_ERROR, ctx.request());
                     return;
                 }

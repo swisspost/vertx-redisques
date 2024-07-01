@@ -4,6 +4,7 @@ import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonObject;
 import org.slf4j.Logger;
+import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.util.MemoryUsageProvider;
 import org.swisspush.redisques.util.QueueConfiguration;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
@@ -19,10 +20,12 @@ public class LockedEnqueueAction extends EnqueueAction {
     public LockedEnqueueAction(Vertx vertx, RedisProvider redisProvider,
                                String address, String queuesKey, String queuesPrefix,
                                String consumersPrefix, String locksKey, List<QueueConfiguration> queueConfigurations,
+                               RedisQuesExceptionFactory exceptionFactory,
                                QueueStatisticsCollector queueStatisticsCollector, Logger log,
                                MemoryUsageProvider memoryUsageProvider, int memoryUsageLimitPercent) {
         super(vertx, redisProvider, address, queuesKey, queuesPrefix, consumersPrefix,
-                locksKey, queueConfigurations, queueStatisticsCollector, log, memoryUsageProvider, memoryUsageLimitPercent);
+                locksKey, queueConfigurations, exceptionFactory, queueStatisticsCollector, log, memoryUsageProvider,
+                memoryUsageLimitPercent);
     }
 
     @Override

@@ -4,6 +4,7 @@ import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonObject;
 import org.slf4j.Logger;
+import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.handler.ReplaceQueueItemHandler;
 import org.swisspush.redisques.util.QueueConfiguration;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
@@ -19,10 +20,11 @@ public class ReplaceQueueItemAction extends AbstractQueueAction {
             Vertx vertx, RedisProvider redisProvider, String address, String queuesKey,
             String queuesPrefix, String consumersPrefix, String locksKey,
             List<QueueConfiguration> queueConfigurations,
+            RedisQuesExceptionFactory exceptionFactory,
             QueueStatisticsCollector queueStatisticsCollector, Logger log
     ) {
         super(vertx, redisProvider, address, queuesKey, queuesPrefix, consumersPrefix,
-                locksKey, queueConfigurations, queueStatisticsCollector, log);
+                locksKey, queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
     }
 
     @Override

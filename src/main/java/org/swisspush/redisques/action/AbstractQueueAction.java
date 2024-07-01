@@ -9,6 +9,7 @@ import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.redis.client.Response;
 import org.slf4j.Logger;
+import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.util.QueueConfiguration;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 import org.swisspush.redisques.util.RedisProvider;
@@ -33,11 +34,12 @@ public abstract class AbstractQueueAction implements QueueAction {
     protected final String consumersPrefix;
     protected final String locksKey;
     protected final List<QueueConfiguration> queueConfigurations;
+    protected final RedisQuesExceptionFactory exceptionFactory;
     protected final QueueStatisticsCollector queueStatisticsCollector;
 
     public AbstractQueueAction(Vertx vertx, RedisProvider redisProvider, String address, String queuesKey,
                                String queuesPrefix, String consumersPrefix, String locksKey, List<QueueConfiguration> queueConfigurations,
-                               QueueStatisticsCollector queueStatisticsCollector, Logger log) {
+                               RedisQuesExceptionFactory exceptionFactory, QueueStatisticsCollector queueStatisticsCollector, Logger log) {
         this.vertx = vertx;
         this.redisProvider = redisProvider;
         this.address = address;
@@ -46,6 +48,7 @@ public abstract class AbstractQueueAction implements QueueAction {
         this.consumersPrefix = consumersPrefix;
         this.locksKey = locksKey;
         this.queueConfigurations = queueConfigurations;
+        this.exceptionFactory = exceptionFactory;
         this.queueStatisticsCollector = queueStatisticsCollector;
         this.log = log;
     }

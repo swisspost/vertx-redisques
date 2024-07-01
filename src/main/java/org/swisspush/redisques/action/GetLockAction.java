@@ -5,6 +5,7 @@ import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonObject;
 import org.slf4j.Logger;
+import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.handler.GetLockHandler;
 import org.swisspush.redisques.util.QueueConfiguration;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
@@ -20,11 +21,11 @@ public class GetLockAction extends AbstractQueueAction {
     public GetLockAction(
             Vertx vertx, RedisProvider redisProvider, String address, String queuesKey,
             String queuesPrefix, String consumersPrefix, String locksKey,
-            List<QueueConfiguration> queueConfigurations, QueueStatisticsCollector queueStatisticsCollector,
-            Logger log
+            List<QueueConfiguration> queueConfigurations, RedisQuesExceptionFactory exceptionFactory,
+            QueueStatisticsCollector queueStatisticsCollector, Logger log
     ) {
         super(vertx, redisProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey,
-                queueConfigurations, queueStatisticsCollector, log);
+                queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
     }
 
     @Override

@@ -34,7 +34,8 @@ public class EnqueueActionTest extends AbstractQueueActionTest {
         super.setup();
         action = new EnqueueAction(vertx, redisProvider,
                 "addr", "q-", "prefix-", "c-", "l-",
-                new ArrayList<>(), Mockito.mock(QueueStatisticsCollector.class), Mockito.mock(Logger.class), memoryUsageProvider, 80);
+                new ArrayList<>(), exceptionFactory, Mockito.mock(QueueStatisticsCollector.class),
+                Mockito.mock(Logger.class), memoryUsageProvider, 80);
     }
 
     @Test

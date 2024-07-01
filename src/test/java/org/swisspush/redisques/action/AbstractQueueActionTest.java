@@ -7,6 +7,7 @@ import io.vertx.core.json.JsonObject;
 import io.vertx.redis.client.RedisAPI;
 import org.junit.Before;
 import org.mockito.Mockito;
+import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.util.MemoryUsageProvider;
 import org.swisspush.redisques.util.RedisProvider;
 
@@ -18,6 +19,7 @@ public abstract class AbstractQueueActionTest {
 
     protected RedisAPI redisAPI;
     protected RedisProvider redisProvider;
+    protected RedisQuesExceptionFactory exceptionFactory;
 
     protected Vertx vertx;
 
@@ -30,6 +32,7 @@ public abstract class AbstractQueueActionTest {
     public void setup() {
         redisAPI = Mockito.mock(RedisAPI.class);
         redisProvider = Mockito.mock(RedisProvider.class);
+        exceptionFactory = Mockito.mock(RedisQuesExceptionFactory.class);
         when(redisProvider.redis()).thenReturn(Future.succeededFuture(redisAPI));
 
         memoryUsageProvider = Mockito.mock(MemoryUsageProvider.class);
