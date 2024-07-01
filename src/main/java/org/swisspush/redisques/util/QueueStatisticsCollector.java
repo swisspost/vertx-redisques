@@ -6,7 +6,6 @@ import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
-import io.vertx.redis.client.Command;
 import io.vertx.redis.client.RedisAPI;
 import io.vertx.redis.client.Response;
 import io.vertx.redis.client.impl.types.NumberType;
@@ -27,6 +26,9 @@ import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
 
+import static io.vertx.core.Future.failedFuture;
+import static io.vertx.core.Future.succeededFuture;
+import static io.vertx.redis.client.Command.LLEN;
 import static java.lang.System.currentTimeMillis;
 import static org.swisspush.redisques.util.RedisquesAPI.MONITOR_QUEUE_NAME;
 import static org.swisspush.redisques.util.RedisquesAPI.MONITOR_QUEUE_SIZE;
@@ -493,82 +495,79 @@ public class QueueStatisticsCollector {
         return promise.future();
     }
 
-    class WorkerThreadTask {
-        private final String queueName;
-        private final RequestCtx ctx;
-
-        WorkerThreadTask(RequestCtx ctx, String queueName) {
-            this.queueName = queueName;
-            this.ctx = ctx;
-        }
-
-        Future<NumberType> execute() {
-            // switch to a worker thread
-            return vertx.executeBlocking(promise -> {
-                ctx.redisAPI.send(Command.LLEN, queuePrefix + queueName).onComplete(event -> {
-                    if (event.failed()) {
-                        promise.fail(event.cause());
-                        return;
-                    }
-                    promise.complete((NumberType) event.result());
-                });
-            });
-        }
-    }
-
     /** <p>Query queue lengths.</p> */
     Future<Void> step2(RequestCtx ctx) {
         assert ctx.redisAPI != null;
         int numQueues = ctx.queueNames.size();
+        log.debug("About to perform {} requests to redis just for monitoring", numQueues);
+        long begRedisRequestsEpochMs = currentTimeMillis();
 
-        return vertx.executeBlocking(executeBlockingPromise -> {
-            log.debug("About to perform {} requests to redis just for monitoring", numQueues);
-            long begRedisRequestsEpochMs = currentTimeMillis();
-
-            List<WorkerThreadTask> workerThreadTaskList = new ArrayList<>();
-
-            ctx.queueNames.forEach(queueName -> workerThreadTaskList.add(new WorkerThreadTask(ctx, queueName)));
-
-            Future<List<NumberType>> startFuture = Future.succeededFuture(new ArrayList<>());
-            // chain the futures sequentially to execute tasks
-            Future<List<NumberType>> resultFuture = workerThreadTaskList.stream()
-                    .reduce(startFuture, (future, workerThreadTask) -> future.compose(previousResults -> {
-                        // perform asynchronous task
-                        return workerThreadTask.execute().compose(taskResult -> {
-                            // append task result to previous results
-                            previousResults.add(taskResult);
-                            return Future.succeededFuture(previousResults);
-                        });
-                    }), (a, b) -> Future.succeededFuture());
-
-
-            resultFuture.onComplete(ev -> {
-                long durRedisRequestsMs = currentTimeMillis() - begRedisRequestsEpochMs;
-                String fmt2 = "All those {} redis requests took {}ms";
-                if (durRedisRequestsMs > 3000) {
-                    log.warn(fmt2, numQueues, durRedisRequestsMs);
-                } else {
-                    log.debug(fmt2, numQueues, durRedisRequestsMs);
+        assert ctx.queueLengthList == null;
+        ctx.queueLengthList = new ArrayList<>(ctx.queueNames.size());
+        var upperBoundPromise = Promise.<Void>promise();
+        upperBoundParallel.request(redisRequestQuota, ctx, new UpperBoundParallel.Mentor<>() {
+            Iterator<String> queueNamesIter = ctx.queueNames.iterator();
+            @Override public boolean runOneMore(BiConsumer<Throwable, Void> onDone, RequestCtx ctx) {
+                if (queueNamesIter.hasNext()) {
+                    String queueName = queueNamesIter.next();
+                    /* TODO: WHY do we spread those redisAPI calls to several threads here?
+                     * It should be just fine to call 'redisAPI.send()' directly from EventLoop (IN
+                     * THEORY! keep reading). IS THIS MAYBE AN OCCURRENCE OF [1]? If you know more,
+                     * please replace this comment with an UNAMBIGUOUS explanation WHY we use
+                     * 'executeBlocking()', as old code [2] didn't mention any reason for it.
+                     *
+                     * [1]: https://github.com/swisspost/vertx-redisques/issues/165
+                     * [2]: https://github.com/swisspost/vertx-redisques/blob/v3.1.6/src/main/java/org/swisspush/redisques/util/QueueStatisticsCollector.java#L511
+                     */
+                    vertx.executeBlocking(() -> {
+                        return ctx.redisAPI.send(LLEN, queuePrefix + queueName);
+                    }).<Response>compose((Future<Response> rspWrappedInsideAFuture) -> {
+                        return rspWrappedInsideAFuture;
+                    }).<Void>compose((Response rsp) -> {
+                        NumberType num = (NumberType) rsp;
+                        ctx.queueLengthList.add(num);
+                        onDone.accept(null, null);
+                        return succeededFuture();
+                    }).onFailure((Throwable ex) -> {
+                        onDone.accept(exceptionFactory.newException(ex), null);
+                    });
                 }
-                if (ev.failed()) {
-                    executeBlockingPromise.fail(new Exception("Unexpected queue length result", ev.cause()));
-                    return;
-                }
-                List<NumberType> queueLengthList = ev.result();
-                if (queueLengthList == null) {
-                    executeBlockingPromise.fail("Unexpected queue length result: null");
-                    return;
-                }
-                if (queueLengthList.size() != ctx.queueNames.size()) {
-                    String err = "Unexpected queue length result with unequal size " +
-                            ctx.queueNames.size() + " : " + queueLengthList.size();
-                    executeBlockingPromise.fail(err);
-                    return;
-                }
-                ctx.queueLengthList = queueLengthList;
-                executeBlockingPromise.complete();
-            });
-
+                return queueNamesIter.hasNext();
+            }
+            @Override public boolean onError(Throwable ex, RequestCtx ctx) {
+                upperBoundPromise.fail(exceptionFactory.newException(
+                        "Unexpected queue length result", ex));
+                return false;
+            }
+            @Override public void onDone(RequestCtx ctx) {
+                upperBoundPromise.complete();
+            }
+        });
+        return upperBoundPromise.future().<Void>compose((Void v) -> {
+            long durRedisRequestsMs = currentTimeMillis() - begRedisRequestsEpochMs;
+            String fmt2 = "All those {} redis requests took {}ms";
+            if (durRedisRequestsMs > 3000) {
+                log.warn(fmt2, numQueues, durRedisRequestsMs);
+            } else {
+                log.debug(fmt2, numQueues, durRedisRequestsMs);
+            }
+            if (ctx.queueLengthList.size() != ctx.queueNames.size()) {
+                return failedFuture(exceptionFactory.newException(""
+                    + "Unexpected queue length result with unequal size "
+                    + ctx.queueNames.size() + " : " + ctx.queueLengthList.size()));
+            }
+            return succeededFuture();
+        }).<Void>compose((Void v) -> {
+            if (ctx.queueLengthList == null) {
+                assert false : "TODO I guess this unreachable code could be removed";
+                return failedFuture(exceptionFactory.newException("Unexpected queue length result: null"));
+            }
+            if (ctx.queueLengthList.size() != ctx.queueNames.size()) {
+                return failedFuture(exceptionFactory.newException(""
+                    + "Unexpected queue length result with unequal size "
+                    + ctx.queueNames.size() + " : " + ctx.queueLengthList.size()));
+            }
+            return succeededFuture();
         });
     }
 
