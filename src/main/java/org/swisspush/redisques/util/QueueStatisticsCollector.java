@@ -510,15 +510,7 @@ public class QueueStatisticsCollector {
             @Override public boolean runOneMore(BiConsumer<Throwable, Void> onDone, RequestCtx ctx) {
                 if (queueNamesIter.hasNext()) {
                     String queueName = queueNamesIter.next();
-                    /* TODO: WHY do we spread those redisAPI calls to several threads here?
-                     * It should be just fine to call 'redisAPI.send()' directly from EventLoop (IN
-                     * THEORY! keep reading). IS THIS MAYBE AN OCCURRENCE OF [1]? If you know more,
-                     * please replace this comment with an UNAMBIGUOUS explanation WHY we use
-                     * 'executeBlocking()', as old code [2] didn't mention any reason for it.
-                     *
-                     * [1]: https://github.com/swisspost/vertx-redisques/issues/165
-                     * [2]: https://github.com/swisspost/vertx-redisques/blob/v3.1.6/src/main/java/org/swisspush/redisques/util/QueueStatisticsCollector.java#L511
-                     */
+                    /* [TODO](https://github.com/swisspost/vertx-redisques/issues/198) */
                     vertx.executeBlocking(() -> {
                         return ctx.redisAPI.send(LLEN, queuePrefix + queueName);
                     }).<Response>compose((Future<Response> rspWrappedInsideAFuture) -> {
