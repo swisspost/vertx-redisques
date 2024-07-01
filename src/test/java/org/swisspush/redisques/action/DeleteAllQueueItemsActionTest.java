@@ -5,6 +5,7 @@ import io.vertx.core.buffer.Buffer;
 import io.vertx.core.json.JsonObject;
 import io.vertx.ext.unit.TestContext;
 import io.vertx.ext.unit.junit.VertxUnitRunner;
+import io.vertx.redis.client.impl.types.SimpleStringType;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -35,13 +36,62 @@ public class DeleteAllQueueItemsActionTest extends AbstractQueueActionTest {
     }
 
     @Test
+    public void testDeleteAllQueueItemsNoUnlock(TestContext context){
+        when(message.body()).thenReturn(buildDeleteAllQueueItemsOperation("q1"));
+        when(redisAPI.del(anyList())).thenReturn(Future.succeededFuture(SimpleStringType.create("1")));
+
+        action.execute(message);
+
+        verify(redisAPI, times(1)).del(anyList());
+        verify(redisAPI, never()).hdel(anyList());
+        verify(message, times(1)).reply(eq(new JsonObject(Buffer.buffer("{\"status\":\"ok\",\"value\":1}"))));
+    }
+
+    @Test
+    public void testDeleteAllQueueItemsWithUnlock(TestContext context){
+        when(message.body()).thenReturn(buildDeleteAllQueueItemsOperation("q1", true));
+        when(redisAPI.del(anyList())).thenReturn(Future.succeededFuture(SimpleStringType.create("1")));
+        when(redisAPI.hdel(anyList())).thenReturn(Future.succeededFuture(SimpleStringType.create("1")));
+
+        action.execute(message);
+
+        verify(redisAPI, times(1)).del(anyList());
+        verify(redisAPI, times(1)).hdel(anyList());
+        verify(message, times(1)).reply(eq(new JsonObject(Buffer.buffer("{\"status\":\"ok\",\"value\":1}"))));
+    }
+
+    @Test
     public void testDeleteAllQueueItemsWhenRedisIsNotReady(TestContext context){
         when(redisProvider.redis()).thenReturn(Future.failedFuture("not ready"));
         when(message.body()).thenReturn(buildDeleteAllQueueItemsOperation("q1"));
 
         action.execute(message);
 
-        verify(message, times(1)).reply(eq(new JsonObject(Buffer.buffer("{\"status\":\"error\"}"))));
+        verify(message, times(1)).fail(eq(0), eq("not ready"));
         verifyNoInteractions(redisAPI);
+    }
+
+    @Test
+    public void testRedisApiDELFail(TestContext context){
+        when(message.body()).thenReturn(buildDeleteAllQueueItemsOperation("q1"));
+        when(redisAPI.del(anyList())).thenReturn(Future.failedFuture("boooom"));
+
+        action.execute(message);
+
+        verify(redisAPI, times(1)).del(anyList());
+        verify(message, times(1)).fail(eq(0), eq("boooom"));
+    }
+
+    @Test
+    public void testRedisApiUnlockFail(TestContext context){
+        when(message.body()).thenReturn(buildDeleteAllQueueItemsOperation("q1", true));
+        when(redisAPI.del(anyList())).thenReturn(Future.succeededFuture(SimpleStringType.create("1")));
+        when(redisAPI.hdel(anyList())).thenReturn(Future.failedFuture("boooom"));
+
+        action.execute(message);
+
+        verify(redisAPI, times(1)).del(anyList());
+        verify(redisAPI, times(1)).hdel(anyList());
+        verify(message, times(1)).fail(eq(0), eq("boooom"));
     }
 }

@@ -817,7 +817,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         final String queue = lastPart(request.path());
         eventBus.request(redisquesAddress, buildDeleteAllQueueItemsOperation(queue, unlock), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
             if (reply.failed()) {
-                log.warn("Received failed message for deleteAllQueueItemsOperation", reply.cause());
+                log.warn("Received failed message for deleteAllQueueItemsOperation", exceptionFactory.newException(reply.cause()));
                 respondWith(StatusCode.INTERNAL_SERVER_ERROR, "Error deleting all queue items of queue " + queue, request);
                 return;
             }

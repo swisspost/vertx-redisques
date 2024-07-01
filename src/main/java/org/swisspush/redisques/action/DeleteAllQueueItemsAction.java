@@ -1,6 +1,5 @@
 package org.swisspush.redisques.action;
 
-import io.vertx.core.AsyncResult;
 import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonObject;
@@ -33,45 +32,27 @@ public class DeleteAllQueueItemsAction extends AbstractQueueAction {
         JsonObject payload = event.body().getJsonObject(PAYLOAD);
         boolean unlock = payload.getBoolean(UNLOCK, false);
         String queue = payload.getString(QUEUENAME);
-        var p = redisProvider.redis();
-        p.onSuccess(redisAPI -> {
-            redisAPI.del(Collections.singletonList(buildQueueKey(queue)), deleteReply -> {
-                if (deleteReply.failed()) {
-                    log.warn("Failed to deleteAllQueueItems. But we'll continue anyway",
-                            new Exception(deleteReply.cause()));
-                    // May we should 'fail()' here. But:
-                    // 1st: We don't, to keep backward compatibility
-                    // 2nd: We don't, to may unlock below.
-                }
-                queueStatisticsCollector.resetQueueFailureStatistics(queue, (Throwable ex, Void v) -> {
-                    if (ex != null) log.warn("TODO_2958iouhj error handling", ex);
-                });
-                if (unlock) {
-                    redisAPI.hdel(Arrays.asList(locksKey, queue), unlockReply -> {
-                        if (unlockReply.failed()) {
-                            log.warn("Failed to unlock queue '{}'. Will continue anyway",
-                                    queue, unlockReply.cause());
-                            // IMO we should 'fail()' here. But we don't, to keep backward compatibility.
-                        }
-                        handleDeleteQueueReply(event, deleteReply);
-                    });
-                } else {
-                    handleDeleteQueueReply(event, deleteReply);
-                }
-            });
-        });
-        p.onFailure(ex -> {
-            log.error("Redis: Failed to delete all queue items", new Exception(ex));
-            event.reply(createErrorReply());
-        });
+
+        redisProvider.redis().onSuccess(redisAPI ->
+                        redisAPI.del(Collections.singletonList(buildQueueKey(queue)))
+                                .onSuccess(deleteReply -> {
+                                    queueStatisticsCollector.resetQueueFailureStatistics(queue, (Throwable ex, Void v) -> {
+                                        if (ex != null) log.warn("TODO_2958iouhj error handling", ex);
+                                    });
+                                    if (unlock) {
+                                        redisAPI.hdel(Arrays.asList(locksKey, queue)).onSuccess(
+                                                        unlockReply -> handleDeleteQueueReply(event, deleteReply))
+                                                .onFailure(throwable -> handleFail(event, "Failed to unlock queue " + queue, throwable));
+                                    } else {
+                                        handleDeleteQueueReply(event, deleteReply);
+                                    }
+                                })
+                                .onFailure(throwable -> handleFail(event, "Operation DeleteAllQueueItems failed", throwable)))
+                .onFailure(throwable -> handleFail(event, "Operation DeleteAllQueueItems failed", throwable));
+
     }
 
-    private void handleDeleteQueueReply(Message<JsonObject> event, AsyncResult<Response> reply) {
-        if (reply.succeeded()) {
-            event.reply(createOkReply().put(VALUE, reply.result().toLong()));
-        } else {
-            log.error("Failed to replyResultGreaterThanZero", new Exception(reply.cause()));
-            event.reply(createErrorReply());
-        }
+    private void handleDeleteQueueReply(Message<JsonObject> event, Response reply) {
+        event.reply(createOkReply().put(VALUE, reply.toLong()));
     }
 }
