@@ -47,39 +47,65 @@ public class DeleteQueueItemActionTest extends AbstractQueueActionTest {
 
     @Test
     public void testFailedLSET(TestContext context){
-        when(redisAPI.lset(anyString(), anyString(), anyString())).thenReturn(Future.failedFuture("boooom"));
+        doAnswer(invocation -> {
+            var handler = createResponseHandler(invocation,3);
+            handler.handle(Future.failedFuture("boooom"));
+            return null;
+        }).when(redisAPI).lset(anyString(), anyString(), anyString(), any());
+
         when(message.body()).thenReturn(buildDeleteQueueItemOperation("queue1", 0));
 
         action.execute(message);
 
-        verify(redisAPI, times(1)).lset(anyString(), eq("0"), eq("TO_DELETE"));
+        verify(redisAPI, times(1)).lset(anyString(), eq("0"), eq("TO_DELETE"), any());
         verify(redisAPI, never()).lrem(anyString(), anyString(), anyString());
         verify(message, times(1)).reply(eq(new JsonObject(Buffer.buffer("{\"status\":\"error\"}"))));
     }
 
     @Test
     public void testFailedLREM(TestContext context){
-        when(redisAPI.lset(anyString(), anyString(), anyString())).thenReturn(Future.succeededFuture());
-        when(redisAPI.lrem(anyString(), anyString(), anyString())).thenReturn(Future.failedFuture("boooom"));
+        doAnswer(invocation -> {
+            var handler = createResponseHandler(invocation,3);
+            handler.handle(Future.succeededFuture());
+            return null;
+        }).when(redisAPI).lset(anyString(), anyString(), anyString(), any());
+
+        doAnswer(invocation -> {
+            var handler = createResponseHandler(invocation,3);
+            handler.handle(Future.failedFuture("boooom"));
+            return null;
+        }).when(redisAPI).lrem(anyString(), anyString(), anyString(), any());
+
         when(message.body()).thenReturn(buildDeleteQueueItemOperation("queue1", 0));
 
         action.execute(message);
 
-        verify(redisAPI, times(1)).lset(anyString(), eq("0"), eq("TO_DELETE"));
-        verify(redisAPI, times(1)).lrem(anyString(), eq("0"), eq("TO_DELETE"));
+        verify(redisAPI, times(1)).lset(anyString(), eq("0"), eq("TO_DELETE"), any());
+        verify(redisAPI, times(1)).lrem(anyString(), eq("0"), eq("TO_DELETE"), any());
         verify(message, times(1)).reply(eq(new JsonObject(Buffer.buffer("{\"status\":\"error\"}"))));
     }
 
     @Test
     public void testDeleteQueueItem(TestContext context){
-        when(redisAPI.lset(anyString(), anyString(), anyString())).thenReturn(Future.succeededFuture());
-        when(redisAPI.lrem(anyString(), anyString(), anyString())).thenReturn(Future.succeededFuture());
+
+        doAnswer(invocation -> {
+            var handler = createResponseHandler(invocation,3);
+            handler.handle(Future.succeededFuture());
+            return null;
+        }).when(redisAPI).lset(anyString(), anyString(), anyString(), any());
+
+        doAnswer(invocation -> {
+            var handler = createResponseHandler(invocation,3);
+            handler.handle(Future.succeededFuture());
+            return null;
+        }).when(redisAPI).lrem(anyString(), anyString(), anyString(), any());
+
         when(message.body()).thenReturn(buildDeleteQueueItemOperation("queue1", 0));
 
         action.execute(message);
 
-        verify(redisAPI, times(1)).lset(anyString(), eq("0"), eq("TO_DELETE"));
-        verify(redisAPI, times(1)).lrem(anyString(), eq("0"), eq("TO_DELETE"));
+        verify(redisAPI, times(1)).lset(anyString(), eq("0"), eq("TO_DELETE"), any());
+        verify(redisAPI, times(1)).lrem(anyString(), eq("0"), eq("TO_DELETE"), any());
         verify(message, times(1)).reply(eq(new JsonObject(Buffer.buffer("{\"status\":\"ok\"}"))));
     }
 }

@@ -1,12 +1,16 @@
 package org.swisspush.redisques.action;
 
+import io.vertx.core.AsyncResult;
 import io.vertx.core.Future;
+import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonObject;
 import io.vertx.redis.client.RedisAPI;
+import io.vertx.redis.client.Response;
 import org.junit.Before;
 import org.mockito.Mockito;
+import org.mockito.invocation.InvocationOnMock;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.util.MemoryUsageProvider;
 import org.swisspush.redisques.util.RedisProvider;
@@ -42,4 +46,7 @@ public abstract class AbstractQueueActionTest {
         message = Mockito.mock(Message.class);
     }
 
+    protected Handler<AsyncResult<Response>> createResponseHandler(InvocationOnMock invocation, int handlerIndex) {
+        return (Handler<AsyncResult<Response>>) invocation.getArguments()[handlerIndex];
+    }
 }

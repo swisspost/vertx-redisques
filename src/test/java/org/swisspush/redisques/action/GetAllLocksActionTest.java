@@ -69,7 +69,7 @@ public class GetAllLocksActionTest extends AbstractQueueActionTest {
         when(message.body()).thenReturn(buildGetAllLocksOperation());
 
         doAnswer(invocation -> {
-            Handler<AsyncResult<Response>> handler = (Handler<AsyncResult<Response>>) invocation.getArguments()[1];
+            var handler = createResponseHandler(invocation, 1);
             handler.handle(new FailedFuture("booom"));
             return null;
         }).when(redisAPI).hkeys(anyString(), any());
@@ -85,7 +85,7 @@ public class GetAllLocksActionTest extends AbstractQueueActionTest {
         when(message.body()).thenReturn(buildGetAllLocksOperation());
 
         doAnswer(invocation -> {
-            Handler<AsyncResult<Response>> handler = (Handler<AsyncResult<Response>>) invocation.getArguments()[1];
+            var handler = createResponseHandler(invocation, 1);
             MultiType response = MultiType.create(2, false);
             response.add(SimpleStringType.create("foo"));
             response.add(SimpleStringType.create("bar"));

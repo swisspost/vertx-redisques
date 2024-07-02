@@ -28,19 +28,27 @@ public class DeleteQueueItemAction extends AbstractQueueAction {
     public void execute(Message<JsonObject> event) {
         String keyLset = queuesPrefix + event.body().getJsonObject(PAYLOAD).getString(QUEUENAME);
         int indexLset = event.body().getJsonObject(PAYLOAD).getInteger(INDEX);
-
-        redisProvider.redis().onSuccess(redisAPI -> redisAPI.lset(keyLset, String.valueOf(indexLset), "TO_DELETE").onSuccess(lsetResponse -> {
-            String keyLrem = queuesPrefix + event.body().getJsonObject(PAYLOAD).getString(QUEUENAME);
-            redisAPI.lrem(keyLrem, "0", "TO_DELETE").onSuccess(lremResponse -> event.reply(createOkReply())).onFailure(throwable -> {
-                log.warn("Redis 'lrem' command failed", new Exception(throwable));
-                event.reply(createErrorReply());
-            });
-        }).onFailure(throwable -> {
-            log.error("Failed to 'lset' while deleteQueueItem.", new Exception(throwable));
-            event.reply(createErrorReply());
-        })).onFailure(throwable -> {
-            log.error("Redis: Failed to deleteQueueItem.", new Exception(throwable));
-            event.reply(createErrorReply());
-        });
+        redisProvider.redis().onSuccess(redisAPI -> redisAPI.lset(keyLset, String.valueOf(indexLset), "TO_DELETE",
+                        event1 -> {
+                            if (event1.succeeded()) {
+                                String keyLrem = queuesPrefix + event.body().getJsonObject(PAYLOAD).getString(QUEUENAME);
+                                redisAPI.lrem(keyLrem, "0", "TO_DELETE", replyLrem -> {
+                                    if (replyLrem.failed()) {
+                                        log.warn("Redis 'lrem' command failed",
+                                                exceptionFactory.newException(replyLrem.cause()));
+                                        event.reply(createErrorReply());
+                                    } else {
+                                        event.reply(createOkReply());
+                                    }
+                                });
+                            } else {
+                                log.error("Failed to 'lset' while deleteQueueItem.", exceptionFactory.newException(event1.cause()));
+                                event.reply(createErrorReply());
+                            }
+                        }))
+                .onFailure(ex -> {
+                    log.error("Redis: Failed to deleteQueueItem.", exceptionFactory.newException(ex));
+                    event.reply(createErrorReply());
+                });
     }
 }
