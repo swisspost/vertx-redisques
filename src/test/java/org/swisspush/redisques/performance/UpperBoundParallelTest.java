@@ -7,10 +7,8 @@ import io.vertx.ext.unit.junit.VertxUnitRunner;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.Mock;
 import org.swisspush.redisques.exception.ResourceExhaustionException;
 
-import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.Semaphore;
@@ -34,7 +32,7 @@ public class UpperBoundParallelTest {
     }
 
     @Test
-    public void smokeTest(TestContext testContext) {
+    public void justASimpleSmokeTest(TestContext testContext) {
         Async async = testContext.async();
         final int availTokens = limit.availablePermits();
         target.request(limit, null, new UpperBoundParallel.Mentor<Void>() {
