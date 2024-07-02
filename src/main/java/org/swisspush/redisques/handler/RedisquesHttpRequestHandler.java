@@ -316,8 +316,9 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         String filter = ctx.request().params().get(FILTER);
         eventBus.request(redisquesAddress, buildGetAllLocksOperation(filter), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
             if (reply.failed()) {
-                log.warn("Received failed message for getAllLocksOperation. Lets run into NullPointerException now", reply.cause());
-                // IMO we should respond with 'HTTP 5xx'. But we don't, to keep backward compatibility.
+                log.warn("Received failed message for getAllLocksOperation", exceptionFactory.newException(reply.cause()));
+                respondWith(StatusCode.INTERNAL_SERVER_ERROR, reply.cause().getMessage(), ctx.request());
+                return;
             }
             final JsonObject body = reply.result().body();
             if (OK.equals(body.getString(STATUS))) {

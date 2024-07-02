@@ -1,10 +1,17 @@
 package org.swisspush.redisques.action;
 
+import io.vertx.core.AsyncResult;
 import io.vertx.core.Future;
+import io.vertx.core.Handler;
 import io.vertx.core.buffer.Buffer;
+import io.vertx.core.impl.future.FailedFuture;
+import io.vertx.core.impl.future.SucceededFuture;
 import io.vertx.core.json.JsonObject;
 import io.vertx.ext.unit.TestContext;
 import io.vertx.ext.unit.junit.VertxUnitRunner;
+import io.vertx.redis.client.Response;
+import io.vertx.redis.client.impl.types.MultiType;
+import io.vertx.redis.client.impl.types.SimpleStringType;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -41,7 +48,54 @@ public class GetAllLocksActionTest extends AbstractQueueActionTest {
 
         action.execute(message);
 
-        verify(message, times(1)).reply(eq(new JsonObject(Buffer.buffer("{\"status\":\"error\"}"))));
+        verify(message, times(1)).fail(eq(0), eq("not ready"));
         verifyNoInteractions(redisAPI);
+    }
+
+    @Test
+    public void testGetAllLocksInvalidFilter(TestContext context){
+        when(message.body()).thenReturn(buildGetAllLocksOperation("xyz(.*"));
+
+        action.execute(message);
+
+        verify(message, times(1)).reply(eq(new JsonObject(
+                Buffer.buffer("{\"status\":\"error\",\"errorType\":\"bad input\",\"message\":\"Error while compile" +
+                        " regex pattern. Cause: Unclosed group near index 6\\nxyz(.*\"}"))));
+        verifyNoInteractions(redisAPI);
+    }
+
+    @Test
+    public void testGetAllLocksHKEYSFail(TestContext context){
+        when(message.body()).thenReturn(buildGetAllLocksOperation());
+
+        doAnswer(invocation -> {
+            Handler<AsyncResult<Response>> handler = (Handler<AsyncResult<Response>>) invocation.getArguments()[1];
+            handler.handle(new FailedFuture("booom"));
+            return null;
+        }).when(redisAPI).hkeys(anyString(), any());
+
+        action.execute(message);
+
+        verify(redisAPI, times(1)).hkeys(anyString(), any());
+        verify(message, times(1)).reply(eq(new JsonObject(Buffer.buffer("{\"status\":\"error\"}"))));
+    }
+
+    @Test
+    public void testGetAllLocks(TestContext context){
+        when(message.body()).thenReturn(buildGetAllLocksOperation());
+
+        doAnswer(invocation -> {
+            Handler<AsyncResult<Response>> handler = (Handler<AsyncResult<Response>>) invocation.getArguments()[1];
+            MultiType response = MultiType.create(2, false);
+            response.add(SimpleStringType.create("foo"));
+            response.add(SimpleStringType.create("bar"));
+            handler.handle(new SucceededFuture<>(response));
+            return null;
+        }).when(redisAPI).hkeys(anyString(), any());
+
+        action.execute(message);
+
+        verify(redisAPI, times(1)).hkeys(anyString(), any());
+        verify(message, times(1)).reply(eq(new JsonObject(Buffer.buffer("{\"status\":\"ok\",\"value\":{\"locks\":[\"foo\",\"bar\"]}}"))));
     }
 }
