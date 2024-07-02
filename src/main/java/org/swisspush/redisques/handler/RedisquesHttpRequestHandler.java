@@ -343,11 +343,12 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
                 queue -> eventBus.request(redisquesAddress, buildPutLockOperation(queue, extractUser(ctx.request())),
                         (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
                             if (reply.failed()) {
-                                log.warn("Received failed message for addLockOperation. Lets run into NullPointerException now", reply.cause());
-                                // IMO we should respond with 'HTTP 5xx' here. But we don't, to keep backward compatibility.
-                                // Nevertheless. Lets run into NullPointerException by calling method below.
+                                String error = "Received failed message for addLockOperation";
+                                log.warn(error, exceptionFactory.newException(reply.cause()));
+                                respondWith(StatusCode.INTERNAL_SERVER_ERROR, error, ctx.request());
+                            } else {
+                                checkReply(reply.result(), ctx.request(), StatusCode.BAD_REQUEST);
                             }
-                            checkReply(reply.result(), ctx.request(), StatusCode.BAD_REQUEST);
                         }
                 ));
     }
