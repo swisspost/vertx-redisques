@@ -38,11 +38,16 @@ public class DeleteAllQueueItemsActionTest extends AbstractQueueActionTest {
     @Test
     public void testDeleteAllQueueItemsNoUnlock(TestContext context){
         when(message.body()).thenReturn(buildDeleteAllQueueItemsOperation("q1"));
-        when(redisAPI.del(anyList())).thenReturn(Future.succeededFuture(SimpleStringType.create("1")));
+
+        doAnswer(invocation -> {
+            var handler = createResponseHandler(invocation,1);
+            handler.handle(Future.succeededFuture(SimpleStringType.create("1")));
+            return null;
+        }).when(redisAPI).del(anyList(), any());
 
         action.execute(message);
 
-        verify(redisAPI, times(1)).del(anyList());
+        verify(redisAPI, times(1)).del(anyList(), any());
         verify(redisAPI, never()).hdel(anyList());
         verify(message, times(1)).reply(eq(new JsonObject(Buffer.buffer("{\"status\":\"ok\",\"value\":1}"))));
     }
@@ -50,13 +55,23 @@ public class DeleteAllQueueItemsActionTest extends AbstractQueueActionTest {
     @Test
     public void testDeleteAllQueueItemsWithUnlock(TestContext context){
         when(message.body()).thenReturn(buildDeleteAllQueueItemsOperation("q1", true));
-        when(redisAPI.del(anyList())).thenReturn(Future.succeededFuture(SimpleStringType.create("1")));
-        when(redisAPI.hdel(anyList())).thenReturn(Future.succeededFuture(SimpleStringType.create("1")));
+
+        doAnswer(invocation -> {
+            var handler = createResponseHandler(invocation,1);
+            handler.handle(Future.succeededFuture(SimpleStringType.create("1")));
+            return null;
+        }).when(redisAPI).del(anyList(), any());
+
+        doAnswer(invocation -> {
+            var handler = createResponseHandler(invocation,1);
+            handler.handle(Future.succeededFuture(SimpleStringType.create("1")));
+            return null;
+        }).when(redisAPI).hdel(anyList(), any());
 
         action.execute(message);
 
-        verify(redisAPI, times(1)).del(anyList());
-        verify(redisAPI, times(1)).hdel(anyList());
+        verify(redisAPI, times(1)).del(anyList(), any());
+        verify(redisAPI, times(1)).hdel(anyList(), any());
         verify(message, times(1)).reply(eq(new JsonObject(Buffer.buffer("{\"status\":\"ok\",\"value\":1}"))));
     }
 
@@ -74,24 +89,39 @@ public class DeleteAllQueueItemsActionTest extends AbstractQueueActionTest {
     @Test
     public void testRedisApiDELFail(TestContext context){
         when(message.body()).thenReturn(buildDeleteAllQueueItemsOperation("q1"));
-        when(redisAPI.del(anyList())).thenReturn(Future.failedFuture("boooom"));
+
+        doAnswer(invocation -> {
+            var handler = createResponseHandler(invocation,1);
+            handler.handle(Future.failedFuture("boooom"));
+            return null;
+        }).when(redisAPI).del(anyList(), any());
 
         action.execute(message);
 
-        verify(redisAPI, times(1)).del(anyList());
+        verify(redisAPI, times(1)).del(anyList(), any());
         verify(message, times(1)).fail(eq(0), eq("boooom"));
     }
 
     @Test
     public void testRedisApiUnlockFail(TestContext context){
         when(message.body()).thenReturn(buildDeleteAllQueueItemsOperation("q1", true));
-        when(redisAPI.del(anyList())).thenReturn(Future.succeededFuture(SimpleStringType.create("1")));
-        when(redisAPI.hdel(anyList())).thenReturn(Future.failedFuture("boooom"));
+
+        doAnswer(invocation -> {
+            var handler = createResponseHandler(invocation,1);
+            handler.handle(Future.succeededFuture(SimpleStringType.create("1")));
+            return null;
+        }).when(redisAPI).del(anyList(), any());
+
+        doAnswer(invocation -> {
+            var handler = createResponseHandler(invocation,1);
+            handler.handle(Future.failedFuture("boooom"));
+            return null;
+        }).when(redisAPI).hdel(anyList(), any());
 
         action.execute(message);
 
-        verify(redisAPI, times(1)).del(anyList());
-        verify(redisAPI, times(1)).hdel(anyList());
+        verify(redisAPI, times(1)).del(anyList(), any());
+        verify(redisAPI, times(1)).hdel(anyList(), any());
         verify(message, times(1)).fail(eq(0), eq("boooom"));
     }
 }
