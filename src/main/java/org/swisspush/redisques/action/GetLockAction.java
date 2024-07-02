@@ -39,9 +39,9 @@ public class GetLockAction extends AbstractQueueAction {
         }
         var p = redisProvider.redis();
         p.onSuccess(redisAPI -> {
-            redisAPI.hget(locksKey, body.getJsonObject(PAYLOAD).getString(QUEUENAME), new GetLockHandler(event));
+            redisAPI.hget(locksKey, body.getJsonObject(PAYLOAD).getString(QUEUENAME), new GetLockHandler(event, exceptionFactory));
         });
-        p.onFailure(ex -> replyErrorMessageHandler(event).handle(ex));
+        p.onFailure(ex -> handleFail(event,"Operation GetLockAction failed", ex));
     }
 
 }

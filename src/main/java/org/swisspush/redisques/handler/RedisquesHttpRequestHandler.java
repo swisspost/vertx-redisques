@@ -358,10 +358,10 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
                 queue -> eventBus.request(redisquesAddress, buildGetLockOperation(queue), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
                     final HttpServerResponse response = ctx.response();
                     if (reply.failed()) {
-                        log.warn("Received failed message for getSingleLockOperation. Lets run into NullPointerException now", reply.cause());
-                        // IMO we should respond with 'HTTP 5xx' here. But we don't, to keep backward compatibility.
-                    }
-                    if (OK.equals(reply.result().body().getString(STATUS))) {
+                        String error = "Received failed message for getSingleLockOperation";
+                        log.warn(error, exceptionFactory.newException(reply.cause()));
+                        respondWith(StatusCode.INTERNAL_SERVER_ERROR, error, ctx.request());
+                    } else if (OK.equals(reply.result().body().getString(STATUS))) {
                         response.putHeader(CONTENT_TYPE, APPLICATION_JSON);
                         response.end(reply.result().body().getString(VALUE));
                     } else {
