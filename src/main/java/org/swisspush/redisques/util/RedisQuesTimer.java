@@ -36,7 +36,7 @@ public class RedisQuesTimer {
 
         if (delayMs > 0) {
             int delay = random.nextInt((int) (delayMs + 1)) + 1;
-            log.debug("starting timer with a delay of " + delay + "ms");
+            log.debug("starting timer with a delay of {}ms", delay);
             vertx.setTimer(delay, delayed -> promise.complete());
         } else {
             vertx.runOnContext(aVoid -> promise.complete());

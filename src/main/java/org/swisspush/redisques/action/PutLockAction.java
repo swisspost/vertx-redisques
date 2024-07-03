@@ -38,9 +38,8 @@ public class PutLockAction extends AbstractQueueAction {
                 return;
             }
             var p = redisProvider.redis();
-            p.onSuccess(redisAPI -> {
-                redisAPI.hmset(buildLocksItems(locksKey, lockNames, lockInfo), new PutLockHandler(event, exceptionFactory));
-            });
+            p.onSuccess(redisAPI -> redisAPI.hmset(buildLocksItems(locksKey, lockNames, lockInfo),
+                    new PutLockHandler(event, exceptionFactory)));
             p.onFailure(ex -> handleFail(event,"Operation PutLockAction failed", ex));
         } else {
             event.reply(createErrorReply().put(MESSAGE, "Property '" + REQUESTED_BY + "' missing"));

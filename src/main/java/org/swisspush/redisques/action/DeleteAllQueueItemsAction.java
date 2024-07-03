@@ -56,9 +56,7 @@ public class DeleteAllQueueItemsAction extends AbstractQueueAction {
                 }
             });
         });
-        p.onFailure(ex -> {
-            handleFail(event, "Operation DeleteAllQueueItems failed", ex);
-        });
+        p.onFailure(ex -> handleFail(event, "Operation DeleteAllQueueItems failed", ex));
     }
 
     private void handleDeleteQueueReply(Message<JsonObject> event, AsyncResult<Response> reply) {

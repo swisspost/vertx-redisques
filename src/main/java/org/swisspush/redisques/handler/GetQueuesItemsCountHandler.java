@@ -92,7 +92,7 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
             return;
         }
 
-        redisProvider.redis().<Void>compose((RedisAPI redis_) -> {
+        redisProvider.redis().compose((RedisAPI redis_) -> {
             ctx.redis = redis_;
             ctx.queueLengths = new int[ctx.queues.size()];
             ctx.iter = ctx.queues.iterator();
@@ -105,9 +105,7 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
                         ctx.redis.send(Command.LLEN, queuesPrefix + queue).onSuccess((Response rsp) -> {
                             ctx.queueLengths[iNum] = rsp.toInteger();
                             onLLenDone.accept(null, null);
-                        }).onFailure((Throwable ex) -> {
-                            onLLenDone.accept(ex, null);
-                        });
+                        }).onFailure((Throwable ex) -> onLLenDone.accept(ex, null));
                     }
                     return ctx.iter.hasNext();
                 }
@@ -121,9 +119,9 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
                 }
             });
             return p.future();
-        }).<JsonObject>compose((Void v) -> {
+        }).compose((Void v) -> {
             /*going to waste another threads time to produce those garbage objects*/
-            return vertx.<JsonObject>executeBlocking((Promise<JsonObject> workerPromise) -> {
+            return vertx.executeBlocking((Promise<JsonObject> workerPromise) -> {
                 assert !Thread.currentThread().getName().toUpperCase().contains("EVENTLOOP");
                 long beginEpchMs = currentTimeMillis();
 

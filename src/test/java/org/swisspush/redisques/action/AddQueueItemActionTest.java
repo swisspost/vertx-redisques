@@ -1,8 +1,6 @@
 package org.swisspush.redisques.action;
 
 import io.vertx.core.Future;
-import io.vertx.core.buffer.Buffer;
-import io.vertx.core.json.JsonObject;
 import io.vertx.ext.unit.TestContext;
 import io.vertx.ext.unit.junit.VertxUnitRunner;
 import org.junit.Before;
@@ -58,7 +56,7 @@ public class AddQueueItemActionTest extends AbstractQueueActionTest {
         action.execute(message);
 
         verify(redisAPI, times(1)).rpush(anyList(), any());
-        verify(message, times(1)).reply(eq(new JsonObject(Buffer.buffer("{\"status\":\"ok\"}"))));
+        verify(message, times(1)).reply(eq(STATUS_OK));
 
     }
 

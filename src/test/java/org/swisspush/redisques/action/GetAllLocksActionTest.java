@@ -1,15 +1,12 @@
 package org.swisspush.redisques.action;
 
-import io.vertx.core.AsyncResult;
 import io.vertx.core.Future;
-import io.vertx.core.Handler;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.impl.future.FailedFuture;
 import io.vertx.core.impl.future.SucceededFuture;
 import io.vertx.core.json.JsonObject;
 import io.vertx.ext.unit.TestContext;
 import io.vertx.ext.unit.junit.VertxUnitRunner;
-import io.vertx.redis.client.Response;
 import io.vertx.redis.client.impl.types.MultiType;
 import io.vertx.redis.client.impl.types.SimpleStringType;
 import org.junit.Before;

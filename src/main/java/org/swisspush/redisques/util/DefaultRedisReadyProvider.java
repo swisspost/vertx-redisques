@@ -29,9 +29,7 @@ public class DefaultRedisReadyProvider implements RedisReadyProvider {
      * @param updateIntervalMs interval in ms how often to update the "ready-state"
      */
     public DefaultRedisReadyProvider(Vertx vertx, int updateIntervalMs) {
-        vertx.setPeriodic(updateIntervalMs, l -> {
-           updateRedisReady.set(true);
-        });
+        vertx.setPeriodic(updateIntervalMs, l -> updateRedisReady.set(true));
     }
 
     @Override

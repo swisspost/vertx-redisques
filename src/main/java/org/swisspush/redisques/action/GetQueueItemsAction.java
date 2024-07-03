@@ -41,11 +41,8 @@ public class GetQueueItemsAction extends AbstractQueueAction {
                 log.warn(msg);
                 event.fail(0, msg);
             }
-        }).onFailure(throwable -> {
-            handleFail(event, "Operation getQueueItems failed", throwable);
-        })).onFailure(throwable -> {
-            handleFail(event, "Operation getQueueItems failed", throwable);
-        });
+        }).onFailure(throwable -> handleFail(event, "Operation getQueueItems failed", throwable)))
+                .onFailure(throwable -> handleFail(event, "Operation getQueueItems failed", throwable));
     }
 
     private int getMaxQueueItemCountIndex(String limit) {

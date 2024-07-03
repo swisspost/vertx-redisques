@@ -78,7 +78,7 @@ public class RedisQuesProcessorTest extends AbstractTestCase {
         RedisQues redisQues = new RedisQues();
         vertx.deployVerticle(redisQues, new DeploymentOptions().setConfig(config), context.asyncAssertSuccess(event -> {
             deploymentId = event;
-            log.info("vert.x Deploy - " + redisQues.getClass().getSimpleName() + " was successful.");
+            log.info("vert.x Deploy - {} was successful.", redisQues.getClass().getSimpleName());
             jedis = new Jedis("localhost", 6379, 5000);
         }));
     }
@@ -93,7 +93,7 @@ public class RedisQuesProcessorTest extends AbstractTestCase {
             final String payload = message.body().getString("payload");
 
             if ("STOP".equals(payload)) {
-                log.info("STOP message " + payload);
+                log.info("STOP message {}", payload);
                 message.reply(new JsonObject().put(STATUS, OK));
                 vertx.eventBus().send("digest-" + queue, DatatypeConverter.printBase64Binary(signatures.get(queue).digest()));
             } else {
@@ -107,11 +107,11 @@ public class RedisQuesProcessorTest extends AbstractTestCase {
                     }
                 }
                 signature.update(payload.getBytes());
-                log.info("added queue [" + queue + "] signature [" + digestStr(signature) + "]");
+                log.info("added queue [{}] signature [{}]", queue, digestStr(signature));
             }
 
             vertx.setTimer(new Random().nextLong() % 1 + 1, event -> {
-                log.info("Processed message " + payload);
+                log.info("Processed message {}", payload);
                 message.reply(new JsonObject().put(STATUS, OK));
             });
         });
@@ -120,7 +120,7 @@ public class RedisQuesProcessorTest extends AbstractTestCase {
         flushAll();
         assertKeyCount(context, 0);
         for (int i = 0; i < NUM_QUEUES; i++) {
-            log.info("create new sender for queue: queue_" + i);
+            log.info("create new sender for queue: queue_{}", i);
             new Sender(context, async, "queue_" + i).send(null);
         }
     }
@@ -153,9 +153,9 @@ public class RedisQuesProcessorTest extends AbstractTestCase {
             }
 
             vertx.eventBus().consumer("digest-" + queue, (Handler<Message<String>>) event -> {
-                log.info("Received signature for " + queue + ": " + event.body());
+                log.info("Received signature for {}: {}", queue, event.body());
                 if (!event.body().equals(DatatypeConverter.printBase64Binary(signature.digest()))) {
-                    log.error("signatures are not identical: " + event.body() + " != " + DatatypeConverter.printBase64Binary(signature.digest()));
+                    log.error("signatures are not identical: {} != {}", event.body(), DatatypeConverter.printBase64Binary(signature.digest()));
                 }
                 context.assertEquals(event.body(), DatatypeConverter.printBase64Binary(signature.digest()), "Signatures differ");
                 if (finished.incrementAndGet() == NUM_QUEUES) {
@@ -173,12 +173,12 @@ public class RedisQuesProcessorTest extends AbstractTestCase {
                     message = m;
                 }
                 signature.update(message.getBytes());
-                log.info("send message [" + digestStr(signature) + "] for queue [" + queue + "] ");
+                log.info("send message [{}] for queue [{}] ", digestStr(signature), queue);
                 vertx.eventBus().request(getRedisquesAddress(), buildEnqueueOperation(queue, message), (Handler<AsyncResult<Message<JsonObject>>>) event -> {
                     if (event.result().body().getString(STATUS).equals(OK)) {
                         send(null);
                     } else {
-                        log.error("ERROR sending " + message + " to " + queue);
+                        log.error("ERROR sending {} to {}", message, queue);
                         send(message);
                     }
                 });

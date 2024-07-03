@@ -32,8 +32,7 @@ public class GetLockAction extends AbstractQueueAction {
     public void execute(Message<JsonObject> event) {
         final JsonObject body = event.body();
         if (body == null) {
-            replyErrorMessageHandler(event).handle(new NullPointerException("" +
-                    "Got msg with no body from event bus. address=" +
+            replyErrorMessageHandler(event).handle(new NullPointerException("Got msg with no body from event bus. address=" +
                     event.address() + " replyAddress=" + event.replyAddress()));
             return;
         }

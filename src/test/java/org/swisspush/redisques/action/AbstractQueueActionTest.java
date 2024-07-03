@@ -4,6 +4,7 @@ import io.vertx.core.AsyncResult;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
+import io.vertx.core.buffer.Buffer;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonObject;
 import io.vertx.redis.client.RedisAPI;
@@ -31,6 +32,9 @@ public abstract class AbstractQueueActionTest {
 
     protected Message<JsonObject> message;
     protected AbstractQueueAction action;
+
+    protected static final JsonObject STATUS_OK = new JsonObject(Buffer.buffer("{\"status\":\"ok\"}"));
+    protected static final JsonObject STATUS_ERROR = new JsonObject(Buffer.buffer("{\"status\":\"error\"}"));
 
     @Before
     public void setup() {

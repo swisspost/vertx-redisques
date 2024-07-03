@@ -79,7 +79,7 @@ public class PutLockActionTest extends AbstractQueueActionTest {
         action.execute(message);
 
         verify(redisAPI, times(1)).hmset(anyList(), any());
-        verify(message, times(1)).reply(eq(new JsonObject(Buffer.buffer("{\"status\":\"ok\"}"))));
+        verify(message, times(1)).reply(eq(STATUS_OK));
     }
 
     @Test

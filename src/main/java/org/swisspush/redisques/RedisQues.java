@@ -675,10 +675,10 @@ public class RedisQues extends AbstractVerticle {
 
     private void registerQueueCheck() {
         vertx.setPeriodic(configurationProvider.configuration().getCheckIntervalTimerMs(), periodicEvent -> {
-            redisProvider.redis().<Response>compose((RedisAPI redisAPI) -> {
+            redisProvider.redis().compose((RedisAPI redisAPI) -> {
                 int checkInterval = configurationProvider.configuration().getCheckInterval();
                 return redisAPI.send(Command.SET, queueCheckLastexecKey, String.valueOf(currentTimeMillis()), "NX", "EX", String.valueOf(checkInterval));
-            }).<Void>compose((Response todoExplainWhyThisIsIgnored) -> {
+            }).compose((Response todoExplainWhyThisIsIgnored) -> {
                 log.info("periodic queue check is triggered now");
                 return checkQueues();
             }).onFailure((Throwable ex) -> {
@@ -815,7 +815,7 @@ public class RedisQues extends AbstractVerticle {
             log.trace("RedisQues consume get: {}", consumerKey);
             redisProvider.redis().onSuccess(redisAPI -> redisAPI.get(consumerKey, event1 -> {
                         if (event1.failed()) {
-                            log.error("Unable to get consumer for queue " + queueName, event1.cause());
+                            log.error("Unable to get consumer for queue {}", queueName, event1.cause());
                             return;
                         }
                         String consumer = Objects.toString(event1.result(), "");
@@ -857,7 +857,7 @@ public class RedisQues extends AbstractVerticle {
                             });
                         }
                     }))
-                    .onFailure(throwable -> log.error("Redis: Unable to get consumer for queue " + queueName, throwable));
+                    .onFailure(throwable -> log.error("Redis: Unable to get consumer for queue {}", queueName, throwable));
         });
         return promise.future();
     }
@@ -1151,17 +1151,17 @@ public class RedisQues extends AbstractVerticle {
             AtomicInteger counter;
             Iterator<Response> iter;
         };
-        return Future.<Void>succeededFuture().<RedisAPI>compose((Void v) -> {
+        return Future.<Void>succeededFuture().compose((Void v) -> {
             log.debug("Checking queues timestamps");
             // List all queues that look inactive (i.e. that have not been updated since 3 periods).
             ctx.limit = currentTimeMillis() - 3L * configurationProvider.configuration().getRefreshPeriod() * 1000;
             return redisProvider.redis();
-        }).<Response>compose((RedisAPI redisAPI) -> {
+        }).compose((RedisAPI redisAPI) -> {
             ctx.redisAPI = redisAPI;
             var p = Promise.<Response>promise();
             redisAPI.zrangebyscore(Arrays.asList(queuesKey, "-inf", String.valueOf(ctx.limit)), p);
             return p.future();
-        }).<Void>compose((Response queues) -> {
+        }).compose((Response queues) -> {
             assert ctx.counter == null;
             assert ctx.iter == null;
             ctx.counter = new AtomicInteger(queues.size());

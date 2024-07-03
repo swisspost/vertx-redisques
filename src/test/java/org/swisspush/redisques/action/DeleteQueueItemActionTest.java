@@ -1,8 +1,6 @@
 package org.swisspush.redisques.action;
 
 import io.vertx.core.Future;
-import io.vertx.core.buffer.Buffer;
-import io.vertx.core.json.JsonObject;
 import io.vertx.ext.unit.TestContext;
 import io.vertx.ext.unit.junit.VertxUnitRunner;
 import org.junit.Before;
@@ -76,7 +74,7 @@ public class DeleteQueueItemActionTest extends AbstractQueueActionTest {
 
         verify(redisAPI, times(1)).lset(anyString(), eq("0"), eq("TO_DELETE"), any());
         verify(redisAPI, never()).lrem(anyString(), anyString(), anyString());
-        verify(message, times(1)).reply(eq(new JsonObject(Buffer.buffer("{\"status\":\"error\"}"))));
+        verify(message, times(1)).reply(eq(STATUS_ERROR));
     }
 
     @Test
@@ -123,6 +121,6 @@ public class DeleteQueueItemActionTest extends AbstractQueueActionTest {
 
         verify(redisAPI, times(1)).lset(anyString(), eq("0"), eq("TO_DELETE"), any());
         verify(redisAPI, times(1)).lrem(anyString(), eq("0"), eq("TO_DELETE"), any());
-        verify(message, times(1)).reply(eq(new JsonObject(Buffer.buffer("{\"status\":\"ok\"}"))));
+        verify(message, times(1)).reply(eq(STATUS_OK));
     }
 }

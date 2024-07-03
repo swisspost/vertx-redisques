@@ -48,9 +48,7 @@ public class DeleteQueueItemAction extends AbstractQueueAction {
                                 }
                             }
                         }))
-                .onFailure(ex -> {
-                    handleFail(event,"Operation DeleteQueueItemAction failed", ex);
-                });
+                .onFailure(ex -> handleFail(event,"Operation DeleteQueueItemAction failed", ex));
     }
 
     private boolean checkRedisErrorCodes(String message) {

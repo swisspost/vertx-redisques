@@ -46,9 +46,7 @@ public class BulkPutLocksAction extends AbstractQueueAction {
         }
 
         var p = redisProvider.redis();
-        p.onSuccess(redisAPI -> {
-            redisAPI.hmset(buildLocksItems(locksKey, locks, lockInfo), new PutLockHandler(event, exceptionFactory));
-        });
+        p.onSuccess(redisAPI -> redisAPI.hmset(buildLocksItems(locksKey, locks, lockInfo), new PutLockHandler(event, exceptionFactory)));
         p.onFailure(ex -> replyErrorMessageHandler(event).handle(ex));
     }
 

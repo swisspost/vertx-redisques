@@ -63,7 +63,6 @@ public class UpperBoundParallel {
     private <Ctx> void resume(Request<Ctx> req) {
         if (!req.lock.tryLock()) {
             log.trace("Some other thread already working here");
-            return;
         } else try {
             Thread ourself = currentThread();
             if (req.worker == null) {
@@ -138,7 +137,6 @@ public class UpperBoundParallel {
                     Exception ex = exceptionFactory.newResourceExhaustionException(
                             "No more resources to handle yet another request now.", null);
                     req.mentor.onError(ex, req.ctx);
-                    return;
                 } else {
                     log.error("If you see this log, some unreachable code got reached. numInProgress={}, hasStarted={}",
                         req.numInProgress, req.hasStarted);
