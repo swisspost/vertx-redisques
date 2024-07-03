@@ -45,7 +45,7 @@ import static org.swisspush.redisques.util.RedisquesAPI.*;
 /**
  * Handler class for HTTP requests providing access to Redisques over HTTP.
  *
- * @author https://github.com/mcweba [Marc-Andre Weber]
+ * @author <a href="https://github.com/mcweba">Marc-André Weber</a>
  */
 public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
 

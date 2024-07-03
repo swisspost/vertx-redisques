@@ -6,7 +6,7 @@ import io.vertx.redis.client.RedisAPI;
 /**
  * Provider for {@link RedisAPI}
  *
- * @author https://github.com/mcweba [Marc-Andre Weber]
+ * @author <a href="https://github.com/mcweba">Marc-André Weber</a>
  */
 public interface RedisProvider {
     Future<RedisAPI> redis();

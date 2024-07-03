@@ -16,7 +16,7 @@ import java.util.stream.Collectors;
 /**
  * Utility class to configure the Redisques module.
  *
- * @author https://github.com/mcweba [Marc-Andre Weber]
+ * @author <a href="https://github.com/mcweba">Marc-André Weber</a>
  */
 public class RedisquesConfiguration {
     private final String address;

@@ -16,7 +16,7 @@ import static org.hamcrest.CoreMatchers.equalTo;
 /**
  * Tests for {@link DefaultRedisquesConfigurationProvider} class.
  *
- * @author https://github.com/mcweba [Marc-Andre Weber]
+ * @author <a href="https://github.com/mcweba">Marc-André Weber</a>
  */
 @RunWith(VertxUnitRunner.class)
 public class DefaultRedisquesConfigurationProviderTest {

@@ -23,7 +23,7 @@ import static org.mockito.Mockito.*;
 /**
  * Tests for {@link EnqueueAction} class.
  *
- * @author https://github.com/mcweba [Marc-Andre Weber]
+ * @author <a href="https://github.com/mcweba">Marc-André Weber</a>
  */
 @RunWith(VertxUnitRunner.class)
 public class EnqueueActionTest extends AbstractQueueActionTest {

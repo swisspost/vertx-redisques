@@ -20,7 +20,7 @@ import static org.swisspush.redisques.util.RedisquesAPI.buildGetQueueItemOperati
 /**
  * Tests for {@link GetQueueItemAction} class.
  *
- * @author https://github.com/mcweba [Marc-Andre Weber]
+ * @author <a href="https://github.com/mcweba">Marc-André Weber</a>
  */
 @RunWith(VertxUnitRunner.class)
 public class GetQueueItemActionTest extends AbstractQueueActionTest {

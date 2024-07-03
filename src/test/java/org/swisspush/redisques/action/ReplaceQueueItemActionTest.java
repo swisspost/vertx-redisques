@@ -20,7 +20,7 @@ import static org.swisspush.redisques.util.RedisquesAPI.buildReplaceQueueItemOpe
 /**
  * Tests for {@link ReplaceQueueItemAction} class.
  *
- * @author https://github.com/mcweba [Marc-Andre Weber]
+ * @author <a href="https://github.com/mcweba">Marc-André Weber</a>
  */
 @RunWith(VertxUnitRunner.class)
 public class ReplaceQueueItemActionTest extends AbstractQueueActionTest {

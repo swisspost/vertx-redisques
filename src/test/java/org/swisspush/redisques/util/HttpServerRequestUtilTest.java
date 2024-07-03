@@ -18,7 +18,7 @@ import static org.swisspush.redisques.util.RedisquesAPI.LOCKS;
 /**
  * Tests for {@link HttpServerRequestUtil} class.
  *
- * @author https://github.com/mcweba [Marc-Andre Weber]
+ * @author <a href="https://github.com/mcweba">Marc-André Weber</a>
  */
 @RunWith(VertxUnitRunner.class)
 public class HttpServerRequestUtilTest {

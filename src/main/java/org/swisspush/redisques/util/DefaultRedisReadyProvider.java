@@ -13,7 +13,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /**
  * Default implementation of the {@link RedisReadyProvider} based on the <code>INFO</code> command in Redis
  *
- * @author https://github.com/mcweba [Marc-Andre Weber]
+ * @author <a href="https://github.com/mcweba">Marc-André Weber</a>
  */
 public class DefaultRedisReadyProvider implements RedisReadyProvider {
 

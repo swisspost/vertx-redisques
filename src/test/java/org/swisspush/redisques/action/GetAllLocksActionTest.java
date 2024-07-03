@@ -27,7 +27,7 @@ import static org.swisspush.redisques.util.RedisquesAPI.buildGetAllLocksOperatio
 /**
  * Tests for {@link GetAllLocksAction} class.
  *
- * @author https://github.com/mcweba [Marc-Andre Weber]
+ * @author <a href="https://github.com/mcweba">Marc-André Weber</a>
  */
 @RunWith(VertxUnitRunner.class)
 public class GetAllLocksActionTest extends AbstractQueueActionTest {

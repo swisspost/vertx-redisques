@@ -24,7 +24,7 @@ import static org.swisspush.redisques.util.RedisquesAPI.*;
 /**
  * Class RedisQueueBrowserTest.
  *
- * @author baldim, webermarca
+ * @author baldim, <a href="https://github.com/mcweba">Marc-André Weber</a>
  */
 public class RedisQuesTest extends AbstractTestCase {
 

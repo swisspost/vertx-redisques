@@ -21,7 +21,7 @@ import static org.swisspush.redisques.util.RedisquesAPI.buildBulkPutLocksOperati
 /**
  * Tests for {@link BulkPutLocksAction} class.
  *
- * @author https://github.com/mcweba [Marc-Andre Weber]
+ * @author <a href="https://github.com/mcweba">Marc-André Weber</a>
  */
 @RunWith(VertxUnitRunner.class)
 public class BulkPutLocksActionTest extends AbstractQueueActionTest {

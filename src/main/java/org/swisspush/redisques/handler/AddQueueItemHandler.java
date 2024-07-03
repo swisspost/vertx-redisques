@@ -15,7 +15,7 @@ import static org.swisspush.redisques.util.RedisquesAPI.STATUS;
 /**
  * Class AddQueueItemHandler.
  *
- * @author baldim, https://github.com/mcweba [Marc-Andre Weber]
+ * @author baldim, <a href="https://github.com/mcweba">Marc-André Weber</a>
  */
 public class AddQueueItemHandler implements Handler<AsyncResult<Response>> {
 

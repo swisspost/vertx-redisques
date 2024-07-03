@@ -11,7 +11,7 @@ import java.util.Random;
 /**
  * Utility class for the vertx timer functionalities.
  *
- * @author https://github.com/mcweba [Marc-Andre Weber]
+ * @author <a href="https://github.com/mcweba">Marc-André Weber</a>
  */
 public class RedisQuesTimer {
     private final Vertx vertx;

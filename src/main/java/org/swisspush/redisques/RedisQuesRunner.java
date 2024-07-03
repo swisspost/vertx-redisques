@@ -10,7 +10,7 @@ import org.swisspush.redisques.util.RedisquesConfiguration;
  * Deploys vertx-redisques to vert.x.
  * Used in the standalone scenario.
  *
- * @author https://github.com/mcweba [Marc-Andre Weber]
+ * @author <a href="https://github.com/mcweba">Marc-André Weber</a>
  */
 public class RedisQuesRunner {
 
