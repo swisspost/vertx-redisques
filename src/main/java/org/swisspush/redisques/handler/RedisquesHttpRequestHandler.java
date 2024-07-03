@@ -735,11 +735,12 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
                         eventBus.request(redisquesAddress, buildAddQueueItemOperation(queue, strBuffer),
                                 (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
                                     if (reply.failed()) {
-                                        log.warn("Received failed message for addQueueItemOperation. Lets run into NullPointerException now", reply.cause());
-                                        // IMO we should respond with 'HTTP 5xx'. But we don't, to keep backward compatibility.
-                                        // Nevertheless. Lets run into NullPointerException by calling method below.
+                                        String error = "Received failed message for addQueueItemOperation";
+                                        log.warn(error, exceptionFactory.newException(reply.cause()));
+                                        respondWith(StatusCode.INTERNAL_SERVER_ERROR, error, ctx.request());
+                                    } else {
+                                        checkReply(reply.result(), ctx.request(), StatusCode.BAD_REQUEST);
                                     }
-                                    checkReply(reply.result(), ctx.request(), StatusCode.BAD_REQUEST);
                                 });
                     } catch (Exception ex) {
                         respondWith(StatusCode.BAD_REQUEST, ex.getMessage(), ctx.request());

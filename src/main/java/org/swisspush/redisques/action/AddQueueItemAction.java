@@ -31,8 +31,8 @@ public class AddQueueItemAction extends AbstractQueueAction {
         String key1 = queuesPrefix + event.body().getJsonObject(PAYLOAD).getString(QUEUENAME);
         String valueAddItem = event.body().getJsonObject(PAYLOAD).getString(BUFFER);
         var p = redisProvider.redis();
-        p.onSuccess(redisAPI -> redisAPI.rpush(Arrays.asList(key1, valueAddItem), new AddQueueItemHandler(event)));
-        p.onFailure(ex -> replyErrorMessageHandler(event).handle(ex));
+        p.onSuccess(redisAPI -> redisAPI.rpush(Arrays.asList(key1, valueAddItem), new AddQueueItemHandler(event, exceptionFactory)));
+        p.onFailure(ex -> handleFail(event,"Operation AddQueueItemAction failed", ex));
     }
 
 }
