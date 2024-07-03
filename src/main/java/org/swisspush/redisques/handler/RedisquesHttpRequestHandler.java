@@ -22,7 +22,6 @@ import org.slf4j.LoggerFactory;
 import org.swisspush.redisques.QueueStatsService;
 import org.swisspush.redisques.QueueStatsService.GetQueueStatsMentor;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
-import org.swisspush.redisques.util.DequeueStatistic;
 import org.swisspush.redisques.util.DequeueStatisticCollector;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 import org.swisspush.redisques.util.RedisquesAPI;
@@ -30,6 +29,7 @@ import org.swisspush.redisques.util.RedisquesConfiguration;
 import org.swisspush.redisques.util.Result;
 import org.swisspush.redisques.util.StatusCode;
 
+import javax.annotation.Nullable;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.Date;
@@ -878,13 +878,17 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         }
     }
 
-    private void respondWith(StatusCode statusCode, String responseMessage, HttpServerRequest request) {
+    private void respondWith(StatusCode statusCode, @Nullable String responseMessage, HttpServerRequest request) {
         final HttpServerResponse response = request.response();
         log.info("Responding with status code {} and message '{}' to request '{}'", statusCode, responseMessage, request.uri());
         response.setStatusCode(statusCode.getStatusCode());
         response.setStatusMessage(statusCode.getStatusMessage());
         response.putHeader(CONTENT_TYPE, TEXT_PLAIN);
-        response.end(responseMessage);
+        if(responseMessage != null) {
+            response.end(responseMessage);
+        } else {
+            response.end();
+        }
     }
 
     private void respondWith(StatusCode statusCode, HttpServerRequest request) {

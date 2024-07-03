@@ -709,6 +709,11 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         assertKeyCount(context, getQueuesRedisKeyPrefix(), 0);
         context.assertEquals(0L, jedis.llen(getQueuesRedisKeyPrefix() + queueName));
 
+        // this body creates a NullpointerException because there is no header property
+        given().body(configurationValid).when().post("/queuing/queues/" + queueName + "/").then().assertThat().statusCode(400);
+        assertKeyCount(context, getQueuesRedisKeyPrefix(), 0);
+        context.assertEquals(0L, jedis.llen(getQueuesRedisKeyPrefix() + queueName));
+
         async.complete();
     }
 
