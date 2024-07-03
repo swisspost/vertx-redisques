@@ -5,6 +5,7 @@ import io.vertx.core.buffer.Buffer;
 import io.vertx.core.json.JsonObject;
 import io.vertx.ext.unit.TestContext;
 import io.vertx.ext.unit.junit.VertxUnitRunner;
+import io.vertx.redis.client.impl.types.SimpleStringType;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -41,7 +42,76 @@ public class DeleteLockActionTest extends AbstractQueueActionTest {
 
         action.execute(message);
 
-        verify(message, times(1)).reply(eq(new JsonObject(Buffer.buffer("{\"status\":\"error\"}"))));
+        verify(message, times(1)).fail(eq(0), eq("not ready"));
         verifyNoInteractions(redisAPI);
+    }
+
+    @Test
+    public void testDeleteLock(TestContext context){
+        when(message.body()).thenReturn(buildDeleteLockOperation("testLock1"));
+
+        doAnswer(invocation -> {
+            var handler = createResponseHandler(invocation,1);
+            handler.handle(Future.succeededFuture(SimpleStringType.create("0")));
+            return null;
+        }).when(redisAPI).exists(anyList(), any());
+
+        doAnswer(invocation -> {
+            var handler = createResponseHandler(invocation,1);
+            handler.handle(Future.succeededFuture());
+            return null;
+        }).when(redisAPI).hdel(anyList(), any());
+
+        action.execute(message);
+
+        verify(redisAPI, times(1)).exists(anyList(), any());
+        verify(redisAPI, times(1)).hdel(anyList(), any());
+        verify(message, times(1)).reply(eq(new JsonObject(Buffer.buffer("{\"status\":\"ok\"}"))));
+    }
+
+    @Test
+    public void testDeleteLockExistsFail(TestContext context){
+        when(message.body()).thenReturn(buildDeleteLockOperation("testLock1"));
+
+        doAnswer(invocation -> {
+            var handler = createResponseHandler(invocation,1);
+            handler.handle(Future.failedFuture("booom"));
+            return null;
+        }).when(redisAPI).exists(anyList(), any());
+
+        doAnswer(invocation -> {
+            var handler = createResponseHandler(invocation,1);
+            handler.handle(Future.succeededFuture());
+            return null;
+        }).when(redisAPI).hdel(anyList(), any());
+
+        action.execute(message);
+
+        verify(redisAPI, times(1)).exists(anyList(), any());
+        verify(redisAPI, times(1)).hdel(anyList(), any());
+        verify(message, times(1)).reply(eq(new JsonObject(Buffer.buffer("{\"status\":\"ok\"}"))));
+    }
+
+    @Test
+    public void testDeleteLockHDELFail(TestContext context){
+        when(message.body()).thenReturn(buildDeleteLockOperation("testLock1"));
+
+        doAnswer(invocation -> {
+            var handler = createResponseHandler(invocation,1);
+            handler.handle(Future.succeededFuture(SimpleStringType.create("0")));
+            return null;
+        }).when(redisAPI).exists(anyList(), any());
+
+        doAnswer(invocation -> {
+            var handler = createResponseHandler(invocation,1);
+            handler.handle(Future.failedFuture("booom"));
+            return null;
+        }).when(redisAPI).hdel(anyList(), any());
+
+        action.execute(message);
+
+        verify(redisAPI, times(1)).exists(anyList(), any());
+        verify(redisAPI, times(1)).hdel(anyList(), any());
+        verify(message, times(1)).fail(eq(0), eq("booom"));
     }
 }

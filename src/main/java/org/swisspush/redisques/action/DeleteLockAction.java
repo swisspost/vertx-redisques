@@ -34,14 +34,18 @@ public class DeleteLockAction extends AbstractQueueAction {
         var p = redisProvider.redis();
         p.onSuccess(redisAPI -> {
             redisAPI.exists(Collections.singletonList(queuesPrefix + queueName), event1 -> {
-                if( event1.failed() ) log.warn("Concealed error", new Exception(event1.cause()));
+                if (event1.failed()) {
+                    log.warn("Concealed error", exceptionFactory.newException(event1.cause()));
+                }
+
                 if (event1.succeeded() && event1.result() != null && event1.result().toInteger() == 1) {
                     notifyConsumer(queueName);
                 }
-                redisAPI.hdel(Arrays.asList(locksKey, queueName), new DeleteLockHandler(event));
+
+                redisAPI.hdel(Arrays.asList(locksKey, queueName), new DeleteLockHandler(event, exceptionFactory));
             });
         });
-        p.onFailure(ex -> replyErrorMessageHandler(event).handle(ex));
+        p.onFailure(ex -> handleFail(event, "Operation DeleteLockAction failed", ex));
     }
 
 }
