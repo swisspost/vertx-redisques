@@ -5,6 +5,7 @@ import io.vertx.core.buffer.Buffer;
 import io.vertx.core.json.JsonObject;
 import io.vertx.ext.unit.TestContext;
 import io.vertx.ext.unit.junit.VertxUnitRunner;
+import io.vertx.redis.client.impl.types.SimpleStringType;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -41,7 +42,56 @@ public class GetQueueItemActionTest extends AbstractQueueActionTest {
 
         action.execute(message);
 
-        verify(message, times(1)).reply(eq(new JsonObject(Buffer.buffer("{\"status\":\"error\"}"))));
+        verify(message, times(1)).fail(eq(0), eq("not ready"));
         verifyNoInteractions(redisAPI);
+    }
+
+    @Test
+    public void testGetQueueItem(TestContext context){
+        when(message.body()).thenReturn(buildGetQueueItemOperation("q1", 0));
+
+        doAnswer(invocation -> {
+            var handler = createResponseHandler(invocation,2);
+            handler.handle(Future.succeededFuture(SimpleStringType.create(new JsonObject().put("foo", "bar").encode())));
+            return null;
+        }).when(redisAPI).lindex(anyString(), anyString(), any());
+
+        action.execute(message);
+
+        verify(redisAPI, times(1)).lindex(anyString(), anyString(), any());
+        verify(message, times(1)).reply(eq(new JsonObject(
+                Buffer.buffer("{\"status\":\"ok\",\"value\":\"{\\\"foo\\\":\\\"bar\\\"}\"}"))));
+    }
+
+    @Test
+    public void testGetQueueItemNotExistingIndex(TestContext context){
+        when(message.body()).thenReturn(buildGetQueueItemOperation("q1", 0));
+
+        doAnswer(invocation -> {
+            var handler = createResponseHandler(invocation,2);
+            handler.handle(Future.succeededFuture());
+            return null;
+        }).when(redisAPI).lindex(anyString(), anyString(), any());
+
+        action.execute(message);
+
+        verify(redisAPI, times(1)).lindex(anyString(), anyString(), any());
+        verify(message, times(1)).reply(eq(STATUS_ERROR));
+    }
+
+    @Test
+    public void testGetQueueItemLINDEXFail(TestContext context){
+        when(message.body()).thenReturn(buildGetQueueItemOperation("q1", 0));
+
+        doAnswer(invocation -> {
+            var handler = createResponseHandler(invocation,2);
+            handler.handle(Future.failedFuture("booom"));
+            return null;
+        }).when(redisAPI).lindex(anyString(), anyString(), any());
+
+        action.execute(message);
+
+        verify(redisAPI, times(1)).lindex(anyString(), anyString(), any());
+        verify(message, times(1)).fail(eq(0), eq("booom"));
     }
 }

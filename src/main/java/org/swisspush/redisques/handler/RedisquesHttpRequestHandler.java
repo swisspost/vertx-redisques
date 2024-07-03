@@ -759,8 +759,10 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
                     final int index = Integer.parseInt(lastPart(requestPath));
                     eventBus.request(redisquesAddress, buildGetQueueItemOperation(queue, index), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
                         if (reply.failed()) {
-                            log.warn("Received failed message for getSingleQueueItemOperation. Lets run into NullPointerException now", reply.cause());
-                            // IMO we should respond with 'HTTP 5xx'. But we don't, to keep backward compatibility.
+                            String error = "Received failed message for getSingleQueueItemOperation";
+                            log.warn(error, exceptionFactory.newException(reply.cause()));
+                            respondWith(StatusCode.INTERNAL_SERVER_ERROR, error, ctx.request());
+                            return;
                         }
                         final JsonObject replyBody = reply.result().body();
                         final HttpServerResponse response = ctx.response();
