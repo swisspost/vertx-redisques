@@ -1245,6 +1245,8 @@ public class RedisQues extends AbstractVerticle {
                                 }
                             }
                         });
+                    } else {
+                        onDone.accept(null, null);
                     }
                     return ctx.iter.hasNext();
                 }

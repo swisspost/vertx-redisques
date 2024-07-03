@@ -63,19 +63,29 @@ public class UpperBoundParallel {
     private <Ctx> void resume(Request<Ctx> req) {
         if (!req.lock.tryLock()) {
             log.trace("Some other thread already working here");
-        } else try {
+            return;
+        }
+        try {
             Thread ourself = currentThread();
             if (req.worker == null) {
                 log.trace("worker := ourself");
                 req.worker = ourself;
             } else if (req.worker != ourself) {
                 log.trace("Another thread is already working here");
+                req.lock.unlock();
                 return;
             }
+        } catch (Throwable ex) {
+            req.lock.unlock();
+            throw ex;
+        }
+        try {
             // Enqueue as much we can.
             while (true) {
+                assert req.worker == currentThread();
                 if (req.isFatalError) {
                     log.trace("return from 'resume()' because isFatalError");
+                    assert req.numTokensAvailForOurself == 0 : "assert(numTokensAvailForOurself != " + req.numTokensAvailForOurself + ")";
                     return;
                 }
                 if (!req.hasMore) {
@@ -89,6 +99,9 @@ public class UpperBoundParallel {
                         } finally {
                             req.lock.lock(); // MUST get back our lock RIGHT NOW.
                         }
+                        log.debug("Release remaining {} tokens", req.numTokensAvailForOurself);
+                        req.limit.release(req.numTokensAvailForOurself);
+                        req.numTokensAvailForOurself = 0;
                     } else {
                         log.trace("return for now (hasMore = {}, numInProgress = {})", req.hasMore, req.numInProgress);
                     }
@@ -104,13 +117,17 @@ public class UpperBoundParallel {
                 }
                 req.hasStarted = true;
                 req.numInProgress += 1;
+                assert req.hasMore : "assert(hasMore)";
                 boolean hasMore = true;
                 try {
                     // We MUST give up our lock while calling mentor. We cannot know how long
                     // mentor is going to block (which would then cascade to all threads
                     // waiting for our lock).
+                    assert req.worker == currentThread();
+                    assert req.hasMore;
                     req.lock.unlock();
                     log.trace("mentor.runOneMore()  numInProgress={}", req.numInProgress);
+                    assert req.worker == currentThread();
                     hasMore = req.mentor.runOneMore(new BiConsumer<>() {
                         // this boolean is just for paranoia, in case mentor tries to call back too often.
                         final AtomicBoolean isCalled = new AtomicBoolean();
@@ -120,11 +137,14 @@ public class UpperBoundParallel {
                         }
                     }, req.ctx);
                 } catch (RuntimeException ex) {
+                    assert req.worker == currentThread();
                     onOneDone(req, ex);
                 } finally {
                     // We MUST get back our lock right NOW. No way to just 'try'.
                     log.trace("mentor.runOneMore() -> hasMore={}", hasMore);
                     req.lock.lock();
+                    assert req.worker == currentThread();
+                    assert req.hasMore;
                     req.hasMore = hasMore;
                 }
             }
@@ -137,6 +157,7 @@ public class UpperBoundParallel {
                     Exception ex = exceptionFactory.newResourceExhaustionException(
                             "No more resources to handle yet another request now.", null);
                     req.mentor.onError(ex, req.ctx);
+                    assert req.numTokensAvailForOurself == 0 : "assert(numTokensAvailForOurself != " + req.numTokensAvailForOurself + ")";
                 } else {
                     log.error("If you see this log, some unreachable code got reached. numInProgress={}, hasStarted={}",
                         req.numInProgress, req.hasStarted);
@@ -147,6 +168,7 @@ public class UpperBoundParallel {
             req.worker = null;
             req.lock.unlock();
         }
+        assert req.numTokensAvailForOurself == 0 : "assert(numTokensAvailForOurself != " + req.numTokensAvailForOurself + ")";
     }
 
     private <Ctx> void onOneDone(Request<Ctx> req, Throwable ex) {
