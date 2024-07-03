@@ -65,7 +65,9 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     private static final String EMPTY_QUEUES_PARAM = "emptyQueues";
     private static final String DELETED = "deleted";
 
-    /** @deprecated <a href="https://imgs.xkcd.com/comics/iso_8601_2x.png">about obsolete date formats</a> */
+    /**
+     * @deprecated <a href="https://imgs.xkcd.com/comics/iso_8601_2x.png">about obsolete date formats</a>
+     */
     @Deprecated
     private static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("dd.MM.yyyy HH:mm:ss");
 
@@ -79,9 +81,9 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     private final GetQueueStatsMentor<RoutingContext> queueStatsMentor = new MyQueueStatsMentor();
 
     public static void init(
-        Vertx vertx, RedisquesConfiguration modConfig, QueueStatisticsCollector queueStatisticsCollector,
-        DequeueStatisticCollector dequeueStatisticCollector, RedisQuesExceptionFactory exceptionFactory,
-        Semaphore queueStatsRequestQuota
+            Vertx vertx, RedisquesConfiguration modConfig, QueueStatisticsCollector queueStatisticsCollector,
+            DequeueStatisticCollector dequeueStatisticCollector, RedisQuesExceptionFactory exceptionFactory,
+            Semaphore queueStatsRequestQuota
     ) {
         log.info("Enabling http request handler: {}", modConfig.getHttpRequestHandlerEnabled());
         if (modConfig.getHttpRequestHandlerEnabled()) {
@@ -118,12 +120,12 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     }
 
     private RedisquesHttpRequestHandler(
-        Vertx vertx,
-        RedisquesConfiguration modConfig,
-        QueueStatisticsCollector queueStatisticsCollector,
-        DequeueStatisticCollector dequeueStatisticCollector,
-        RedisQuesExceptionFactory exceptionFactory,
-        Semaphore queueStatsRequestQuota
+            Vertx vertx,
+            RedisquesConfiguration modConfig,
+            QueueStatisticsCollector queueStatisticsCollector,
+            DequeueStatisticCollector dequeueStatisticCollector,
+            RedisQuesExceptionFactory exceptionFactory,
+            Semaphore queueStatsRequestQuota
     ) {
         this.vertx = vertx;
         this.router = Router.router(vertx);
@@ -559,6 +561,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
                 Iterator<QueueStatsService.Queue> queueSrc;
                 JsonObject queueJson = new JsonObject();
                 boolean isFirst = true;
+
                 void run(RoutingContext ctx_) {
                     ctx = ctx_;
                     queueSrc = queues.iterator();
@@ -568,6 +571,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
                     rsp.write("{\"queues\": [");
                     resumeJsonWriting();
                 }
+
                 void resumeJsonWriting() {
                     while (true) {
                         if (rsp.writeQueueFull()) {
@@ -609,7 +613,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         public void onError(Throwable ex, RoutingContext ctx) {
             if (!ctx.response().headWritten()) {
                 log.debug("TODO error handling {}", ctx.request().uri(), exceptionFactory.newException(
-                    "Failed to serve queue stats", ex));
+                        "Failed to serve queue stats", ex));
                 StatusCode rspCode = tryExtractStatusCode(ex, StatusCode.INTERNAL_SERVER_ERROR);
                 respondWith(rspCode, ex.getMessage(), ctx.request());
             } else {
@@ -801,15 +805,17 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         final HttpServerRequest request = ctx.request();
         decodedQueueNameOrRespondWithBadRequest(ctx, part(request.path(), 2)).ifPresent(queue -> {
             final int index = Integer.parseInt(lastPart(request.path()));
+
             checkLocked(queue, request, event ->
                     eventBus.request(redisquesAddress, buildDeleteQueueItemOperation(queue, index),
                             (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
                                 if (reply.failed()) {
-                                    log.warn("Received failed message for deleteQueueItemOperation. Lets run into NullPointerException now", reply.cause());
-                                    // IMO we should respond with 'HTTP 5xx'. But we don't, to keep backward compatibility.
-                                    // Nevertheless. Lets run into NullPointerException by calling method below.
+                                    String error = "Received failed message for deleteQueueItemOperation";
+                                    log.warn(error, exceptionFactory.newException(reply.cause()));
+                                    respondWith(StatusCode.INTERNAL_SERVER_ERROR, error, ctx.request());
+                                } else {
+                                    checkReply(reply.result(), request, StatusCode.NOT_FOUND);
                                 }
-                                checkReply(reply.result(), request, StatusCode.NOT_FOUND);
                             }
                     ));
         });
@@ -885,7 +891,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         response.setStatusCode(statusCode.getStatusCode());
         response.setStatusMessage(statusCode.getStatusMessage());
         response.putHeader(CONTENT_TYPE, TEXT_PLAIN);
-        if(responseMessage != null) {
+        if (responseMessage != null) {
             response.end(responseMessage);
         } else {
             response.end();
@@ -923,8 +929,15 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         request.pause();
         eventBus.request(redisquesAddress, buildGetLockOperation(queue), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
             request.resume();
+            if (reply.failed()) {
+                String error = "Received failed message for checkLocked operation";
+                log.warn(error, exceptionFactory.newException(reply.cause()));
+                respondWith(StatusCode.INTERNAL_SERVER_ERROR, error, request);
+                return;
+            }
             if (NO_SUCH_LOCK.equals(reply.result().body().getString(STATUS))) {
                 final HttpServerResponse response = request.response();
+                response.putHeader(CONTENT_TYPE, TEXT_PLAIN);
                 response.setStatusCode(StatusCode.CONFLICT.getStatusCode());
                 response.setStatusMessage("Queue must be locked to perform this operation");
                 response.end("Queue must be locked to perform this operation");
@@ -945,6 +958,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         } else {
             response.setStatusCode(statusCode.getStatusCode());
             response.setStatusMessage(statusCode.getStatusMessage());
+            response.putHeader(CONTENT_TYPE, TEXT_PLAIN);
             response.end(statusCode.getStatusMessage());
         }
     }

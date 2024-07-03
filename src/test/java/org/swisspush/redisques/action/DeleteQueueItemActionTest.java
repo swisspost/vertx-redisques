@@ -41,7 +41,7 @@ public class DeleteQueueItemActionTest extends AbstractQueueActionTest {
 
         action.execute(message);
 
-        verify(message, times(1)).reply(eq(new JsonObject(Buffer.buffer("{\"status\":\"error\"}"))));
+        verify(message, times(1)).fail(eq(0), eq("not ready"));
         verifyNoInteractions(redisAPI);
     }
 
@@ -50,6 +50,23 @@ public class DeleteQueueItemActionTest extends AbstractQueueActionTest {
         doAnswer(invocation -> {
             var handler = createResponseHandler(invocation,3);
             handler.handle(Future.failedFuture("boooom"));
+            return null;
+        }).when(redisAPI).lset(anyString(), anyString(), anyString(), any());
+
+        when(message.body()).thenReturn(buildDeleteQueueItemOperation("queue1", 0));
+
+        action.execute(message);
+
+        verify(redisAPI, times(1)).lset(anyString(), eq("0"), eq("TO_DELETE"), any());
+        verify(redisAPI, never()).lrem(anyString(), anyString(), anyString());
+        verify(message, times(1)).fail(eq(0), eq("boooom"));
+    }
+
+    @Test
+    public void testFailedLSETNoSuchKey(TestContext context){
+        doAnswer(invocation -> {
+            var handler = createResponseHandler(invocation,3);
+            handler.handle(Future.failedFuture("ERR no such key"));
             return null;
         }).when(redisAPI).lset(anyString(), anyString(), anyString(), any());
 
@@ -82,7 +99,7 @@ public class DeleteQueueItemActionTest extends AbstractQueueActionTest {
 
         verify(redisAPI, times(1)).lset(anyString(), eq("0"), eq("TO_DELETE"), any());
         verify(redisAPI, times(1)).lrem(anyString(), eq("0"), eq("TO_DELETE"), any());
-        verify(message, times(1)).reply(eq(new JsonObject(Buffer.buffer("{\"status\":\"error\"}"))));
+        verify(message, times(1)).fail(eq(0), eq("boooom"));
     }
 
     @Test

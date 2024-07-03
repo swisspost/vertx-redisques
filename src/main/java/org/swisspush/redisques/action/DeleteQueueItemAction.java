@@ -34,21 +34,29 @@ public class DeleteQueueItemAction extends AbstractQueueAction {
                                 String keyLrem = queuesPrefix + event.body().getJsonObject(PAYLOAD).getString(QUEUENAME);
                                 redisAPI.lrem(keyLrem, "0", "TO_DELETE", replyLrem -> {
                                     if (replyLrem.failed()) {
-                                        log.warn("Redis 'lrem' command failed",
-                                                exceptionFactory.newException(replyLrem.cause()));
-                                        event.reply(createErrorReply());
+                                        handleFail(event, "Failed to 'lrem' while deleteQueueItem", replyLrem.cause());
                                     } else {
                                         event.reply(createOkReply());
                                     }
                                 });
                             } else {
-                                log.error("Failed to 'lset' while deleteQueueItem.", exceptionFactory.newException(event1.cause()));
-                                event.reply(createErrorReply());
+                                if(checkRedisErrorCodes(event1.cause().getMessage())) {
+                                    log.error("Failed to 'lset' while deleteQueueItem.", exceptionFactory.newException(event1.cause()));
+                                    event.reply(createErrorReply());
+                                } else{
+                                    handleFail(event, "Failed to 'lset' while deleteQueueItem", event1.cause());
+                                }
                             }
                         }))
                 .onFailure(ex -> {
-                    log.error("Redis: Failed to deleteQueueItem.", exceptionFactory.newException(ex));
-                    event.reply(createErrorReply());
+                    handleFail(event,"Operation DeleteQueueItemAction failed", ex);
                 });
+    }
+
+    private boolean checkRedisErrorCodes(String message) {
+        if(message == null) {
+            return false;
+        }
+        return message.contains("no such key") || message.contains("index out of range");
     }
 }
