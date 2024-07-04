@@ -41,7 +41,39 @@ public class ReplaceQueueItemActionTest extends AbstractQueueActionTest {
 
         action.execute(message);
 
-        verify(message, times(1)).reply(eq(new JsonObject(Buffer.buffer("{\"status\":\"error\"}"))));
+        verify(message, times(1)).fail(eq(0), eq("not ready"));
         verifyNoInteractions(redisAPI);
+    }
+
+    @Test
+    public void testReplaceQueueItem(TestContext context){
+        when(message.body()).thenReturn(buildReplaceQueueItemOperation("q1", 0,"geronimo"));
+
+        doAnswer(invocation -> {
+            var handler = createResponseHandler(invocation,3);
+            handler.handle(Future.succeededFuture());
+            return null;
+        }).when(redisAPI).lset(anyString(), anyString(), anyString(), any());
+
+        action.execute(message);
+
+        verify(redisAPI, times(1)).lset(anyString(), anyString(), anyString(), any());
+        verify(message, times(1)).reply(eq(new JsonObject(Buffer.buffer("{\"status\":\"ok\"}"))));
+    }
+
+    @Test
+    public void testReplaceQueueItemWithLSETFail(TestContext context){
+        when(message.body()).thenReturn(buildReplaceQueueItemOperation("q1", 0,"geronimo"));
+
+        doAnswer(invocation -> {
+            var handler = createResponseHandler(invocation,3);
+            handler.handle(Future.failedFuture("booom"));
+            return null;
+        }).when(redisAPI).lset(anyString(), anyString(), anyString(), any());
+
+        action.execute(message);
+
+        verify(redisAPI, times(1)).lset(anyString(), anyString(), anyString(), any());
+        verify(message, times(1)).fail(eq(0), eq("booom"));
     }
 }

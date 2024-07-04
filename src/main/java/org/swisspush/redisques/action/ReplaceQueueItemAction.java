@@ -34,8 +34,8 @@ public class ReplaceQueueItemAction extends AbstractQueueAction {
         String bufferReplaceItem = event.body().getJsonObject(PAYLOAD).getString(BUFFER);
         var p = redisProvider.redis();
         p.onSuccess(redisAPI -> redisAPI.lset(keyReplaceItem, String.valueOf(indexReplaceItem),
-                bufferReplaceItem, new ReplaceQueueItemHandler(event)));
-        p.onFailure(ex -> replyErrorMessageHandler(event).handle(ex));
+                bufferReplaceItem, new ReplaceQueueItemHandler(event, exceptionFactory)));
+        p.onFailure(ex -> handleFail(event, "Operation ReplaceQueueItemAction failed", ex));
     }
 
 }
