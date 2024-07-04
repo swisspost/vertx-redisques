@@ -50,11 +50,10 @@ public class BulkDeleteQueuesAction extends AbstractQueueAction {
             if (delManyReply.succeeded()) {
                 event.reply(createOkReply().put(VALUE, delManyReply.result().toLong()));
             } else {
-                log.error("Failed to bulkDeleteQueues", new Exception(delManyReply.cause()));
-                event.reply(createErrorReply());
+                handleFail(event, "Failed to bulkDeleteQueues", delManyReply.cause());
             }
         }));
-        p.onFailure(ex -> replyErrorMessageHandler(event).handle(ex));
+        p.onFailure(ex -> handleFail(event, "Operation BulkDeleteQueuesAction failed", ex));
     }
 
 }

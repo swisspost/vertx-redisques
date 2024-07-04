@@ -855,9 +855,10 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
                     }
                     eventBus.request(redisquesAddress, buildBulkDeleteQueuesOperation(result.getOk()), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
                         if (reply.failed()) {
-                            log.warn("Failed to bulkDeleteQueues. Lets run into NullPointerException now", reply.cause());
-                            // IMO we should respond with 'HTTP 5xx'. But we don't, to keep backward compatibility.
-                            // Nevertheless. Lets run into NullPointerException in else case below now.
+                            String error = "Failed to bulkDeleteQueues";
+                            log.warn(error, exceptionFactory.newException(reply.cause()));
+                            respondWith(StatusCode.INTERNAL_SERVER_ERROR, error, ctx.request());
+                            return;
                         }
                         if (reply.succeeded() && OK.equals(reply.result().body().getString(STATUS))) {
                             JsonObject resultObj = new JsonObject();
