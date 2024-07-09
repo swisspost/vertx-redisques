@@ -88,7 +88,7 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
         }
         if (redisRequestQuota.availablePermits() <= 0) {
             event.reply(exceptionFactory.newReplyException(ReplyFailure.RECIPIENT_FAILURE, 429,
-                    "Too many simultaneous '" + GetQueuesItemsCountHandler.class.getSimpleName() + "' requests in progress"));
+                    "Too many simultaneous '" + GetQueuesItemsCountHandler.class.getSimpleName() + "' requests in progress", null));
             return;
         }
 
