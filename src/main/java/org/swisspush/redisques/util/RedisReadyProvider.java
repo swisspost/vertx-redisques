@@ -7,7 +7,7 @@ import io.vertx.redis.client.RedisAPI;
  * Provides the "ready state" of the Redis database. The connection to Redis may be already established, but Redis is not
  * yet ready to be used
  *
- * @author https://github.com/mcweba [Marc-Andre Weber]
+ * @author <a href="https://github.com/mcweba">Marc-André Weber</a>
  */
 public interface RedisReadyProvider {
 

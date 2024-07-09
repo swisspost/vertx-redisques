@@ -10,7 +10,7 @@ import org.junit.runner.RunWith;
 /**
  * Tests for {@link RedisQuesTimer} class.
  *
- * @author https://github.com/mcweba [Marc-Andre Weber]
+ * @author <a href="https://github.com/mcweba">Marc-André Weber</a>
  */
 @RunWith(VertxUnitRunner.class)
 public class RedisQuesTimerTest {

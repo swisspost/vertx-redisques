@@ -12,7 +12,7 @@ import java.net.URL;
  * Utility class providing handy methods to deal with Resources.
  * </p>
  *
- * @author https://github.com/mcweba [Marc-Andre Weber]
+ * @author <a href="https://github.com/mcweba">Marc-André Weber</a>
  */
 public class ResourcesUtils {
 

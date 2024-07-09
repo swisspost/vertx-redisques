@@ -22,7 +22,6 @@ import org.slf4j.LoggerFactory;
 import org.swisspush.redisques.QueueStatsService;
 import org.swisspush.redisques.QueueStatsService.GetQueueStatsMentor;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
-import org.swisspush.redisques.util.DequeueStatistic;
 import org.swisspush.redisques.util.DequeueStatisticCollector;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 import org.swisspush.redisques.util.RedisquesAPI;
@@ -30,6 +29,7 @@ import org.swisspush.redisques.util.RedisquesConfiguration;
 import org.swisspush.redisques.util.Result;
 import org.swisspush.redisques.util.StatusCode;
 
+import javax.annotation.Nullable;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.Date;
@@ -45,7 +45,7 @@ import static org.swisspush.redisques.util.RedisquesAPI.*;
 /**
  * Handler class for HTTP requests providing access to Redisques over HTTP.
  *
- * @author https://github.com/mcweba [Marc-Andre Weber]
+ * @author <a href="https://github.com/mcweba">Marc-André Weber</a>
  */
 public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
 
@@ -65,7 +65,9 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     private static final String EMPTY_QUEUES_PARAM = "emptyQueues";
     private static final String DELETED = "deleted";
 
-    /** @deprecated <a href="https://imgs.xkcd.com/comics/iso_8601_2x.png">about obsolete date formats</a> */
+    /**
+     * @deprecated <a href="https://imgs.xkcd.com/comics/iso_8601_2x.png">about obsolete date formats</a>
+     */
     @Deprecated
     private static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("dd.MM.yyyy HH:mm:ss");
 
@@ -79,9 +81,9 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     private final GetQueueStatsMentor<RoutingContext> queueStatsMentor = new MyQueueStatsMentor();
 
     public static void init(
-        Vertx vertx, RedisquesConfiguration modConfig, QueueStatisticsCollector queueStatisticsCollector,
-        DequeueStatisticCollector dequeueStatisticCollector, RedisQuesExceptionFactory exceptionFactory,
-        Semaphore queueStatsRequestQuota
+            Vertx vertx, RedisquesConfiguration modConfig, QueueStatisticsCollector queueStatisticsCollector,
+            DequeueStatisticCollector dequeueStatisticCollector, RedisQuesExceptionFactory exceptionFactory,
+            Semaphore queueStatsRequestQuota
     ) {
         log.info("Enabling http request handler: {}", modConfig.getHttpRequestHandlerEnabled());
         if (modConfig.getHttpRequestHandlerEnabled()) {
@@ -118,12 +120,12 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     }
 
     private RedisquesHttpRequestHandler(
-        Vertx vertx,
-        RedisquesConfiguration modConfig,
-        QueueStatisticsCollector queueStatisticsCollector,
-        DequeueStatisticCollector dequeueStatisticCollector,
-        RedisQuesExceptionFactory exceptionFactory,
-        Semaphore queueStatsRequestQuota
+            Vertx vertx,
+            RedisquesConfiguration modConfig,
+            QueueStatisticsCollector queueStatisticsCollector,
+            DequeueStatisticCollector dequeueStatisticCollector,
+            RedisQuesExceptionFactory exceptionFactory,
+            Semaphore queueStatsRequestQuota
     ) {
         this.vertx = vertx;
         this.router = Router.router(vertx);
@@ -316,8 +318,9 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         String filter = ctx.request().params().get(FILTER);
         eventBus.request(redisquesAddress, buildGetAllLocksOperation(filter), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
             if (reply.failed()) {
-                log.warn("Received failed message for getAllLocksOperation. Lets run into NullPointerException now", reply.cause());
-                // IMO we should respond with 'HTTP 5xx'. But we don't, to keep backward compatibility.
+                log.warn("Received failed message for getAllLocksOperation", exceptionFactory.newException(reply.cause()));
+                respondWith(StatusCode.INTERNAL_SERVER_ERROR, reply.cause().getMessage(), ctx.request());
+                return;
             }
             final JsonObject body = reply.result().body();
             if (OK.equals(body.getString(STATUS))) {
@@ -342,11 +345,12 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
                 queue -> eventBus.request(redisquesAddress, buildPutLockOperation(queue, extractUser(ctx.request())),
                         (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
                             if (reply.failed()) {
-                                log.warn("Received failed message for addLockOperation. Lets run into NullPointerException now", reply.cause());
-                                // IMO we should respond with 'HTTP 5xx' here. But we don't, to keep backward compatibility.
-                                // Nevertheless. Lets run into NullPointerException by calling method below.
+                                String error = "Received failed message for addLockOperation";
+                                log.warn(error, exceptionFactory.newException(reply.cause()));
+                                respondWith(StatusCode.INTERNAL_SERVER_ERROR, error, ctx.request());
+                            } else {
+                                checkReply(reply.result(), ctx.request(), StatusCode.BAD_REQUEST);
                             }
-                            checkReply(reply.result(), ctx.request(), StatusCode.BAD_REQUEST);
                         }
                 ));
     }
@@ -356,10 +360,10 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
                 queue -> eventBus.request(redisquesAddress, buildGetLockOperation(queue), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
                     final HttpServerResponse response = ctx.response();
                     if (reply.failed()) {
-                        log.warn("Received failed message for getSingleLockOperation. Lets run into NullPointerException now", reply.cause());
-                        // IMO we should respond with 'HTTP 5xx' here. But we don't, to keep backward compatibility.
-                    }
-                    if (OK.equals(reply.result().body().getString(STATUS))) {
+                        String error = "Received failed message for getSingleLockOperation";
+                        log.warn(error, exceptionFactory.newException(reply.cause()));
+                        respondWith(StatusCode.INTERNAL_SERVER_ERROR, error, ctx.request());
+                    } else if (OK.equals(reply.result().body().getString(STATUS))) {
                         response.putHeader(CONTENT_TYPE, APPLICATION_JSON);
                         response.end(reply.result().body().getString(VALUE));
                     } else {
@@ -390,11 +394,12 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
                 queue -> eventBus.request(redisquesAddress, buildDeleteLockOperation(queue),
                         (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
                             if (reply.failed()) {
-                                log.warn("Received failed message for deleteSingleLockOperation. Lets run into NullPointerException now", reply.cause());
-                                // IMO we should respond with 'HTTP 5xx'. But we don't, to keep backward compatibility.
-                                // Nevertheless. Lets run into NullPointerException by calling below method.
+                                String error = "Received failed message for deleteSingleLockOperation";
+                                log.warn(error, exceptionFactory.newException(reply.cause()));
+                                respondWith(StatusCode.INTERNAL_SERVER_ERROR, error, ctx.request());
+                            } else {
+                                checkReply(reply.result(), ctx.request(), StatusCode.INTERNAL_SERVER_ERROR);
                             }
-                            checkReply(reply.result(), ctx.request(), StatusCode.INTERNAL_SERVER_ERROR);
                         }));
     }
 
@@ -556,6 +561,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
                 Iterator<QueueStatsService.Queue> queueSrc;
                 JsonObject queueJson = new JsonObject();
                 boolean isFirst = true;
+
                 void run(RoutingContext ctx_) {
                     ctx = ctx_;
                     queueSrc = queues.iterator();
@@ -565,6 +571,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
                     rsp.write("{\"queues\": [");
                     resumeJsonWriting();
                 }
+
                 void resumeJsonWriting() {
                     while (true) {
                         if (rsp.writeQueueFull()) {
@@ -606,7 +613,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         public void onError(Throwable ex, RoutingContext ctx) {
             if (!ctx.response().headWritten()) {
                 log.debug("TODO error handling {}", ctx.request().uri(), exceptionFactory.newException(
-                    "Failed to serve queue stats", ex));
+                        "Failed to serve queue stats", ex));
                 StatusCode rspCode = tryExtractStatusCode(ex, StatusCode.INTERNAL_SERVER_ERROR);
                 respondWith(rspCode, ex.getMessage(), ctx.request());
             } else {
@@ -701,7 +708,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
             }
             eventBus.request(redisquesAddress, buildGetQueueItemsOperation(queue, limitParam), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
                 if (reply.failed()) {
-                    log.error("Received failed message for listQueueItemsOperation", reply.cause());
+                    log.error("Received failed message for listQueueItemsOperation", exceptionFactory.newException(reply.cause()));
                     respondWith(StatusCode.INTERNAL_SERVER_ERROR, ctx.request());
                     return;
                 }
@@ -732,11 +739,12 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
                         eventBus.request(redisquesAddress, buildAddQueueItemOperation(queue, strBuffer),
                                 (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
                                     if (reply.failed()) {
-                                        log.warn("Received failed message for addQueueItemOperation. Lets run into NullPointerException now", reply.cause());
-                                        // IMO we should respond with 'HTTP 5xx'. But we don't, to keep backward compatibility.
-                                        // Nevertheless. Lets run into NullPointerException by calling method below.
+                                        String error = "Received failed message for addQueueItemOperation";
+                                        log.warn(error, exceptionFactory.newException(reply.cause()));
+                                        respondWith(StatusCode.INTERNAL_SERVER_ERROR, error, ctx.request());
+                                    } else {
+                                        checkReply(reply.result(), ctx.request(), StatusCode.BAD_REQUEST);
                                     }
-                                    checkReply(reply.result(), ctx.request(), StatusCode.BAD_REQUEST);
                                 });
                     } catch (Exception ex) {
                         respondWith(StatusCode.BAD_REQUEST, ex.getMessage(), ctx.request());
@@ -751,8 +759,10 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
                     final int index = Integer.parseInt(lastPart(requestPath));
                     eventBus.request(redisquesAddress, buildGetQueueItemOperation(queue, index), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
                         if (reply.failed()) {
-                            log.warn("Received failed message for getSingleQueueItemOperation. Lets run into NullPointerException now", reply.cause());
-                            // IMO we should respond with 'HTTP 5xx'. But we don't, to keep backward compatibility.
+                            String error = "Received failed message for getSingleQueueItemOperation";
+                            log.warn(error, exceptionFactory.newException(reply.cause()));
+                            respondWith(StatusCode.INTERNAL_SERVER_ERROR, error, ctx.request());
+                            return;
                         }
                         final JsonObject replyBody = reply.result().body();
                         final HttpServerResponse response = ctx.response();
@@ -779,11 +789,12 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
                             eventBus.request(redisquesAddress, buildReplaceQueueItemOperation(queue, index, strBuffer),
                                     (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
                                         if (reply.failed()) {
-                                            log.warn("Received failed message for replaceSingleQueueItemOperation. Lets run into NullPointerException now", reply.cause());
-                                            // IMO we should respond with 'HTTP 5xx'. But we don't, to keep backward compatibility.
-                                            // Nevertheless. Lets run into NullPointerException by calling method below.
+                                            String error = "Received failed message for replaceSingleQueueItemOperation";
+                                            log.warn(error, exceptionFactory.newException(reply.cause()));
+                                            respondWith(StatusCode.INTERNAL_SERVER_ERROR, error, ctx.request());
+                                        } else {
+                                            checkReply(reply.result(), request, StatusCode.NOT_FOUND);
                                         }
-                                        checkReply(reply.result(), request, StatusCode.NOT_FOUND);
                                     });
                         } catch (Exception ex) {
                             log.warn("Undocumented exception caught while replaceSingleQueueItem. But assume its the clients bad ;)", ex);
@@ -797,15 +808,17 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         final HttpServerRequest request = ctx.request();
         decodedQueueNameOrRespondWithBadRequest(ctx, part(request.path(), 2)).ifPresent(queue -> {
             final int index = Integer.parseInt(lastPart(request.path()));
+
             checkLocked(queue, request, event ->
                     eventBus.request(redisquesAddress, buildDeleteQueueItemOperation(queue, index),
                             (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
                                 if (reply.failed()) {
-                                    log.warn("Received failed message for deleteQueueItemOperation. Lets run into NullPointerException now", reply.cause());
-                                    // IMO we should respond with 'HTTP 5xx'. But we don't, to keep backward compatibility.
-                                    // Nevertheless. Lets run into NullPointerException by calling method below.
+                                    String error = "Received failed message for deleteQueueItemOperation";
+                                    log.warn(error, exceptionFactory.newException(reply.cause()));
+                                    respondWith(StatusCode.INTERNAL_SERVER_ERROR, error, ctx.request());
+                                } else {
+                                    checkReply(reply.result(), request, StatusCode.NOT_FOUND);
                                 }
-                                checkReply(reply.result(), request, StatusCode.NOT_FOUND);
                             }
                     ));
         });
@@ -817,7 +830,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         final String queue = lastPart(request.path());
         eventBus.request(redisquesAddress, buildDeleteAllQueueItemsOperation(queue, unlock), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
             if (reply.failed()) {
-                log.warn("Received failed message for deleteAllQueueItemsOperation", reply.cause());
+                log.warn("Received failed message for deleteAllQueueItemsOperation", exceptionFactory.newException(reply.cause()));
                 respondWith(StatusCode.INTERNAL_SERVER_ERROR, "Error deleting all queue items of queue " + queue, request);
                 return;
             }
@@ -843,9 +856,10 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
                     }
                     eventBus.request(redisquesAddress, buildBulkDeleteQueuesOperation(result.getOk()), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
                         if (reply.failed()) {
-                            log.warn("Failed to bulkDeleteQueues. Lets run into NullPointerException now", reply.cause());
-                            // IMO we should respond with 'HTTP 5xx'. But we don't, to keep backward compatibility.
-                            // Nevertheless. Lets run into NullPointerException in else case below now.
+                            String error = "Failed to bulkDeleteQueues";
+                            log.warn(error, exceptionFactory.newException(reply.cause()));
+                            respondWith(StatusCode.INTERNAL_SERVER_ERROR, error, ctx.request());
+                            return;
                         }
                         if (reply.succeeded() && OK.equals(reply.result().body().getString(STATUS))) {
                             JsonObject resultObj = new JsonObject();
@@ -875,13 +889,17 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         }
     }
 
-    private void respondWith(StatusCode statusCode, String responseMessage, HttpServerRequest request) {
+    private void respondWith(StatusCode statusCode, @Nullable String responseMessage, HttpServerRequest request) {
         final HttpServerResponse response = request.response();
         log.info("Responding with status code {} and message '{}' to request '{}'", statusCode, responseMessage, request.uri());
         response.setStatusCode(statusCode.getStatusCode());
         response.setStatusMessage(statusCode.getStatusMessage());
         response.putHeader(CONTENT_TYPE, TEXT_PLAIN);
-        response.end(responseMessage);
+        if (responseMessage != null) {
+            response.end(responseMessage);
+        } else {
+            response.end();
+        }
     }
 
     private void respondWith(StatusCode statusCode, HttpServerRequest request) {
@@ -915,8 +933,15 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         request.pause();
         eventBus.request(redisquesAddress, buildGetLockOperation(queue), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
             request.resume();
+            if (reply.failed()) {
+                String error = "Received failed message for checkLocked operation";
+                log.warn(error, exceptionFactory.newException(reply.cause()));
+                respondWith(StatusCode.INTERNAL_SERVER_ERROR, error, request);
+                return;
+            }
             if (NO_SUCH_LOCK.equals(reply.result().body().getString(STATUS))) {
                 final HttpServerResponse response = request.response();
+                response.putHeader(CONTENT_TYPE, TEXT_PLAIN);
                 response.setStatusCode(StatusCode.CONFLICT.getStatusCode());
                 response.setStatusMessage("Queue must be locked to perform this operation");
                 response.end("Queue must be locked to perform this operation");
@@ -937,6 +962,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         } else {
             response.setStatusCode(statusCode.getStatusCode());
             response.setStatusMessage(statusCode.getStatusMessage());
+            response.putHeader(CONTENT_TYPE, TEXT_PLAIN);
             response.end(statusCode.getStatusMessage());
         }
     }

@@ -20,7 +20,7 @@ import static org.swisspush.redisques.util.RedisquesAPI.buildGetQueuesCountOpera
 /**
  * Tests for {@link GetQueuesCountAction} class.
  *
- * @author https://github.com/mcweba [Marc-Andre Weber]
+ * @author <a href="https://github.com/mcweba">Marc-André Weber</a>
  */
 @RunWith(VertxUnitRunner.class)
 public class GetQueuesCountActionTest extends AbstractQueueActionTest {
@@ -31,7 +31,7 @@ public class GetQueuesCountActionTest extends AbstractQueueActionTest {
         super.setup();
         action = new GetQueuesCountAction(vertx, redisProvider,
                 "addr", "q-", "prefix-", "c-", "l-",
-                new ArrayList<>(), Mockito.mock(QueueStatisticsCollector.class), Mockito.mock(Logger.class));
+                new ArrayList<>(), exceptionFactory, Mockito.mock(QueueStatisticsCollector.class), Mockito.mock(Logger.class));
     }
 
     @Test

@@ -65,7 +65,7 @@ public class DisableQueueNameEncodingTest extends AbstractTestCase {
 
         testVertx.deployVerticle(redisQues, new DeploymentOptions().setConfig(config), context.asyncAssertSuccess(event -> {
             deploymentId = event;
-            log.info("vert.x Deploy - " + redisQues.getClass().getSimpleName() + " was successful.");
+            log.info("vert.x Deploy - {} was successful.", redisQues.getClass().getSimpleName());
             jedis = new Jedis("localhost", 6379, 5000);
             try {
                 Thread.sleep(1000);

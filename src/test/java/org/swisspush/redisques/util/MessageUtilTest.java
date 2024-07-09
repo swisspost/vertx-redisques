@@ -17,7 +17,7 @@ import static org.mockito.Mockito.when;
 /**
  * Tests for {@link MessageUtil} class.
  *
- * @author https://github.com/mcweba [Marc-Andre Weber]
+ * @author <a href="https://github.com/mcweba">Marc-André Weber</a>
  */
 @RunWith(VertxUnitRunner.class)
 public class MessageUtilTest {

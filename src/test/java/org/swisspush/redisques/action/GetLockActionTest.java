@@ -5,6 +5,7 @@ import io.vertx.core.buffer.Buffer;
 import io.vertx.core.json.JsonObject;
 import io.vertx.ext.unit.TestContext;
 import io.vertx.ext.unit.junit.VertxUnitRunner;
+import io.vertx.redis.client.impl.types.SimpleStringType;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -20,7 +21,7 @@ import static org.swisspush.redisques.util.RedisquesAPI.buildGetLockOperation;
 /**
  * Tests for {@link GetLockAction} class.
  *
- * @author https://github.com/mcweba [Marc-Andre Weber]
+ * @author <a href="https://github.com/mcweba">Marc-André Weber</a>
  */
 @RunWith(VertxUnitRunner.class)
 public class GetLockActionTest extends AbstractQueueActionTest {
@@ -31,7 +32,7 @@ public class GetLockActionTest extends AbstractQueueActionTest {
         super.setup();
         action = new GetLockAction(vertx, redisProvider,
                 "addr", "q-", "prefix-", "c-", "l-",
-                new ArrayList<>(), Mockito.mock(QueueStatisticsCollector.class), Mockito.mock(Logger.class));
+                new ArrayList<>(), exceptionFactory, Mockito.mock(QueueStatisticsCollector.class), Mockito.mock(Logger.class));
     }
 
     @Test
@@ -41,7 +42,56 @@ public class GetLockActionTest extends AbstractQueueActionTest {
 
         action.execute(message);
 
-        verify(message, times(1)).reply(eq(new JsonObject(Buffer.buffer("{\"status\":\"error\"}"))));
+        verify(message, times(1)).fail(eq(0), eq("not ready"));
         verifyNoInteractions(redisAPI);
+    }
+
+    @Test
+    public void testGetLock(TestContext context){
+        when(message.body()).thenReturn(buildGetLockOperation("q1"));
+
+        doAnswer(invocation -> {
+            var handler = createResponseHandler(invocation,2);
+            handler.handle(Future.succeededFuture(SimpleStringType.create(new JsonObject().put("requestedBy", "UNKNOWN").put("timestamp", 1719931433522L).encode())));
+            return null;
+        }).when(redisAPI).hget(anyString(), anyString(), any());
+
+        action.execute(message);
+
+        verify(redisAPI, times(1)).hget(anyString(), anyString(), any());
+        verify(message, times(1)).reply(eq(new JsonObject(Buffer.buffer("{\"status\":\"ok\"," +
+                "\"value\":\"{\\\"requestedBy\\\":\\\"UNKNOWN\\\",\\\"timestamp\\\":1719931433522}\"}"))));
+    }
+
+    @Test
+    public void testGetLockNoSuchLock(TestContext context){
+        when(message.body()).thenReturn(buildGetLockOperation("q1"));
+
+        doAnswer(invocation -> {
+            var handler = createResponseHandler(invocation,2);
+            handler.handle(Future.succeededFuture());
+            return null;
+        }).when(redisAPI).hget(anyString(), anyString(), any());
+
+        action.execute(message);
+
+        verify(redisAPI, times(1)).hget(anyString(), anyString(), any());
+        verify(message, times(1)).reply(eq(new JsonObject(Buffer.buffer("{\"status\":\"No such lock\"}"))));
+    }
+
+    @Test
+    public void testGetLockHGETFail(TestContext context){
+        when(message.body()).thenReturn(buildGetLockOperation("q1"));
+
+        doAnswer(invocation -> {
+            var handler = createResponseHandler(invocation,2);
+            handler.handle(Future.failedFuture("booom"));
+            return null;
+        }).when(redisAPI).hget(anyString(), anyString(), any());
+
+        action.execute(message);
+
+        verify(redisAPI, times(1)).hget(anyString(), anyString(), any());
+        verify(message, times(1)).fail(eq(0), eq("booom"));
     }
 }

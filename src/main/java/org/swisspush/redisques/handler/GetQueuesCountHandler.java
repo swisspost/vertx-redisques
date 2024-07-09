@@ -16,7 +16,7 @@ import static org.swisspush.redisques.util.RedisquesAPI.VALUE;
 /**
  * Class GetQueuesCountHandler.
  *
- * @author https://github.com/mcweba [Marc-Andre Weber]
+ * @author <a href="https://github.com/mcweba">Marc-André Weber</a>
  */
 public class GetQueuesCountHandler implements Handler<AsyncResult<Response>> {
 

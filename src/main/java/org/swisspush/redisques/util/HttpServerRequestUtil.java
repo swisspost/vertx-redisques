@@ -15,7 +15,7 @@ import static org.swisspush.redisques.util.RedisquesAPI.PAYLOAD;
 /**
  * Util class to work with {@link HttpServerRequest}s
  *
- * @author https://github.com/mcweba [Marc-Andre Weber]
+ * @author <a href="https://github.com/mcweba">Marc-André Weber</a>
  */
 public class HttpServerRequestUtil {
 

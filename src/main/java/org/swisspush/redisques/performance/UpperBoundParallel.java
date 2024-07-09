@@ -158,7 +158,6 @@ public class UpperBoundParallel {
                             "No more resources to handle yet another request now.", null);
                     req.mentor.onError(ex, req.ctx);
                     assert req.numTokensAvailForOurself == 0 : "assert(numTokensAvailForOurself != " + req.numTokensAvailForOurself + ")";
-                    return;
                 } else {
                     log.error("If you see this log, some unreachable code got reached. numInProgress={}, hasStarted={}",
                         req.numInProgress, req.hasStarted);

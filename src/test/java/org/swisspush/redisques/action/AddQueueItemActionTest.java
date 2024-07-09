@@ -1,8 +1,6 @@
 package org.swisspush.redisques.action;
 
 import io.vertx.core.Future;
-import io.vertx.core.buffer.Buffer;
-import io.vertx.core.json.JsonObject;
 import io.vertx.ext.unit.TestContext;
 import io.vertx.ext.unit.junit.VertxUnitRunner;
 import org.junit.Before;
@@ -20,7 +18,7 @@ import static org.swisspush.redisques.util.RedisquesAPI.buildAddQueueItemOperati
 /**
  * Tests for {@link AddQueueItemAction} class.
  *
- * @author https://github.com/mcweba [Marc-Andre Weber]
+ * @author <a href="https://github.com/mcweba">Marc-André Weber</a>
  */
 @RunWith(VertxUnitRunner.class)
 public class AddQueueItemActionTest extends AbstractQueueActionTest {
@@ -31,7 +29,7 @@ public class AddQueueItemActionTest extends AbstractQueueActionTest {
         super.setup();
         action = new AddQueueItemAction(vertx, redisProvider,
                 "addr", "q-", "prefix-", "c-", "l-",
-                new ArrayList<>(), Mockito.mock(QueueStatisticsCollector.class), Mockito.mock(Logger.class));
+                new ArrayList<>(), exceptionFactory, Mockito.mock(QueueStatisticsCollector.class), Mockito.mock(Logger.class));
     }
 
     @Test
@@ -41,7 +39,40 @@ public class AddQueueItemActionTest extends AbstractQueueActionTest {
 
         action.execute(message);
 
-        verify(message, times(1)).reply(eq(new JsonObject(Buffer.buffer("{\"status\":\"error\"}"))));
+        verify(message, times(1)).fail(eq(0), eq("not ready"));
         verifyNoInteractions(redisAPI);
+    }
+
+    @Test
+    public void testAddQueueItem(TestContext context){
+        when(message.body()).thenReturn(buildAddQueueItemOperation("queue2", "fooBar"));
+
+        doAnswer(invocation -> {
+            var handler = createResponseHandler(invocation,1);
+            handler.handle(Future.succeededFuture());
+            return null;
+        }).when(redisAPI).rpush(anyList(), any());
+
+        action.execute(message);
+
+        verify(redisAPI, times(1)).rpush(anyList(), any());
+        verify(message, times(1)).reply(eq(STATUS_OK));
+
+    }
+
+    @Test
+    public void testAddQueueItemRPUSHFail(TestContext context){
+        when(message.body()).thenReturn(buildAddQueueItemOperation("queue2", "fooBar"));
+
+        doAnswer(invocation -> {
+            var handler = createResponseHandler(invocation,1);
+            handler.handle(Future.failedFuture("booom"));
+            return null;
+        }).when(redisAPI).rpush(anyList(), any());
+
+        action.execute(message);
+
+        verify(redisAPI, times(1)).rpush(anyList(), any());
+        verify(message, times(1)).fail(eq(0), eq("booom"));
     }
 }

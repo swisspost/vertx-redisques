@@ -4,6 +4,7 @@ import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonObject;
 import org.slf4j.Logger;
+import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.handler.GetQueueItemHandler;
 import org.swisspush.redisques.util.QueueConfiguration;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
@@ -19,11 +20,11 @@ public class GetQueueItemAction extends AbstractQueueAction {
     public GetQueueItemAction(
             Vertx vertx, RedisProvider redisProvider, String address, String queuesKey,
             String queuesPrefix, String consumersPrefix, String locksKey,
-            List<QueueConfiguration> queueConfigurations, QueueStatisticsCollector queueStatisticsCollector,
-            Logger log
+            List<QueueConfiguration> queueConfigurations, RedisQuesExceptionFactory exceptionFactory,
+            QueueStatisticsCollector queueStatisticsCollector, Logger log
     ) {
         super(vertx, redisProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey,
-                queueConfigurations, queueStatisticsCollector, log);
+                queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
     }
 
     @Override
@@ -31,10 +32,8 @@ public class GetQueueItemAction extends AbstractQueueAction {
         String key = queuesPrefix + event.body().getJsonObject(PAYLOAD).getString(QUEUENAME);
         int index = event.body().getJsonObject(PAYLOAD).getInteger(INDEX);
         var p = redisProvider.redis();
-        p.onSuccess(redisAPI -> {
-            redisAPI.lindex(key, String.valueOf(index), new GetQueueItemHandler(event));
-        });
-        p.onFailure(ex -> replyErrorMessageHandler(event).handle(ex));
+        p.onSuccess(redisAPI -> redisAPI.lindex(key, String.valueOf(index), new GetQueueItemHandler(event, exceptionFactory)));
+        p.onFailure(ex -> handleFail(event,"Operation GetQueueItemAction failed", ex));
     }
 
 }

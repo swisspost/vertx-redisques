@@ -4,6 +4,7 @@ import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonObject;
 import org.slf4j.Logger;
+import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.handler.AddQueueItemHandler;
 import org.swisspush.redisques.util.QueueConfiguration;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
@@ -19,10 +20,10 @@ public class AddQueueItemAction extends AbstractQueueAction {
     public AddQueueItemAction(
             Vertx vertx, RedisProvider redisProvider, String address, String queuesKey, String queuesPrefix,
             String consumersPrefix, String locksKey, List<QueueConfiguration> queueConfigurations,
-            QueueStatisticsCollector queueStatisticsCollector, Logger log
+            RedisQuesExceptionFactory exceptionFactory, QueueStatisticsCollector queueStatisticsCollector, Logger log
     ) {
         super(vertx, redisProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey,
-                queueConfigurations, queueStatisticsCollector, log);
+                queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
     }
 
     @Override
@@ -30,8 +31,8 @@ public class AddQueueItemAction extends AbstractQueueAction {
         String key1 = queuesPrefix + event.body().getJsonObject(PAYLOAD).getString(QUEUENAME);
         String valueAddItem = event.body().getJsonObject(PAYLOAD).getString(BUFFER);
         var p = redisProvider.redis();
-        p.onSuccess(redisAPI -> redisAPI.rpush(Arrays.asList(key1, valueAddItem), new AddQueueItemHandler(event)));
-        p.onFailure(ex -> replyErrorMessageHandler(event).handle(ex));
+        p.onSuccess(redisAPI -> redisAPI.rpush(Arrays.asList(key1, valueAddItem), new AddQueueItemHandler(event, exceptionFactory)));
+        p.onFailure(ex -> handleFail(event,"Operation AddQueueItemAction failed", ex));
     }
 
 }

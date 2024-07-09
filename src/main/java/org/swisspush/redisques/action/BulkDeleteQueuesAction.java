@@ -5,6 +5,7 @@ import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import org.slf4j.Logger;
+import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.util.QueueConfiguration;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 import org.swisspush.redisques.util.RedisProvider;
@@ -18,10 +19,10 @@ public class BulkDeleteQueuesAction extends AbstractQueueAction {
     public BulkDeleteQueuesAction(
             Vertx vertx, RedisProvider redisProvider, String address, String queuesKey, String queuesPrefix,
             String consumersPrefix, String locksKey, List<QueueConfiguration> queueConfigurations,
-            QueueStatisticsCollector queueStatisticsCollector, Logger log
+            RedisQuesExceptionFactory exceptionFactory, QueueStatisticsCollector queueStatisticsCollector, Logger log
     ) {
         super(vertx, redisProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey,
-                queueConfigurations, queueStatisticsCollector, log);
+                queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
     }
 
     @Override
@@ -49,11 +50,10 @@ public class BulkDeleteQueuesAction extends AbstractQueueAction {
             if (delManyReply.succeeded()) {
                 event.reply(createOkReply().put(VALUE, delManyReply.result().toLong()));
             } else {
-                log.error("Failed to bulkDeleteQueues", new Exception(delManyReply.cause()));
-                event.reply(createErrorReply());
+                handleFail(event, "Failed to bulkDeleteQueues", delManyReply.cause());
             }
         }));
-        p.onFailure(ex -> replyErrorMessageHandler(event).handle(ex));
+        p.onFailure(ex -> handleFail(event, "Operation BulkDeleteQueuesAction failed", ex));
     }
 
 }

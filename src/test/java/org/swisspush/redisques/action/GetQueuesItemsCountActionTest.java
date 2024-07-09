@@ -22,7 +22,7 @@ import static org.swisspush.redisques.util.RedisquesAPI.buildGetQueuesItemsCount
 /**
  * Tests for {@link GetQueuesItemsCountAction} class.
  *
- * @author https://github.com/mcweba [Marc-Andre Weber]
+ * @author <a href="https://github.com/mcweba">Marc-André Weber</a>
  */
 @RunWith(VertxUnitRunner.class)
 public class GetQueuesItemsCountActionTest extends AbstractQueueActionTest {

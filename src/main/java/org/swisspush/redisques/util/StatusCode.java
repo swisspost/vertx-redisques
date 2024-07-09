@@ -3,7 +3,7 @@ package org.swisspush.redisques.util;
 /**
  * Enum for HTTP status codes
  *
- * @author https://github.com/mcweba [Marc-Andre Weber]
+ * @author <a href="https://github.com/mcweba">Marc-André Weber</a>
  */
 public enum StatusCode {
     OK(200, "OK"),

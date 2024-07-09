@@ -16,7 +16,7 @@ import java.util.logging.Logger;
 /**
  * Custom implementation of a {@link AuthenticationProvider} using credentials from {@link RedisquesConfiguration}
  *
- * @author https://github.com/mcweba [Marc-Andre Weber]
+ * @author <a href="https://github.com/mcweba">Marc-André Weber</a>
  */
 public class RedisquesConfigurationAuthentication implements AuthenticationProvider {
 

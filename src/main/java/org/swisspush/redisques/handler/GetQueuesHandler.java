@@ -21,7 +21,7 @@ import static org.swisspush.redisques.util.RedisquesAPI.STATUS;
 import static org.swisspush.redisques.util.RedisquesAPI.VALUE;
 
 /**
- * @author https://github.com/mcweba [Marc-Andre Weber]
+ * @author <a href="https://github.com/mcweba">Marc-André Weber</a>
  */
 public class GetQueuesHandler implements Handler<AsyncResult<Response>> {
 
