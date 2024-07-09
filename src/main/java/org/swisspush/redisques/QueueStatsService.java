@@ -73,7 +73,7 @@ public class QueueStatsService {
     public <CTX> void getQueueStats(CTX mCtx, GetQueueStatsMentor<CTX> mentor) {
         if (!incomingRequestQuota.tryAcquire()) {
             Throwable ex = exceptionFactory.newReplyException(RECIPIENT_FAILURE, 429,
-                    "Server too busy to handle yet-another-queue-stats-request now");
+                    "Server too busy to handle yet-another-queue-stats-request now", null);
             vertx.runOnContext(v -> mentor.onError(ex, mCtx));
             return;
         }
