@@ -33,8 +33,7 @@ public class GetQueueItemHandler implements Handler<AsyncResult<Response>> {
     @Override
     public void handle(AsyncResult<Response> reply) {
         if(reply.failed()) {
-            log.warn("Concealed error", exceptionFactory.newException(reply.cause()));
-            event.fail(0, reply.cause().getMessage());
+            event.reply(exceptionFactory.newReplyException(io.vertx.core.eventbus.ReplyFailure.RECIPIENT_FAILURE, 0, null, reply.cause()));
         } else if (reply.result() != null) {
             event.reply(new JsonObject().put(STATUS, OK).put(VALUE, reply.result().toString()));
         } else {

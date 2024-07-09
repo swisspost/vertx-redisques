@@ -19,6 +19,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 
+import static io.vertx.core.eventbus.ReplyFailure.RECIPIENT_FAILURE;
 import static org.swisspush.redisques.util.RedisquesAPI.*;
 
 public abstract class AbstractQueueAction implements QueueAction {
@@ -60,9 +61,8 @@ public abstract class AbstractQueueAction implements QueueAction {
         };
     }
 
-    protected void handleFail(Message<JsonObject> event, String message, Throwable throwable) {
-        log.warn(message, exceptionFactory.newException(throwable));
-        event.fail(0, throwable.getMessage());
+    protected void handleFail(Message<JsonObject> event, String message, Throwable cause) {
+        event.reply(exceptionFactory.newReplyException(RECIPIENT_FAILURE, 0, null, cause));
     }
 
     protected long getMaxAgeTimestamp() {

@@ -8,6 +8,7 @@ import io.vertx.redis.client.Response;
 import org.slf4j.Logger;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 
+import static io.vertx.core.eventbus.ReplyFailure.RECIPIENT_FAILURE;
 import static org.slf4j.LoggerFactory.getLogger;
 import static org.swisspush.redisques.util.RedisquesAPI.NO_SUCH_LOCK;
 import static org.swisspush.redisques.util.RedisquesAPI.OK;
@@ -39,8 +40,7 @@ public class GetLockHandler implements Handler<AsyncResult<Response>> {
                 event.reply(new JsonObject().put(STATUS, NO_SUCH_LOCK));
             }
         } else {
-            log.warn("Concealed error", exceptionFactory.newException(reply.cause()));
-            event.fail(0, reply.cause().getMessage());
+            event.reply(exceptionFactory.newReplyException(RECIPIENT_FAILURE, 0, null, reply.cause()));
         }
     }
 

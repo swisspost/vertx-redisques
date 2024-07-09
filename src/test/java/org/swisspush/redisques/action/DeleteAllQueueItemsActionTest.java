@@ -2,6 +2,7 @@ package org.swisspush.redisques.action;
 
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
+import io.vertx.core.eventbus.ReplyException;
 import io.vertx.core.json.JsonObject;
 import io.vertx.ext.unit.TestContext;
 import io.vertx.ext.unit.junit.VertxUnitRunner;
@@ -82,7 +83,7 @@ public class DeleteAllQueueItemsActionTest extends AbstractQueueActionTest {
 
         action.execute(message);
 
-        verify(message, times(1)).fail(eq(0), eq("not ready"));
+        verify(message, times(1)).reply(isA(ReplyException.class));
         verifyNoInteractions(redisAPI);
     }
 
@@ -99,7 +100,7 @@ public class DeleteAllQueueItemsActionTest extends AbstractQueueActionTest {
         action.execute(message);
 
         verify(redisAPI, times(1)).del(anyList(), any());
-        verify(message, times(1)).fail(eq(0), eq("boooom"));
+        verify(message, times(1)).reply(isA(ReplyException.class));
     }
 
     @Test
@@ -122,6 +123,7 @@ public class DeleteAllQueueItemsActionTest extends AbstractQueueActionTest {
 
         verify(redisAPI, times(1)).del(anyList(), any());
         verify(redisAPI, times(1)).hdel(anyList(), any());
-        verify(message, times(1)).fail(eq(0), eq("boooom"));
+        verify(message, times(1)).reply(isA(ReplyException.class));
+        //verify(message, times(1)).fail(eq(0), eq("boooom"));
     }
 }
