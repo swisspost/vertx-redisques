@@ -28,7 +28,7 @@ import static org.hamcrest.CoreMatchers.hasItems;
 /**
  * Tests for the {@link RedisquesHttpRequestHandler} class respecting authentication
  *
- * @author https://github.com/mcweba [Marc-Andre Weber]
+ * @author <a href="https://github.com/mcweba">Marc-André Weber</a>
  */
 public class RedisquesAuthenticationHttpRequestHandlerTest extends AbstractTestCase {
     private static String deploymentId = "";

@@ -8,7 +8,7 @@ import org.slf4j.LoggerFactory;
 /**
  * Class RedisquesAPI listing the operations and response values which are supported in Redisques.
  *
- * @author https://github.com/mcweba [Marc-Andre Weber]
+ * @author <a href="https://github.com/mcweba">Marc-André Weber</a>
  */
 public class RedisquesAPI {
     public static final String OK = "ok";

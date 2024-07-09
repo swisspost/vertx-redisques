@@ -24,7 +24,7 @@ import java.util.stream.IntStream;
 /**
  * Tests for the {@link RedisOptions#setMaxWaitingHandlers(int)} method
  *
- * @author https://github.com/mcweba [Marc-Andre Weber]
+ * @author <a href="https://github.com/mcweba">Marc-André Weber</a>
  */
 @RunWith(VertxUnitRunner.class)
 public class MaxWaitingHandlersTest {

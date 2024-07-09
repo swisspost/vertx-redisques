@@ -62,73 +62,73 @@ public class QueueActionFactory {
         switch (queueOperation){
             case addQueueItem:
                 return new AddQueueItemAction(vertx, redisProvider, address, queuesKey, queuesPrefix,
-                        consumersPrefix, locksKey, queueConfigurations, queueStatisticsCollector, log);
+                        consumersPrefix, locksKey, queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
             case deleteQueueItem:
                 return new DeleteQueueItemAction(vertx, redisProvider, address, queuesKey, queuesPrefix,
-                        consumersPrefix, locksKey, queueConfigurations, queueStatisticsCollector, log);
+                        consumersPrefix, locksKey, queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
             case deleteAllQueueItems:
                 return new DeleteAllQueueItemsAction(vertx, redisProvider, address, queuesKey, queuesPrefix,
-                    consumersPrefix, locksKey, queueConfigurations, queueStatisticsCollector, log);
+                    consumersPrefix, locksKey, queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
             case bulkDeleteQueues:
                 return new BulkDeleteQueuesAction(vertx, redisProvider, address, queuesKey, queuesPrefix,
-                        consumersPrefix, locksKey, queueConfigurations, queueStatisticsCollector, log);
+                        consumersPrefix, locksKey, queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
             case replaceQueueItem:
                 return new ReplaceQueueItemAction(vertx, redisProvider, address, queuesKey, queuesPrefix,
-                        consumersPrefix, locksKey, queueConfigurations, queueStatisticsCollector, log);
+                        consumersPrefix, locksKey, queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
             case getQueueItem:
                 return new GetQueueItemAction(vertx, redisProvider, address, queuesKey, queuesPrefix,
-                        consumersPrefix, locksKey, queueConfigurations, queueStatisticsCollector, log);
+                        consumersPrefix, locksKey, queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
             case getQueueItems:
                 return new GetQueueItemsAction(vertx, redisProvider, address, queuesKey, queuesPrefix,
-                        consumersPrefix, locksKey, queueConfigurations, queueStatisticsCollector, log);
+                        consumersPrefix, locksKey, queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
             case getQueues:
                 return new GetQueuesAction(vertx, redisProvider, address, queuesKey, queuesPrefix,
-                        consumersPrefix, locksKey, queueConfigurations, queueStatisticsCollector, log);
+                        consumersPrefix, locksKey, queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
             case getQueuesCount:
                 return new GetQueuesCountAction(vertx, redisProvider, address, queuesKey, queuesPrefix,
-                        consumersPrefix, locksKey, queueConfigurations, queueStatisticsCollector, log);
+                        consumersPrefix, locksKey, queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
             case getQueueItemsCount:
                 return new GetQueueItemsCountAction(vertx, redisProvider, address, queuesKey, queuesPrefix,
-                        consumersPrefix, locksKey, queueConfigurations, queueStatisticsCollector, log);
+                        consumersPrefix, locksKey, queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
             case getQueuesItemsCount:
                 return new GetQueuesItemsCountAction(vertx, redisProvider, address, queuesKey, queuesPrefix,
                         consumersPrefix, locksKey, queueConfigurations, exceptionFactory,
                         getQueuesItemsCountRedisRequestQuota, queueStatisticsCollector, log);
             case enqueue:
                 return new EnqueueAction(vertx, redisProvider, address, queuesKey, queuesPrefix,
-                        consumersPrefix, locksKey, queueConfigurations, queueStatisticsCollector, log, memoryUsageProvider,
-                        memoryUsageLimitPercent);
+                        consumersPrefix, locksKey, queueConfigurations, exceptionFactory, queueStatisticsCollector, log,
+                        memoryUsageProvider, memoryUsageLimitPercent);
             case lockedEnqueue:
                 return new LockedEnqueueAction(vertx, redisProvider, address, queuesKey, queuesPrefix,
-                        consumersPrefix, locksKey, queueConfigurations, queueStatisticsCollector, log, memoryUsageProvider,
-                        memoryUsageLimitPercent);
+                        consumersPrefix, locksKey, queueConfigurations, exceptionFactory, queueStatisticsCollector, log,
+                        memoryUsageProvider, memoryUsageLimitPercent);
             case getLock:
                 return new GetLockAction(vertx, redisProvider, address, queuesKey, queuesPrefix,
-                        consumersPrefix, locksKey, queueConfigurations, queueStatisticsCollector, log);
+                        consumersPrefix, locksKey, queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
             case putLock:
                 return new PutLockAction(vertx, redisProvider, address, queuesKey, queuesPrefix,
-                        consumersPrefix, locksKey, queueConfigurations, queueStatisticsCollector, log);
+                        consumersPrefix, locksKey, queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
             case bulkPutLocks:
                 return new BulkPutLocksAction(vertx, redisProvider, address, queuesKey, queuesPrefix,
-                        consumersPrefix, locksKey, queueConfigurations, queueStatisticsCollector, log);
+                        consumersPrefix, locksKey, queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
             case getAllLocks:
                 return new GetAllLocksAction(vertx, redisProvider, address, queuesKey, queuesPrefix,
-                        consumersPrefix, locksKey, queueConfigurations, queueStatisticsCollector, log);
+                        consumersPrefix, locksKey, queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
             case deleteLock:
                 return new DeleteLockAction(vertx, redisProvider, address, queuesKey, queuesPrefix,
-                        consumersPrefix, locksKey, queueConfigurations, queueStatisticsCollector, log);
+                        consumersPrefix, locksKey, queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
             case bulkDeleteLocks:
                 return new BulkDeleteLocksAction(vertx, redisProvider, address, queuesKey, queuesPrefix,
-                        consumersPrefix, locksKey, queueConfigurations, queueStatisticsCollector, log);
+                        consumersPrefix, locksKey, queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
             case deleteAllLocks:
                 return new DeleteAllLocksAction(vertx, redisProvider, address, queuesKey, queuesPrefix,
-                        consumersPrefix, locksKey, queueConfigurations, queueStatisticsCollector, log);
+                        consumersPrefix, locksKey, queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
             case getQueuesSpeed:
                 return new GetQueuesSpeedAction(vertx, redisProvider, address, queuesKey, queuesPrefix,
-                        consumersPrefix, locksKey, queueConfigurations, queueStatisticsCollector, log);
+                        consumersPrefix, locksKey, queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
             case getQueuesStatistics:
                 return new GetQueuesStatisticsAction(vertx, redisProvider, address, queuesKey, queuesPrefix,
-                        consumersPrefix, locksKey, queueConfigurations, queueStatisticsCollector, log);
+                        consumersPrefix, locksKey, queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
             case setConfiguration:
                 return new SetConfigurationAction(configurationProvider, log);
             case getConfiguration:

@@ -22,7 +22,7 @@ import static org.hamcrest.CoreMatchers.equalTo;
 import static org.swisspush.redisques.util.RedisquesAPI.*;
 
 /**
- * @author https://github.com/mcweba [Marc-Andre Weber]
+ * @author <a href="https://github.com/mcweba">Marc-André Weber</a>
  */
 public class RedisQuesProcessorDelayedExecutionTest extends AbstractTestCase {
 
@@ -69,7 +69,7 @@ public class RedisQuesProcessorDelayedExecutionTest extends AbstractTestCase {
         RedisQues redisQues = new RedisQues();
         vertx.deployVerticle(redisQues, new DeploymentOptions().setConfig(config), context.asyncAssertSuccess(event -> {
             deploymentId = event;
-            log.info("vert.x Deploy - " + redisQues.getClass().getSimpleName() + " was successful.");
+            log.info("vert.x Deploy - {} was successful.", redisQues.getClass().getSimpleName());
             jedis = new Jedis("localhost", 6379, 5000);
         }));
     }

@@ -21,7 +21,7 @@ import static org.swisspush.redisques.util.RedisquesAPI.buildBulkPutLocksOperati
 /**
  * Tests for {@link BulkPutLocksAction} class.
  *
- * @author https://github.com/mcweba [Marc-Andre Weber]
+ * @author <a href="https://github.com/mcweba">Marc-André Weber</a>
  */
 @RunWith(VertxUnitRunner.class)
 public class BulkPutLocksActionTest extends AbstractQueueActionTest {
@@ -32,7 +32,7 @@ public class BulkPutLocksActionTest extends AbstractQueueActionTest {
         super.setup();
         action = new BulkPutLocksAction(vertx, redisProvider,
                 "addr", "q-", "prefix-", "c-", "l-",
-                new ArrayList<>(), Mockito.mock(QueueStatisticsCollector.class), Mockito.mock(Logger.class));
+                new ArrayList<>(), exceptionFactory, Mockito.mock(QueueStatisticsCollector.class), Mockito.mock(Logger.class));
     }
 
     @Test

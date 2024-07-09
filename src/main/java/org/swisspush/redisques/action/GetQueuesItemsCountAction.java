@@ -38,7 +38,7 @@ public class GetQueuesItemsCountAction extends AbstractQueueAction {
             Logger log
     ) {
         super(vertx, redisProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey, queueConfigurations,
-                queueStatisticsCollector, log);
+                exceptionFactory, queueStatisticsCollector, log);
         this.exceptionFactory = exceptionFactory;
         this.redisRequestQuota = redisRequestQuota;
     }

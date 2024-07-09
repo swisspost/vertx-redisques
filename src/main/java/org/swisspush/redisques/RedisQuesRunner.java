@@ -10,7 +10,7 @@ import org.swisspush.redisques.util.RedisquesConfiguration;
  * Deploys vertx-redisques to vert.x.
  * Used in the standalone scenario.
  *
- * @author https://github.com/mcweba [Marc-Andre Weber]
+ * @author <a href="https://github.com/mcweba">Marc-André Weber</a>
  */
 public class RedisQuesRunner {
 
@@ -20,7 +20,7 @@ public class RedisQuesRunner {
                 .httpRequestHandlerEnabled(true)
                 .redisReconnectAttempts(-1)
                 .redisPoolRecycleTimeoutMs(-1)
-                .redisReadyCheckIntervalMs(10000)
+                .redisReadyCheckIntervalMs(5000)
                 .build().asJsonObject();
 
         Vertx.vertx().deployVerticle(new RedisQues(), new DeploymentOptions().setConfig(configuration),

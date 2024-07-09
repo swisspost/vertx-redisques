@@ -6,6 +6,7 @@ import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonObject;
 import io.vertx.redis.client.Response;
 import org.slf4j.Logger;
+import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 
 import static org.slf4j.LoggerFactory.getLogger;
 import static org.swisspush.redisques.util.RedisquesAPI.ERROR;
@@ -15,25 +16,35 @@ import static org.swisspush.redisques.util.RedisquesAPI.STATUS;
 /**
  * Class ReplaceQueueItemHandler.
  *
- * @author baldim, https://github.com/mcweba [Marc-Andre Weber]
+ * @author baldim, <a href="https://github.com/mcweba">Marc-André Weber</a>
  */
 public class ReplaceQueueItemHandler implements Handler<AsyncResult<Response>> {
 
     private static final Logger log = getLogger(ReplaceQueueItemHandler.class);
     private final Message<JsonObject> event;
+    private final RedisQuesExceptionFactory exceptionFactory;
 
-    public ReplaceQueueItemHandler(Message<JsonObject> event) {
+    public ReplaceQueueItemHandler(Message<JsonObject> event, RedisQuesExceptionFactory exceptionFactory) {
         this.event = event;
+        this.exceptionFactory = exceptionFactory;
     }
 
     @Override
     public void handle(AsyncResult<Response> reply) {
         if(reply.succeeded()){
             event.reply(new JsonObject().put(STATUS, OK));
-        } else {
-            log.warn("Concealed error", new Exception(reply.cause()));
+        } else if(checkRedisErrorCodes(reply.cause().getMessage())) {
             event.reply(new JsonObject().put(STATUS, ERROR));
+        } else {
+            log.warn("Concealed error", exceptionFactory.newException(reply.cause()));
+            event.fail(0, reply.cause().getMessage());
         }
     }
 
+    private boolean checkRedisErrorCodes(String message) {
+        if(message == null) {
+            return false;
+        }
+        return message.contains("index out of range");
+    }
 }

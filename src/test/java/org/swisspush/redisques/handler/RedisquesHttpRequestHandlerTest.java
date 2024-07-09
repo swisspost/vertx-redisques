@@ -58,7 +58,7 @@ import static org.swisspush.redisques.util.RedisquesAPI.buildPutLockOperation;
 /**
  * Tests for the {@link RedisquesHttpRequestHandler} class
  *
- * @author https://github.com/mcweba [Marc-Andre Weber]
+ * @author <a href="https://github.com/mcweba">Marc-André Weber</a>
  */
 public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
     private static String deploymentId = "";
@@ -184,7 +184,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
 
         testVertx.deployVerticle(redisQues, new DeploymentOptions().setConfig(config), context.asyncAssertSuccess(event -> {
             deploymentId = event;
-            log.info("vert.x Deploy - " + redisQues.getClass().getSimpleName() + " was successful.");
+            log.info("vert.x Deploy - {} was successful.", redisQues.getClass().getSimpleName());
             jedis = new Jedis("localhost", 6379, 5000);
             delay(1000);
             async.complete();
@@ -706,6 +706,11 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         assertKeyCount(context, getQueuesRedisKeyPrefix() + queueName, 0);
 
         given().body(queueItemInvalid).when().post("/queuing/queues/" + queueName + "/").then().assertThat().statusCode(400);
+        assertKeyCount(context, getQueuesRedisKeyPrefix(), 0);
+        context.assertEquals(0L, jedis.llen(getQueuesRedisKeyPrefix() + queueName));
+
+        // this body creates a NullpointerException because there is no header property
+        given().body(configurationValid).when().post("/queuing/queues/" + queueName + "/").then().assertThat().statusCode(400);
         assertKeyCount(context, getQueuesRedisKeyPrefix(), 0);
         context.assertEquals(0L, jedis.llen(getQueuesRedisKeyPrefix() + queueName));
 

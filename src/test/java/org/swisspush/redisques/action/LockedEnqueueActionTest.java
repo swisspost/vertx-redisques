@@ -20,7 +20,7 @@ import static org.swisspush.redisques.util.RedisquesAPI.buildLockedEnqueueOperat
 /**
  * Tests for {@link LockedEnqueueAction} class.
  *
- * @author https://github.com/mcweba [Marc-Andre Weber]
+ * @author <a href="https://github.com/mcweba">Marc-André Weber</a>
  */
 @RunWith(VertxUnitRunner.class)
 public class LockedEnqueueActionTest extends AbstractQueueActionTest {
@@ -31,7 +31,8 @@ public class LockedEnqueueActionTest extends AbstractQueueActionTest {
         super.setup();
         action = new LockedEnqueueAction(vertx, redisProvider,
                 "addr", "q-", "prefix-", "c-", "l-",
-                new ArrayList<>(), Mockito.mock(QueueStatisticsCollector.class), Mockito.mock(Logger.class), memoryUsageProvider, 80);
+                new ArrayList<>(), exceptionFactory, Mockito.mock(QueueStatisticsCollector.class),
+                Mockito.mock(Logger.class), memoryUsageProvider, 80);
     }
 
     @Test

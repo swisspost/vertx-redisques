@@ -5,6 +5,7 @@ import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import org.slf4j.Logger;
+import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.handler.PutLockHandler;
 import org.swisspush.redisques.util.QueueConfiguration;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
@@ -20,10 +21,11 @@ public class PutLockAction extends AbstractQueueAction {
             Vertx vertx, RedisProvider redisProvider, String address, String queuesKey,
             String queuesPrefix, String consumersPrefix, String locksKey,
             List<QueueConfiguration> queueConfigurations,
+            RedisQuesExceptionFactory exceptionFactory,
             QueueStatisticsCollector queueStatisticsCollector, Logger log
     ) {
         super(vertx, redisProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey,
-                queueConfigurations, queueStatisticsCollector, log);
+                queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
     }
 
     @Override
@@ -36,10 +38,9 @@ public class PutLockAction extends AbstractQueueAction {
                 return;
             }
             var p = redisProvider.redis();
-            p.onSuccess(redisAPI -> {
-                redisAPI.hmset(buildLocksItems(locksKey, lockNames, lockInfo), new PutLockHandler(event));
-            });
-            p.onFailure(ex -> replyErrorMessageHandler(event).handle(ex));
+            p.onSuccess(redisAPI -> redisAPI.hmset(buildLocksItems(locksKey, lockNames, lockInfo),
+                    new PutLockHandler(event, exceptionFactory)));
+            p.onFailure(ex -> handleFail(event,"Operation PutLockAction failed", ex));
         } else {
             event.reply(createErrorReply().put(MESSAGE, "Property '" + REQUESTED_BY + "' missing"));
         }

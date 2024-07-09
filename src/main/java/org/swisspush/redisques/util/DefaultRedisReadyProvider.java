@@ -13,7 +13,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /**
  * Default implementation of the {@link RedisReadyProvider} based on the <code>INFO</code> command in Redis
  *
- * @author https://github.com/mcweba [Marc-Andre Weber]
+ * @author <a href="https://github.com/mcweba">Marc-André Weber</a>
  */
 public class DefaultRedisReadyProvider implements RedisReadyProvider {
 
@@ -29,9 +29,7 @@ public class DefaultRedisReadyProvider implements RedisReadyProvider {
      * @param updateIntervalMs interval in ms how often to update the "ready-state"
      */
     public DefaultRedisReadyProvider(Vertx vertx, int updateIntervalMs) {
-        vertx.setPeriodic(updateIntervalMs, l -> {
-           updateRedisReady.set(true);
-        });
+        vertx.setPeriodic(updateIntervalMs, l -> updateRedisReady.set(true));
     }
 
     @Override

@@ -513,7 +513,7 @@ public class QueueStatisticsCollector {
                     /* [TODO](https://github.com/swisspost/vertx-redisques/issues/198) */
                     vertx.executeBlocking(() -> {
                         return ctx.redisAPI.send(LLEN, queuePrefix + queueName);
-                    }).<Response>compose((Future<Response> rspWrappedInsideAFuture) -> {
+                    }).compose((Future<Response> rspWrappedInsideAFuture) -> {
                         return rspWrappedInsideAFuture;
                     }).<Void>compose((Response rsp) -> {
                         NumberType num = (NumberType) rsp;
@@ -544,19 +544,17 @@ public class QueueStatisticsCollector {
                 log.debug(fmt2, numQueues, durRedisRequestsMs);
             }
             if (ctx.queueLengthList.size() != ctx.queueNames.size()) {
-                return failedFuture(exceptionFactory.newException(""
-                    + "Unexpected queue length result with unequal size "
+                return failedFuture(exceptionFactory.newException("Unexpected queue length result with unequal size "
                     + ctx.queueNames.size() + " : " + ctx.queueLengthList.size()));
             }
             return succeededFuture();
-        }).<Void>compose((Void v) -> {
+        }).compose((Void v) -> {
             if (ctx.queueLengthList == null) {
                 assert false : "TODO I guess this unreachable code could be removed";
                 return failedFuture(exceptionFactory.newException("Unexpected queue length result: null"));
             }
             if (ctx.queueLengthList.size() != ctx.queueNames.size()) {
-                return failedFuture(exceptionFactory.newException(""
-                    + "Unexpected queue length result with unequal size "
+                return failedFuture(exceptionFactory.newException("Unexpected queue length result with unequal size "
                     + ctx.queueNames.size() + " : " + ctx.queueLengthList.size()));
             }
             return succeededFuture();
