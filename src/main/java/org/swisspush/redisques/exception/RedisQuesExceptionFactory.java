@@ -30,7 +30,7 @@ public interface RedisQuesExceptionFactory {
 
     public RuntimeException newRuntimeException(String message, Throwable cause);
 
-    public ReplyException newReplyException(ReplyFailure failureType, int failureCode, String msg);
+    public ReplyException newReplyException(ReplyFailure failureType, int failureCode, String msg, Throwable cause);
 
 
     /**
