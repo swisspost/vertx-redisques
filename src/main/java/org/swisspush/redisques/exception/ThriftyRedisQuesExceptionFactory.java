@@ -33,13 +33,13 @@ class ThriftyRedisQuesExceptionFactory implements RedisQuesExceptionFactory {
     }
 
     @Override
-    public ReplyException newReplyException(ReplyFailure failureType, int failureCode, String msg, Throwable cause) {
+    public ReplyException newReplyException(int failureCode, String msg, Throwable cause) {
         // There was once a fix in vertx for this (https://github.com/eclipse-vertx/vert.x/issues/4840)
         // but for whatever reason in our case we still see stack-trace recordings. Passing
         // this subclass to {@link io.vertx.core.eventbus.Message#reply(Object)} seems to
         // do the trick.
         if (msg == null && cause != null) msg = cause.getMessage();
-        return new ReplyException(failureType, failureCode, msg) {
+        return new ReplyException(ReplyFailure.RECIPIENT_FAILURE, failureCode, msg) {
             @Override public Throwable fillInStackTrace() { return this; }
         };
     }

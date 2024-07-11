@@ -8,7 +8,6 @@ import io.vertx.redis.client.Response;
 import org.slf4j.Logger;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 
-import static io.vertx.core.eventbus.ReplyFailure.RECIPIENT_FAILURE;
 import static org.slf4j.LoggerFactory.getLogger;
 import static org.swisspush.redisques.util.RedisquesAPI.ERROR;
 import static org.swisspush.redisques.util.RedisquesAPI.OK;
@@ -37,7 +36,7 @@ public class ReplaceQueueItemHandler implements Handler<AsyncResult<Response>> {
         } else if(checkRedisErrorCodes(reply.cause().getMessage())) {
             event.reply(new JsonObject().put(STATUS, ERROR));
         } else {
-            event.reply(exceptionFactory.newReplyException(RECIPIENT_FAILURE, 0, reply.cause().getMessage(), reply.cause()));
+            event.reply(exceptionFactory.newReplyException(null, reply.cause()));
         }
     }
 

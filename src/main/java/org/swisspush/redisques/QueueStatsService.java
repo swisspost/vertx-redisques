@@ -19,7 +19,6 @@ import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
 
-import static io.vertx.core.eventbus.ReplyFailure.RECIPIENT_FAILURE;
 import static java.lang.Long.compare;
 import static java.lang.System.currentTimeMillis;
 import static java.util.Collections.emptyList;
@@ -72,7 +71,7 @@ public class QueueStatsService {
 
     public <CTX> void getQueueStats(CTX mCtx, GetQueueStatsMentor<CTX> mentor) {
         if (!incomingRequestQuota.tryAcquire()) {
-            Throwable ex = exceptionFactory.newReplyException(RECIPIENT_FAILURE, 429,
+            Throwable ex = exceptionFactory.newReplyException(429,
                     "Server too busy to handle yet-another-queue-stats-request now", null);
             vertx.runOnContext(v -> mentor.onError(ex, mCtx));
             return;

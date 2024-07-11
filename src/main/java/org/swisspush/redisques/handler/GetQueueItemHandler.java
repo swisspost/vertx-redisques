@@ -33,7 +33,7 @@ public class GetQueueItemHandler implements Handler<AsyncResult<Response>> {
     @Override
     public void handle(AsyncResult<Response> reply) {
         if(reply.failed()) {
-            event.reply(exceptionFactory.newReplyException(io.vertx.core.eventbus.ReplyFailure.RECIPIENT_FAILURE, 0, null, reply.cause()));
+            event.reply(exceptionFactory.newReplyException(null, reply.cause()));
         } else if (reply.result() != null) {
             event.reply(new JsonObject().put(STATUS, OK).put(VALUE, reply.result().toString()));
         } else {
