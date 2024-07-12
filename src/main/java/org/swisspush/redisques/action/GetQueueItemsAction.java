@@ -37,9 +37,8 @@ public class GetQueueItemsAction extends AbstractQueueAction {
                 redisAPI.lrange(keyListRange, "0", String.valueOf(maxQueueItemCountIndex),
                         new GetQueueItemsHandler(event, queueItemCount));
             } else {
-                String msg = "Operation getQueueItems failed to extract queueItemCount";
-                log.warn(msg);
-                event.fail(0, msg);
+                event.reply(exceptionFactory.newReplyException(
+                    "Operation getQueueItems failed to extract queueItemCount", null));
             }
         }).onFailure(throwable -> handleFail(event, "Operation getQueueItems failed", throwable)))
                 .onFailure(throwable -> handleFail(event, "Operation getQueueItems failed", throwable));

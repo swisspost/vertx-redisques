@@ -2,6 +2,7 @@ package org.swisspush.redisques.action;
 
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
+import io.vertx.core.eventbus.ReplyException;
 import io.vertx.core.impl.future.FailedFuture;
 import io.vertx.core.impl.future.SucceededFuture;
 import io.vertx.core.json.JsonObject;
@@ -45,7 +46,7 @@ public class GetAllLocksActionTest extends AbstractQueueActionTest {
 
         action.execute(message);
 
-        verify(message, times(1)).fail(eq(0), eq("not ready"));
+        verify(message, times(1)).reply(isA(ReplyException.class));
         verifyNoInteractions(redisAPI);
     }
 
