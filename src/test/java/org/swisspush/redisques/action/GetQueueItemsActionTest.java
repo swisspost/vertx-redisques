@@ -1,6 +1,7 @@
 package org.swisspush.redisques.action;
 
 import io.vertx.core.Future;
+import io.vertx.core.eventbus.ReplyException;
 import io.vertx.ext.unit.TestContext;
 import io.vertx.ext.unit.junit.VertxUnitRunner;
 import io.vertx.redis.client.impl.types.SimpleStringType;
@@ -40,7 +41,7 @@ public class GetQueueItemsActionTest extends AbstractQueueActionTest {
 
         action.execute(message);
 
-        verify(message, times(1)).fail(eq(0), eq("not ready"));
+        verify(message, times(1)).reply(isA(ReplyException.class));
         verifyNoInteractions(redisAPI);
     }
 
@@ -52,7 +53,7 @@ public class GetQueueItemsActionTest extends AbstractQueueActionTest {
         action.execute(message);
 
         verify(redisAPI, times(1)).llen(anyString());
-        verify(message, times(1)).fail(eq(0), eq("boooom"));
+        verify(message, times(1)).reply(isA(ReplyException.class));
     }
 
     @Test
@@ -63,6 +64,6 @@ public class GetQueueItemsActionTest extends AbstractQueueActionTest {
         action.execute(message);
 
         verify(redisAPI, times(1)).llen(anyString());
-        verify(message, times(1)).fail(eq(0), eq("Operation getQueueItems failed to extract queueItemCount"));
+        verify(message, times(1)).reply(isA(ReplyException.class));
     }
 }

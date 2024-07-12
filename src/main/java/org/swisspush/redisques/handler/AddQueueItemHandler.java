@@ -33,8 +33,7 @@ public class AddQueueItemHandler implements Handler<AsyncResult<Response>> {
         if(reply.succeeded()){
             event.reply(new JsonObject().put(STATUS, OK));
         } else {
-            log.warn("Concealed error", exceptionFactory.newException(reply.cause()));
-            event.fail(0, reply.cause().getMessage());
+            event.reply(exceptionFactory.newReplyException(null, reply.cause()));
         }
     }
 }

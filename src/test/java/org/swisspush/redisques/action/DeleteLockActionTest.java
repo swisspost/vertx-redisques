@@ -1,6 +1,7 @@
 package org.swisspush.redisques.action;
 
 import io.vertx.core.Future;
+import io.vertx.core.eventbus.ReplyException;
 import io.vertx.ext.unit.TestContext;
 import io.vertx.ext.unit.junit.VertxUnitRunner;
 import io.vertx.redis.client.impl.types.SimpleStringType;
@@ -40,7 +41,7 @@ public class DeleteLockActionTest extends AbstractQueueActionTest {
 
         action.execute(message);
 
-        verify(message, times(1)).fail(eq(0), eq("not ready"));
+        verify(message, times(1)).reply(isA(ReplyException.class));
         verifyNoInteractions(redisAPI);
     }
 
@@ -110,6 +111,6 @@ public class DeleteLockActionTest extends AbstractQueueActionTest {
 
         verify(redisAPI, times(1)).exists(anyList(), any());
         verify(redisAPI, times(1)).hdel(anyList(), any());
-        verify(message, times(1)).fail(eq(0), eq("booom"));
+        verify(message, times(1)).reply(isA(ReplyException.class));
     }
 }

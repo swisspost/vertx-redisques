@@ -1,7 +1,6 @@
 package org.swisspush.redisques.exception;
 
 import io.vertx.core.eventbus.ReplyException;
-import io.vertx.core.eventbus.ReplyFailure;
 
 
 /**
@@ -30,7 +29,11 @@ public interface RedisQuesExceptionFactory {
 
     public RuntimeException newRuntimeException(String message, Throwable cause);
 
-    public ReplyException newReplyException(ReplyFailure failureType, int failureCode, String msg, Throwable cause);
+    default ReplyException newReplyException(String msg, Throwable cause) {
+        return newReplyException(0, msg, cause);
+    }
+
+    public ReplyException newReplyException(int failureCode, String msg, Throwable cause);
 
 
     /**

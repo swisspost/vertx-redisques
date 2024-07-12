@@ -19,6 +19,7 @@ import org.swisspush.redisques.util.RedisProvider;
 import java.util.Optional;
 
 import static org.mockito.Mockito.*;
+import static org.swisspush.redisques.exception.RedisQuesExceptionFactory.newWastefulExceptionFactory;
 
 public abstract class AbstractQueueActionTest {
 
@@ -40,7 +41,7 @@ public abstract class AbstractQueueActionTest {
     public void setup() {
         redisAPI = Mockito.mock(RedisAPI.class);
         redisProvider = Mockito.mock(RedisProvider.class);
-        exceptionFactory = Mockito.mock(RedisQuesExceptionFactory.class);
+        exceptionFactory = newWastefulExceptionFactory();
         when(redisProvider.redis()).thenReturn(Future.succeededFuture(redisAPI));
 
         memoryUsageProvider = Mockito.mock(MemoryUsageProvider.class);

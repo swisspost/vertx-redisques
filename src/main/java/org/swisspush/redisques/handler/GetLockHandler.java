@@ -39,8 +39,7 @@ public class GetLockHandler implements Handler<AsyncResult<Response>> {
                 event.reply(new JsonObject().put(STATUS, NO_SUCH_LOCK));
             }
         } else {
-            log.warn("Concealed error", exceptionFactory.newException(reply.cause()));
-            event.fail(0, reply.cause().getMessage());
+            event.reply(exceptionFactory.newReplyException(null, reply.cause()));
         }
     }
 

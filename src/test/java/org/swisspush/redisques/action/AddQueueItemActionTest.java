@@ -1,6 +1,7 @@
 package org.swisspush.redisques.action;
 
 import io.vertx.core.Future;
+import io.vertx.core.eventbus.ReplyException;
 import io.vertx.ext.unit.TestContext;
 import io.vertx.ext.unit.junit.VertxUnitRunner;
 import org.junit.Before;
@@ -12,6 +13,7 @@ import org.swisspush.redisques.util.QueueStatisticsCollector;
 
 import java.util.ArrayList;
 
+import static io.vertx.core.eventbus.ReplyFailure.RECIPIENT_FAILURE;
 import static org.mockito.Mockito.*;
 import static org.swisspush.redisques.util.RedisquesAPI.buildAddQueueItemOperation;
 
@@ -39,7 +41,7 @@ public class AddQueueItemActionTest extends AbstractQueueActionTest {
 
         action.execute(message);
 
-        verify(message, times(1)).fail(eq(0), eq("not ready"));
+        verify(message, times(1)).reply(isA(ReplyException.class));
         verifyNoInteractions(redisAPI);
     }
 
@@ -73,6 +75,6 @@ public class AddQueueItemActionTest extends AbstractQueueActionTest {
         action.execute(message);
 
         verify(redisAPI, times(1)).rpush(anyList(), any());
-        verify(message, times(1)).fail(eq(0), eq("booom"));
+        verify(message, times(1)).reply(isA(ReplyException.class));
     }
 }

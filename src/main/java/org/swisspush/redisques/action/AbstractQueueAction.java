@@ -60,9 +60,8 @@ public abstract class AbstractQueueAction implements QueueAction {
         };
     }
 
-    protected void handleFail(Message<JsonObject> event, String message, Throwable throwable) {
-        log.warn(message, exceptionFactory.newException(throwable));
-        event.fail(0, throwable.getMessage());
+    protected void handleFail(Message<JsonObject> event, String msg, Throwable cause) {
+        event.reply(exceptionFactory.newReplyException(msg, cause));
     }
 
     protected long getMaxAgeTimestamp() {

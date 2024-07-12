@@ -26,9 +26,9 @@ class WastefulRedisQuesExceptionFactory implements RedisQuesExceptionFactory {
     }
 
     @Override
-    public ReplyException newReplyException(ReplyFailure failureType, int failureCode, String msg, Throwable cause) {
+    public ReplyException newReplyException(int failureCode, String msg, Throwable cause) {
         if (msg == null && cause != null) msg = cause.getMessage();
-        ReplyException ex = new ReplyException(failureType, failureCode, msg);
+        ReplyException ex = new ReplyException(ReplyFailure.RECIPIENT_FAILURE, failureCode, msg);
         if (cause != null) ex.initCause(cause);
         return ex;
     }

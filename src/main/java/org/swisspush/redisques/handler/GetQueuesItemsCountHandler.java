@@ -5,7 +5,6 @@ import io.vertx.core.Handler;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.Message;
-import io.vertx.core.eventbus.ReplyFailure;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.redis.client.Command;
@@ -87,7 +86,7 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
             return;
         }
         if (redisRequestQuota.availablePermits() <= 0) {
-            event.reply(exceptionFactory.newReplyException(ReplyFailure.RECIPIENT_FAILURE, 429,
+            event.reply(exceptionFactory.newReplyException(429,
                     "Too many simultaneous '" + GetQueuesItemsCountHandler.class.getSimpleName() + "' requests in progress", null));
             return;
         }
