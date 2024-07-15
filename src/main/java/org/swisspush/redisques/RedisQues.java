@@ -230,12 +230,9 @@ public class RedisQues extends AbstractVerticle {
     private final Semaphore getQueuesItemsCountRedisRequestQuota;
 
     public RedisQues() {
-        this.exceptionFactory = newThriftyExceptionFactory();
+        this(null, null, null, newThriftyExceptionFactory(), new Semaphore(Integer.MAX_VALUE),
+                new Semaphore(Integer.MAX_VALUE), new Semaphore(Integer.MAX_VALUE), new Semaphore(Integer.MAX_VALUE));
         log.warn("Fallback to legacy behavior and allow up to {} simultaneous requests to redis", Integer.MAX_VALUE);
-        this.redisMonitoringReqQuota = new Semaphore(Integer.MAX_VALUE);
-        this.checkQueueRequestsQuota = new Semaphore(Integer.MAX_VALUE);
-        this.queueStatsRequestQuota = new Semaphore(Integer.MAX_VALUE);
-        this.getQueuesItemsCountRedisRequestQuota = new Semaphore(Integer.MAX_VALUE);
     }
 
     public RedisQues(
