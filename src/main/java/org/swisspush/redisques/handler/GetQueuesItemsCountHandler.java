@@ -69,8 +69,13 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
     @Override
     public void handle(AsyncResult<Response> handleQueues) {
         if (!handleQueues.succeeded()) {
-            log.warn("Concealed error", exceptionFactory.newException(handleQueues.cause()));
-            event.reply(new JsonObject().put(STATUS, ERROR));
+            Throwable ex = handleQueues.cause();
+            String exmsg = ex == null ? null : ex.getMessage();
+            int failureCode = 500;
+            if (exmsg != null && exmsg.contains("Redis waiting queue is full")) {
+                failureCode = 429;
+            }
+            event.reply(exceptionFactory.newReplyException(failureCode, null, ex));
             return;
         }
         var ctx = new Object(){
