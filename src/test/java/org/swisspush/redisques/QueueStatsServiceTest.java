@@ -31,9 +31,11 @@ public class QueueStatsServiceTest {
     private RedisquesConfiguration config;
     private DequeueStatisticCollector dequeueStatisticCollector;
 
+    /**
+     * Test setup for cases where dequeue stats are enabled.
+     */
     @Before
-    public void setUp() {
-        // Initialize Vertx and mock dependencies
+    public void setUpForEnabledDequeueStats() {
         vertx = Vertx.vertx();
         eventBus = Mockito.mock(EventBus.class);
         QueueStatisticsCollector queueStatisticsCollector = Mockito.mock(QueueStatisticsCollector.class);
@@ -42,25 +44,48 @@ public class QueueStatsServiceTest {
         Semaphore semaphore = new Semaphore(1);
         config = Mockito.spy(new RedisquesConfiguration());
 
-        // Create the QueueStatsService instance with mocked dependencies
+        // Ensure fetchQueueStats is true
         queueStatsService = Mockito.spy(new QueueStatsService(vertx, eventBus, "redisques", queueStatisticsCollector,
-                dequeueStatisticCollector, exceptionFactory, semaphore, config));
+                dequeueStatisticCollector, exceptionFactory, semaphore, true));
     }
 
+    /**
+     * Test setup for cases where dequeue stats are disabled.
+     */
+    @Before
+    public void setUpForDisabledDequeueStats() {
+        vertx = Vertx.vertx();
+        eventBus = Mockito.mock(EventBus.class);
+        QueueStatisticsCollector queueStatisticsCollector = Mockito.mock(QueueStatisticsCollector.class);
+        dequeueStatisticCollector = Mockito.mock(DequeueStatisticCollector.class);
+        RedisQuesExceptionFactory exceptionFactory = Mockito.mock(RedisQuesExceptionFactory.class);
+        Semaphore semaphore = new Semaphore(1);
+        config = Mockito.spy(new RedisquesConfiguration());
+
+        // Ensure fetchQueueStats is false
+        queueStatsService = Mockito.spy(new QueueStatsService(vertx, eventBus, "redisques", queueStatisticsCollector,
+                dequeueStatisticCollector, exceptionFactory, semaphore, false));
+    }
+
+    /**
+     * Test to verify that dequeue statistics are collected when the interval is greater than zero.
+     */
     @Test
     public void testDequeueStatsCalledWhenIntervalGreaterThanZero(TestContext testContext) {
-        // Mock the config so that getDequeueStatisticReportIntervalSec returns a value greater than 0
-        Mockito.when(config.getDequeueStatisticReportIntervalSec()).thenReturn(10); // Value greater than 0
+        setUpForEnabledDequeueStats();
 
-        // Mock the getAllDequeueStatistics method to return a successful Future
+        // Mock for enabling dequeue stats
+        Mockito.when(config.isDequeueStatsEnabled()).thenReturn(true);
+
+        // Mock method to return successful Future with dequeue statistics
         HashMap<String, DequeueStatistic> dequeueStatistics = new HashMap<>();
         dequeueStatistics.put("testQueue", new DequeueStatistic());
         Mockito.when(dequeueStatisticCollector.getAllDequeueStatistics()).thenReturn(Future.succeededFuture(dequeueStatistics));
 
-        // Set up async for the test
+        // Async setup for the test
         Async async = testContext.async();
 
-        // Mock a context and mentor
+        // Mock the context and mentor
         Object mockContext = new Object();
         QueueStatsService.GetQueueStatsMentor<Object> mentor = new QueueStatsService.GetQueueStatsMentor<>() {
             @Override
@@ -80,8 +105,8 @@ public class QueueStatsServiceTest {
 
             @Override
             public void onQueueStatistics(java.util.List<QueueStatsService.Queue> queues, Object ctx) {
-                // Assert the dequeue stats were attached
-                testContext.assertTrue(queues.get(0).getSize() >0);
+                testContext.assertNotNull(queues);
+                testContext.assertEquals(1, queues.size());
                 async.complete();
             }
 
@@ -91,7 +116,7 @@ public class QueueStatsServiceTest {
             }
         };
 
-        // Mock fetchQueueNamesAndSize to return a valid list of queues
+        // Mock fetchQueueNamesAndSize
         Mockito.doAnswer(invocation -> {
             BiConsumer<Throwable, QueueStatsService.GetQueueStatsRequest<Object>> callback = invocation.getArgument(1);
             QueueStatsService.GetQueueStatsRequest<Object> request = invocation.getArgument(0);
@@ -100,7 +125,7 @@ public class QueueStatsServiceTest {
             return null;
         }).when(queueStatsService).fetchQueueNamesAndSize(Mockito.any(), Mockito.any());
 
-        // Mock fetchRetryDetails to do nothing and call the next step
+        // Mock fetchRetryDetails
         Mockito.doAnswer(invocation -> {
             BiConsumer<Throwable, QueueStatsService.GetQueueStatsRequest<Object>> callback = invocation.getArgument(1);
             QueueStatsService.GetQueueStatsRequest<Object> request = invocation.getArgument(0);
@@ -108,31 +133,38 @@ public class QueueStatsServiceTest {
             return null;
         }).when(queueStatsService).fetchRetryDetails(Mockito.any(), Mockito.any());
 
-        // Call getQueueStats to trigger the flow
+        // Call the method getQueueStats
         queueStatsService.getQueueStats(mockContext, mentor);
 
-        // Use ArgumentCaptor to capture the arguments passed to attachDequeueStats
+        // Capture arguments passed to attachDequeueStats
         ArgumentCaptor<QueueStatsService.GetQueueStatsRequest<Object>> requestCaptor = ArgumentCaptor.forClass(QueueStatsService.GetQueueStatsRequest.class);
         ArgumentCaptor<BiConsumer<Throwable, QueueStatsService.GetQueueStatsRequest<Object>>> consumerCaptor = ArgumentCaptor.forClass(BiConsumer.class);
 
-        // Verify that attachDequeueStats was called with the correct arguments
+        // Verify that attachDequeueStats was called
         Mockito.verify(queueStatsService).attachDequeueStats(requestCaptor.capture(), consumerCaptor.capture());
 
-        // Assert that the arguments are not null and match expectations
+        // Verify that the request contains the correct queue
         testContext.assertNotNull(requestCaptor.getValue());
-        testContext.assertNotNull(consumerCaptor.getValue());
+        testContext.assertEquals("testQueue", requestCaptor.getValue().queues.get(0).getName());
+
+        // Verify that async completed correctly
+        testContext.assertTrue(async.count() == 0);
     }
 
+    /**
+     * Test to verify that dequeue statistics are not collected when the interval is zero or negative.
+     */
     @Test
     public void testDequeueStatsNotCalledWhenIntervalIsZeroOrNegative(TestContext testContext) {
-        // Mock the config so that getDequeueStatisticReportIntervalSec returns 0 or a negative value
-        Mockito.when(config.getDequeueStatisticReportIntervalSec()).thenReturn(0); // Value equal to 0
-        // Alternatively: Mockito.when(config.getDequeueStatisticReportIntervalSec()).thenReturn(-1); // For negative value
+        setUpForDisabledDequeueStats();
 
-        // Set up async for the test
+        // Mock the configuration to disable dequeue stats
+        Mockito.when(config.isDequeueStatsEnabled()).thenReturn(false);
+
+        // Async setup for the test
         Async async = testContext.async();
 
-        // Mock a context and mentor
+        // Mock the context and mentor
         Object mockContext = new Object();
         QueueStatsService.GetQueueStatsMentor<Object> mentor = new QueueStatsService.GetQueueStatsMentor<>() {
             @Override
@@ -152,7 +184,7 @@ public class QueueStatsServiceTest {
 
             @Override
             public void onQueueStatistics(java.util.List<QueueStatsService.Queue> queues, Object ctx) {
-                // Assert the dequeue stats were not attached
+                // Ensure that nextDequeueDueTimestampEpochMs is null since stats are not attached
                 testContext.assertTrue(queues.get(0).getNextDequeueDueTimestampEpochMs() == null);
                 async.complete();
             }
@@ -163,7 +195,7 @@ public class QueueStatsServiceTest {
             }
         };
 
-        // Mock fetchQueueNamesAndSize to return a valid list of queues
+        // Mock fetchQueueNamesAndSize
         Mockito.doAnswer(invocation -> {
             BiConsumer<Throwable, QueueStatsService.GetQueueStatsRequest<Object>> callback = invocation.getArgument(1);
             QueueStatsService.GetQueueStatsRequest<Object> request = invocation.getArgument(0);
@@ -172,7 +204,7 @@ public class QueueStatsServiceTest {
             return null;
         }).when(queueStatsService).fetchQueueNamesAndSize(Mockito.any(), Mockito.any());
 
-        // Mock fetchRetryDetails to do nothing and call the next step
+        // Mock fetchRetryDetails
         Mockito.doAnswer(invocation -> {
             BiConsumer<Throwable, QueueStatsService.GetQueueStatsRequest<Object>> callback = invocation.getArgument(1);
             QueueStatsService.GetQueueStatsRequest<Object> request = invocation.getArgument(0);
@@ -180,12 +212,13 @@ public class QueueStatsServiceTest {
             return null;
         }).when(queueStatsService).fetchRetryDetails(Mockito.any(), Mockito.any());
 
-        // Call getQueueStats to trigger the flow
+        // Call the method getQueueStats
         queueStatsService.getQueueStats(mockContext, mentor);
 
         // Verify that attachDequeueStats was NOT called
         Mockito.verify(queueStatsService, Mockito.never()).attachDequeueStats(Mockito.any(), Mockito.any());
 
-        async.complete();
+        // Verify that async completed correctly
+        async.awaitSuccess();
     }
 }

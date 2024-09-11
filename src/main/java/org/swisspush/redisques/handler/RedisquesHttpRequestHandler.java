@@ -138,7 +138,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         this.exceptionFactory = exceptionFactory;
         this.queueStatsService = new QueueStatsService(
                 vertx, eventBus, redisquesAddress, queueStatisticsCollector, dequeueStatisticCollector,
-                exceptionFactory, queueStatsRequestQuota,modConfig);
+                exceptionFactory, queueStatsRequestQuota,modConfig.isDequeueStatsEnabled());
 
         final String prefix = modConfig.getHttpRequestHandlerPrefix();
 
