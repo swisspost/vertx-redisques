@@ -11,7 +11,10 @@ import org.swisspush.redisques.util.DequeueStatisticCollector;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
@@ -49,13 +52,13 @@ public class QueueStatsService {
     private final Semaphore incomingRequestQuota;
 
     public QueueStatsService(
-            Vertx vertx,
-            EventBus eventBus,
-            String redisquesAddress,
-            QueueStatisticsCollector queueStatisticsCollector,
-            DequeueStatisticCollector dequeueStatisticCollector,
-            RedisQuesExceptionFactory exceptionFactory,
-            Semaphore incomingRequestQuota
+        Vertx vertx,
+        EventBus eventBus,
+        String redisquesAddress,
+        QueueStatisticsCollector queueStatisticsCollector,
+        DequeueStatisticCollector dequeueStatisticCollector,
+        RedisQuesExceptionFactory exceptionFactory,
+        Semaphore incomingRequestQuota
     ) {
         this.vertx = vertx;
         this.eventBus = eventBus;
@@ -94,10 +97,10 @@ public class QueueStatsService {
                 for (Queue q : req1.queues) req1.queueNames.add(q.name);
                 fetchRetryDetails(req1, (ex2, req2) -> {
                     if (ex2 != null) { onDone.accept(ex2, null); return; }
-                        attachDequeueStats(req2, (ex3, req3) -> {
-                            if (ex3 != null) { onDone.accept(ex3, null); return; }
-                            onDone.accept(null, req3.queues);
-                        });
+                    attachDequeueStats(req2, (ex3, req3) -> {
+                        if (ex3 != null) { onDone.accept(ex3, null); return; }
+                        onDone.accept(null, req3.queues);
+                    });
                 });
             });
         } catch (Exception ex) {
@@ -110,7 +113,7 @@ public class QueueStatsService {
         }
     }
 
-   private <CTX> void fetchQueueNamesAndSize(GetQueueStatsRequest<CTX> req, BiConsumer<Throwable, GetQueueStatsRequest<CTX>> onDone) {
+    private <CTX> void fetchQueueNamesAndSize(GetQueueStatsRequest<CTX> req, BiConsumer<Throwable, GetQueueStatsRequest<CTX>> onDone) {
         String filter = req.mentor.filter(req.mCtx);
         JsonObject operation = buildGetQueuesItemsCountOperation(filter);
         eventBus.<JsonObject>request(redisquesAddress, operation, ev -> {
@@ -157,7 +160,7 @@ public class QueueStatsService {
         });
     }
 
-   private <CTX> void fetchRetryDetails(GetQueueStatsRequest<CTX> req, BiConsumer<Throwable, GetQueueStatsRequest<CTX>> onDone) {
+    private <CTX> void fetchRetryDetails(GetQueueStatsRequest<CTX> req, BiConsumer<Throwable, GetQueueStatsRequest<CTX>> onDone) {
         long begGetQueueStatsMs = currentTimeMillis();
         assert req.queueNames != null;
         queueStatisticsCollector.getQueueStatistics(req.queueNames).onComplete( ev -> {
@@ -183,7 +186,7 @@ public class QueueStatsService {
         });
     }
 
-   private <CTX> void attachDequeueStats(GetQueueStatsRequest<CTX> req, BiConsumer<Throwable, GetQueueStatsRequest<CTX>> onDone) {
+    private <CTX> void attachDequeueStats(GetQueueStatsRequest<CTX> req, BiConsumer<Throwable, GetQueueStatsRequest<CTX>> onDone) {
         dequeueStatisticCollector.getAllDequeueStatistics().onSuccess(event -> {
             for (Queue queue : req.queues) {
                 if (event.containsKey(queue.name)) {
@@ -206,13 +209,13 @@ public class QueueStatsService {
     }
 
 
-    static class GetQueueStatsRequest<CTX> {
+    private static class GetQueueStatsRequest<CTX> {
         private CTX mCtx;
         private GetQueueStatsMentor<CTX> mentor;
         private List<String> queueNames;
         /* TODO: Why is 'queuesJsonArr' never accessed? Isn't this the reason of our class in the first place? */
         private JsonArray queuesJsonArr;
-        List<Queue> queues;
+        private List<Queue> queues;
     }
 
 
@@ -222,7 +225,7 @@ public class QueueStatsService {
         private Long lastDequeueAttemptEpochMs;
         private Long lastDequeueSuccessEpochMs;
         private Long nextDequeueDueTimestampEpochMs;
-        Queue(String name, long size){
+        private Queue(String name, long size){
             assert name != null;
             this.name = name;
             this.size = size;
