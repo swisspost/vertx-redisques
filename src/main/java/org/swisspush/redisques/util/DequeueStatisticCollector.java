@@ -11,6 +11,7 @@ import io.vertx.core.shareddata.SharedData;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Collections;
 import java.util.Map;
 
 public class DequeueStatisticCollector {
@@ -18,9 +19,11 @@ public class DequeueStatisticCollector {
     private final static String DEQUEUE_STATISTIC_DATA = "dequeueStatisticData";
     private final static String DEQUEUE_STATISTIC_LOCK_PREFIX = "dequeueStatisticLock.";
     private final SharedData sharedData;
+    private final boolean dequeueStatisticEnabled;
 
-    public DequeueStatisticCollector(Vertx vertx) {
+    public DequeueStatisticCollector(Vertx vertx, boolean dequeueStatisticEnabled) {
         this.sharedData = vertx.sharedData();
+        this.dequeueStatisticEnabled = dequeueStatisticEnabled;
     }
 
     /**
@@ -107,6 +110,10 @@ public class DequeueStatisticCollector {
     }
 
     public Future<Map<String, DequeueStatistic>> getAllDequeueStatistics() {
+        // Check if dequeue statistics are enabled
+        if (!dequeueStatisticEnabled) {
+            return Future.succeededFuture(Collections.emptyMap()); // Return an empty map to avoid NullPointerExceptions
+        }
         Promise<Map<String, DequeueStatistic>> promise = Promise.promise();
         sharedData.getAsyncMap(DEQUEUE_STATISTIC_DATA, (Handler<AsyncResult<AsyncMap<String, DequeueStatistic>>>) asyncResult -> {
             if (asyncResult.failed()) {

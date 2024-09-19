@@ -9,7 +9,6 @@ import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.util.DequeueStatistic;
 import org.swisspush.redisques.util.DequeueStatisticCollector;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
-import org.swisspush.redisques.util.RedisquesConfiguration;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -48,7 +47,6 @@ public class QueueStatsService {
     private final DequeueStatisticCollector dequeueStatisticCollector;
     private final RedisQuesExceptionFactory exceptionFactory;
     private final Semaphore incomingRequestQuota;
-    private final Boolean  fetchQueueStats;
 
     public QueueStatsService(
             Vertx vertx,
@@ -57,8 +55,7 @@ public class QueueStatsService {
             QueueStatisticsCollector queueStatisticsCollector,
             DequeueStatisticCollector dequeueStatisticCollector,
             RedisQuesExceptionFactory exceptionFactory,
-            Semaphore incomingRequestQuota,
-            Boolean fetchQueueStats
+            Semaphore incomingRequestQuota
     ) {
         this.vertx = vertx;
         this.eventBus = eventBus;
@@ -67,7 +64,6 @@ public class QueueStatsService {
         this.dequeueStatisticCollector = dequeueStatisticCollector;
         this.exceptionFactory = exceptionFactory;
         this.incomingRequestQuota = incomingRequestQuota;
-        this.fetchQueueStats = fetchQueueStats;
     }
 
     public <CTX> void getQueueStats(CTX mCtx, GetQueueStatsMentor<CTX> mentor) {
@@ -98,13 +94,10 @@ public class QueueStatsService {
                 for (Queue q : req1.queues) req1.queueNames.add(q.name);
                 fetchRetryDetails(req1, (ex2, req2) -> {
                     if (ex2 != null) { onDone.accept(ex2, null); return; }
-                    if (fetchQueueStats) {
                         attachDequeueStats(req2, (ex3, req3) -> {
                             if (ex3 != null) { onDone.accept(ex3, null); return; }
                             onDone.accept(null, req3.queues);
                         });
-                    }
-                    onDone.accept(null, req2.queues);
                 });
             });
         } catch (Exception ex) {
@@ -117,7 +110,7 @@ public class QueueStatsService {
         }
     }
 
-    <CTX> void fetchQueueNamesAndSize(GetQueueStatsRequest<CTX> req, BiConsumer<Throwable, GetQueueStatsRequest<CTX>> onDone) {
+   private <CTX> void fetchQueueNamesAndSize(GetQueueStatsRequest<CTX> req, BiConsumer<Throwable, GetQueueStatsRequest<CTX>> onDone) {
         String filter = req.mentor.filter(req.mCtx);
         JsonObject operation = buildGetQueuesItemsCountOperation(filter);
         eventBus.<JsonObject>request(redisquesAddress, operation, ev -> {
@@ -164,7 +157,7 @@ public class QueueStatsService {
         });
     }
 
-    <CTX> void fetchRetryDetails(GetQueueStatsRequest<CTX> req, BiConsumer<Throwable, GetQueueStatsRequest<CTX>> onDone) {
+   private <CTX> void fetchRetryDetails(GetQueueStatsRequest<CTX> req, BiConsumer<Throwable, GetQueueStatsRequest<CTX>> onDone) {
         long begGetQueueStatsMs = currentTimeMillis();
         assert req.queueNames != null;
         queueStatisticsCollector.getQueueStatistics(req.queueNames).onComplete( ev -> {
@@ -190,7 +183,7 @@ public class QueueStatsService {
         });
     }
 
-    <CTX> void attachDequeueStats(GetQueueStatsRequest<CTX> req, BiConsumer<Throwable, GetQueueStatsRequest<CTX>> onDone) {
+   private <CTX> void attachDequeueStats(GetQueueStatsRequest<CTX> req, BiConsumer<Throwable, GetQueueStatsRequest<CTX>> onDone) {
         dequeueStatisticCollector.getAllDequeueStatistics().onSuccess(event -> {
             for (Queue queue : req.queues) {
                 if (event.containsKey(queue.name)) {

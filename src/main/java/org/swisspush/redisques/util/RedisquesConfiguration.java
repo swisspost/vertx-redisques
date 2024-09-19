@@ -704,7 +704,9 @@ public class RedisquesConfiguration {
         return asJsonObject().toString();
     }
 
-    public boolean isDequeueStatsEnabled() { return getDequeueStatisticReportIntervalSec()>0; }
+    public boolean isDequeueStatsEnabled() {
+        return getDequeueStatisticReportIntervalSec() > 0;
+    }
 
     /**
      * RedisquesConfigurationBuilder class for simplified configuration.

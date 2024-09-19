@@ -311,10 +311,6 @@ public class RedisQues extends AbstractVerticle {
             this.configurationProvider = new DefaultRedisquesConfigurationProvider(vertx, config());
         }
 
-        if (this.dequeueStatisticCollector == null) {
-            this.dequeueStatisticCollector = new DequeueStatisticCollector(vertx);
-        }
-
         if (this.periodicSkipScheduler == null) {
             this.periodicSkipScheduler = new PeriodicSkipScheduler(vertx);
         }
@@ -323,10 +319,13 @@ public class RedisQues extends AbstractVerticle {
         log.info("Starting Redisques module with configuration: {}", configurationProvider.configuration());
 
         int dequeueStatisticReportIntervalSec = modConfig.getDequeueStatisticReportIntervalSec();
-        if (dequeueStatisticReportIntervalSec > 0) {
+        if (modConfig.isDequeueStatsEnabled()) {
             dequeueStatisticEnabled = true;
             Runnable publisher = newDequeueStatisticPublisher();
             vertx.setPeriodic(1000L * dequeueStatisticReportIntervalSec, time -> publisher.run());
+        }
+        if (this.dequeueStatisticCollector == null) {
+            this.dequeueStatisticCollector = new DequeueStatisticCollector(vertx,dequeueStatisticEnabled);
         }
         queuesKey = modConfig.getRedisPrefix() + "queues";
         queuesPrefix = modConfig.getRedisPrefix() + "queues:";
