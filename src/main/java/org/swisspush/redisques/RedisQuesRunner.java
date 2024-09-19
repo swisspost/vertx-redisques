@@ -21,7 +21,6 @@ public class RedisQuesRunner {
                 .redisReconnectAttempts(-1)
                 .redisPoolRecycleTimeoutMs(-1)
                 .redisReadyCheckIntervalMs(5000)
-                //.dequeueStatisticReportIntervalSec(10)
                 .build().asJsonObject();
 
         Vertx.vertx().deployVerticle(new RedisQues(), new DeploymentOptions().setConfig(configuration),
