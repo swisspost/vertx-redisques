@@ -1,4 +1,4 @@
-package org.swisspush.redisques;
+package org.swisspush.redisques.util;
 
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
@@ -10,8 +10,6 @@ import io.vertx.ext.unit.junit.VertxUnitRunner;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.swisspush.redisques.util.DequeueStatistic;
-import org.swisspush.redisques.util.DequeueStatisticCollector;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -33,6 +31,7 @@ public class DequeueStatisticCollectorTest {
         sharedData = mock(SharedData.class);
         asyncMap = mock(AsyncMap.class);
 
+        // Mock sharedData.getAsyncMap to return asyncMap
         doAnswer(invocation -> {
             io.vertx.core.Handler<io.vertx.core.AsyncResult<AsyncMap<String, DequeueStatistic>>> handler = invocation.getArgument(1);
             handler.handle(Future.succeededFuture(asyncMap));
@@ -41,19 +40,19 @@ public class DequeueStatisticCollectorTest {
 
         when(vertx.sharedData()).thenReturn(sharedData);
 
-        // Set up the enabled and disabled DequeueStatisticCollector
+        // Initialize DequeueStatisticCollector with enabled/disabled stats collection
         dequeueStatisticCollectorEnabled = new DequeueStatisticCollector(vertx, true);
         dequeueStatisticCollectorDisabled = new DequeueStatisticCollector(vertx, false);
     }
 
     @Test
     public void testGetAllDequeueStatisticsEnabled(TestContext context) {
-        // Mocking asyncMap.entries() to return a non-empty map
+        // Mock asyncMap.entries() to return a non-empty map
         Map<String, DequeueStatistic> dequeueStats = new HashMap<>();
         dequeueStats.put("queue1", new DequeueStatistic());
         when(asyncMap.entries()).thenReturn(Future.succeededFuture(dequeueStats));
 
-        // Test for when dequeue statistics are enabled
+        // Test when dequeue statistics are enabled
         Async async = context.async();
         dequeueStatisticCollectorEnabled.getAllDequeueStatistics().onComplete(result -> {
             context.assertTrue(result.succeeded());
@@ -68,7 +67,7 @@ public class DequeueStatisticCollectorTest {
 
     @Test
     public void testGetAllDequeueStatisticsDisabled(TestContext context) {
-        // Test for when dequeue statistics are disabled
+        // Test when dequeue statistics are disabled
         Async async = context.async();
         dequeueStatisticCollectorDisabled.getAllDequeueStatistics().onComplete(result -> {
             context.assertTrue(result.succeeded());
@@ -77,7 +76,53 @@ public class DequeueStatisticCollectorTest {
         });
 
         // Verify that sharedData and asyncMap were NOT used
-        verify(sharedData, never()).getAsyncMap(anyString(), any());
-        verify(asyncMap, never()).entries();
+        verifyNoInteractions(sharedData);
+        verifyNoInteractions(asyncMap);
+    }
+
+    @Test
+    public void testGetAllDequeueStatisticsAsyncMapFailure(TestContext context) {
+        // Simulate failure in sharedData.getAsyncMap
+        doAnswer(invocation -> {
+            io.vertx.core.Handler<io.vertx.core.AsyncResult<AsyncMap<String, DequeueStatistic>>> handler = invocation.getArgument(1);
+            handler.handle(Future.failedFuture(new RuntimeException("Failed to retrieve async map")));
+            return null;
+        }).when(sharedData).getAsyncMap(anyString(), any());
+
+        // Test when asyncMap retrieval fails
+        Async async = context.async();
+        dequeueStatisticCollectorEnabled.getAllDequeueStatistics().onComplete(result -> {
+            context.assertTrue(result.failed());
+            context.assertEquals("Failed to retrieve async map", result.cause().getMessage());
+            async.complete();
+        });
+
+        // Verify that sharedData.getAsyncMap was used, but asyncMap.entries() was not
+        verify(sharedData, times(1)).getAsyncMap(anyString(), any());
+        verifyNoInteractions(asyncMap);
+    }
+
+    @Test
+    public void testGetAllDequeueStatisticsEntriesFailure(TestContext context) {
+        // Simulate success in sharedData.getAsyncMap, but failure in asyncMap.entries
+        doAnswer(invocation -> {
+            io.vertx.core.Handler<io.vertx.core.AsyncResult<AsyncMap<String, DequeueStatistic>>> handler = invocation.getArgument(1);
+            handler.handle(Future.succeededFuture(asyncMap));
+            return null;
+        }).when(sharedData).getAsyncMap(anyString(), any());
+
+        when(asyncMap.entries()).thenReturn(Future.failedFuture(new RuntimeException("Failed to retrieve entries")));
+
+        // Test when asyncMap.entries fails
+        Async async = context.async();
+        dequeueStatisticCollectorEnabled.getAllDequeueStatistics().onComplete(result -> {
+            context.assertTrue(result.failed());
+            context.assertEquals("Failed to retrieve entries", result.cause().getMessage());
+            async.complete();
+        });
+
+        // Verify that sharedData.getAsyncMap and asyncMap.entries were used correctly
+        verify(sharedData, times(1)).getAsyncMap(anyString(), any());
+        verify(asyncMap, times(1)).entries();
     }
 }
