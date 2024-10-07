@@ -187,14 +187,6 @@ public class QueueStatsService {
     }
 
     private <CTX> void attachDequeueStats(GetQueueStatsRequest<CTX> req, BiConsumer<Throwable, GetQueueStatsRequest<CTX>> onDone) {
-        // Setup a lookup table as we need to find by name further below.
-        Map<String, JsonObject> detailsByName = new HashMap<>(req.queuesJsonArr.size());
-        for (var it = (Iterator<JsonObject>) (Object) req.queuesJsonArr.iterator(); it.hasNext(); ) {
-            JsonObject detailJson = it.next();
-            String name = detailJson.getString(MONITOR_QUEUE_NAME);
-            detailsByName.put(name, detailJson);
-        }
-
         dequeueStatisticCollector.getAllDequeueStatistics().onSuccess(event -> {
             for (Queue queue : req.queues) {
                 if (event.containsKey(queue.name)) {
@@ -221,6 +213,7 @@ public class QueueStatsService {
         private CTX mCtx;
         private GetQueueStatsMentor<CTX> mentor;
         private List<String> queueNames;
+        /* TODO: Why is 'queuesJsonArr' never accessed? Isn't this the reason of our class in the first place? */
         private JsonArray queuesJsonArr;
         private List<Queue> queues;
     }

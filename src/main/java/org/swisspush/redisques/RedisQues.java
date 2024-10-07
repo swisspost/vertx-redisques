@@ -230,12 +230,9 @@ public class RedisQues extends AbstractVerticle {
     private final Semaphore getQueuesItemsCountRedisRequestQuota;
 
     public RedisQues() {
-        this.exceptionFactory = newThriftyExceptionFactory();
+        this(null, null, null, newThriftyExceptionFactory(), new Semaphore(Integer.MAX_VALUE),
+                new Semaphore(Integer.MAX_VALUE), new Semaphore(Integer.MAX_VALUE), new Semaphore(Integer.MAX_VALUE));
         log.warn("Fallback to legacy behavior and allow up to {} simultaneous requests to redis", Integer.MAX_VALUE);
-        this.redisMonitoringReqQuota = new Semaphore(Integer.MAX_VALUE);
-        this.checkQueueRequestsQuota = new Semaphore(Integer.MAX_VALUE);
-        this.queueStatsRequestQuota = new Semaphore(Integer.MAX_VALUE);
-        this.getQueuesItemsCountRedisRequestQuota = new Semaphore(Integer.MAX_VALUE);
     }
 
     public RedisQues(
@@ -314,10 +311,6 @@ public class RedisQues extends AbstractVerticle {
             this.configurationProvider = new DefaultRedisquesConfigurationProvider(vertx, config());
         }
 
-        if (this.dequeueStatisticCollector == null) {
-            this.dequeueStatisticCollector = new DequeueStatisticCollector(vertx);
-        }
-
         if (this.periodicSkipScheduler == null) {
             this.periodicSkipScheduler = new PeriodicSkipScheduler(vertx);
         }
@@ -326,10 +319,13 @@ public class RedisQues extends AbstractVerticle {
         log.info("Starting Redisques module with configuration: {}", configurationProvider.configuration());
 
         int dequeueStatisticReportIntervalSec = modConfig.getDequeueStatisticReportIntervalSec();
-        if (dequeueStatisticReportIntervalSec > 0) {
+        if (modConfig.isDequeueStatsEnabled()) {
             dequeueStatisticEnabled = true;
             Runnable publisher = newDequeueStatisticPublisher();
             vertx.setPeriodic(1000L * dequeueStatisticReportIntervalSec, time -> publisher.run());
+        }
+        if (this.dequeueStatisticCollector == null) {
+            this.dequeueStatisticCollector = new DequeueStatisticCollector(vertx,dequeueStatisticEnabled);
         }
         queuesKey = modConfig.getRedisPrefix() + "queues";
         queuesPrefix = modConfig.getRedisPrefix() + "queues:";

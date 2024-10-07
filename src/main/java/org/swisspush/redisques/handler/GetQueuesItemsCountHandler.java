@@ -134,10 +134,10 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
                 var obj = new JsonObject().put(STATUS, OK).put(QUEUES, result);
                 long jsonCreateDurationMs = currentTimeMillis() - beginEpchMs;
                 if (jsonCreateDurationMs > 10) {
-                    log.info("Creating JSON with {} entries did block this tread for {}ms",
+                    log.info("Creating JSON with {} entries did block this thread for {}ms",
                             ctx.queueLengths.length, jsonCreateDurationMs);
                 }else{
-                    log.debug("Creating JSON with {} entries did block this tread for {}ms",
+                    log.debug("Creating JSON with {} entries did block this thread for {}ms",
                             ctx.queueLengths.length, jsonCreateDurationMs);
                 }
                 workerPromise.complete(obj);
