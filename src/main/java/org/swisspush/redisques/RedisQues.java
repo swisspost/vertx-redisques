@@ -332,7 +332,7 @@ public class RedisQues extends AbstractVerticle {
         consumersPrefix = modConfig.getRedisPrefix() + "consumers:";
         locksKey = modConfig.getRedisPrefix() + "locks";
         queueCheckLastexecKey = modConfig.getRedisPrefix() + "check:lastexec";
-        consumerLockTime = 2 * modConfig.getRefreshPeriod(); // lock is kept twice as long as its refresh interval -> never expires as long as the consumer ('we') are alive
+        consumerLockTime = 20 * modConfig.getRefreshPeriod(); // lock is kept twice as long as its refresh interval -> never expires as long as the consumer ('we') are alive
         timer = new RedisQuesTimer(vertx);
 
         if (redisProvider == null) {
@@ -670,7 +670,7 @@ public class RedisQues extends AbstractVerticle {
 
 
     private void registerQueueCheck() {
-        vertx.setPeriodic(configurationProvider.configuration().getCheckIntervalTimerMs(), periodicEvent -> {
+        periodicSkipScheduler.setPeriodic(configurationProvider.configuration().getCheckIntervalTimerMs(), "registerQueueCheck", periodicEvent -> {
             redisProvider.redis().compose((RedisAPI redisAPI) -> {
                 int checkInterval = configurationProvider.configuration().getCheckInterval();
                 return redisAPI.send(Command.SET, queueCheckLastexecKey, String.valueOf(currentTimeMillis()), "NX", "EX", String.valueOf(checkInterval));
@@ -1141,6 +1141,7 @@ public class RedisQues extends AbstractVerticle {
      * This uses a sorted set of queue names scored by last update timestamp.
      */
     private Future<Void> checkQueues() {
+        final long startTs = System.currentTimeMillis();
         final var ctx = new Object() {
             long limit;
             RedisAPI redisAPI;
@@ -1158,6 +1159,7 @@ public class RedisQues extends AbstractVerticle {
             redisAPI.zrangebyscore(Arrays.asList(queuesKey, "-inf", String.valueOf(ctx.limit)), p);
             return p.future();
         }).compose((Response queues) -> {
+            log.debug("zrangebyscore time used for queue: {}, is {}", queues, System.currentTimeMillis() - startTs);
             assert ctx.counter == null;
             assert ctx.iter == null;
             ctx.counter = new AtomicInteger(queues.size());
@@ -1166,6 +1168,7 @@ public class RedisQues extends AbstractVerticle {
             var p = Promise.<Void>promise();
             upperBoundParallel.request(checkQueueRequestsQuota, null, new UpperBoundParallel.Mentor<Void>() {
                 @Override public boolean runOneMore(BiConsumer<Throwable, Void> onDone, Void ctx_) {
+                    log.debug("upperBoundParallel time used for queue: {}, is {}", queues, System.currentTimeMillis() - startTs);
                     if (ctx.iter.hasNext()) {
                         var queueObject = ctx.iter.next();
                         // Check if the inactive queue is not empty (i.e. the key exists)
@@ -1183,13 +1186,14 @@ public class RedisQues extends AbstractVerticle {
                                     if (notifyConsumerEvent.failed()) log.warn("TODO error handling",
                                             exceptionFactory.newException("notifyConsumer(" + queueName + ") failed",
                                             notifyConsumerEvent.cause()));
+                                    log.debug("refreshRegistration time used for queue: {}, is {}", queues, System.currentTimeMillis() - startTs);
                                     onDone.accept(null, null);
                                 });
                             });
                         };
                         ctx.redisAPI.exists(Collections.singletonList(key), event -> {
                             if (event.failed() || event.result() == null) {
-                                log.error("RedisQues is unable to check existence of queue " + queueName,
+                                log.error("RedisQues is unable to check existence of queue {}", queueName,
                                     exceptionFactory.newException("redisAPI.exists(" + key + ") failed", event.cause()));
                                 onDone.accept(null, null);
                                 return;
