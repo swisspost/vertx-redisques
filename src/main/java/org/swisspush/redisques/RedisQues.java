@@ -1159,7 +1159,7 @@ public class RedisQues extends AbstractVerticle {
             redisAPI.zrangebyscore(Arrays.asList(queuesKey, "-inf", String.valueOf(ctx.limit)), p);
             return p.future();
         }).compose((Response queues) -> {
-            log.debug("zrangebyscore time used for queue: {}, is {}", queues, System.currentTimeMillis() - startTs);
+            log.debug("zrangebyscore time used is {} ms", System.currentTimeMillis() - startTs);
             assert ctx.counter == null;
             assert ctx.iter == null;
             ctx.counter = new AtomicInteger(queues.size());
@@ -1168,8 +1168,8 @@ public class RedisQues extends AbstractVerticle {
             var p = Promise.<Void>promise();
             upperBoundParallel.request(checkQueueRequestsQuota, null, new UpperBoundParallel.Mentor<Void>() {
                 @Override public boolean runOneMore(BiConsumer<Throwable, Void> onDone, Void ctx_) {
-                    log.debug("upperBoundParallel time used for queue: {}, is {}", queues, System.currentTimeMillis() - startTs);
                     if (ctx.iter.hasNext()) {
+                        final long perQueueStartTs = System.currentTimeMillis();
                         var queueObject = ctx.iter.next();
                         // Check if the inactive queue is not empty (i.e. the key exists)
                         final String queueName = queueObject.toString();
@@ -1186,7 +1186,7 @@ public class RedisQues extends AbstractVerticle {
                                     if (notifyConsumerEvent.failed()) log.warn("TODO error handling",
                                             exceptionFactory.newException("notifyConsumer(" + queueName + ") failed",
                                             notifyConsumerEvent.cause()));
-                                    log.debug("refreshRegistration time used for queue: {}, is {}", queues, System.currentTimeMillis() - startTs);
+                                    log.debug("refreshRegistration for queue {} time used is {} ms", queueName, System.currentTimeMillis() - perQueueStartTs);
                                     onDone.accept(null, null);
                                 });
                             });
@@ -1246,6 +1246,7 @@ public class RedisQues extends AbstractVerticle {
                             }
                         });
                     } else {
+                        log.debug("all queue items time used is {} ms", System.currentTimeMillis() - startTs);
                         onDone.accept(null, null);
                     }
                     return ctx.iter.hasNext();
