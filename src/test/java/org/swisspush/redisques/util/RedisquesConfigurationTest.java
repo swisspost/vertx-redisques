@@ -30,6 +30,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getProcessorAddress(), "redisques-processor");
         testContext.assertEquals(config.getMetricRefreshPeriod(), 10);
         testContext.assertEquals(config.getRefreshPeriod(), 10);
+        testContext.assertEquals(config.getConsumerLockMultiplier(), 2);
         testContext.assertEquals(config.getRedisHost(), "localhost");
         testContext.assertEquals(config.getRedisPort(), 6379);
         testContext.assertEquals(config.getRedisEnableTls(), false);
@@ -77,6 +78,7 @@ public class RedisquesConfigurationTest {
                         new QueueConfiguration().withPattern("vehicle-.*").withRetryIntervals(10, 20, 30, 60)
                 ))
                 .queueSpeedIntervalSec(1)
+                .consumerLockMultiplier(9)
                 .memoryUsageLimitPercent(80)
                 .publishMetricsAddress("eventbus-addr-1")
                 .metricStorageName("queue")
@@ -110,6 +112,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getMemoryUsageLimitPercent(), 80);
         testContext.assertEquals(config.getPublishMetricsAddress(), "eventbus-addr-1");
         testContext.assertEquals(config.getMetricStorageName(), "queue");
+        testContext.assertEquals(config.getConsumerLockMultiplier(), 9);
         // queue configurations
         testContext.assertEquals(config.getQueueConfigurations().size(), 1);
         QueueConfiguration queueConfiguration = config.getQueueConfigurations().get(0);
@@ -128,6 +131,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(json.getString(PROP_PROCESSOR_ADDRESS), "redisques-processor");
         testContext.assertEquals(json.getInteger(PROP_METRIC_REFRESH_PERIOD), 10);
         testContext.assertEquals(json.getInteger(PROP_REFRESH_PERIOD), 10);
+        testContext.assertEquals(json.getInteger(PROP_CONSUMERLOCKMULTIPLIER), 2);
         testContext.assertEquals(json.getString(PROP_REDIS_HOST), "localhost");
         testContext.assertEquals(json.getInteger(PROP_REDIS_PORT), 6379);
         testContext.assertFalse(json.getBoolean(PROP_REDIS_ENABLE_TLS));
@@ -178,6 +182,7 @@ public class RedisquesConfigurationTest {
                 .memoryUsageLimitPercent(55)
                 .dequeueStatisticReportIntervalSec(44)
                 .redisReadyCheckIntervalMs(5000)
+                .consumerLockMultiplier(3)
                 .publishMetricsAddress("eventbus-addr-1")
                 .metricStorageName("queue")
                 .build();
@@ -214,6 +219,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(json.getInteger(PROP_REDIS_READY_CHECK_INTERVAL_MS), 5000);
         testContext.assertEquals(json.getString(PROP_PUBLISH_METRICS_ADDRESS), "eventbus-addr-1");
         testContext.assertEquals(json.getString(PROP_METRIC_STORAGE_NAME), "queue");
+        testContext.assertEquals(json.getInteger(PROP_CONSUMERLOCKMULTIPLIER), 3);
         // queue configurations
         JsonArray queueConfigurationsJsonArray = json.getJsonArray(PROP_QUEUE_CONFIGURATIONS);
         List<JsonObject> queueConfigurationJsonObjects = queueConfigurationsJsonArray.getList();
@@ -233,6 +239,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getRedisPrefix(), "redisques:");
         testContext.assertEquals(config.getProcessorAddress(), "redisques-processor");
         testContext.assertEquals(config.getRefreshPeriod(), 10);
+        testContext.assertEquals(config.getConsumerLockMultiplier(), 2);
         testContext.assertEquals(config.getMetricRefreshPeriod(), 10);
         testContext.assertEquals(config.getRedisHost(), "localhost");
         testContext.assertEquals(config.getRedisPort(), 6379);
@@ -267,6 +274,7 @@ public class RedisquesConfigurationTest {
         json.put(PROP_REDIS_PREFIX, "new_redis-prefix");
         json.put(PROP_PROCESSOR_ADDRESS, "new_processor-address");
         json.put(PROP_REFRESH_PERIOD, 99);
+        json.put(PROP_CONSUMERLOCKMULTIPLIER, 91);
         json.put(PROP_METRIC_REFRESH_PERIOD, 55);
         json.put(PROP_REDIS_HOST, "newredishost");
         json.put(PROP_REDIS_PORT, 4321);
@@ -300,6 +308,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getRedisPrefix(), "new_redis-prefix");
         testContext.assertEquals(config.getProcessorAddress(), "new_processor-address");
         testContext.assertEquals(config.getRefreshPeriod(), 99);
+        testContext.assertEquals(config.getConsumerLockMultiplier(), 91);
         testContext.assertEquals(config.getMetricRefreshPeriod(), 55);
         testContext.assertEquals(config.getRedisHost(), "newredishost");
         testContext.assertEquals(config.getRedisPort(), 4321);

@@ -332,7 +332,7 @@ public class RedisQues extends AbstractVerticle {
         consumersPrefix = modConfig.getRedisPrefix() + "consumers:";
         locksKey = modConfig.getRedisPrefix() + "locks";
         queueCheckLastexecKey = modConfig.getRedisPrefix() + "check:lastexec";
-        consumerLockTime = 20 * modConfig.getRefreshPeriod(); // lock is kept twice as long as its refresh interval -> never expires as long as the consumer ('we') are alive
+        consumerLockTime = modConfig.getConsumerLockMultiplier() * modConfig.getRefreshPeriod(); // lock is kept twice as long as its refresh interval -> never expires as long as the consumer ('we') are alive
         timer = new RedisQuesTimer(vertx);
 
         if (redisProvider == null) {
