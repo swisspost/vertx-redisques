@@ -670,7 +670,7 @@ public class RedisQues extends AbstractVerticle {
 
 
     private void registerQueueCheck() {
-        periodicSkipScheduler.setPeriodic(configurationProvider.configuration().getCheckIntervalTimerMs(), "registerQueueCheck", periodicEvent -> {
+        periodicSkipScheduler.setPeriodic(configurationProvider.configuration().getCheckIntervalTimerMs(), "checkQueues", periodicEvent -> {
             redisProvider.redis().compose((RedisAPI redisAPI) -> {
                 int checkInterval = configurationProvider.configuration().getCheckInterval();
                 return redisAPI.send(Command.SET, queueCheckLastexecKey, String.valueOf(currentTimeMillis()), "NX", "EX", String.valueOf(checkInterval));
