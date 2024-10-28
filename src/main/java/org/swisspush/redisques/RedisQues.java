@@ -1186,7 +1186,9 @@ public class RedisQues extends AbstractVerticle {
                                     if (notifyConsumerEvent.failed()) log.warn("TODO error handling",
                                             exceptionFactory.newException("notifyConsumer(" + queueName + ") failed",
                                             notifyConsumerEvent.cause()));
-                                    log.debug("refreshRegistration for queue {} time used is {} ms", queueName, System.currentTimeMillis() - perQueueStartTs);
+                                    if (log.isTraceEnabled()) {
+                                        log.trace("refreshRegistration for queue {} time used is {} ms", queueName, System.currentTimeMillis() - perQueueStartTs);
+                                    }
                                     onDone.accept(null, null);
                                 });
                             });

@@ -131,7 +131,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(json.getString(PROP_PROCESSOR_ADDRESS), "redisques-processor");
         testContext.assertEquals(json.getInteger(PROP_METRIC_REFRESH_PERIOD), 10);
         testContext.assertEquals(json.getInteger(PROP_REFRESH_PERIOD), 10);
-        testContext.assertEquals(json.getInteger(PROP_CONSUMERLOCKMULTIPLIER), 2);
+        testContext.assertEquals(json.getInteger(PROP_CONSUMER_LOCK_MULTIPLIER), 2);
         testContext.assertEquals(json.getString(PROP_REDIS_HOST), "localhost");
         testContext.assertEquals(json.getInteger(PROP_REDIS_PORT), 6379);
         testContext.assertFalse(json.getBoolean(PROP_REDIS_ENABLE_TLS));
@@ -219,7 +219,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(json.getInteger(PROP_REDIS_READY_CHECK_INTERVAL_MS), 5000);
         testContext.assertEquals(json.getString(PROP_PUBLISH_METRICS_ADDRESS), "eventbus-addr-1");
         testContext.assertEquals(json.getString(PROP_METRIC_STORAGE_NAME), "queue");
-        testContext.assertEquals(json.getInteger(PROP_CONSUMERLOCKMULTIPLIER), 3);
+        testContext.assertEquals(json.getInteger(PROP_CONSUMER_LOCK_MULTIPLIER), 3);
         // queue configurations
         JsonArray queueConfigurationsJsonArray = json.getJsonArray(PROP_QUEUE_CONFIGURATIONS);
         List<JsonObject> queueConfigurationJsonObjects = queueConfigurationsJsonArray.getList();
@@ -274,7 +274,7 @@ public class RedisquesConfigurationTest {
         json.put(PROP_REDIS_PREFIX, "new_redis-prefix");
         json.put(PROP_PROCESSOR_ADDRESS, "new_processor-address");
         json.put(PROP_REFRESH_PERIOD, 99);
-        json.put(PROP_CONSUMERLOCKMULTIPLIER, 91);
+        json.put(PROP_CONSUMER_LOCK_MULTIPLIER, 91);
         json.put(PROP_METRIC_REFRESH_PERIOD, 55);
         json.put(PROP_REDIS_HOST, "newredishost");
         json.put(PROP_REDIS_PORT, 4321);

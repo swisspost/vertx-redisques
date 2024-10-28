@@ -90,7 +90,7 @@ public class RedisquesConfiguration {
     public static final String PROP_METRIC_STORAGE_NAME = "metric-storage-name";
     public static final String PROP_METRIC_REFRESH_PERIOD = "metric-refresh-period";
     public static final String PROP_REFRESH_PERIOD = "refresh-period";
-    public static final String PROP_CONSUMERLOCKMULTIPLIER = "consumer-lock-multiplier";
+    public static final String PROP_CONSUMER_LOCK_MULTIPLIER = "consumer-lock-multiplier";
     public static final String PROP_REDIS_HOST = "redisHost";
     public static final String PROP_REDIS_HOST_LIST = "redisHosts";
     public static final String PROP_REDIS_PORT = "redisPort";
@@ -383,7 +383,7 @@ public class RedisquesConfiguration {
         obj.put(PROP_METRIC_STORAGE_NAME, getMetricStorageName());
         obj.put(PROP_METRIC_REFRESH_PERIOD, getMetricRefreshPeriod());
         obj.put(PROP_REFRESH_PERIOD, getRefreshPeriod());
-        obj.put(PROP_CONSUMERLOCKMULTIPLIER, getConsumerLockMultiplier());
+        obj.put(PROP_CONSUMER_LOCK_MULTIPLIER, getConsumerLockMultiplier());
         obj.put(PROP_REDIS_HOST, getRedisHost());
         obj.put(PROP_REDIS_HOST_LIST, getRedisHosts());
         obj.put(PROP_REDIS_PORT, getRedisPort());
@@ -445,8 +445,8 @@ public class RedisquesConfiguration {
         if (json.containsKey(PROP_REFRESH_PERIOD)) {
             builder.refreshPeriod(json.getInteger(PROP_REFRESH_PERIOD));
         }
-        if (json.containsKey(PROP_CONSUMERLOCKMULTIPLIER)) {
-            builder.consumerLockMultiplier(json.getInteger(PROP_CONSUMERLOCKMULTIPLIER));
+        if (json.containsKey(PROP_CONSUMER_LOCK_MULTIPLIER)) {
+            builder.consumerLockMultiplier(json.getInteger(PROP_CONSUMER_LOCK_MULTIPLIER));
         }
         if (json.containsKey(PROP_REDIS_HOST)) {
             builder.redisHost(json.getString(PROP_REDIS_HOST));
