@@ -1248,7 +1248,6 @@ public class RedisQues extends AbstractVerticle {
                             }
                         });
                     } else {
-                        log.debug("all queue items time used is {} ms", System.currentTimeMillis() - startTs);
                         onDone.accept(null, null);
                     }
                     return ctx.iter.hasNext();
@@ -1263,6 +1262,7 @@ public class RedisQues extends AbstractVerticle {
                     ctx.counter = null;
                     ctx.iter = null;
                     // Mark this composition step as completed.
+                    log.debug("all queue items time used is {} ms", System.currentTimeMillis() - startTs);
                     p.complete();
                 }
             });
