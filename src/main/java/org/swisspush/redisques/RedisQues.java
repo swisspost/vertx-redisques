@@ -420,10 +420,10 @@ public class RedisQues extends AbstractVerticle {
         registerActiveQueueRegistrationRefresh();
         registerQueueCheck();
         registerMetricsGathering(configuration);
-        registerNotexpiredQueueCheck();
+        registerNotExpiredQueueCheck();
     }
 
-    private void registerNotexpiredQueueCheck() {
+    private void registerNotExpiredQueueCheck() {
         vertx.setPeriodic(20 * 1000, event -> {
             if (!log.isDebugEnabled()) {
                 return;
@@ -437,13 +437,16 @@ public class RedisQues extends AbstractVerticle {
                         }
                         Response keys = keysResult.result();
                         if (keys == null || keys.size() == 0) {
-                            log.debug("No consumers found to reset");
+                            log.debug("0 not expired consumers keys found");
                             return;
                         }
-                        for (Response response : keys) {
-                            log.debug(response.toString());
+
+                        if (log.isTraceEnabled()) {
+                            for (Response response : keys) {
+                                log.trace(response.toString());
+                            }
                         }
-                        log.debug("Key list end");
+                        log.debug("{} not expired consumers keys found", keys.size());
                     }))
                     .onFailure(throwable -> log.error("Redis: Unable to get redis keys of consumers", throwable));
         });
