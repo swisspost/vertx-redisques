@@ -430,12 +430,12 @@ public class RedisQues extends AbstractVerticle {
             }
             String keysPattern = consumersPrefix + "*";
             log.debug("RedisQues list not expired consumers keys:");
-            redisProvider.redis().onSuccess(redisAPI -> redisAPI.keys(keysPattern, keysResult -> {
-                        if (keysResult.failed() || keysResult.result() == null) {
+            redisProvider.redis().onSuccess(redisAPI -> redisAPI.scan(Arrays.asList("0", "MATCH", keysPattern, "COUNT", "1000"), keysResult -> {
+                        if (keysResult.failed() || keysResult.result() == null || keysResult.result().size() != 2) {
                             log.error("Unable to get redis keys of consumers", keysResult.cause());
                             return;
                         }
-                        Response keys = keysResult.result();
+                        Response keys = keysResult.result().get(1);
                         if (keys == null || keys.size() == 0) {
                             log.debug("0 not expired consumers keys found");
                             return;
@@ -446,7 +446,7 @@ public class RedisQues extends AbstractVerticle {
                                 log.trace(response.toString());
                             }
                         }
-                        log.debug("{} not expired consumers keys found", keys.size());
+                        log.debug("{} not expired consumers keys found, {} keys in myQueues list", keys.size(), myQueues.size());
                     }))
                     .onFailure(throwable -> log.error("Redis: Unable to get redis keys of consumers", throwable));
         });
