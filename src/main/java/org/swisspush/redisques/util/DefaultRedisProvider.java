@@ -8,6 +8,8 @@ import io.vertx.redis.client.RedisAPI;
 import io.vertx.redis.client.RedisClientType;
 import io.vertx.redis.client.RedisConnection;
 import io.vertx.redis.client.RedisOptions;
+import io.vertx.redis.client.Request;
+import io.vertx.redis.client.Response;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -65,6 +67,26 @@ public class DefaultRedisProvider implements RedisProvider {
 
         });
     }
+
+    @Override
+    public Future<List<Response>> execBatchCommand(List<Request> commands){
+        final Promise<List<Response>> promise = Promise.promise();
+        redis().onComplete(event -> {
+            if (event.failed()) {
+                promise.fail(new RuntimeException("redisProvider.execBatchCommand() failed", event.cause()));
+                return;
+            }
+            final List<Request> requestList = new ArrayList<>(commands);
+            Future<List<Response>> redisBatchPromise = client.batch(requestList);
+            redisBatchPromise.onFailure(throwable -> {
+                promise.fail(new RuntimeException("failed to execute bath commands", throwable));
+            });
+
+            redisBatchPromise.onSuccess(promise::complete);
+        });
+        return promise.future();
+    }
+
 
     private boolean reconnectEnabled() {
         return configurationProvider.configuration().getRedisReconnectAttempts() != 0;
