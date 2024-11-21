@@ -578,6 +578,7 @@ public class RedisQues extends AbstractVerticle {
                     }
                     @Override public boolean onError(Throwable ex, Iterator<Map.Entry<String, QueueState>> iter) {
                         if (log.isWarnEnabled()) log.warn("TODO error handling", exceptionFactory.newException(ex));
+                        onPeriodicDone.run();
                         return false;
                     }
                     @Override public void onDone(Iterator<Map.Entry<String, QueueState>> iter) {
