@@ -2,9 +2,10 @@ package org.swisspush.redisques.util;
 
 public enum MetricMeter {
 
-    ENQUEUE_SUCCESS("redisques.enqueue.success", "Overall count of queue items to be enqueued sucessfully"),
+    ENQUEUE_SUCCESS("redisques.enqueue.success", "Overall count of queue items to be enqueued successfully"),
     ENQUEUE_FAIL("redisques.enqueue.fail", "Overall count of queue items which could not be enqueued"),
-    DEQUEUE("redisques.dequeue", "Overall count of queue items to be dequeued from the queues");
+    DEQUEUE("redisques.dequeue", "Overall count of queue items to be dequeued from the queues"),
+    ACTIVE_QUEUES("redisques.active.queues", "Count of active queues");
 
     private final String id;
     private final String description;

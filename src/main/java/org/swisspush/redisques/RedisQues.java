@@ -24,6 +24,7 @@ import org.slf4j.LoggerFactory;
 import org.swisspush.redisques.action.QueueAction;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.handler.RedisquesHttpRequestHandler;
+import org.swisspush.redisques.metrics.PeriodicMetricsCollector;
 import org.swisspush.redisques.performance.UpperBoundParallel;
 import org.swisspush.redisques.scheduling.PeriodicSkipScheduler;
 import org.swisspush.redisques.util.*;
@@ -331,6 +332,18 @@ public class RedisQues extends AbstractVerticle {
         });
     }
 
+    private void initMicrometerMetrics(RedisquesConfiguration modConfig) {
+        if(meterRegistry == null) {
+            meterRegistry = BackendRegistries.getDefaultNow();
+        }
+        dequeueCounter =  Counter.builder(MetricMeter.DEQUEUE.getId())
+                .description(MetricMeter.DEQUEUE.getDescription()).register(meterRegistry);
+
+        String address = modConfig.getAddress();
+        int metricRefreshPeriod = modConfig.getMetricRefreshPeriod();
+        new PeriodicMetricsCollector(vertx, address, meterRegistry, metricRefreshPeriod);
+    }
+
     @Override
     public void start(Promise<Void> promise) {
         log.info("Started with UID {}", uid);
@@ -347,11 +360,7 @@ public class RedisQues extends AbstractVerticle {
         log.info("Starting Redisques module with configuration: {}", configurationProvider.configuration());
 
         if(configurationProvider.configuration().getMicrometerMetricsEnabled()) {
-            if(meterRegistry == null) {
-                meterRegistry = BackendRegistries.getDefaultNow();
-            }
-            dequeueCounter =  Counter.builder(MetricMeter.DEQUEUE.getId())
-                    .description(MetricMeter.DEQUEUE.getDescription()).register(meterRegistry);
+            initMicrometerMetrics(modConfig);
         }
 
         int dequeueStatisticReportIntervalSec = modConfig.getDequeueStatisticReportIntervalSec();
