@@ -1050,6 +1050,7 @@ The collected metrics include:
 | redisques_enqueue_fail_total    | Overall count of queue items to be enqueued                 |
 | redisques_dequeue_total         | Overall count of queue items to be dequeued from the queues |
 | redisques_active_queues         | Overall count of active queues                              |
+| redisques_max_queue_size        | Amount of queue items of the biggest queue                  |
 
 ### Testing locally
 When you include redisques in you project, you probably already have the configuration for publishing the metrics.

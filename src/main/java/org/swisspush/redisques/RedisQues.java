@@ -228,7 +228,7 @@ public class RedisQues extends AbstractVerticle {
     private RedisquesConfigurationProvider configurationProvider;
     private RedisMonitor redisMonitor;
 
-    private MeterRegistry meterRegistry = null;
+    private MeterRegistry meterRegistry;
     private Counter dequeueCounter;
 
     private Map<QueueOperation, QueueAction> queueActions = new HashMap<>();
@@ -332,18 +332,6 @@ public class RedisQues extends AbstractVerticle {
         });
     }
 
-    private void initMicrometerMetrics(RedisquesConfiguration modConfig) {
-        if(meterRegistry == null) {
-            meterRegistry = BackendRegistries.getDefaultNow();
-        }
-        dequeueCounter =  Counter.builder(MetricMeter.DEQUEUE.getId())
-                .description(MetricMeter.DEQUEUE.getDescription()).register(meterRegistry);
-
-        String address = modConfig.getAddress();
-        int metricRefreshPeriod = modConfig.getMetricRefreshPeriod();
-        new PeriodicMetricsCollector(vertx, address, meterRegistry, metricRefreshPeriod);
-    }
-
     @Override
     public void start(Promise<Void> promise) {
         log.info("Started with UID {}", uid);
@@ -396,6 +384,18 @@ public class RedisQues extends AbstractVerticle {
         });
     }
 
+    private void initMicrometerMetrics(RedisquesConfiguration modConfig) {
+        if(meterRegistry == null) {
+            meterRegistry = BackendRegistries.getDefaultNow();
+        }
+        dequeueCounter =  Counter.builder(MetricMeter.DEQUEUE.getId())
+                .description(MetricMeter.DEQUEUE.getDescription()).register(meterRegistry);
+
+        String address = modConfig.getAddress();
+        int metricRefreshPeriod = modConfig.getMetricRefreshPeriod();
+        new PeriodicMetricsCollector(vertx, address, meterRegistry, metricRefreshPeriod);
+    }
+
     private void initialize() {
         RedisquesConfiguration configuration = configurationProvider.configuration();
         this.queueStatisticsCollector = new QueueStatisticsCollector(
@@ -404,7 +404,7 @@ public class RedisQues extends AbstractVerticle {
 
         RedisquesHttpRequestHandler.init(
             vertx, configuration, queueStatisticsCollector, dequeueStatisticCollector,
-            exceptionFactory, queueStatsRequestQuota);
+            exceptionFactory, queueStatsRequestQuota, meterRegistry);
 
         // only initialize memoryUsageProvider when not provided in the constructor
         if (memoryUsageProvider == null) {
