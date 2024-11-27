@@ -1,14 +1,13 @@
 package org.swisspush.redisques.action;
 
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonObject;
 import org.slf4j.Logger;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
-import org.swisspush.redisques.util.MemoryUsageProvider;
-import org.swisspush.redisques.util.QueueConfiguration;
-import org.swisspush.redisques.util.QueueStatisticsCollector;
-import org.swisspush.redisques.util.RedisProvider;
+import org.swisspush.redisques.util.*;
 
 import java.util.Arrays;
 import java.util.List;
@@ -19,17 +18,24 @@ public class EnqueueAction extends AbstractQueueAction {
 
     private final MemoryUsageProvider memoryUsageProvider;
     private final int memoryUsageLimitPercent;
+    private Counter enqueueCounterSuccess;
+    private Counter enqueueCounterFail;
 
     public EnqueueAction(
             Vertx vertx, RedisProvider redisProvider, String address, String queuesKey, String queuesPrefix,
             String consumersPrefix, String locksKey, List<QueueConfiguration> queueConfigurations,
             RedisQuesExceptionFactory exceptionFactory, QueueStatisticsCollector queueStatisticsCollector, Logger log,
-            MemoryUsageProvider memoryUsageProvider, int memoryUsageLimitPercent
+            MemoryUsageProvider memoryUsageProvider, int memoryUsageLimitPercent, MeterRegistry meterRegistry
     ) {
         super(vertx, redisProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey,
                 queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
         this.memoryUsageProvider = memoryUsageProvider;
         this.memoryUsageLimitPercent = memoryUsageLimitPercent;
+
+        if(meterRegistry != null) {
+            enqueueCounterSuccess =  Counter.builder(MetricMeter.ENQUEUE_SUCCESS.getId()).description(MetricMeter.ENQUEUE_SUCCESS.getDescription()).register(meterRegistry);
+            enqueueCounterFail =  Counter.builder(MetricMeter.ENQUEUE_FAIL.getId()).description(MetricMeter.ENQUEUE_FAIL.getDescription()).register(meterRegistry);
+        }
     }
 
     @Override
@@ -38,6 +44,7 @@ public class EnqueueAction extends AbstractQueueAction {
 
         if (isMemoryUsageLimitReached()) {
             log.warn("Failed to enqueue into queue {} because the memory usage limit is reached", queueName);
+            incrEnqueueFailCount();
             event.reply(createErrorReply().put(MESSAGE, MEMORY_FULL));
             return;
         }
@@ -60,6 +67,8 @@ public class EnqueueAction extends AbstractQueueAction {
                     notifyConsumer(queueName);
                     reply.put(STATUS, OK);
                     reply.put(MESSAGE, "enqueued");
+
+                    incrEnqueueSuccessCount();
 
                     // feature EN-queue slow-down (the larger the queue the longer we delay "OK" response)
                     long delayReplyMillis = 0;
@@ -88,7 +97,20 @@ public class EnqueueAction extends AbstractQueueAction {
         });
     }
 
+    private void incrEnqueueSuccessCount() {
+        if(enqueueCounterSuccess != null) {
+            enqueueCounterSuccess.increment();
+        }
+    }
+
+    protected void incrEnqueueFailCount() {
+        if(enqueueCounterFail != null) {
+            enqueueCounterFail.increment();
+        }
+    }
+
     private void replyError(Message<JsonObject> event, String queueName, Throwable ex) {
+        incrEnqueueFailCount();
         String message = "RedisQues QUEUE_ERROR: Error while enqueueing message into queue " + queueName;
         log.error(message, new Exception(ex));
         JsonObject reply = new JsonObject();

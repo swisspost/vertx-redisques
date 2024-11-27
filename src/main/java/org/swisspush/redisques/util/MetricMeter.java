@@ -1,0 +1,24 @@
+package org.swisspush.redisques.util;
+
+public enum MetricMeter {
+
+    ENQUEUE_SUCCESS("redisques.enqueue.success", "Overall count of queue items to be enqueued sucessfully"),
+    ENQUEUE_FAIL("redisques.enqueue.fail", "Overall count of queue items which could not be enqueued"),
+    DEQUEUE("redisques.dequeue", "Overall count of queue items to be dequeued from the queues");
+
+    private final String id;
+    private final String description;
+
+    MetricMeter(String id, String description) {
+        this.id = id;
+        this.description = description;
+    }
+
+    public String getId() {
+        return id;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+}

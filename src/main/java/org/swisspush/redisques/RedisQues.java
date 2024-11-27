@@ -1,6 +1,8 @@
 package org.swisspush.redisques;
 
 import com.google.common.base.Strings;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.CompositeFuture;
@@ -13,6 +15,7 @@ import io.vertx.core.eventbus.Message;
 import io.vertx.core.eventbus.MessageConsumer;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
+import io.vertx.micrometer.backends.BackendRegistries;
 import io.vertx.redis.client.Command;
 import io.vertx.redis.client.RedisAPI;
 import io.vertx.redis.client.Response;
@@ -84,6 +87,7 @@ public class RedisQues extends AbstractVerticle {
         private RedisquesConfigurationProvider configurationProvider;
         private RedisProvider redisProvider;
         private RedisQuesExceptionFactory exceptionFactory;
+        private MeterRegistry meterRegistry;
         private Semaphore redisMonitoringReqQuota;
         private Semaphore checkQueueRequestsQuota;
         private Semaphore queueStatsRequestQuota;
@@ -110,6 +114,11 @@ public class RedisQues extends AbstractVerticle {
 
         public RedisQuesBuilder withExceptionFactory(RedisQuesExceptionFactory exceptionFactory) {
             this.exceptionFactory = exceptionFactory;
+            return this;
+        }
+
+        public RedisQuesBuilder withMeterRegistry(MeterRegistry meterRegistry) {
+            this.meterRegistry = meterRegistry;
             return this;
         }
 
@@ -172,7 +181,7 @@ public class RedisQues extends AbstractVerticle {
             }
             return new RedisQues(memoryUsageProvider, configurationProvider, redisProvider, exceptionFactory,
                     redisMonitoringReqQuota, checkQueueRequestsQuota, queueStatsRequestQuota,
-                    getQueuesItemsCountRedisRequestQuota);
+                    getQueuesItemsCountRedisRequestQuota, meterRegistry);
         }
     }
 
@@ -218,6 +227,9 @@ public class RedisQues extends AbstractVerticle {
     private RedisquesConfigurationProvider configurationProvider;
     private RedisMonitor redisMonitor;
 
+    private MeterRegistry meterRegistry = null;
+    private Counter dequeueCounter;
+
     private Map<QueueOperation, QueueAction> queueActions = new HashMap<>();
 
     private Map<String, DequeueStatistic> dequeueStatistic = new ConcurrentHashMap<>();
@@ -236,6 +248,20 @@ public class RedisQues extends AbstractVerticle {
     }
 
     public RedisQues(
+            MemoryUsageProvider memoryUsageProvider,
+            RedisquesConfigurationProvider configurationProvider,
+            RedisProvider redisProvider,
+            RedisQuesExceptionFactory exceptionFactory,
+            Semaphore redisMonitoringReqQuota,
+            Semaphore checkQueueRequestsQuota,
+            Semaphore queueStatsRequestQuota,
+            Semaphore getQueuesItemsCountRedisRequestQuota
+    ) {
+        this(memoryUsageProvider, configurationProvider, redisProvider, exceptionFactory, redisMonitoringReqQuota,
+                checkQueueRequestsQuota, queueStatsRequestQuota, getQueuesItemsCountRedisRequestQuota, null);
+    }
+
+    public RedisQues(
         MemoryUsageProvider memoryUsageProvider,
         RedisquesConfigurationProvider configurationProvider,
         RedisProvider redisProvider,
@@ -243,7 +269,8 @@ public class RedisQues extends AbstractVerticle {
         Semaphore redisMonitoringReqQuota,
         Semaphore checkQueueRequestsQuota,
         Semaphore queueStatsRequestQuota,
-        Semaphore getQueuesItemsCountRedisRequestQuota
+        Semaphore getQueuesItemsCountRedisRequestQuota,
+        MeterRegistry meterRegistry
     ) {
         this.memoryUsageProvider = memoryUsageProvider;
         this.configurationProvider = configurationProvider;
@@ -253,6 +280,7 @@ public class RedisQues extends AbstractVerticle {
         this.checkQueueRequestsQuota = checkQueueRequestsQuota;
         this.queueStatsRequestQuota = queueStatsRequestQuota;
         this.getQueuesItemsCountRedisRequestQuota = getQueuesItemsCountRedisRequestQuota;
+        this.meterRegistry = meterRegistry;
     }
 
     public static RedisQuesBuilder builder() {
@@ -318,6 +346,14 @@ public class RedisQues extends AbstractVerticle {
         RedisquesConfiguration modConfig = configurationProvider.configuration();
         log.info("Starting Redisques module with configuration: {}", configurationProvider.configuration());
 
+        if(configurationProvider.configuration().getMicrometerMetricsEnabled()) {
+            if(meterRegistry == null) {
+                meterRegistry = BackendRegistries.getDefaultNow();
+            }
+            dequeueCounter =  Counter.builder(MetricMeter.DEQUEUE.getId())
+                    .description(MetricMeter.DEQUEUE.getDescription()).register(meterRegistry);
+        }
+
         int dequeueStatisticReportIntervalSec = modConfig.getDequeueStatisticReportIntervalSec();
         if (modConfig.isDequeueStatsEnabled()) {
             dequeueStatisticEnabled = true;
@@ -371,7 +407,7 @@ public class RedisQues extends AbstractVerticle {
         queueActionFactory = new QueueActionFactory(
                 redisProvider, vertx, log, queuesKey, queuesPrefix, consumersPrefix, locksKey,
                 memoryUsageProvider, queueStatisticsCollector, exceptionFactory,
-                configurationProvider, getQueuesItemsCountRedisRequestQuota);
+                configurationProvider, getQueuesItemsCountRedisRequestQuota, meterRegistry);
 
         queueActions.put(addQueueItem, queueActionFactory.buildQueueAction(addQueueItem));
         queueActions.put(deleteQueueItem, queueActionFactory.buildQueueAction(deleteQueueItem));
@@ -949,6 +985,9 @@ public class RedisQues extends AbstractVerticle {
                                     if (jsonAnswer.failed()) {
                                         log.error("Failed to pop from queue '{}'", queueName, jsonAnswer.cause());
                                         // We should return here. See: "https://softwareengineering.stackexchange.com/a/190535"
+                                    }
+                                    if(dequeueCounter != null) {
+                                        dequeueCounter.increment();
                                     }
                                     log.debug("RedisQues Message removed, queue {} is ready again", queueName);
                                     myQueues.put(queueName, QueueState.READY);
