@@ -66,6 +66,7 @@ The following configuration values are available:
 | redisReconnectAttempts                  | 0                               | The amount of attempts to reconnect when redis connection is lost. Use **0** to not reconnect at all or **-1** to reconnect indefinitely.                                                                        |
 | redisReconnectDelaySec                  | 30                              | The interval [s] to attempt to reconnect when redis connection is lost.                                                                                                                                          |
 | redisPoolRecycleTimeoutMs               | 180000                          | The timeout [ms] when the connection pool is recycled. Use **-1** when having reconnect feature enabled.                                                                                                         |
+| micrometerMetricsEnabled                | false                           | Enable / disable collection of metrics using micrometer                                                                                                                                                          |
 | httpRequestHandlerEnabled               | false                           | Enable / disable the HTTP API                                                                                                                                                                                    |
 | httpRequestHandlerAuthenticationEnabled | false                           | Enable / disable authentication for the HTTP API                                                                                                                                                                 |
 | httpRequestHandlerUsername              |                                 | The username for the HTTP API authentication                                                                                                                                                                     |
@@ -630,7 +631,6 @@ Response Data
 }
 ```
 
-
 #### getQueuesSpeed
 
 Request Data
@@ -650,7 +650,6 @@ Response Data
     "unitSec": <Long seconds>
 }
 ```
-
 
 ## RedisQues HTTP API
 RedisQues provides a HTTP API to modify queues, queue items and get information about queue counts and queue item counts.
@@ -1021,7 +1020,7 @@ Available url parameters are:
 * _filter=<regex pattern>_: Filter the queues for which the cumulated speed is evaluated
 
 The result will be a json object with the speed of the last measurement period calculated
-over all queues matching the given filter regex. Additionally the used measurement time in seconds
+over all queues matching the given filter regex. Additionally, the used measurement time in seconds
 is returned (eg. 60 seconds by default)
 
 ```json
@@ -1040,6 +1039,45 @@ SemaphoreConfig semaphoreConfig = new SemaphoreConfig().setInitialPermits(1).set
 hazelcastConfig.getCPSubsystemConfig().addSemaphoreConfig(semaphoreConfig);
 ```
 
+## Metric collection
+Besides the API, redisques provides some key metrics collected by [micrometer.io](https://micrometer.io/).
+
+The collected metrics include:
+
+| Metric name                     | Description                                                 |
+|:--------------------------------|:------------------------------------------------------------|
+| redisques_enqueue_success_total | Overall count of queue items to be enqueued                 |
+| redisques_enqueue_fail_total    | Overall count of failing enqueues                           |
+| redisques_dequeue_total         | Overall count of queue items to be dequeued from the queues |
+| redisques_active_queues         | Overall count of active queues                              |
+| redisques_max_queue_size        | Amount of queue items of the biggest queue                  |
+
+### Testing locally
+When you include redisques in you project, you probably already have the configuration for publishing the metrics.
+
+To export the metrics locally you have to add this dependency to the `pom.xml`
+
+```
+<dependency>
+    <groupId>io.micrometer</groupId>
+    <artifactId>micrometer-registry-prometheus</artifactId>
+    <version>${micrometer.version}</version>
+</dependency>
+```
+Also add the micrometer configuration to `RedisQuesRunner` class like this:
+
+```java
+MicrometerMetricsOptions options = new MicrometerMetricsOptions()
+        .setPrometheusOptions(new VertxPrometheusOptions()
+                .setStartEmbeddedServer(true)
+                .setEmbeddedServerOptions(new HttpServerOptions().setPort(9101))
+                .setEnabled(true))
+        .setEnabled(true);
+Vertx vertx = Vertx.vertx(new VertxOptions().setMetricsOptions(options));
+```
+Using the configuration above, the metrics can be accessed with
+
+> GET http://localhost:9101/metrics
 
 
 ## Dependencies

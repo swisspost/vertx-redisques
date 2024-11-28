@@ -1,5 +1,6 @@
 package org.swisspush.redisques.util;
 
+import io.micrometer.core.instrument.MeterRegistry;
 import io.vertx.core.Vertx;
 import org.slf4j.Logger;
 import org.swisspush.redisques.action.*;
@@ -21,6 +22,7 @@ public class QueueActionFactory {
     private final List<QueueConfiguration> queueConfigurations;
     private final QueueStatisticsCollector queueStatisticsCollector;
     private final int memoryUsageLimitPercent;
+    private final MeterRegistry meterRegistry;
     private final MemoryUsageProvider memoryUsageProvider;
     private final RedisQuesExceptionFactory exceptionFactory;
     private final Semaphore getQueuesItemsCountRedisRequestQuota;
@@ -39,7 +41,8 @@ public class QueueActionFactory {
         QueueStatisticsCollector queueStatisticsCollector,
         RedisQuesExceptionFactory exceptionFactory,
         RedisquesConfigurationProvider configurationProvider,
-        Semaphore getQueuesItemsCountRedisRequestQuota
+        Semaphore getQueuesItemsCountRedisRequestQuota,
+        MeterRegistry meterRegistry
     ) {
         this.redisProvider = redisProvider;
         this.vertx = vertx;
@@ -56,6 +59,7 @@ public class QueueActionFactory {
         this.queueConfigurations = configurationProvider.configuration().getQueueConfigurations();
         this.memoryUsageLimitPercent = configurationProvider.configuration().getMemoryUsageLimitPercent();
         this.getQueuesItemsCountRedisRequestQuota = getQueuesItemsCountRedisRequestQuota;
+        this.meterRegistry = meterRegistry;
     }
 
     public QueueAction buildQueueAction(RedisquesAPI.QueueOperation queueOperation){
@@ -97,11 +101,11 @@ public class QueueActionFactory {
             case enqueue:
                 return new EnqueueAction(vertx, redisProvider, address, queuesKey, queuesPrefix,
                         consumersPrefix, locksKey, queueConfigurations, exceptionFactory, queueStatisticsCollector, log,
-                        memoryUsageProvider, memoryUsageLimitPercent);
+                        memoryUsageProvider, memoryUsageLimitPercent, meterRegistry);
             case lockedEnqueue:
                 return new LockedEnqueueAction(vertx, redisProvider, address, queuesKey, queuesPrefix,
                         consumersPrefix, locksKey, queueConfigurations, exceptionFactory, queueStatisticsCollector, log,
-                        memoryUsageProvider, memoryUsageLimitPercent);
+                        memoryUsageProvider, memoryUsageLimitPercent, meterRegistry);
             case getLock:
                 return new GetLockAction(vertx, redisProvider, address, queuesKey, queuesPrefix,
                         consumersPrefix, locksKey, queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
