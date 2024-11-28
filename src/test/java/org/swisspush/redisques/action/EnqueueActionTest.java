@@ -1,5 +1,8 @@
 package org.swisspush.redisques.action;
 
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.json.JsonObject;
@@ -11,6 +14,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mockito;
 import org.slf4j.Logger;
+import org.swisspush.redisques.util.MetricMeter;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 
 import java.util.ArrayList;
@@ -28,14 +32,20 @@ import static org.mockito.Mockito.*;
 @RunWith(VertxUnitRunner.class)
 public class EnqueueActionTest extends AbstractQueueActionTest {
 
+    private Counter enqueueCounterSuccess;
+    private Counter enqueueCounterFail;
+
     @Before
     @Override
     public void setup() {
         super.setup();
+        MeterRegistry meterRegistry = new SimpleMeterRegistry();
+        enqueueCounterSuccess = meterRegistry.counter(MetricMeter.ENQUEUE_SUCCESS.getId());
+        enqueueCounterFail = meterRegistry.counter(MetricMeter.ENQUEUE_FAIL.getId());
         action = new EnqueueAction(vertx, redisProvider,
                 "addr", "q-", "prefix-", "c-", "l-",
                 new ArrayList<>(), exceptionFactory, Mockito.mock(QueueStatisticsCollector.class),
-                Mockito.mock(Logger.class), memoryUsageProvider, 80);
+                Mockito.mock(Logger.class), memoryUsageProvider, 80, meterRegistry);
     }
 
     @Test
@@ -47,6 +57,8 @@ public class EnqueueActionTest extends AbstractQueueActionTest {
 
         verify(message, times(1)).reply(eq(new JsonObject(Buffer.buffer("{\"status\":\"error\",\"message\":\"RedisQues QUEUE_ERROR: Error while enqueueing message into queue someQueue\"}"))));
         verifyNoInteractions(redisAPI);
+
+        assertEnqueueCounts(context,0.0, 1.0);
     }
 
     @Test
@@ -58,6 +70,8 @@ public class EnqueueActionTest extends AbstractQueueActionTest {
 
         verify(message, times(1)).reply(eq(new JsonObject(Buffer.buffer("{\"status\":\"error\",\"message\":\"memory usage limit reached\"}"))));
         verifyNoInteractions(redisAPI);
+
+        assertEnqueueCounts(context,0.0, 1.0);
     }
 
     @Test
@@ -73,6 +87,8 @@ public class EnqueueActionTest extends AbstractQueueActionTest {
                 "\"error\",\"message\":\"RedisQues QUEUE_ERROR: Error while enqueueing message into " +
                 "queue updateTimestampFail\"}"))));
         verify(redisAPI, never()).rpush(anyList());
+
+        assertEnqueueCounts(context,0.0, 1.0);
     }
 
     @Test
@@ -87,5 +103,12 @@ public class EnqueueActionTest extends AbstractQueueActionTest {
 
         verify(message, times(1)).reply(eq(new JsonObject(Buffer.buffer("{\"status\":\"ok\",\"message\":\"enqueued\"}"))));
         verify(redisAPI, times(1)).rpush(eq(Arrays.asList("prefix-someQueue", "hello")));
+
+        assertEnqueueCounts(context,1.0, 0.0);
+    }
+
+    private void assertEnqueueCounts(TestContext context, double successCount, double failCount){
+        context.assertEquals(successCount, enqueueCounterSuccess.count(), "Success enqueue count is wrong");
+        context.assertEquals(failCount, enqueueCounterFail.count(), "Failed enqueue count is wrong");
     }
 }

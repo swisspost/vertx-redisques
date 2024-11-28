@@ -1,5 +1,6 @@
 package org.swisspush.redisques.action;
 
+import io.micrometer.core.instrument.MeterRegistry;
 import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonObject;
@@ -22,10 +23,10 @@ public class LockedEnqueueAction extends EnqueueAction {
                                String consumersPrefix, String locksKey, List<QueueConfiguration> queueConfigurations,
                                RedisQuesExceptionFactory exceptionFactory,
                                QueueStatisticsCollector queueStatisticsCollector, Logger log,
-                               MemoryUsageProvider memoryUsageProvider, int memoryUsageLimitPercent) {
+                               MemoryUsageProvider memoryUsageProvider, int memoryUsageLimitPercent, MeterRegistry meterRegistry) {
         super(vertx, redisProvider, address, queuesKey, queuesPrefix, consumersPrefix,
                 locksKey, queueConfigurations, exceptionFactory, queueStatisticsCollector, log, memoryUsageProvider,
-                memoryUsageLimitPercent);
+                memoryUsageLimitPercent, meterRegistry);
     }
 
     @Override
@@ -34,6 +35,7 @@ public class LockedEnqueueAction extends EnqueueAction {
         String queueName = event.body().getJsonObject(PAYLOAD).getString(QUEUENAME);
         if (isMemoryUsageLimitReached()) {
             log.warn("Failed to lockedEnqueue into queue {} because the memory usage limit is reached", queueName);
+            incrEnqueueFailCount();
             event.reply(createErrorReply().put(MESSAGE, MEMORY_FULL));
             return;
         }
@@ -47,16 +49,18 @@ public class LockedEnqueueAction extends EnqueueAction {
                 } else {
                     log.warn("RedisQues lockedEnqueue locking failed. Skip enqueue",
                             new Exception(putLockResult.cause()));
+                    incrEnqueueFailCount();
                     event.reply(createErrorReply());
                 }
             }));
             p.onFailure(ex -> {
-                log.warn("Redis: RedisQues lockedEnqueue locking failed. Skip enqueue",
-                        new Exception(ex));
+                log.warn("Redis: RedisQues lockedEnqueue locking failed. Skip enqueue", new Exception(ex));
+                incrEnqueueFailCount();
                 event.reply(createErrorReply());
             });
         } else {
             log.warn("RedisQues lockedEnqueue failed because property '{}' was missing", REQUESTED_BY);
+            incrEnqueueFailCount();
             event.reply(createErrorReply().put(MESSAGE, "Property '" + REQUESTED_BY + "' missing"));
         }
     }

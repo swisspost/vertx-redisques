@@ -2,7 +2,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>org.swisspush</groupId>
     <artifactId>redisques</artifactId>
-    <version>4.1.6-SNAPSHOT</version>
+    <version>4.1.7-SNAPSHOT</version>
     <name>redisques</name>
     <description>
         A highly scalable redis-persistent queuing system for vertx
@@ -64,6 +64,16 @@
             <groupId>io.vertx</groupId>
             <artifactId>vertx-web</artifactId>
             <version>${vertx.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.vertx</groupId>
+            <artifactId>vertx-micrometer-metrics</artifactId>
+            <version>${vertx.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-core</artifactId>
+            <version>${micrometer.version}</version>
         </dependency>
         <dependency>
             <groupId>org.slf4j</groupId>
@@ -390,6 +400,7 @@
     </profiles>
     <properties>
         <vertx.version>4.5.2</vertx.version>
+        <micrometer.version>1.12.13</micrometer.version>
         <slf4j.version>2.0.10</slf4j.version>
         <mockito.version>5.8.0</mockito.version>
         <junit.version>4.13.2</junit.version>

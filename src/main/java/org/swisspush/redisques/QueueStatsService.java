@@ -1,5 +1,7 @@
 package org.swisspush.redisques;
 
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.MeterRegistry;
 import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.EventBus;
 import io.vertx.core.json.JsonArray;
@@ -8,15 +10,14 @@ import org.slf4j.Logger;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.util.DequeueStatistic;
 import org.swisspush.redisques.util.DequeueStatisticCollector;
+import org.swisspush.redisques.util.MetricMeter;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 
 import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Iterator;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
 
 import static java.lang.Long.compare;
@@ -51,6 +52,8 @@ public class QueueStatsService {
     private final RedisQuesExceptionFactory exceptionFactory;
     private final Semaphore incomingRequestQuota;
 
+    private final AtomicLong maxQueueSize = new AtomicLong(0);
+
     public QueueStatsService(
         Vertx vertx,
         EventBus eventBus,
@@ -58,7 +61,8 @@ public class QueueStatsService {
         QueueStatisticsCollector queueStatisticsCollector,
         DequeueStatisticCollector dequeueStatisticCollector,
         RedisQuesExceptionFactory exceptionFactory,
-        Semaphore incomingRequestQuota
+        Semaphore incomingRequestQuota,
+        MeterRegistry meterRegistry
     ) {
         this.vertx = vertx;
         this.eventBus = eventBus;
@@ -67,6 +71,12 @@ public class QueueStatsService {
         this.dequeueStatisticCollector = dequeueStatisticCollector;
         this.exceptionFactory = exceptionFactory;
         this.incomingRequestQuota = incomingRequestQuota;
+
+        if(meterRegistry != null) {
+            Gauge.builder(MetricMeter.MAX_QUEUE_SIZE.getId(), maxQueueSize, AtomicLong::get).
+                    description(MetricMeter.MAX_QUEUE_SIZE.getDescription()).
+                    register(meterRegistry);
+        }
     }
 
     public <CTX> void getQueueStats(CTX mCtx, GetQueueStatsMentor<CTX> mentor) {
@@ -156,8 +166,17 @@ public class QueueStatsService {
             int limit = req.mentor.limit(req.mCtx);
             if (limit != 0 && queues.size() > limit) queues = queues.subList(0, limit);
             req.queues = queues;
+            collectMaxQueueSize(queues);
             onDone.accept(null, req);
         });
+    }
+
+    private void collectMaxQueueSize(List<Queue> queues) {
+        if(queues.isEmpty()) {
+            maxQueueSize.set(0);
+        } else {
+            maxQueueSize.set(queues.get(0).getSize());
+        }
     }
 
     private <CTX> void fetchRetryDetails(GetQueueStatsRequest<CTX> req, BiConsumer<Throwable, GetQueueStatsRequest<CTX>> onDone) {
