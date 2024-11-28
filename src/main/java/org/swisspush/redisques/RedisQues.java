@@ -393,7 +393,7 @@ public class RedisQues extends AbstractVerticle {
 
         String address = modConfig.getAddress();
         int metricRefreshPeriod = modConfig.getMetricRefreshPeriod();
-        new PeriodicMetricsCollector(vertx, address, meterRegistry, metricRefreshPeriod);
+        new PeriodicMetricsCollector(vertx, periodicSkipScheduler, address, meterRegistry, metricRefreshPeriod);
     }
 
     private void initialize() {

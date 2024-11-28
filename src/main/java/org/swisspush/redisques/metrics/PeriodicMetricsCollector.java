@@ -9,6 +9,7 @@ import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.swisspush.redisques.scheduling.PeriodicSkipScheduler;
 import org.swisspush.redisques.util.MetricMeter;
 
 import java.util.concurrent.atomic.AtomicLong;
@@ -28,7 +29,7 @@ public class PeriodicMetricsCollector {
 
     private final AtomicLong activeQueuesCount = new AtomicLong(0);
 
-    public PeriodicMetricsCollector(Vertx vertx, String redisquesAddress, MeterRegistry meterRegistry, long metricCollectIntervalSec) {
+    public PeriodicMetricsCollector(Vertx vertx, PeriodicSkipScheduler periodicSkipScheduler, String redisquesAddress, MeterRegistry meterRegistry, long metricCollectIntervalSec) {
         this.vertx = vertx;
         this.redisquesAddress = redisquesAddress;
 
@@ -36,10 +37,11 @@ public class PeriodicMetricsCollector {
                 description(MetricMeter.ACTIVE_QUEUES.getDescription()).
                 register(meterRegistry);
 
-        vertx.setPeriodic(metricCollectIntervalSec * 1000, event -> updateActiveQueuesCount());
+        periodicSkipScheduler.setPeriodic(metricCollectIntervalSec * 1000, "metricCollectRefresh",
+                this::updateActiveQueuesCount);
     }
 
-    private void updateActiveQueuesCount() {
+    private void updateActiveQueuesCount(Runnable onPeriodicDone) {
         vertx.eventBus().request(redisquesAddress, buildGetQueuesCountOperation(), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
             if(reply.failed()) {
                 log.warn("TODO error handling", reply.cause());
@@ -48,6 +50,7 @@ public class PeriodicMetricsCollector {
             } else {
                 log.warn("Error gathering count of active queues. Cause: {}", reply.result().body().getString(MESSAGE));
             }
+            onPeriodicDone.run();
         });
     }
 

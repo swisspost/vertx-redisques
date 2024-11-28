@@ -1020,7 +1020,7 @@ Available url parameters are:
 * _filter=<regex pattern>_: Filter the queues for which the cumulated speed is evaluated
 
 The result will be a json object with the speed of the last measurement period calculated
-over all queues matching the given filter regex. Additionally the used measurement time in seconds
+over all queues matching the given filter regex. Additionally, the used measurement time in seconds
 is returned (eg. 60 seconds by default)
 
 ```json
@@ -1047,7 +1047,7 @@ The collected metrics include:
 | Metric name                     | Description                                                 |
 |:--------------------------------|:------------------------------------------------------------|
 | redisques_enqueue_success_total | Overall count of queue items to be enqueued                 |
-| redisques_enqueue_fail_total    | Overall count of queue items to be enqueued                 |
+| redisques_enqueue_fail_total    | Overall count of failing enqueues                           |
 | redisques_dequeue_total         | Overall count of queue items to be dequeued from the queues |
 | redisques_active_queues         | Overall count of active queues                              |
 | redisques_max_queue_size        | Amount of queue items of the biggest queue                  |
