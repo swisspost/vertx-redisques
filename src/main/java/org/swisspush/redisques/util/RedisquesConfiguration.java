@@ -40,6 +40,7 @@ public class RedisquesConfiguration {
     private final boolean httpRequestHandlerEnabled;
     private final boolean httpRequestHandlerAuthenticationEnabled;
     private final boolean micrometerMetricsEnabled;
+    private final String micrometerMetricsIdentifier;
     private final String httpRequestHandlerPrefix;
     private final String httpRequestHandlerUsername;
     private final String httpRequestHandlerPassword;
@@ -114,6 +115,7 @@ public class RedisquesConfiguration {
     public static final String PROP_HTTP_REQUEST_HANDLER_ENABLED = "httpRequestHandlerEnabled";
     public static final String PROP_HTTP_REQUEST_HANDLER_AUTH_ENABLED = "httpRequestHandlerAuthenticationEnabled";
     public static final String PROP_MICROMETER_METRICS_ENABLED = "micrometerMetricsEnabled";
+    public static final String PROP_MICROMETER_METRICS_IDENTIFIER = "micrometerMetricsIdentifier";
     public static final String PROP_HTTP_REQUEST_HANDLER_PREFIX = "httpRequestHandlerPrefix";
     public static final String PROP_HTTP_REQUEST_HANDLER_USERNAME = "httpRequestHandlerUsername";
     public static final String PROP_HTTP_REQUEST_HANDLER_PASSWORD = "httpRequestHandlerPassword";
@@ -148,7 +150,8 @@ public class RedisquesConfiguration {
                                   String publishMetricsAddress, String metricStorageName, int metricRefreshPeriod, int refreshPeriod,
                                   String redisHost, int redisPort, String redisAuth, int checkInterval,
                                   int processorTimeout, long processorDelayMax, boolean httpRequestHandlerEnabled,
-                                  boolean httpRequestHandlerAuthenticationEnabled, boolean micrometerMetricsEnabled, String httpRequestHandlerPrefix,
+                                  boolean httpRequestHandlerAuthenticationEnabled, boolean micrometerMetricsEnabled,
+                                  String micrometerMetricsIdentifier, String httpRequestHandlerPrefix,
                                   String httpRequestHandlerUsername, String httpRequestHandlerPassword,
                                   Integer httpRequestHandlerPort, String httpRequestHandlerUserHeader,
                                   List<QueueConfiguration> queueConfigurations, boolean enableQueueNameDecoding) {
@@ -156,7 +159,7 @@ public class RedisquesConfiguration {
                 metricRefreshPeriod, refreshPeriod, DEFAULT_CONSUMER_LOCK_MULTIPLIER, Collections.singletonList(redisHost), Collections.singletonList(redisPort),
                 RedisClientType.STANDALONE, redisAuth, null, null, false, checkInterval,
                 processorTimeout, processorDelayMax, httpRequestHandlerEnabled,
-                httpRequestHandlerAuthenticationEnabled, micrometerMetricsEnabled, httpRequestHandlerPrefix, httpRequestHandlerUsername,
+                httpRequestHandlerAuthenticationEnabled, micrometerMetricsEnabled, micrometerMetricsIdentifier, httpRequestHandlerPrefix, httpRequestHandlerUsername,
                 httpRequestHandlerPassword, httpRequestHandlerPort, httpRequestHandlerUserHeader, queueConfigurations,
                 enableQueueNameDecoding, DEFAULT_REDIS_MAX_POOL_SIZE, DEFAULT_REDIS_MAX_POOL_WAIT_SIZE,
                 DEFAULT_REDIS_MAX_PIPELINE_WAIT_SIZE, DEFAULT_QUEUE_SPEED_INTERVAL_SEC, DEFAULT_MEMORY_USAGE_LIMIT_PCT,
@@ -173,7 +176,8 @@ public class RedisquesConfiguration {
                                   String publishMetricsAddress, String metricStorageName, int metricRefreshPeriod, int refreshPeriod,
                                   String redisHost, int redisPort, String redisPassword, String redisUser, boolean redisEnableTls,
                                   int checkInterval, int processorTimeout, long processorDelayMax, boolean httpRequestHandlerEnabled,
-                                  boolean httpRequestHandlerAuthenticationEnabled, boolean micrometerMetricsEnabled, String httpRequestHandlerPrefix,
+                                  boolean httpRequestHandlerAuthenticationEnabled, boolean micrometerMetricsEnabled,
+                                  String micrometerMetricsIdentifier, String httpRequestHandlerPrefix,
                                   String httpRequestHandlerUsername, String httpRequestHandlerPassword,
                                   Integer httpRequestHandlerPort, String httpRequestHandlerUserHeader,
                                   List<QueueConfiguration> queueConfigurations, boolean enableQueueNameDecoding) {
@@ -181,7 +185,7 @@ public class RedisquesConfiguration {
                 metricRefreshPeriod, refreshPeriod, DEFAULT_CONSUMER_LOCK_MULTIPLIER, Collections.singletonList(redisHost), Collections.singletonList(redisPort),
                 RedisClientType.STANDALONE, null, redisPassword, redisUser, redisEnableTls, checkInterval,
                 processorTimeout, processorDelayMax, httpRequestHandlerEnabled,
-                httpRequestHandlerAuthenticationEnabled, micrometerMetricsEnabled, httpRequestHandlerPrefix, httpRequestHandlerUsername,
+                httpRequestHandlerAuthenticationEnabled, micrometerMetricsEnabled, micrometerMetricsIdentifier, httpRequestHandlerPrefix, httpRequestHandlerUsername,
                 httpRequestHandlerPassword, httpRequestHandlerPort, httpRequestHandlerUserHeader, queueConfigurations,
                 enableQueueNameDecoding, DEFAULT_REDIS_MAX_POOL_SIZE, DEFAULT_REDIS_MAX_POOL_WAIT_SIZE,
                 DEFAULT_REDIS_MAX_PIPELINE_WAIT_SIZE, DEFAULT_QUEUE_SPEED_INTERVAL_SEC, DEFAULT_MEMORY_USAGE_LIMIT_PCT,
@@ -198,14 +202,15 @@ public class RedisquesConfiguration {
                                   String redisHost, int redisPort, RedisClientType redisClientType, String redisPassword,
                                   String redisUser, boolean redisEnableTls, int checkInterval,
                                   int processorTimeout, long processorDelayMax, boolean httpRequestHandlerEnabled,
-                                  boolean httpRequestHandlerAuthenticationEnabled, boolean micrometerMetricsEnabled, String httpRequestHandlerPrefix,
+                                  boolean httpRequestHandlerAuthenticationEnabled, boolean micrometerMetricsEnabled,
+                                  String micrometerMetricsIdentifier, String httpRequestHandlerPrefix,
                                   String httpRequestHandlerUsername, String httpRequestHandlerPassword,
                                   Integer httpRequestHandlerPort, String httpRequestHandlerUserHeader,
                                   List<QueueConfiguration> queueConfigurations, boolean enableQueueNameDecoding) {
         this(address, configurationUpdatedAddress, redisPrefix, processorAddress, publishMetricsAddress, metricStorageName,
                 metricRefreshPeriod, refreshPeriod, DEFAULT_CONSUMER_LOCK_MULTIPLIER, Collections.singletonList(redisHost), Collections.singletonList(redisPort),
                 redisClientType, null, redisPassword, redisUser, redisEnableTls, checkInterval, processorTimeout,
-                processorDelayMax, httpRequestHandlerEnabled, httpRequestHandlerAuthenticationEnabled, micrometerMetricsEnabled, httpRequestHandlerPrefix, httpRequestHandlerUsername,
+                processorDelayMax, httpRequestHandlerEnabled, httpRequestHandlerAuthenticationEnabled, micrometerMetricsEnabled, micrometerMetricsIdentifier, httpRequestHandlerPrefix, httpRequestHandlerUsername,
                 httpRequestHandlerPassword, httpRequestHandlerPort, httpRequestHandlerUserHeader, queueConfigurations,
                 enableQueueNameDecoding, DEFAULT_REDIS_MAX_POOL_SIZE, DEFAULT_REDIS_MAX_POOL_WAIT_SIZE,
                 DEFAULT_REDIS_MAX_PIPELINE_WAIT_SIZE, DEFAULT_QUEUE_SPEED_INTERVAL_SEC, DEFAULT_MEMORY_USAGE_LIMIT_PCT,
@@ -222,7 +227,8 @@ public class RedisquesConfiguration {
                                   int consumerLockMultiplier, String redisHost, int redisPort, RedisClientType redisClientType, String redisPassword,
                                   String redisUser, boolean redisEnableTls, int checkInterval,
                                   int processorTimeout, long processorDelayMax, boolean httpRequestHandlerEnabled,
-                                  boolean httpRequestHandlerAuthenticationEnabled, boolean micrometerMetricsEnabled, String httpRequestHandlerPrefix,
+                                  boolean httpRequestHandlerAuthenticationEnabled, boolean micrometerMetricsEnabled,
+                                  String micrometerMetricsIdentifier, String httpRequestHandlerPrefix,
                                   String httpRequestHandlerUsername, String httpRequestHandlerPassword,
                                   Integer httpRequestHandlerPort, String httpRequestHandlerUserHeader,
                                   List<QueueConfiguration> queueConfigurations, boolean enableQueueNameDecoding) {
@@ -230,7 +236,7 @@ public class RedisquesConfiguration {
                 metricRefreshPeriod, refreshPeriod, consumerLockMultiplier, Collections.singletonList(redisHost), Collections.singletonList(redisPort),
                 redisClientType, null, redisPassword, redisUser, redisEnableTls, checkInterval, processorTimeout,
                 processorDelayMax, httpRequestHandlerEnabled,
-                httpRequestHandlerAuthenticationEnabled, micrometerMetricsEnabled, httpRequestHandlerPrefix, httpRequestHandlerUsername,
+                httpRequestHandlerAuthenticationEnabled, micrometerMetricsEnabled, micrometerMetricsIdentifier, httpRequestHandlerPrefix, httpRequestHandlerUsername,
                 httpRequestHandlerPassword, httpRequestHandlerPort, httpRequestHandlerUserHeader, queueConfigurations,
                 enableQueueNameDecoding, DEFAULT_REDIS_MAX_POOL_SIZE, DEFAULT_REDIS_MAX_POOL_WAIT_SIZE,
                 DEFAULT_REDIS_MAX_PIPELINE_WAIT_SIZE, DEFAULT_QUEUE_SPEED_INTERVAL_SEC, DEFAULT_MEMORY_USAGE_LIMIT_PCT,
@@ -244,7 +250,7 @@ public class RedisquesConfiguration {
                                    int consumerLockMultiplier, List<String> redisHosts, List<Integer> redisPorts, RedisClientType redisClientType,
                                    String redisAuth, String redisPassword, String redisUser, boolean redisEnableTls, int checkInterval,
                                    int processorTimeout, long processorDelayMax, boolean httpRequestHandlerEnabled,
-                                   boolean httpRequestHandlerAuthenticationEnabled, boolean micrometerMetricsEnabled,
+                                   boolean httpRequestHandlerAuthenticationEnabled, boolean micrometerMetricsEnabled, String micrometerMetricsIdentifier,
                                    String httpRequestHandlerPrefix, String httpRequestHandlerUsername, String httpRequestHandlerPassword,
                                    Integer httpRequestHandlerPort, String httpRequestHandlerUserHeader,
                                    List<QueueConfiguration> queueConfigurations, boolean enableQueueNameDecoding,
@@ -313,6 +319,7 @@ public class RedisquesConfiguration {
         this.httpRequestHandlerEnabled = httpRequestHandlerEnabled;
         this.httpRequestHandlerAuthenticationEnabled = httpRequestHandlerAuthenticationEnabled;
         this.micrometerMetricsEnabled = micrometerMetricsEnabled;
+        this.micrometerMetricsIdentifier = micrometerMetricsIdentifier;
         this.httpRequestHandlerPrefix = httpRequestHandlerPrefix;
         this.httpRequestHandlerUsername = httpRequestHandlerUsername;
         this.httpRequestHandlerPassword = httpRequestHandlerPassword;
@@ -361,7 +368,7 @@ public class RedisquesConfiguration {
                 builder.redisPassword, builder.redisUser, builder.redisEnableTls, builder.checkInterval,
                 builder.processorTimeout, builder.processorDelayMax, builder.httpRequestHandlerEnabled,
                 builder.httpRequestHandlerAuthenticationEnabled,
-                builder.micrometerMetricsEnabled, builder.httpRequestHandlerPrefix,
+                builder.micrometerMetricsEnabled, builder.micrometerMetricsIdentifier, builder.httpRequestHandlerPrefix,
                 builder.httpRequestHandlerUsername, builder.httpRequestHandlerPassword, builder.httpRequestHandlerPort,
                 builder.httpRequestHandlerUserHeader, builder.queueConfigurations,
                 builder.enableQueueNameDecoding,
@@ -405,6 +412,7 @@ public class RedisquesConfiguration {
         obj.put(PROP_HTTP_REQUEST_HANDLER_ENABLED, getHttpRequestHandlerEnabled());
         obj.put(PROP_HTTP_REQUEST_HANDLER_AUTH_ENABLED, getHttpRequestHandlerAuthenticationEnabled());
         obj.put(PROP_MICROMETER_METRICS_ENABLED, getMicrometerMetricsEnabled());
+        obj.put(PROP_MICROMETER_METRICS_IDENTIFIER, getMicrometerMetricsIdentifier());
         obj.put(PROP_HTTP_REQUEST_HANDLER_PREFIX, getHttpRequestHandlerPrefix());
         obj.put(PROP_HTTP_REQUEST_HANDLER_USERNAME, getHttpRequestHandlerUsername());
         obj.put(PROP_HTTP_REQUEST_HANDLER_PASSWORD, getHttpRequestHandlerPassword());
@@ -505,6 +513,9 @@ public class RedisquesConfiguration {
         }
         if (json.containsKey(PROP_MICROMETER_METRICS_ENABLED)) {
             builder.micrometerMetricsEnabled(json.getBoolean(PROP_MICROMETER_METRICS_ENABLED));
+        }
+        if (json.containsKey(PROP_MICROMETER_METRICS_IDENTIFIER)) {
+            builder.micrometerMetricsIdentifier(json.getString(PROP_MICROMETER_METRICS_IDENTIFIER));
         }
         if (json.containsKey(PROP_HTTP_REQUEST_HANDLER_PREFIX)) {
             builder.httpRequestHandlerPrefix(json.getString(PROP_HTTP_REQUEST_HANDLER_PREFIX));
@@ -665,6 +676,10 @@ public class RedisquesConfiguration {
 
     public boolean getMicrometerMetricsEnabled() { return micrometerMetricsEnabled; }
 
+    public String getMicrometerMetricsIdentifier() {
+        return micrometerMetricsIdentifier;
+    }
+
     public String getHttpRequestHandlerPrefix() {
         return httpRequestHandlerPrefix;
     }
@@ -790,6 +805,7 @@ public class RedisquesConfiguration {
         private int processorTimeout;
         private long processorDelayMax;
         private boolean micrometerMetricsEnabled;
+        private String micrometerMetricsIdentifier;
         private boolean httpRequestHandlerEnabled;
         private boolean httpRequestHandlerAuthenticationEnabled;
         private String httpRequestHandlerPrefix;
@@ -973,6 +989,11 @@ public class RedisquesConfiguration {
 
         public RedisquesConfigurationBuilder micrometerMetricsEnabled(boolean micrometerMetricsEnabled) {
             this.micrometerMetricsEnabled = micrometerMetricsEnabled;
+            return this;
+        }
+
+        public RedisquesConfigurationBuilder micrometerMetricsIdentifier(String micrometerMetricsIdentifier) {
+            this.micrometerMetricsIdentifier = micrometerMetricsIdentifier;
             return this;
         }
 

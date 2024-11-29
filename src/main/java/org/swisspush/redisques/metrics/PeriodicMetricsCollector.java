@@ -2,6 +2,7 @@ package org.swisspush.redisques.metrics;
 
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.netty.util.internal.StringUtil;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
@@ -27,15 +28,23 @@ public class PeriodicMetricsCollector {
     private final Vertx vertx;
     private final String redisquesAddress;
 
+    private static final String DEFAULT_IDENTIFIER = "default";
+
     private final AtomicLong activeQueuesCount = new AtomicLong(0);
 
-    public PeriodicMetricsCollector(Vertx vertx, PeriodicSkipScheduler periodicSkipScheduler, String redisquesAddress, MeterRegistry meterRegistry, long metricCollectIntervalSec) {
+    public PeriodicMetricsCollector(Vertx vertx, PeriodicSkipScheduler periodicSkipScheduler, String redisquesAddress,
+                                    String identifier, MeterRegistry meterRegistry, long metricCollectIntervalSec) {
         this.vertx = vertx;
         this.redisquesAddress = redisquesAddress;
 
-        Gauge.builder(MetricMeter.ACTIVE_QUEUES.getId(), activeQueuesCount, AtomicLong::get).
-                description(MetricMeter.ACTIVE_QUEUES.getDescription()).
-                register(meterRegistry);
+        String id = identifier;
+
+        if(StringUtil.isNullOrEmpty(id)) {
+            id = DEFAULT_IDENTIFIER;
+        }
+
+        Gauge.builder(MetricMeter.ACTIVE_QUEUES.getId(), activeQueuesCount, AtomicLong::get).tag("identifier", id)
+                .description(MetricMeter.ACTIVE_QUEUES.getDescription()).register(meterRegistry);
 
         periodicSkipScheduler.setPeriodic(metricCollectIntervalSec * 1000, "metricCollectRefresh",
                 this::updateActiveQueuesCount);
