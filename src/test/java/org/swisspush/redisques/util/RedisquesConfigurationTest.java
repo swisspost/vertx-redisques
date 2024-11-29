@@ -42,6 +42,7 @@ public class RedisquesConfigurationTest {
         testContext.assertFalse(config.getHttpRequestHandlerEnabled());
         testContext.assertFalse(config.getHttpRequestHandlerAuthenticationEnabled());
         testContext.assertFalse(config.getMicrometerMetricsEnabled());
+        testContext.assertNull(config.getMicrometerMetricsIdentifier());
         testContext.assertEquals(config.getHttpRequestHandlerPrefix(), "/queuing");
         testContext.assertNull(config.getHttpRequestHandlerUsername());
         testContext.assertNull(config.getHttpRequestHandlerPassword());
@@ -71,6 +72,7 @@ public class RedisquesConfigurationTest {
                 .httpRequestHandlerEnabled(true)
                 .httpRequestHandlerAuthenticationEnabled(true)
                 .micrometerMetricsEnabled(true)
+                .micrometerMetricsIdentifier("foobar")
                 .httpRequestHandlerPrefix("/queuing/test")
                 .httpRequestHandlerUsername("foo")
                 .httpRequestHandlerPassword("bar")
@@ -106,6 +108,7 @@ public class RedisquesConfigurationTest {
         testContext.assertTrue(config.getHttpRequestHandlerEnabled());
         testContext.assertTrue(config.getHttpRequestHandlerAuthenticationEnabled());
         testContext.assertTrue(config.getMicrometerMetricsEnabled());
+        testContext.assertEquals(config.getMicrometerMetricsIdentifier(), "foobar");
         testContext.assertEquals(config.getHttpRequestHandlerPrefix(), "/queuing/test");
         testContext.assertEquals(config.getHttpRequestHandlerUsername(), "foo");
         testContext.assertEquals(config.getHttpRequestHandlerPassword(), "bar");
@@ -146,6 +149,7 @@ public class RedisquesConfigurationTest {
         testContext.assertFalse(json.getBoolean(PROP_HTTP_REQUEST_HANDLER_ENABLED));
         testContext.assertFalse(json.getBoolean(PROP_HTTP_REQUEST_HANDLER_AUTH_ENABLED));
         testContext.assertFalse(json.getBoolean(PROP_MICROMETER_METRICS_ENABLED));
+        testContext.assertNull(json.getString(PROP_MICROMETER_METRICS_IDENTIFIER));
         testContext.assertEquals(json.getString(PROP_HTTP_REQUEST_HANDLER_PREFIX), "/queuing");
         testContext.assertNull(json.getString(PROP_HTTP_REQUEST_HANDLER_USERNAME));
         testContext.assertNull(json.getString(PROP_HTTP_REQUEST_HANDLER_PASSWORD));
@@ -177,6 +181,7 @@ public class RedisquesConfigurationTest {
                 .httpRequestHandlerPort(7171)
                 .httpRequestHandlerAuthenticationEnabled(true)
                 .micrometerMetricsEnabled(true)
+                .micrometerMetricsIdentifier("foobar")
                 .httpRequestHandlerUsername("foo")
                 .httpRequestHandlerPassword("bar")
                 .httpRequestHandlerUserHeader("x-custom-user-header")
@@ -218,6 +223,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(json.getString(PROP_HTTP_REQUEST_HANDLER_PASSWORD), "bar");
         testContext.assertTrue(json.getBoolean(PROP_HTTP_REQUEST_HANDLER_AUTH_ENABLED));
         testContext.assertTrue(json.getBoolean(PROP_MICROMETER_METRICS_ENABLED));
+        testContext.assertEquals(json.getString(PROP_MICROMETER_METRICS_IDENTIFIER), "foobar");
         testContext.assertEquals(json.getString(PROP_HTTP_REQUEST_HANDLER_USER_HEADER), "x-custom-user-header");
         testContext.assertEquals(json.getInteger(PROP_QUEUE_SPEED_INTERVAL_SEC), 1);
         testContext.assertEquals(json.getInteger(PROP_MEMORY_USAGE_LIMIT_PCT), 55);
@@ -258,6 +264,7 @@ public class RedisquesConfigurationTest {
         testContext.assertFalse(config.getHttpRequestHandlerEnabled());
         testContext.assertFalse(config.getHttpRequestHandlerAuthenticationEnabled());
         testContext.assertFalse(config.getMicrometerMetricsEnabled());
+        testContext.assertNull(config.getMicrometerMetricsIdentifier());
         testContext.assertEquals(config.getHttpRequestHandlerPrefix(), "/queuing");
         testContext.assertNull(config.getHttpRequestHandlerUsername());
         testContext.assertNull(config.getHttpRequestHandlerPassword());
@@ -293,6 +300,7 @@ public class RedisquesConfigurationTest {
         json.put(PROP_HTTP_REQUEST_HANDLER_ENABLED, Boolean.TRUE);
         json.put(PROP_HTTP_REQUEST_HANDLER_AUTH_ENABLED, Boolean.TRUE);
         json.put(PROP_MICROMETER_METRICS_ENABLED, Boolean.TRUE);
+        json.put(PROP_MICROMETER_METRICS_IDENTIFIER, "foobar");
         json.put(PROP_HTTP_REQUEST_HANDLER_PREFIX, "/queuing/test123");
         json.put(PROP_HTTP_REQUEST_HANDLER_USERNAME, "foo");
         json.put(PROP_HTTP_REQUEST_HANDLER_PASSWORD, "bar");
@@ -328,6 +336,7 @@ public class RedisquesConfigurationTest {
         testContext.assertTrue(config.getHttpRequestHandlerEnabled());
         testContext.assertTrue(config.getHttpRequestHandlerAuthenticationEnabled());
         testContext.assertTrue(config.getMicrometerMetricsEnabled());
+        testContext.assertEquals(config.getMicrometerMetricsIdentifier(), "foobar");
         testContext.assertEquals(config.getHttpRequestHandlerPort(), 7171);
         testContext.assertEquals(config.getHttpRequestHandlerPrefix(), "/queuing/test123");
         testContext.assertEquals(config.getHttpRequestHandlerUsername(), "foo");
