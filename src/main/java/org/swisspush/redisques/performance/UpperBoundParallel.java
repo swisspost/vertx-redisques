@@ -220,13 +220,13 @@ public class UpperBoundParallel {
         private final Mentor<Ctx> mentor;
         private final Lock lock = new ReentrantLock();
         private final Semaphore limit;
-        private Thread worker = null;
-        private int numInProgress = 0;
-        private int numTokensAvailForOurself = 0;
-        private boolean hasMore = true;
-        private boolean hasStarted = false; // true, as soon we could start at least once.
-        private boolean isFatalError = false;
-        private boolean isDoneCalled = false;
+        private volatile Thread worker = null;
+        private volatile int numInProgress = 0;
+        private volatile int numTokensAvailForOurself = 0;
+        private volatile boolean hasMore = true;
+        private volatile boolean hasStarted = false; // true, as soon we could start at least once.
+        private volatile boolean isFatalError = false;
+        private volatile boolean isDoneCalled = false;
 
         private Request(Ctx ctx, Mentor<Ctx> mentor, Semaphore limit) {
             this.ctx = ctx;

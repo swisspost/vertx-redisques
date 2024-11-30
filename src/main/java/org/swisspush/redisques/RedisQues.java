@@ -188,7 +188,7 @@ public class RedisQues extends AbstractVerticle {
     private UpperBoundParallel upperBoundParallel;
 
     // The queues this verticle is listening to
-    private final Map<String, QueueState> myQueues = new HashMap<>();
+    private final Map<String, QueueState> myQueues = new ConcurrentHashMap<>();
 
     private static final Logger log = LoggerFactory.getLogger(RedisQues.class);
 
@@ -565,9 +565,14 @@ public class RedisQues extends AbstractVerticle {
     private void registerActiveQueueRegistrationRefresh() {
         // Periodic refresh of my registrations on active queues.
         var periodMs = configurationProvider.configuration().getRefreshPeriod() * 1000L;
+        AtomicBoolean isRunning = new AtomicBoolean(false);
         periodicSkipScheduler.setPeriodic(periodMs, "registerActiveQueueRegistrationRefresh", new Consumer<Runnable>() {
             Iterator<Map.Entry<String, QueueState>> iter;
             @Override public void accept(Runnable onPeriodicDone) {
+                if (!isRunning.compareAndSet(false, true)) {
+                    log.warn("previous run is not finished yet.");
+                    return;
+                }
                 // Need a copy to prevent concurrent modification issuses.
                 iter = new HashMap<>(myQueues).entrySet().iterator();
                 // Trigger only a limitted amount of requests in parallel.
@@ -578,10 +583,12 @@ public class RedisQues extends AbstractVerticle {
                     }
                     @Override public boolean onError(Throwable ex, Iterator<Map.Entry<String, QueueState>> iter) {
                         if (log.isWarnEnabled()) log.warn("TODO error handling", exceptionFactory.newException(ex));
+                        isRunning.set(false);
                         onPeriodicDone.run();
                         return false;
                     }
                     @Override public void onDone(Iterator<Map.Entry<String, QueueState>> iter) {
+                        isRunning.set(false);
                         onPeriodicDone.run();
                     }
                 });
