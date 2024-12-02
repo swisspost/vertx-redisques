@@ -5,7 +5,6 @@ import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import org.slf4j.Logger;
 
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
 import static java.lang.System.currentTimeMillis;
@@ -13,7 +12,7 @@ import static org.slf4j.LoggerFactory.getLogger;
 
 /**
  * Same idea as {@link Vertx#setPeriodic(long, long, Handler)}. BUT prevents
- * tasks which start to overtake themselves.
+ * tasks which start to overtake themself.
  */
 public class PeriodicSkipScheduler {
 
@@ -32,19 +31,24 @@ public class PeriodicSkipScheduler {
 
     /**
      * Same idea as {@link Vertx#setPeriodic(long, long, Handler)}. BUT prevents
-     * tasks which start to overtake themselves.
+     * tasks which start to overtake themself.
      */
     public Timer setPeriodic(long initDelayMy, long periodMs, String dbgHint, Consumer<Runnable> task) {
-        var timer = new Timer(task, dbgHint);
+        var timer = new Timer(task);
         timer.id = vertx.setPeriodic(initDelayMy, periodMs, timer::onTrigger_);
+        timer.dbgHint = dbgHint;
         return timer;
     }
 
     private void onTrigger(Timer timer) {
-        if (!timer.isPreviousStillRunning.compareAndSet(false, true)) {
-            log.debug("Have to skip run.");
+        long now = currentTimeMillis();
+        boolean isPreviousStillRunning = timer.begEpochMs > timer.endEpochMs;
+        if (isPreviousStillRunning) {
+            log.debug("Have to skip run. Previous did not respond for {}ms. ({})",
+                    now - timer.begEpochMs, timer.dbgHint);
             return;
         }
+        timer.begEpochMs = currentTimeMillis();
         Promise<Void> p = Promise.promise();
         var fut = p.future();
         fut.onSuccess((Void v) -> timer.onTaskDone_());
@@ -62,7 +66,7 @@ public class PeriodicSkipScheduler {
     }
 
     private void onTaskDone(Timer timer) {
-        timer.isPreviousStillRunning.set(false);
+        timer.endEpochMs = currentTimeMillis();
     }
 
     private void cancel(Timer timer) {
@@ -74,12 +78,11 @@ public class PeriodicSkipScheduler {
         private final Consumer<Runnable> task;
         private long id;
         private String dbgHint;
-        private volatile AtomicBoolean isPreviousStillRunning;
+        // When the last run has begun and end.
+        private long begEpochMs, endEpochMs;
 
-        private Timer(Consumer<Runnable> task, String dbgHint) {
+        private Timer(Consumer<Runnable> task) {
             this.task = task;
-            this.dbgHint = dbgHint;
-            isPreviousStillRunning = new AtomicBoolean(false);
         }
         private void onTrigger_(Long aLong) { onTrigger(this); }
         private void onTaskDone_() { onTaskDone(this); }
