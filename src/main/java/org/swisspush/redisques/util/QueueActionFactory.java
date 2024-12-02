@@ -23,6 +23,7 @@ public class QueueActionFactory {
     private final QueueStatisticsCollector queueStatisticsCollector;
     private final int memoryUsageLimitPercent;
     private final MeterRegistry meterRegistry;
+    private final String metricsIdentifier;
     private final MemoryUsageProvider memoryUsageProvider;
     private final RedisQuesExceptionFactory exceptionFactory;
     private final Semaphore getQueuesItemsCountRedisRequestQuota;
@@ -60,6 +61,8 @@ public class QueueActionFactory {
         this.memoryUsageLimitPercent = configurationProvider.configuration().getMemoryUsageLimitPercent();
         this.getQueuesItemsCountRedisRequestQuota = getQueuesItemsCountRedisRequestQuota;
         this.meterRegistry = meterRegistry;
+
+        metricsIdentifier = configurationProvider.configuration().getMicrometerMetricsIdentifier();
     }
 
     public QueueAction buildQueueAction(RedisquesAPI.QueueOperation queueOperation){
@@ -101,11 +104,11 @@ public class QueueActionFactory {
             case enqueue:
                 return new EnqueueAction(vertx, redisProvider, address, queuesKey, queuesPrefix,
                         consumersPrefix, locksKey, queueConfigurations, exceptionFactory, queueStatisticsCollector, log,
-                        memoryUsageProvider, memoryUsageLimitPercent, meterRegistry);
+                        memoryUsageProvider, memoryUsageLimitPercent, meterRegistry, metricsIdentifier);
             case lockedEnqueue:
                 return new LockedEnqueueAction(vertx, redisProvider, address, queuesKey, queuesPrefix,
                         consumersPrefix, locksKey, queueConfigurations, exceptionFactory, queueStatisticsCollector, log,
-                        memoryUsageProvider, memoryUsageLimitPercent, meterRegistry);
+                        memoryUsageProvider, memoryUsageLimitPercent, meterRegistry, metricsIdentifier);
             case getLock:
                 return new GetLockAction(vertx, redisProvider, address, queuesKey, queuesPrefix,
                         consumersPrefix, locksKey, queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
