@@ -8,10 +8,7 @@ import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import org.slf4j.Logger;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
-import org.swisspush.redisques.util.DequeueStatistic;
-import org.swisspush.redisques.util.DequeueStatisticCollector;
-import org.swisspush.redisques.util.MetricMeter;
-import org.swisspush.redisques.util.QueueStatisticsCollector;
+import org.swisspush.redisques.util.*;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -55,14 +52,15 @@ public class QueueStatsService {
     private final AtomicLong maxQueueSize = new AtomicLong(0);
 
     public QueueStatsService(
-        Vertx vertx,
-        EventBus eventBus,
-        String redisquesAddress,
-        QueueStatisticsCollector queueStatisticsCollector,
-        DequeueStatisticCollector dequeueStatisticCollector,
-        RedisQuesExceptionFactory exceptionFactory,
-        Semaphore incomingRequestQuota,
-        MeterRegistry meterRegistry
+            Vertx vertx,
+            EventBus eventBus,
+            String redisquesAddress,
+            QueueStatisticsCollector queueStatisticsCollector,
+            DequeueStatisticCollector dequeueStatisticCollector,
+            RedisQuesExceptionFactory exceptionFactory,
+            Semaphore incomingRequestQuota,
+            MeterRegistry meterRegistry,
+            String metricsIdentifier
     ) {
         this.vertx = vertx;
         this.eventBus = eventBus;
@@ -72,9 +70,10 @@ public class QueueStatsService {
         this.exceptionFactory = exceptionFactory;
         this.incomingRequestQuota = incomingRequestQuota;
 
-        if(meterRegistry != null) {
+        if (meterRegistry != null) {
             Gauge.builder(MetricMeter.MAX_QUEUE_SIZE.getId(), maxQueueSize, AtomicLong::get).
-                    description(MetricMeter.MAX_QUEUE_SIZE.getDescription()).
+                    description(MetricMeter.MAX_QUEUE_SIZE.getDescription())
+                    .tag(MetricTags.IDENTIFIER.getId(), metricsIdentifier).
                     register(meterRegistry);
         }
     }
@@ -101,14 +100,23 @@ public class QueueStatsService {
             req0.mCtx = mCtx;
             req0.mentor = mentor;
             fetchQueueNamesAndSize(req0, (ex1, req1) -> {
-                if (ex1 != null) { onDone.accept(ex1, null); return; }
+                if (ex1 != null) {
+                    onDone.accept(ex1, null);
+                    return;
+                }
                 // Prepare a list of queue names as it is needed to fetch retryDetails.
                 req1.queueNames = new ArrayList<>(req1.queues.size());
                 for (Queue q : req1.queues) req1.queueNames.add(q.name);
                 fetchRetryDetails(req1, (ex2, req2) -> {
-                    if (ex2 != null) { onDone.accept(ex2, null); return; }
+                    if (ex2 != null) {
+                        onDone.accept(ex2, null);
+                        return;
+                    }
                     attachDequeueStats(req2, (ex3, req3) -> {
-                        if (ex3 != null) { onDone.accept(ex3, null); return; }
+                        if (ex3 != null) {
+                            onDone.accept(ex3, null);
+                            return;
+                        }
                         onDone.accept(null, req3.queues);
                     });
                 });
@@ -172,7 +180,7 @@ public class QueueStatsService {
     }
 
     private void collectMaxQueueSize(List<Queue> queues) {
-        if(queues.isEmpty()) {
+        if (queues.isEmpty()) {
             maxQueueSize.set(0);
         } else {
             maxQueueSize.set(queues.get(0).getSize());
@@ -182,7 +190,7 @@ public class QueueStatsService {
     private <CTX> void fetchRetryDetails(GetQueueStatsRequest<CTX> req, BiConsumer<Throwable, GetQueueStatsRequest<CTX>> onDone) {
         long begGetQueueStatsMs = currentTimeMillis();
         assert req.queueNames != null;
-        queueStatisticsCollector.getQueueStatistics(req.queueNames).onComplete( ev -> {
+        queueStatisticsCollector.getQueueStatistics(req.queueNames).onComplete(ev -> {
             req.queueNames = null; // <- no longer needed
             long durGetQueueStatsMs = currentTimeMillis() - begGetQueueStatsMs;
             log.debug("queueStatisticsCollector.getQueueStatistics() took {}ms", durGetQueueStatsMs);
@@ -244,17 +252,32 @@ public class QueueStatsService {
         private Long lastDequeueAttemptEpochMs;
         private Long lastDequeueSuccessEpochMs;
         private Long nextDequeueDueTimestampEpochMs;
-        private Queue(String name, long size){
+
+        private Queue(String name, long size) {
             assert name != null;
             this.name = name;
             this.size = size;
         }
 
-        public String getName() { return name; }
-        public long getSize() { return size; }
-        public Long getLastDequeueAttemptEpochMs() { return lastDequeueAttemptEpochMs; }
-        public Long getLastDequeueSuccessEpochMs() { return lastDequeueSuccessEpochMs; }
-        public Long getNextDequeueDueTimestampEpochMs() { return nextDequeueDueTimestampEpochMs; }
+        public String getName() {
+            return name;
+        }
+
+        public long getSize() {
+            return size;
+        }
+
+        public Long getLastDequeueAttemptEpochMs() {
+            return lastDequeueAttemptEpochMs;
+        }
+
+        public Long getLastDequeueSuccessEpochMs() {
+            return lastDequeueSuccessEpochMs;
+        }
+
+        public Long getNextDequeueDueTimestampEpochMs() {
+            return nextDequeueDueTimestampEpochMs;
+        }
     }
 
 
@@ -262,9 +285,8 @@ public class QueueStatsService {
      * <p>Mentors fetching operations and so provides the fetcher the required
      * information. Finally it also receives the operations result.</p>
      *
-     * @param <CTX>
-     *     The context object of choice handled back to each callback so the mentor
-     *     knows about what request the fetcher is talking.
+     * @param <CTX> The context object of choice handled back to each callback so the mentor
+     *              knows about what request the fetcher is talking.
      */
     public static interface GetQueueStatsMentor<CTX> {
 
@@ -272,16 +294,20 @@ public class QueueStatsService {
          * <p>Returning true means that all queues will be present in the result. If
          * false, empty queues won't show up the result.</p>
          *
-         * @param ctx  See {@link GetQueueStatsMentor}.
+         * @param ctx See {@link GetQueueStatsMentor}.
          */
-        public boolean includeEmptyQueues( CTX ctx );
+        public boolean includeEmptyQueues(CTX ctx);
 
-        /** <p>Limits the result to the largest N queues.</p> */
-        public int limit( CTX ctx );
+        /**
+         * <p>Limits the result to the largest N queues.</p>
+         */
+        public int limit(CTX ctx);
 
-        public String filter( CTX ctx);
+        public String filter(CTX ctx);
 
-        /** <p>Called ONCE with the final result.</p> */
+        /**
+         * <p>Called ONCE with the final result.</p>
+         */
         public void onQueueStatistics(List<Queue> queues, CTX ctx);
 
         /**

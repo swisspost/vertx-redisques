@@ -388,8 +388,9 @@ public class RedisQues extends AbstractVerticle {
         if(meterRegistry == null) {
             meterRegistry = BackendRegistries.getDefaultNow();
         }
+        String metricsIdentifier = modConfig.getMicrometerMetricsIdentifier();
         dequeueCounter =  Counter.builder(MetricMeter.DEQUEUE.getId())
-                .description(MetricMeter.DEQUEUE.getDescription()).register(meterRegistry);
+                .description(MetricMeter.DEQUEUE.getDescription()).tag(MetricTags.IDENTIFIER.getId(), metricsIdentifier).register(meterRegistry);
 
         String address = modConfig.getAddress();
         int metricRefreshPeriod = modConfig.getMetricRefreshPeriod();

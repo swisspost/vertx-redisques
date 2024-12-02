@@ -15,6 +15,7 @@ import org.junit.runner.RunWith;
 import org.mockito.Mockito;
 import org.slf4j.Logger;
 import org.swisspush.redisques.util.MetricMeter;
+import org.swisspush.redisques.util.MetricTags;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 
 import java.util.ArrayList;
@@ -40,12 +41,12 @@ public class EnqueueActionTest extends AbstractQueueActionTest {
     public void setup() {
         super.setup();
         MeterRegistry meterRegistry = new SimpleMeterRegistry();
-        enqueueCounterSuccess = meterRegistry.counter(MetricMeter.ENQUEUE_SUCCESS.getId());
-        enqueueCounterFail = meterRegistry.counter(MetricMeter.ENQUEUE_FAIL.getId());
+        enqueueCounterSuccess = meterRegistry.counter(MetricMeter.ENQUEUE_SUCCESS.getId(), MetricTags.IDENTIFIER.getId(), "foo");
+        enqueueCounterFail = meterRegistry.counter(MetricMeter.ENQUEUE_FAIL.getId(), MetricTags.IDENTIFIER.getId(), "foo");
         action = new EnqueueAction(vertx, redisProvider,
                 "addr", "q-", "prefix-", "c-", "l-",
                 new ArrayList<>(), exceptionFactory, Mockito.mock(QueueStatisticsCollector.class),
-                Mockito.mock(Logger.class), memoryUsageProvider, 80, meterRegistry);
+                Mockito.mock(Logger.class), memoryUsageProvider, 80, meterRegistry, "foo");
     }
 
     @Test

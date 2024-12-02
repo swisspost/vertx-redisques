@@ -25,7 +25,7 @@ public class EnqueueAction extends AbstractQueueAction {
             Vertx vertx, RedisProvider redisProvider, String address, String queuesKey, String queuesPrefix,
             String consumersPrefix, String locksKey, List<QueueConfiguration> queueConfigurations,
             RedisQuesExceptionFactory exceptionFactory, QueueStatisticsCollector queueStatisticsCollector, Logger log,
-            MemoryUsageProvider memoryUsageProvider, int memoryUsageLimitPercent, MeterRegistry meterRegistry
+            MemoryUsageProvider memoryUsageProvider, int memoryUsageLimitPercent, MeterRegistry meterRegistry, String metricsIdentifier
     ) {
         super(vertx, redisProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey,
                 queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
@@ -33,8 +33,10 @@ public class EnqueueAction extends AbstractQueueAction {
         this.memoryUsageLimitPercent = memoryUsageLimitPercent;
 
         if(meterRegistry != null) {
-            enqueueCounterSuccess =  Counter.builder(MetricMeter.ENQUEUE_SUCCESS.getId()).description(MetricMeter.ENQUEUE_SUCCESS.getDescription()).register(meterRegistry);
-            enqueueCounterFail =  Counter.builder(MetricMeter.ENQUEUE_FAIL.getId()).description(MetricMeter.ENQUEUE_FAIL.getDescription()).register(meterRegistry);
+            enqueueCounterSuccess =  Counter.builder(MetricMeter.ENQUEUE_SUCCESS.getId()).description(MetricMeter.ENQUEUE_SUCCESS.getDescription())
+                    .tag(MetricTags.IDENTIFIER.getId(), metricsIdentifier).register(meterRegistry);
+            enqueueCounterFail =  Counter.builder(MetricMeter.ENQUEUE_FAIL.getId()).description(MetricMeter.ENQUEUE_FAIL.getDescription())
+                    .tag(MetricTags.IDENTIFIER.getId(), metricsIdentifier).register(meterRegistry);
         }
     }
 

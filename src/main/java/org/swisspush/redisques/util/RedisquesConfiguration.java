@@ -64,6 +64,7 @@ public class RedisquesConfiguration {
     private static final int DEFAULT_PROCESSOR_TIMEOUT_MS = 240000; // 240s
     private static final int DEFAULT_METRIC_REFRESH_PERIOD_S = 10; // 10s
     private static final String DEFAULT_METRIC_STORAGE_NAME = "queue";
+    private static final String DEFAULT_MICROMETER_METRICS_IDENTIFIER = "default";
     private static final long DEFAULT_PROCESSOR_DELAY_MAX = 0;
     private static final int DEFAULT_REDIS_MAX_POOL_SIZE = 200;
     private static final int DEFAULT_REDIS_RECONNECT_ATTEMPTS = 0;
@@ -277,6 +278,13 @@ public class RedisquesConfiguration {
         this.maxPipelineWaitSize = maxPipelineWaitSize;
         Logger log = LoggerFactory.getLogger(RedisquesConfiguration.class);
 
+        String maybeEmptyMicrometerMetricsIdentifier = Strings.nullToEmpty(micrometerMetricsIdentifier).trim();
+        if(Strings.isNullOrEmpty(maybeEmptyMicrometerMetricsIdentifier)) {
+            this.micrometerMetricsIdentifier = DEFAULT_MICROMETER_METRICS_IDENTIFIER;
+        } else {
+            this.micrometerMetricsIdentifier = maybeEmptyMicrometerMetricsIdentifier;
+        }
+
         String maybeEmptyMetricStorageName = Strings.nullToEmpty(metricStorageName).trim();
         if(Strings.isNullOrEmpty(maybeEmptyMetricStorageName)) {
             this.metricStorageName = DEFAULT_METRIC_STORAGE_NAME;
@@ -319,7 +327,6 @@ public class RedisquesConfiguration {
         this.httpRequestHandlerEnabled = httpRequestHandlerEnabled;
         this.httpRequestHandlerAuthenticationEnabled = httpRequestHandlerAuthenticationEnabled;
         this.micrometerMetricsEnabled = micrometerMetricsEnabled;
-        this.micrometerMetricsIdentifier = micrometerMetricsIdentifier;
         this.httpRequestHandlerPrefix = httpRequestHandlerPrefix;
         this.httpRequestHandlerUsername = httpRequestHandlerUsername;
         this.httpRequestHandlerPassword = httpRequestHandlerPassword;

@@ -42,7 +42,7 @@ public class RedisquesConfigurationTest {
         testContext.assertFalse(config.getHttpRequestHandlerEnabled());
         testContext.assertFalse(config.getHttpRequestHandlerAuthenticationEnabled());
         testContext.assertFalse(config.getMicrometerMetricsEnabled());
-        testContext.assertNull(config.getMicrometerMetricsIdentifier());
+        testContext.assertEquals(config.getMicrometerMetricsIdentifier(), "default");
         testContext.assertEquals(config.getHttpRequestHandlerPrefix(), "/queuing");
         testContext.assertNull(config.getHttpRequestHandlerUsername());
         testContext.assertNull(config.getHttpRequestHandlerPassword());
@@ -149,7 +149,7 @@ public class RedisquesConfigurationTest {
         testContext.assertFalse(json.getBoolean(PROP_HTTP_REQUEST_HANDLER_ENABLED));
         testContext.assertFalse(json.getBoolean(PROP_HTTP_REQUEST_HANDLER_AUTH_ENABLED));
         testContext.assertFalse(json.getBoolean(PROP_MICROMETER_METRICS_ENABLED));
-        testContext.assertNull(json.getString(PROP_MICROMETER_METRICS_IDENTIFIER));
+        testContext.assertEquals(json.getString(PROP_MICROMETER_METRICS_IDENTIFIER), "default");
         testContext.assertEquals(json.getString(PROP_HTTP_REQUEST_HANDLER_PREFIX), "/queuing");
         testContext.assertNull(json.getString(PROP_HTTP_REQUEST_HANDLER_USERNAME));
         testContext.assertNull(json.getString(PROP_HTTP_REQUEST_HANDLER_PASSWORD));
@@ -264,7 +264,7 @@ public class RedisquesConfigurationTest {
         testContext.assertFalse(config.getHttpRequestHandlerEnabled());
         testContext.assertFalse(config.getHttpRequestHandlerAuthenticationEnabled());
         testContext.assertFalse(config.getMicrometerMetricsEnabled());
-        testContext.assertNull(config.getMicrometerMetricsIdentifier());
+        testContext.assertEquals(config.getMicrometerMetricsIdentifier(), "default");
         testContext.assertEquals(config.getHttpRequestHandlerPrefix(), "/queuing");
         testContext.assertNull(config.getHttpRequestHandlerUsername());
         testContext.assertNull(config.getHttpRequestHandlerPassword());

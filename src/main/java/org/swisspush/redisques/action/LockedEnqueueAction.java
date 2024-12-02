@@ -23,10 +23,11 @@ public class LockedEnqueueAction extends EnqueueAction {
                                String consumersPrefix, String locksKey, List<QueueConfiguration> queueConfigurations,
                                RedisQuesExceptionFactory exceptionFactory,
                                QueueStatisticsCollector queueStatisticsCollector, Logger log,
-                               MemoryUsageProvider memoryUsageProvider, int memoryUsageLimitPercent, MeterRegistry meterRegistry) {
+                               MemoryUsageProvider memoryUsageProvider, int memoryUsageLimitPercent, MeterRegistry meterRegistry,
+                               String metricsIdentifier) {
         super(vertx, redisProvider, address, queuesKey, queuesPrefix, consumersPrefix,
                 locksKey, queueConfigurations, exceptionFactory, queueStatisticsCollector, log, memoryUsageProvider,
-                memoryUsageLimitPercent, meterRegistry);
+                memoryUsageLimitPercent, meterRegistry, metricsIdentifier);
     }
 
     @Override
