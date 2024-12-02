@@ -37,6 +37,8 @@ public class RedisQuesTest extends AbstractTestCase {
     private Counter enqueueCounterFail;
     private Counter dequeueCounter;
 
+    private final String metricsIdentifier = "foo";
+
     @Rule
     public Timeout rule = Timeout.seconds(50);
 
@@ -47,6 +49,7 @@ public class RedisQuesTest extends AbstractTestCase {
         JsonObject config = RedisquesConfiguration.with()
                 .processorAddress(PROCESSOR_ADDRESS)
                 .micrometerMetricsEnabled(true)
+                .micrometerMetricsIdentifier(metricsIdentifier)
                 .refreshPeriod(2)
                 .publishMetricsAddress("my-metrics-eb-address")
                 .metricStorageName("foobar")
@@ -61,9 +64,9 @@ public class RedisQuesTest extends AbstractTestCase {
                 .asJsonObject();
 
         MeterRegistry meterRegistry = new SimpleMeterRegistry();
-        enqueueCounterSuccess = meterRegistry.counter(MetricMeter.ENQUEUE_SUCCESS.getId());
-        enqueueCounterFail = meterRegistry.counter(MetricMeter.ENQUEUE_FAIL.getId());
-        dequeueCounter =  meterRegistry.counter(MetricMeter.DEQUEUE.getId());
+        enqueueCounterSuccess = meterRegistry.counter(MetricMeter.ENQUEUE_SUCCESS.getId(), MetricTags.IDENTIFIER.getId(), metricsIdentifier);
+        enqueueCounterFail = meterRegistry.counter(MetricMeter.ENQUEUE_FAIL.getId(), MetricTags.IDENTIFIER.getId(), metricsIdentifier);
+        dequeueCounter =  meterRegistry.counter(MetricMeter.DEQUEUE.getId(), MetricTags.IDENTIFIER.getId(), metricsIdentifier);
 
         memoryUsageProvider = new TestMemoryUsageProvider(Optional.of(50));
         redisQues = RedisQues.builder()
