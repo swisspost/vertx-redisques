@@ -236,7 +236,7 @@ public class RedisQues extends AbstractVerticle {
     private Map<QueueOperation, QueueAction> queueActions = new HashMap<>();
 
     private Map<String, DequeueStatistic> dequeueStatistic = new ConcurrentHashMap<>();
-    private Map<String, Long> aliveConsumer = new ConcurrentHashMap<>();
+    private Map<String, Long> aliveConsumers = new ConcurrentHashMap<>();
     private boolean dequeueStatisticEnabled = false;
     private final RedisQuesExceptionFactory exceptionFactory;
     private PeriodicSkipScheduler periodicSkipScheduler;
@@ -480,7 +480,7 @@ public class RedisQues extends AbstractVerticle {
         final long periodMs = configurationProvider.configuration().getRefreshPeriod() * 1000L;
         final String address = configurationProvider.configuration().getAddress();
         vertx.setPeriodic(10, periodMs, event -> {
-            Iterator<Map.Entry<String, Long>> iterator = aliveConsumer.entrySet().iterator();
+            Iterator<Map.Entry<String, Long>> iterator = aliveConsumers.entrySet().iterator();
             while (iterator.hasNext()) {
                 Map.Entry<String, Long> entry = iterator.next();
                 if (currentTimeMillis() > entry.getValue()) {
@@ -488,8 +488,8 @@ public class RedisQues extends AbstractVerticle {
                     iterator.remove();
                 }
             }
-            log.debug("RedisQues consumer {} keep alive published", uid);
             vertx.eventBus().publish(address + "-consumer-alive", uid);
+            log.debug("RedisQues consumer {} keep alive published", uid);
         });
     }
 
@@ -501,7 +501,7 @@ public class RedisQues extends AbstractVerticle {
             return;
         }
         log.debug("RedisQues consumer {} keep alive renewed", consumerId);
-        aliveConsumer.put(consumerId, currentTimeMillis() + (periodMs * 4));
+        aliveConsumers.put(consumerId, currentTimeMillis() + (periodMs * 4));
     }
 
 
@@ -1205,8 +1205,8 @@ public class RedisQues extends AbstractVerticle {
                         eb.send(configurationProvider.configuration().getAddress() + "-consumers", queueName);
                         promise.complete();
                     } else {
-                        if (!aliveConsumer.containsKey(consumer)) {
-                            log.warn("RedisQues consumer {} of queue {} is not exist.", consumer, queueName);
+                        if (!aliveConsumers.containsKey(consumer)) {
+                            log.warn("RedisQues consumer {} of queue {} does not exist.", consumer, queueName);
                             redisAPI.del(Collections.singletonList(key), event1 -> promise.complete());
                         } else {
                             // Notify the registered consumer
