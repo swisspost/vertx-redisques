@@ -209,6 +209,8 @@ public class RedisQues extends AbstractVerticle {
 
     private MessageConsumer<String> consumersMessageConsumer;
 
+    private MessageConsumer<String> consumersAliveMessageConsumer;
+
     // Configuration
 
     private RedisProvider redisProvider;
@@ -234,6 +236,7 @@ public class RedisQues extends AbstractVerticle {
     private Map<QueueOperation, QueueAction> queueActions = new HashMap<>();
 
     private Map<String, DequeueStatistic> dequeueStatistic = new ConcurrentHashMap<>();
+    private Map<String, Long> aliveConsumer = new ConcurrentHashMap<>();
     private boolean dequeueStatisticEnabled = false;
     private final RedisQuesExceptionFactory exceptionFactory;
     private PeriodicSkipScheduler periodicSkipScheduler;
@@ -453,6 +456,8 @@ public class RedisQues extends AbstractVerticle {
         // Handles registration requests
         consumersMessageConsumer = vertx.eventBus().consumer(address + "-consumers", this::handleRegistrationRequest);
 
+        consumersAliveMessageConsumer = vertx.eventBus().consumer(address + "-consumer-alive", this::handleConsumerAlive);
+
         // Handles notifications
         uidMessageConsumer = vertx.eventBus().consumer(uid, event -> {
             final String queue = event.body();
@@ -468,7 +473,37 @@ public class RedisQues extends AbstractVerticle {
         registerQueueCheck();
         registerMetricsGathering(configuration);
         registerNotExpiredQueueCheck();
+        registerKeepConsumerAlive();
     }
+
+    private void registerKeepConsumerAlive() {
+        final long periodMs = configurationProvider.configuration().getRefreshPeriod() * 1000L;
+        final String address = configurationProvider.configuration().getAddress();
+        vertx.setPeriodic(10, periodMs, event -> {
+            Iterator<Map.Entry<String, Long>> iterator = aliveConsumer.entrySet().iterator();
+            while (iterator.hasNext()) {
+                Map.Entry<String, Long> entry = iterator.next();
+                if (currentTimeMillis() > entry.getValue()) {
+                    log.info("RedisQues consumer with id {}' has expired", entry.getKey());
+                    iterator.remove();
+                }
+            }
+            log.debug("RedisQues consumer {} keep alive published", uid);
+            vertx.eventBus().publish(address + "-consumer-alive", uid);
+        });
+    }
+
+    private void handleConsumerAlive(Message<String> msg) {
+        final String consumerId = msg.body();
+        final long periodMs = configurationProvider.configuration().getRefreshPeriod() * 1000L;
+        if (!UUID.fromString(consumerId).toString().equals(consumerId)) {
+            log.warn("invalid RedisQues consumer id {}", consumerId);
+            return;
+        }
+        log.debug("RedisQues consumer {} keep alive renewed", consumerId);
+        aliveConsumer.put(consumerId, currentTimeMillis() + (periodMs * 4));
+    }
+
 
     private void registerNotExpiredQueueCheck() {
         vertx.setPeriodic(20 * 1000, event -> {
@@ -784,16 +819,20 @@ public class RedisQues extends AbstractVerticle {
     private void gracefulStop(final Handler<Void> doneHandler) {
         consumersMessageConsumer.unregister(event -> uidMessageConsumer.unregister(unregisterEvent -> {
             if (event.failed()) log.warn("TODO error handling", exceptionFactory.newException(
-                "unregister(" + event + ") failed", event.cause()));
-            unregisterConsumers(false).onComplete(unregisterConsumersEvent -> {
-                if( unregisterEvent.failed() ) {
-                    log.warn("TODO error handling", exceptionFactory.newException(
-                            "unregisterConsumers() failed", unregisterEvent.cause()));
-                }
-                stoppedHandler = doneHandler;
-                if (myQueues.keySet().isEmpty()) {
-                    doneHandler.handle(null);
-                }
+                    "unregister(" + event + ") failed", event.cause()));
+            consumersAliveMessageConsumer.unregister(event1 -> {
+                if (event1.failed()) log.warn("TODO error handling", exceptionFactory.newException(
+                        "unregister(" + event1 + ") failed", event1.cause()));
+                unregisterConsumers(false).onComplete(unregisterConsumersEvent -> {
+                    if (unregisterEvent.failed()) {
+                        log.warn("TODO error handling", exceptionFactory.newException(
+                                "unregisterConsumers() failed", unregisterEvent.cause()));
+                    }
+                    stoppedHandler = doneHandler;
+                    if (myQueues.keySet().isEmpty()) {
+                        doneHandler.handle(null);
+                    }
+                });
             });
         }));
     }
@@ -1166,10 +1205,15 @@ public class RedisQues extends AbstractVerticle {
                         eb.send(configurationProvider.configuration().getAddress() + "-consumers", queueName);
                         promise.complete();
                     } else {
-                        // Notify the registered consumer
-                        log.debug("RedisQues Notifying consumer {} to consume queue {}", consumer, queueName);
-                        eb.send(consumer, queueName);
-                        promise.complete();
+                        if (!aliveConsumer.containsKey(consumer)) {
+                            log.warn("RedisQues consumer {} of queue {} is not exist.", consumer, queueName);
+                            redisAPI.del(Collections.singletonList(key), event1 -> promise.complete());
+                        } else {
+                            // Notify the registered consumer
+                            log.debug("RedisQues Notifying consumer {} to consume queue {}", consumer, queueName);
+                            eb.send(consumer, queueName);
+                            promise.complete();
+                        }
                     }
                 }))
                 .onFailure(throwable -> {
