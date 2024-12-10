@@ -496,12 +496,8 @@ public class RedisQues extends AbstractVerticle {
     private void handleConsumerAlive(Message<String> msg) {
         final String consumerId = msg.body();
         final long periodMs = configurationProvider.configuration().getRefreshPeriod() * 1000L;
-        if (!UUID.fromString(consumerId).toString().equals(consumerId)) {
-            log.warn("invalid RedisQues consumer id {}", consumerId);
-            return;
-        }
-        log.debug("RedisQues consumer {} keep alive renewed", consumerId);
         aliveConsumers.put(consumerId, currentTimeMillis() + (periodMs * 4));
+        log.debug("RedisQues consumer {} keep alive renewed", consumerId);
     }
 
 
