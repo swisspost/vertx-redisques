@@ -1208,7 +1208,7 @@ public class RedisQues extends AbstractVerticle {
                         log.warn("RedisQues consumer {} of queue {} does not exist.", consumer, queueName);
                         redisAPI.del(Collections.singletonList(key), result -> {
                             if (result.failed()) {
-                                log.warn("Failed to removed consumer '{}'", key, exceptionFactory.newException(event.cause()));
+                                log.warn("Failed to removed consumer '{}'", key, exceptionFactory.newException(result.cause()));
                             } else {
                                 log.debug("{} consumer key removed",  result.result().toLong());
                             }
