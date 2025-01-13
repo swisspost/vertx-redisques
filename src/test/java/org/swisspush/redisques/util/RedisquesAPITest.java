@@ -310,6 +310,21 @@ public class RedisquesAPITest {
         context.assertEquals(expected, operation);
     }
 
+    @Test
+    public void testBuildMonitorOperation(TestContext context) {
+        JsonObject operation = RedisquesAPI.buildMonitorOperation(false, 10);
+        context.assertEquals(buildExpectedJsonObject("monitor",
+                new JsonObject().put(EMPTY_QUEUES, false).put(LIMIT, 10)), operation);
+
+        operation = RedisquesAPI.buildMonitorOperation(true, 999);
+        context.assertEquals(buildExpectedJsonObject("monitor",
+                new JsonObject().put(EMPTY_QUEUES, true).put(LIMIT, 999)), operation);
+
+        operation = RedisquesAPI.buildMonitorOperation(true, null);
+        context.assertEquals(buildExpectedJsonObject("monitor",
+                new JsonObject().put(EMPTY_QUEUES, true)), operation);
+    }
+
     private JsonObject buildExpectedJsonObject(String operation){
         JsonObject expected = new JsonObject();
         expected.put("operation", operation);

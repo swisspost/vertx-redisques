@@ -323,6 +323,27 @@ Response Data
 }
 ```
 
+#### monitor
+
+Request Data
+```
+{
+    "operation": "monitor",
+    "payload": {
+        "emptyQueues": <boolean value to define whether to include empty queues or not>,
+        "limit": <limit the amount of queues to return>
+    }
+}
+```
+
+Response Data
+```
+{
+    "status": "ok" / "error",
+    "value": <objArr RESULT>
+}
+```
+
 #### getQueueItems
 
 Request Data

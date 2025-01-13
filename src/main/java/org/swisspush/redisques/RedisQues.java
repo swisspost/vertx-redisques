@@ -13,6 +13,7 @@ import io.vertx.core.eventbus.DeliveryOptions;
 import io.vertx.core.eventbus.EventBus;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.eventbus.MessageConsumer;
+import io.vertx.core.http.HttpClient;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.micrometer.backends.BackendRegistries;
@@ -48,37 +49,8 @@ import java.util.function.Consumer;
 
 import static java.lang.System.currentTimeMillis;
 import static org.swisspush.redisques.exception.RedisQuesExceptionFactory.newThriftyExceptionFactory;
-import static org.swisspush.redisques.util.RedisquesAPI.ERROR;
-import static org.swisspush.redisques.util.RedisquesAPI.MESSAGE;
-import static org.swisspush.redisques.util.RedisquesAPI.OK;
-import static org.swisspush.redisques.util.RedisquesAPI.OPERATION;
-import static org.swisspush.redisques.util.RedisquesAPI.PAYLOAD;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.addQueueItem;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.bulkDeleteLocks;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.bulkDeleteQueues;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.bulkPutLocks;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.deleteAllLocks;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.deleteAllQueueItems;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.deleteLock;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.deleteQueueItem;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.enqueue;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.getAllLocks;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.getConfiguration;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.getLock;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.getQueueItem;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.getQueueItems;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.getQueueItemsCount;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.getQueues;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.getQueuesCount;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.getQueuesItemsCount;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.getQueuesSpeed;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.getQueuesStatistics;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.lockedEnqueue;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.putLock;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.replaceQueueItem;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.setConfiguration;
-import static org.swisspush.redisques.util.RedisquesAPI.STATUS;
+import static org.swisspush.redisques.util.RedisquesAPI.*;
+import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.*;
 
 public class RedisQues extends AbstractVerticle {
 
@@ -417,9 +389,11 @@ public class RedisQues extends AbstractVerticle {
                     configurationProvider.configuration().getMemoryUsageCheckIntervalSec());
         }
 
+        HttpClient client = vertx.createHttpClient();
+
         assert getQueuesItemsCountRedisRequestQuota != null;
         queueActionFactory = new QueueActionFactory(
-                redisProvider, vertx, log, queuesKey, queuesPrefix, consumersPrefix, locksKey,
+                redisProvider, vertx, client, log, queuesKey, queuesPrefix, consumersPrefix, locksKey,
                 memoryUsageProvider, queueStatisticsCollector, exceptionFactory,
                 configurationProvider, getQueuesItemsCountRedisRequestQuota, meterRegistry);
 
@@ -447,6 +421,7 @@ public class RedisQues extends AbstractVerticle {
         queueActions.put(getQueuesStatistics, queueActionFactory.buildQueueAction(getQueuesStatistics));
         queueActions.put(setConfiguration, queueActionFactory.buildQueueAction(setConfiguration));
         queueActions.put(getConfiguration, queueActionFactory.buildQueueAction(getConfiguration));
+        queueActions.put(monitor, queueActionFactory.buildQueueAction(monitor));
 
         String address = configuration.getAddress();
 
