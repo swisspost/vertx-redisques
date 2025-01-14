@@ -1442,33 +1442,4 @@ public class RedisQues extends AbstractVerticle {
         }
         return null;
     }
-
-    private class FailedAsyncResult<Response> implements AsyncResult<Response> {
-
-        private final Throwable cause;
-
-        private FailedAsyncResult(Throwable cause) {
-            this.cause = cause;
-        }
-
-        @Override
-        public Response result() {
-            return null;
-        }
-
-        @Override
-        public Throwable cause() {
-            return cause;
-        }
-
-        @Override
-        public boolean succeeded() {
-            return false;
-        }
-
-        @Override
-        public boolean failed() {
-            return true;
-        }
-    }
 }
