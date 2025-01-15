@@ -12,9 +12,9 @@ import static org.swisspush.redisques.util.RedisquesAPI.LIMIT;
 
 public class MonitorAction implements QueueAction {
 
-    private HttpClient client;
-    private RedisquesConfiguration modConfig;
-    private Logger log;
+    private final HttpClient client;
+    private final RedisquesConfiguration modConfig;
+    private final Logger log;
 
     public MonitorAction(RedisquesConfiguration modConfig, HttpClient client, Logger log) {
         this.modConfig = modConfig;
