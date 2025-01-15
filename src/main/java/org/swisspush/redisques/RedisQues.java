@@ -24,6 +24,8 @@ import org.slf4j.LoggerFactory;
 import org.swisspush.redisques.action.QueueAction;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.handler.RedisquesHttpRequestHandler;
+import org.swisspush.redisques.lock.Lock;
+import org.swisspush.redisques.lock.impl.RedisBasedLock;
 import org.swisspush.redisques.metrics.PeriodicMetricsCollector;
 import org.swisspush.redisques.performance.UpperBoundParallel;
 import org.swisspush.redisques.scheduling.PeriodicSkipScheduler;
@@ -244,6 +246,7 @@ public class RedisQues extends AbstractVerticle {
     private final Semaphore checkQueueRequestsQuota;
     private final Semaphore queueStatsRequestQuota;
     private final Semaphore getQueuesItemsCountRedisRequestQuota;
+    private Lock lock;
 
     public RedisQues() {
         this(null, null, null, newThriftyExceptionFactory(), new Semaphore(Integer.MAX_VALUE),
@@ -350,10 +353,6 @@ public class RedisQues extends AbstractVerticle {
         RedisquesConfiguration modConfig = configurationProvider.configuration();
         log.info("Starting Redisques module with configuration: {}", configurationProvider.configuration());
 
-        if(configurationProvider.configuration().getMicrometerMetricsEnabled()) {
-            initMicrometerMetrics(modConfig);
-        }
-
         int dequeueStatisticReportIntervalSec = modConfig.getDequeueStatisticReportIntervalSec();
         if (modConfig.isDequeueStatsEnabled()) {
             dequeueStatisticEnabled = true;
@@ -398,7 +397,8 @@ public class RedisQues extends AbstractVerticle {
         String address = modConfig.getAddress();
         int metricRefreshPeriod = modConfig.getMetricRefreshPeriod();
         String identifier = modConfig.getMicrometerMetricsIdentifier();
-        new PeriodicMetricsCollector(vertx, periodicSkipScheduler, address, identifier, meterRegistry, metricRefreshPeriod);
+        new PeriodicMetricsCollector(vertx, uid, periodicSkipScheduler, address, identifier, meterRegistry, lock,
+                metricRefreshPeriod);
     }
 
     private void initialize() {
@@ -406,6 +406,12 @@ public class RedisQues extends AbstractVerticle {
         this.queueStatisticsCollector = new QueueStatisticsCollector(
                 redisProvider, queuesPrefix, vertx, exceptionFactory, redisMonitoringReqQuota,
                 configuration.getQueueSpeedIntervalSec());
+
+        this.lock = new RedisBasedLock(redisProvider, exceptionFactory);
+
+        if(configurationProvider.configuration().getMicrometerMetricsEnabled()) {
+            initMicrometerMetrics(configuration);
+        }
 
         RedisquesHttpRequestHandler.init(
             vertx, configuration, queueStatisticsCollector, dequeueStatisticCollector,
