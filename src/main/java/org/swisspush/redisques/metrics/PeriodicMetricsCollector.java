@@ -31,7 +31,7 @@ public class PeriodicMetricsCollector {
     private static final Logger log = LoggerFactory.getLogger(PeriodicMetricsCollector.class);
     private final Vertx vertx;
     private final String redisquesAddress;
-    private Lock lock;
+    private final Lock lock;
     private final String uid;
     private final long metricCollectIntervalMs;
 
