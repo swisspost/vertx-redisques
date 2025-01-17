@@ -13,6 +13,7 @@ import io.vertx.core.eventbus.DeliveryOptions;
 import io.vertx.core.eventbus.EventBus;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.eventbus.MessageConsumer;
+import io.vertx.core.http.HttpClient;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.micrometer.backends.BackendRegistries;
@@ -24,7 +25,10 @@ import org.slf4j.LoggerFactory;
 import org.swisspush.redisques.action.QueueAction;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.handler.RedisquesHttpRequestHandler;
-import org.swisspush.redisques.metrics.PeriodicMetricsCollector;
+import org.swisspush.redisques.lock.Lock;
+import org.swisspush.redisques.lock.impl.RedisBasedLock;
+import org.swisspush.redisques.metrics.MetricsCollector;
+import org.swisspush.redisques.metrics.MetricsCollectorScheduler;
 import org.swisspush.redisques.performance.UpperBoundParallel;
 import org.swisspush.redisques.scheduling.PeriodicSkipScheduler;
 import org.swisspush.redisques.util.*;
@@ -48,37 +52,8 @@ import java.util.function.Consumer;
 
 import static java.lang.System.currentTimeMillis;
 import static org.swisspush.redisques.exception.RedisQuesExceptionFactory.newThriftyExceptionFactory;
-import static org.swisspush.redisques.util.RedisquesAPI.ERROR;
-import static org.swisspush.redisques.util.RedisquesAPI.MESSAGE;
-import static org.swisspush.redisques.util.RedisquesAPI.OK;
-import static org.swisspush.redisques.util.RedisquesAPI.OPERATION;
-import static org.swisspush.redisques.util.RedisquesAPI.PAYLOAD;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.addQueueItem;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.bulkDeleteLocks;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.bulkDeleteQueues;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.bulkPutLocks;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.deleteAllLocks;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.deleteAllQueueItems;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.deleteLock;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.deleteQueueItem;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.enqueue;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.getAllLocks;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.getConfiguration;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.getLock;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.getQueueItem;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.getQueueItems;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.getQueueItemsCount;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.getQueues;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.getQueuesCount;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.getQueuesItemsCount;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.getQueuesSpeed;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.getQueuesStatistics;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.lockedEnqueue;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.putLock;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.replaceQueueItem;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.setConfiguration;
-import static org.swisspush.redisques.util.RedisquesAPI.STATUS;
+import static org.swisspush.redisques.util.RedisquesAPI.*;
+import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.*;
 
 public class RedisQues extends AbstractVerticle {
 
@@ -244,6 +219,7 @@ public class RedisQues extends AbstractVerticle {
     private final Semaphore checkQueueRequestsQuota;
     private final Semaphore queueStatsRequestQuota;
     private final Semaphore getQueuesItemsCountRedisRequestQuota;
+    private Lock lock;
 
     public RedisQues() {
         this(null, null, null, newThriftyExceptionFactory(), new Semaphore(Integer.MAX_VALUE),
@@ -350,10 +326,6 @@ public class RedisQues extends AbstractVerticle {
         RedisquesConfiguration modConfig = configurationProvider.configuration();
         log.info("Starting Redisques module with configuration: {}", configurationProvider.configuration());
 
-        if(configurationProvider.configuration().getMicrometerMetricsEnabled()) {
-            initMicrometerMetrics(modConfig);
-        }
-
         int dequeueStatisticReportIntervalSec = modConfig.getDequeueStatisticReportIntervalSec();
         if (modConfig.isDequeueStatsEnabled()) {
             dequeueStatisticEnabled = true;
@@ -392,13 +364,16 @@ public class RedisQues extends AbstractVerticle {
             meterRegistry = BackendRegistries.getDefaultNow();
         }
         String metricsIdentifier = modConfig.getMicrometerMetricsIdentifier();
-        dequeueCounter =  Counter.builder(MetricMeter.DEQUEUE.getId())
+        dequeueCounter = Counter.builder(MetricMeter.DEQUEUE.getId())
                 .description(MetricMeter.DEQUEUE.getDescription()).tag(MetricTags.IDENTIFIER.getId(), metricsIdentifier).register(meterRegistry);
 
         String address = modConfig.getAddress();
         int metricRefreshPeriod = modConfig.getMetricRefreshPeriod();
-        String identifier = modConfig.getMicrometerMetricsIdentifier();
-        new PeriodicMetricsCollector(vertx, periodicSkipScheduler, address, identifier, meterRegistry, metricRefreshPeriod);
+        if (metricRefreshPeriod > 0) {
+            String identifier = modConfig.getMicrometerMetricsIdentifier();
+            MetricsCollector metricsCollector = new MetricsCollector(vertx, uid, address, identifier, meterRegistry, lock, metricRefreshPeriod);
+            new MetricsCollectorScheduler(vertx, metricsCollector, metricRefreshPeriod);
+        }
     }
 
     private void initialize() {
@@ -407,9 +382,15 @@ public class RedisQues extends AbstractVerticle {
                 redisProvider, queuesPrefix, vertx, exceptionFactory, redisMonitoringReqQuota,
                 configuration.getQueueSpeedIntervalSec());
 
+        this.lock = new RedisBasedLock(redisProvider, exceptionFactory);
+
+        if(configurationProvider.configuration().getMicrometerMetricsEnabled()) {
+            initMicrometerMetrics(configuration);
+        }
+
         RedisquesHttpRequestHandler.init(
-            vertx, configuration, queueStatisticsCollector, dequeueStatisticCollector,
-            exceptionFactory, queueStatsRequestQuota, meterRegistry);
+                vertx, configuration, queueStatisticsCollector, dequeueStatisticCollector,
+                exceptionFactory, queueStatsRequestQuota);
 
         // only initialize memoryUsageProvider when not provided in the constructor
         if (memoryUsageProvider == null) {
@@ -417,9 +398,11 @@ public class RedisQues extends AbstractVerticle {
                     configurationProvider.configuration().getMemoryUsageCheckIntervalSec());
         }
 
+        HttpClient client = vertx.createHttpClient();
+
         assert getQueuesItemsCountRedisRequestQuota != null;
         queueActionFactory = new QueueActionFactory(
-                redisProvider, vertx, log, queuesKey, queuesPrefix, consumersPrefix, locksKey,
+                redisProvider, vertx, client, log, queuesKey, queuesPrefix, consumersPrefix, locksKey,
                 memoryUsageProvider, queueStatisticsCollector, exceptionFactory,
                 configurationProvider, getQueuesItemsCountRedisRequestQuota, meterRegistry);
 
@@ -447,6 +430,7 @@ public class RedisQues extends AbstractVerticle {
         queueActions.put(getQueuesStatistics, queueActionFactory.buildQueueAction(getQueuesStatistics));
         queueActions.put(setConfiguration, queueActionFactory.buildQueueAction(setConfiguration));
         queueActions.put(getConfiguration, queueActionFactory.buildQueueAction(getConfiguration));
+        queueActions.put(monitor, queueActionFactory.buildQueueAction(monitor));
 
         String address = configuration.getAddress();
 
@@ -530,9 +514,13 @@ public class RedisQues extends AbstractVerticle {
         });
     }
 
-    private void registerMetricsGathering(RedisquesConfiguration configuration){
+    private void registerMetricsGathering(RedisquesConfiguration configuration) {
+        if (!configuration.getRedisMonitoringEnabled()) {
+            return;
+        }
+
         String metricsAddress = configuration.getPublishMetricsAddress();
-        if(Strings.isNullOrEmpty(metricsAddress)) {
+        if (Strings.isNullOrEmpty(metricsAddress)) {
             return;
         }
         String metricStorageName = configuration.getMetricStorageName();
@@ -1441,34 +1429,5 @@ public class RedisQues extends AbstractVerticle {
             }
         }
         return null;
-    }
-
-    private class FailedAsyncResult<Response> implements AsyncResult<Response> {
-
-        private final Throwable cause;
-
-        private FailedAsyncResult(Throwable cause) {
-            this.cause = cause;
-        }
-
-        @Override
-        public Response result() {
-            return null;
-        }
-
-        @Override
-        public Throwable cause() {
-            return cause;
-        }
-
-        @Override
-        public boolean succeeded() {
-            return false;
-        }
-
-        @Override
-        public boolean failed() {
-            return true;
-        }
     }
 }

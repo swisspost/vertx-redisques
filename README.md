@@ -66,6 +66,7 @@ The following configuration values are available:
 | redisReconnectAttempts                  | 0                               | The amount of attempts to reconnect when redis connection is lost. Use **0** to not reconnect at all or **-1** to reconnect indefinitely.                                                                        |
 | redisReconnectDelaySec                  | 30                              | The interval [s] to attempt to reconnect when redis connection is lost.                                                                                                                                          |
 | redisPoolRecycleTimeoutMs               | 180000                          | The timeout [ms] when the connection pool is recycled. Use **-1** when having reconnect feature enabled.                                                                                                         |
+| redisMonitoringEnabled                  | true                            | Enable / disable monitoring of redis metrics                                                                                                                                                                     |
 | micrometerMetricsEnabled                | false                           | Enable / disable collection of metrics using micrometer                                                                                                                                                          |
 | micrometerMetricsIdentifier             | default                         | Identifier to track values from multiple redisques instances                                                                                                                                                     |
 | httpRequestHandlerEnabled               | false                           | Enable / disable the HTTP API                                                                                                                                                                                    |
@@ -80,7 +81,7 @@ The following configuration values are available:
 | dequeueStatisticReportIntervalSec       | -1                              | The interval [s] to publish the dequeue statistics into shared map. Use **-1** to not publish at all. In a hazelcast-cluster environment need config Semaphore first, see: [Semaphore Config](#Semaphore Config) |
 | publish-metrics-address                 |                                 | The EventBus address to send collected redis metrics to                                                                                                                                                          |
 | metric-storage-name                     | queue                           | The name of the storage used in the published metrics                                                                                                                                                            |
-| metric-refresh-period                   | 10                              | The frequency [s] of collecting metrics from redis database                                                                                                                                                      |
+| metric-refresh-period                   | 0                               | The frequency [s] of collecting metrics from redis database. Use **0** or **-1** to not periodically collect metrics                                                                                             |
 
 ### Configuration util
 
@@ -320,6 +321,27 @@ Response Data
 ```
 {
     "status": "ok" / "error"
+}
+```
+
+#### monitor
+
+Request Data
+```
+{
+    "operation": "monitor",
+    "payload": {
+        "emptyQueues": <boolean value to define whether to include empty queues or not>,
+        "limit": <limit the amount of queues to return>
+    }
+}
+```
+
+Response Data
+```
+{
+    "status": "ok" / "error",
+    "value": <objArr RESULT>
 }
 ```
 
