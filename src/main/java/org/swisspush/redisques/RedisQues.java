@@ -27,7 +27,8 @@ import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.handler.RedisquesHttpRequestHandler;
 import org.swisspush.redisques.lock.Lock;
 import org.swisspush.redisques.lock.impl.RedisBasedLock;
-import org.swisspush.redisques.metrics.PeriodicMetricsCollector;
+import org.swisspush.redisques.metrics.MetricsCollector;
+import org.swisspush.redisques.metrics.MetricsCollectorScheduler;
 import org.swisspush.redisques.performance.UpperBoundParallel;
 import org.swisspush.redisques.scheduling.PeriodicSkipScheduler;
 import org.swisspush.redisques.util.*;
@@ -363,14 +364,16 @@ public class RedisQues extends AbstractVerticle {
             meterRegistry = BackendRegistries.getDefaultNow();
         }
         String metricsIdentifier = modConfig.getMicrometerMetricsIdentifier();
-        dequeueCounter =  Counter.builder(MetricMeter.DEQUEUE.getId())
+        dequeueCounter = Counter.builder(MetricMeter.DEQUEUE.getId())
                 .description(MetricMeter.DEQUEUE.getDescription()).tag(MetricTags.IDENTIFIER.getId(), metricsIdentifier).register(meterRegistry);
 
         String address = modConfig.getAddress();
         int metricRefreshPeriod = modConfig.getMetricRefreshPeriod();
-        String identifier = modConfig.getMicrometerMetricsIdentifier();
-        new PeriodicMetricsCollector(vertx, uid, periodicSkipScheduler, address, identifier, meterRegistry, lock,
-                metricRefreshPeriod);
+        if (metricRefreshPeriod > 0) {
+            String identifier = modConfig.getMicrometerMetricsIdentifier();
+            MetricsCollector metricsCollector = new MetricsCollector(vertx, uid, address, identifier, meterRegistry, lock, metricRefreshPeriod);
+            new MetricsCollectorScheduler(vertx, metricsCollector, metricRefreshPeriod);
+        }
     }
 
     private void initialize() {
@@ -386,8 +389,8 @@ public class RedisQues extends AbstractVerticle {
         }
 
         RedisquesHttpRequestHandler.init(
-            vertx, configuration, queueStatisticsCollector, dequeueStatisticCollector,
-            exceptionFactory, queueStatsRequestQuota, meterRegistry);
+                vertx, configuration, queueStatisticsCollector, dequeueStatisticCollector,
+                exceptionFactory, queueStatsRequestQuota);
 
         // only initialize memoryUsageProvider when not provided in the constructor
         if (memoryUsageProvider == null) {
@@ -511,9 +514,13 @@ public class RedisQues extends AbstractVerticle {
         });
     }
 
-    private void registerMetricsGathering(RedisquesConfiguration configuration){
+    private void registerMetricsGathering(RedisquesConfiguration configuration) {
+        if (!configuration.getRedisMonitoringEnabled()) {
+            return;
+        }
+
         String metricsAddress = configuration.getPublishMetricsAddress();
-        if(Strings.isNullOrEmpty(metricsAddress)) {
+        if (Strings.isNullOrEmpty(metricsAddress)) {
             return;
         }
         String metricStorageName = configuration.getMetricStorageName();

@@ -3,10 +3,7 @@ package org.swisspush.redisques.action;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.eventbus.Message;
-import io.vertx.core.http.HttpClient;
-import io.vertx.core.http.HttpClientRequest;
-import io.vertx.core.http.HttpClientResponse;
-import io.vertx.core.http.HttpMethod;
+import io.vertx.core.http.*;
 import io.vertx.core.http.impl.headers.HeadersMultiMap;
 import io.vertx.core.json.JsonObject;
 import io.vertx.ext.unit.junit.VertxUnitRunner;
@@ -62,7 +59,7 @@ public class MonitorActionTest {
                 .build();
         action = new MonitorAction(configuration, httpClient, Mockito.mock(Logger.class));
 
-        when(httpClient.request(eq(HttpMethod.GET), anyInt(), anyString(), anyString()))
+        when(httpClient.request(any(RequestOptions.class)))
                 .thenReturn(Future.failedFuture("booom"));
 
         when(message.body()).thenReturn(buildMonitorOperation(true, 5));
@@ -101,7 +98,7 @@ public class MonitorActionTest {
         when(clientResponse.statusCode()).thenReturn(200);
         when(clientResponse.body()).thenReturn(Future.succeededFuture(Buffer.buffer(expectedNoEmptyQueuesNoLimit)));
 
-        when(httpClient.request(eq(HttpMethod.GET), anyInt(), anyString(), anyString()))
+        when(httpClient.request(any(RequestOptions.class)))
                 .thenReturn(Future.succeededFuture(clientRequest));
         when(clientRequest.send()).thenReturn(Future.succeededFuture(clientResponse));
 

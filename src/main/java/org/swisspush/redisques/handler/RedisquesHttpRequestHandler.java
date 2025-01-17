@@ -1,6 +1,5 @@
 package org.swisspush.redisques.handler;
 
-import io.micrometer.core.instrument.MeterRegistry;
 import io.netty.util.internal.StringUtil;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Handler;
@@ -84,14 +83,14 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     public static void init(
             Vertx vertx, RedisquesConfiguration modConfig, QueueStatisticsCollector queueStatisticsCollector,
             DequeueStatisticCollector dequeueStatisticCollector, RedisQuesExceptionFactory exceptionFactory,
-            Semaphore queueStatsRequestQuota, MeterRegistry meterRegistry
+            Semaphore queueStatsRequestQuota
     ) {
         log.info("Enabling http request handler: {}", modConfig.getHttpRequestHandlerEnabled());
         if (modConfig.getHttpRequestHandlerEnabled()) {
             if (modConfig.getHttpRequestHandlerPort() != null && modConfig.getHttpRequestHandlerUserHeader() != null) {
                 var handler = new RedisquesHttpRequestHandler(
                         vertx, modConfig, queueStatisticsCollector, dequeueStatisticCollector,
-                        exceptionFactory, queueStatsRequestQuota, meterRegistry);
+                        exceptionFactory, queueStatsRequestQuota);
                 // in Vert.x 2x 100-continues was activated per default, in vert.x 3x it is off per default.
                 HttpServerOptions options = new HttpServerOptions().setHandle100ContinueAutomatically(true);
                 vertx.createHttpServer(options).requestHandler(handler).listen(modConfig.getHttpRequestHandlerPort(), result -> {
@@ -126,8 +125,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
             QueueStatisticsCollector queueStatisticsCollector,
             DequeueStatisticCollector dequeueStatisticCollector,
             RedisQuesExceptionFactory exceptionFactory,
-            Semaphore queueStatsRequestQuota,
-            MeterRegistry meterRegistry
+            Semaphore queueStatsRequestQuota
     ) {
         this.vertx = vertx;
         this.router = Router.router(vertx);
@@ -140,7 +138,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         this.exceptionFactory = exceptionFactory;
         this.queueStatsService = new QueueStatsService(
                 vertx, eventBus, redisquesAddress, queueStatisticsCollector, dequeueStatisticCollector,
-                exceptionFactory, queueStatsRequestQuota, meterRegistry, modConfig.getMicrometerMetricsIdentifier());
+                exceptionFactory, queueStatsRequestQuota);
 
         final String prefix = modConfig.getHttpRequestHandlerPrefix();
 
