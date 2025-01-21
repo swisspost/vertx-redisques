@@ -965,60 +965,25 @@ public class RedisQues extends AbstractVerticle {
                         if (uid.equals(consumer)) {
                             QueueState state = myQueues.get(queueName).state;
                             log.trace("RedisQues consumer: {} queue: {} state: {}", consumer, queueName, state);
-                            final String queueKey = queuesPrefix + queueName;
-
-                            //check do we have any item in queue first
-                            redisAPI.llen(queueKey, answer1 -> {
-                                if (answer1.succeeded() && answer1.result() != null && answer1.result().toInteger() > 0) {
-                                    // Get the next message only once the previous has
-                                    // been completely processed
-                                    if (state != QueueState.CONSUMING) {
-                                        setMyQueuesStates(queueName, QueueState.CONSUMING);
-                                        if (state == null) {
-                                            // No previous state was stored. Maybe the
-                                            // consumer was restarted
-                                            log.warn("Received request to consume from a queue I did not know about: {}", queueName);
-                                        }
-                                        log.trace("RedisQues Starting to consume queue {}", queueName);
-                                        readQueue(queueName).onComplete(readQueueEvent -> {
-                                            if (readQueueEvent.failed()) {
-                                                log.warn("TODO error handling", exceptionFactory.newException(
-                                                        "readQueue(" + queueName + ") failed", readQueueEvent.cause()));
-                                            }
-                                            promise.complete();
-                                        });
-                                    } else {
-                                        log.trace("RedisQues Queue {} is already being consumed", queueName);
-                                        promise.complete();
-                                    }
-                                } else if (answer1.succeeded() && answer1.result() != null && answer1.result().toInteger() == 0) {
-                                    // no more item
-                                    if (myQueues.get(queueName).lastConsumeTimestamp + emptyQueueLiveTime < System.currentTimeMillis()) {
-                                        // expired
-                                        log.info("queue {} has no item, and no more active after {} ms", queueName, emptyQueueLiveTime);
-                                        myQueues.remove(queueName);
-                                        redisAPI.del(Collections.singletonList(consumerKey), result -> {
-                                            if (result.failed()) {
-                                                log.warn("Failed to removed from consumer '{}'", consumerKey, exceptionFactory.newException(result.cause()));
-                                            } else {
-                                                log.debug("no more item to process, {} consumer key removed", result.result().toLong());
-                                            }
-                                            promise.complete();
-                                        });
-                                    } else {
-                                        // still alive
-                                        log.info("queue {} has no item, last consuming time: {}", queueName, myQueues.get(queueName).lastConsumeTimestamp);
-                                        promise.complete();
-                                    }
-                                } else {
-                                    if (answer1.failed() && log.isWarnEnabled()) {
+                            if (state != QueueState.CONSUMING) {
+                                setMyQueuesStates(queueName, QueueState.CONSUMING);
+                                if (state == null) {
+                                    // No previous state was stored. Maybe the
+                                    // consumer was restarted
+                                    log.warn("Received request to consume from a queue I did not know about: {}", queueName);
+                                }
+                                log.trace("RedisQues Starting to consume queue {}", queueName);
+                                readQueue(queueName).onComplete(readQueueEvent -> {
+                                    if (readQueueEvent.failed()) {
                                         log.warn("TODO error handling", exceptionFactory.newException(
-                                                "redisAPI.llen(" + queueKey + ") failed", answer1.cause()));
+                                                "readQueue(" + queueName + ") failed", readQueueEvent.cause()));
                                     }
                                     promise.complete();
-                                }
-                            });
-
+                                });
+                            } else {
+                                log.trace("RedisQues Queue {} is already being consumed", queueName);
+                                promise.complete();
+                            }
                         } else {
                             // Somehow registration changed. Let's renotify.
                             log.trace("Registration for queue {} has changed to {}", queueName, consumer);
@@ -1151,15 +1116,37 @@ public class RedisQues extends AbstractVerticle {
                     } else {
                         // This can happen when requests to consume happen at the same moment the queue is emptied.
                         log.debug("Got a request to consume from empty queue {}", queueName);
-                        setMyQueuesStates(queueName, QueueState.READY);
-
-                        if (dequeueStatisticEnabled) {
-                            dequeueStatistic.computeIfPresent(queueName, (s, dequeueStatistic) -> {
-                                dequeueStatistic.setMarkedForRemoval();
-                                return dequeueStatistic;
+                        if (myQueues.get(queueName).lastConsumeTimestamp + emptyQueueLiveTime < System.currentTimeMillis()) {
+                            // expired
+                            final String consumerKey = consumersPrefix + queueName;
+                            log.debug("queue {} has no item, and no more active after {} ms", queueName, emptyQueueLiveTime);
+                            myQueues.remove(queueName);
+                            redisAPI.del(Collections.singletonList(consumerKey), result -> {
+                                if (result.failed()) {
+                                    log.warn("Failed to removed from consumer '{}'", consumerKey, exceptionFactory.newException(result.cause()));
+                                } else {
+                                    log.debug("no more item to process, {} consumer key removed", result.result().toLong());
+                                }
+                                if (dequeueStatisticEnabled) {
+                                    dequeueStatistic.computeIfPresent(queueName, (s, dequeueStatistic) -> {
+                                        dequeueStatistic.setMarkedForRemoval();
+                                        return dequeueStatistic;
+                                    });
+                                }
+                                promise.complete();
                             });
+                        } else {
+                            // still alive
+                            setMyQueuesStates(queueName, QueueState.READY);
+                            log.debug("queue {} has no item, last consuming time: {}", queueName, myQueues.get(queueName).lastConsumeTimestamp);
+                            if (dequeueStatisticEnabled) {
+                                dequeueStatistic.computeIfPresent(queueName, (s, dequeueStatistic) -> {
+                                    dequeueStatistic.setMarkedForRemoval();
+                                    return dequeueStatistic;
+                                });
+                            }
+                            promise.complete();
                         }
-                        promise.complete();
                     }
                 })).onFailure(throwable -> {
                     // We should return here. See: "https://softwareengineering.stackexchange.com/a/190535"
