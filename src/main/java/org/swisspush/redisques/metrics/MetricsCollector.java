@@ -9,6 +9,7 @@ import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.swisspush.redisques.exception.NoStacktraceException;
 import org.swisspush.redisques.lock.Lock;
 import org.swisspush.redisques.util.LockUtil;
 import org.swisspush.redisques.util.MetricMeter;
@@ -18,6 +19,7 @@ import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.concurrent.atomic.AtomicLong;
 
+import static org.swisspush.redisques.util.DebugInfo.__WHERE__;
 import static org.swisspush.redisques.util.RedisquesAPI.*;
 
 public class MetricsCollector {
@@ -74,6 +76,10 @@ public class MetricsCollector {
     public Future<Void> updateActiveQueuesCount() {
         final Promise<Void> promise = Promise.promise();
         acquireLock(UPDATE_ACTIVE_QUEUES_LOCK, createToken(UPDATE_ACTIVE_QUEUES_LOCK)).onComplete(lockEvent -> {
+            if (lockEvent.failed()) {
+                promise.fail(new NoStacktraceException(__WHERE__(), lockEvent.cause()));
+                return;
+            }
             if(lockEvent.result()) {
                 log.info("About to update queues count with lock {}", UPDATE_ACTIVE_QUEUES_LOCK);
                 vertx.eventBus().request(redisquesAddress, buildGetQueuesCountOperation(), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
@@ -96,6 +102,10 @@ public class MetricsCollector {
     public Future<Void> updateMaxQueueSize() {
         final Promise<Void> promise = Promise.promise();
         acquireLock(UPDATE_MAX_QUEUE_SIZE_LOCK, createToken(UPDATE_MAX_QUEUE_SIZE_LOCK)).onComplete(lockEvent -> {
+            if (lockEvent.failed()) {
+                promise.fail(new NoStacktraceException(__WHERE__(), lockEvent.cause()));
+                return;
+            }
             if(lockEvent.result()) {
                 log.info("About to update max queue size with lock {}", UPDATE_MAX_QUEUE_SIZE_LOCK);
                 vertx.eventBus().request(redisquesAddress, buildMonitorOperation(true, 1), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
