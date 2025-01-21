@@ -28,7 +28,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getConfigurationUpdatedAddress(), "redisques-configuration-updated");
         testContext.assertEquals(config.getRedisPrefix(), "redisques:");
         testContext.assertEquals(config.getProcessorAddress(), "redisques-processor");
-        testContext.assertEquals(config.getMetricRefreshPeriod(), 10);
+        testContext.assertEquals(config.getMetricRefreshPeriod(), 0);
         testContext.assertEquals(config.getRefreshPeriod(), 10);
         testContext.assertEquals(config.getConsumerLockMultiplier(), 2);
         testContext.assertEquals(config.getRedisHost(), "localhost");
@@ -41,6 +41,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getProcessorDelayMax(), 0L);
         testContext.assertFalse(config.getHttpRequestHandlerEnabled());
         testContext.assertFalse(config.getHttpRequestHandlerAuthenticationEnabled());
+        testContext.assertTrue(config.getRedisMonitoringEnabled());
         testContext.assertFalse(config.getMicrometerMetricsEnabled());
         testContext.assertEquals(config.getMicrometerMetricsIdentifier(), "default");
         testContext.assertEquals(config.getHttpRequestHandlerPrefix(), "/queuing");
@@ -71,6 +72,7 @@ public class RedisquesConfigurationTest {
                 .processorDelayMax(50)
                 .httpRequestHandlerEnabled(true)
                 .httpRequestHandlerAuthenticationEnabled(true)
+                .redisMonitoringEnabled(false)
                 .micrometerMetricsEnabled(true)
                 .micrometerMetricsIdentifier("foobar")
                 .httpRequestHandlerPrefix("/queuing/test")
@@ -92,7 +94,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getRedisPrefix(), "redisques:");
         testContext.assertEquals(config.getProcessorAddress(), "redisques-processor");
         testContext.assertEquals(config.getRefreshPeriod(), 10);
-        testContext.assertEquals(config.getMetricRefreshPeriod(), 10);
+        testContext.assertEquals(config.getMetricRefreshPeriod(), 0);
 
         // overridden values
         testContext.assertEquals(config.getAddress(), "new_address");
@@ -107,6 +109,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getProcessorDelayMax(), 50L);
         testContext.assertTrue(config.getHttpRequestHandlerEnabled());
         testContext.assertTrue(config.getHttpRequestHandlerAuthenticationEnabled());
+        testContext.assertFalse(config.getRedisMonitoringEnabled());
         testContext.assertTrue(config.getMicrometerMetricsEnabled());
         testContext.assertEquals(config.getMicrometerMetricsIdentifier(), "foobar");
         testContext.assertEquals(config.getHttpRequestHandlerPrefix(), "/queuing/test");
@@ -135,7 +138,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(json.getString(PROP_CONFIGURATION_UPDATED_ADDRESS), "redisques-configuration-updated");
         testContext.assertEquals(json.getString(PROP_REDIS_PREFIX), "redisques:");
         testContext.assertEquals(json.getString(PROP_PROCESSOR_ADDRESS), "redisques-processor");
-        testContext.assertEquals(json.getInteger(PROP_METRIC_REFRESH_PERIOD), 10);
+        testContext.assertEquals(json.getInteger(PROP_METRIC_REFRESH_PERIOD), 0);
         testContext.assertEquals(json.getInteger(PROP_REFRESH_PERIOD), 10);
         testContext.assertEquals(json.getInteger(PROP_CONSUMER_LOCK_MULTIPLIER), 2);
         testContext.assertEquals(json.getString(PROP_REDIS_HOST), "localhost");
@@ -148,6 +151,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(json.getInteger(PROP_PROCESSOR_DELAY_MAX), 0);
         testContext.assertFalse(json.getBoolean(PROP_HTTP_REQUEST_HANDLER_ENABLED));
         testContext.assertFalse(json.getBoolean(PROP_HTTP_REQUEST_HANDLER_AUTH_ENABLED));
+        testContext.assertTrue(json.getBoolean(PROP_REDIS_MONITORING_ENABLED));
         testContext.assertFalse(json.getBoolean(PROP_MICROMETER_METRICS_ENABLED));
         testContext.assertEquals(json.getString(PROP_MICROMETER_METRICS_IDENTIFIER), "default");
         testContext.assertEquals(json.getString(PROP_HTTP_REQUEST_HANDLER_PREFIX), "/queuing");
@@ -180,6 +184,7 @@ public class RedisquesConfigurationTest {
                 .processorDelayMax(50)
                 .httpRequestHandlerPort(7171)
                 .httpRequestHandlerAuthenticationEnabled(true)
+                .redisMonitoringEnabled(false)
                 .micrometerMetricsEnabled(true)
                 .micrometerMetricsIdentifier("foobar")
                 .httpRequestHandlerUsername("foo")
@@ -203,7 +208,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(json.getString(PROP_REDIS_PREFIX), "redisques:");
         testContext.assertEquals(json.getString(PROP_PROCESSOR_ADDRESS), "redisques-processor");
         testContext.assertEquals(json.getInteger(PROP_REFRESH_PERIOD), 10);
-        testContext.assertEquals(json.getInteger(PROP_METRIC_REFRESH_PERIOD), 10);
+        testContext.assertEquals(json.getInteger(PROP_METRIC_REFRESH_PERIOD), 0);
         testContext.assertFalse(json.getBoolean(PROP_HTTP_REQUEST_HANDLER_ENABLED));
         testContext.assertEquals(json.getString(PROP_HTTP_REQUEST_HANDLER_PREFIX), "/queuing");
 
@@ -222,6 +227,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(json.getString(PROP_HTTP_REQUEST_HANDLER_USERNAME), "foo");
         testContext.assertEquals(json.getString(PROP_HTTP_REQUEST_HANDLER_PASSWORD), "bar");
         testContext.assertTrue(json.getBoolean(PROP_HTTP_REQUEST_HANDLER_AUTH_ENABLED));
+        testContext.assertFalse(json.getBoolean(PROP_REDIS_MONITORING_ENABLED));
         testContext.assertTrue(json.getBoolean(PROP_MICROMETER_METRICS_ENABLED));
         testContext.assertEquals(json.getString(PROP_MICROMETER_METRICS_IDENTIFIER), "foobar");
         testContext.assertEquals(json.getString(PROP_HTTP_REQUEST_HANDLER_USER_HEADER), "x-custom-user-header");
@@ -252,7 +258,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getProcessorAddress(), "redisques-processor");
         testContext.assertEquals(config.getRefreshPeriod(), 10);
         testContext.assertEquals(config.getConsumerLockMultiplier(), 2);
-        testContext.assertEquals(config.getMetricRefreshPeriod(), 10);
+        testContext.assertEquals(config.getMetricRefreshPeriod(), 0);
         testContext.assertEquals(config.getRedisHost(), "localhost");
         testContext.assertEquals(config.getRedisPort(), 6379);
         testContext.assertFalse(config.getRedisEnableTls());
@@ -263,6 +269,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getProcessorDelayMax(), 0L);
         testContext.assertFalse(config.getHttpRequestHandlerEnabled());
         testContext.assertFalse(config.getHttpRequestHandlerAuthenticationEnabled());
+        testContext.assertTrue(config.getRedisMonitoringEnabled());
         testContext.assertFalse(config.getMicrometerMetricsEnabled());
         testContext.assertEquals(config.getMicrometerMetricsIdentifier(), "default");
         testContext.assertEquals(config.getHttpRequestHandlerPrefix(), "/queuing");
@@ -299,6 +306,7 @@ public class RedisquesConfigurationTest {
         json.put(PROP_PROCESSOR_DELAY_MAX, 99);
         json.put(PROP_HTTP_REQUEST_HANDLER_ENABLED, Boolean.TRUE);
         json.put(PROP_HTTP_REQUEST_HANDLER_AUTH_ENABLED, Boolean.TRUE);
+        json.put(PROP_REDIS_MONITORING_ENABLED, Boolean.FALSE);
         json.put(PROP_MICROMETER_METRICS_ENABLED, Boolean.TRUE);
         json.put(PROP_MICROMETER_METRICS_IDENTIFIER, "foobar");
         json.put(PROP_HTTP_REQUEST_HANDLER_PREFIX, "/queuing/test123");
@@ -335,6 +343,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getProcessorDelayMax(), 99L);
         testContext.assertTrue(config.getHttpRequestHandlerEnabled());
         testContext.assertTrue(config.getHttpRequestHandlerAuthenticationEnabled());
+        testContext.assertFalse(config.getRedisMonitoringEnabled());
         testContext.assertTrue(config.getMicrometerMetricsEnabled());
         testContext.assertEquals(config.getMicrometerMetricsIdentifier(), "foobar");
         testContext.assertEquals(config.getHttpRequestHandlerPort(), 7171);
@@ -436,8 +445,8 @@ public class RedisquesConfigurationTest {
 
     @Test
     public void testMetricRefreshPeriod(TestContext testContext) {
-        testContext.assertEquals(10, with().metricRefreshPeriod(-30).build().getMetricRefreshPeriod()); // negative values are not allowed
-        testContext.assertEquals(10, with().metricRefreshPeriod(0).build().getMetricRefreshPeriod());
+        testContext.assertEquals(-30, with().metricRefreshPeriod(-30).build().getMetricRefreshPeriod());
+        testContext.assertEquals(0, with().metricRefreshPeriod(0).build().getMetricRefreshPeriod());
         testContext.assertEquals(1, with().metricRefreshPeriod(1).build().getMetricRefreshPeriod());
         testContext.assertEquals(2, with().metricRefreshPeriod(2).build().getMetricRefreshPeriod());
         testContext.assertEquals(50, with().metricRefreshPeriod(50).build().getMetricRefreshPeriod());

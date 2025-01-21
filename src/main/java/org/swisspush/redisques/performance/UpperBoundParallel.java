@@ -132,7 +132,12 @@ public class UpperBoundParallel {
                         // this boolean is just for paranoia, in case mentor tries to call back too often.
                         final AtomicBoolean isCalled = new AtomicBoolean();
                         @Override public void accept(Throwable ex, Void ret) {
-                            if (!isCalled.compareAndSet(false, true)) return;
+                            if (!isCalled.compareAndSet(false, true)) {
+                                boolean d = log.isDebugEnabled();
+                                log.error("This callback MUST NOT be called multiple times!! Make sure caller only calls it ONCE!{}",
+                                        d ? "" : " (enable debug log to see stack)", d ? new Exception("here a stack for you") : (Exception) null);
+                                return;
+                            }
                             onOneDone(req, ex);
                         }
                     }, req.ctx);
