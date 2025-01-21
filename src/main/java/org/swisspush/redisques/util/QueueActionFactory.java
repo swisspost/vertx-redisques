@@ -2,6 +2,7 @@ package org.swisspush.redisques.util;
 
 import io.micrometer.core.instrument.MeterRegistry;
 import io.vertx.core.Vertx;
+import io.vertx.core.http.HttpClient;
 import org.slf4j.Logger;
 import org.swisspush.redisques.action.*;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
@@ -13,6 +14,7 @@ public class QueueActionFactory {
 
     private final RedisProvider redisProvider;
     private final Vertx vertx;
+    private final HttpClient client;
     private final Logger log;
     private final String address;
     private final String queuesKey;
@@ -33,6 +35,7 @@ public class QueueActionFactory {
     public QueueActionFactory(
         RedisProvider redisProvider,
         Vertx vertx,
+        HttpClient client,
         Logger log,
         String queuesKey,
         String queuesPrefix,
@@ -47,6 +50,7 @@ public class QueueActionFactory {
     ) {
         this.redisProvider = redisProvider;
         this.vertx = vertx;
+        this.client = client;
         this.log = log;
         this.queuesKey = queuesKey;
         this.queuesPrefix = queuesPrefix;
@@ -140,6 +144,8 @@ public class QueueActionFactory {
                 return new SetConfigurationAction(configurationProvider, log);
             case getConfiguration:
                 return new GetConfigurationAction(configurationProvider);
+            case monitor:
+                return new MonitorAction(configurationProvider.configuration(), client, log);
             default:
                 return new UnsupportedAction(log);
         }
