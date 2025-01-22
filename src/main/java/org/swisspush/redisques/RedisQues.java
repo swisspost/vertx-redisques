@@ -1116,7 +1116,7 @@ public class RedisQues extends AbstractVerticle {
                                 if (result.failed()) {
                                     log.warn("Failed to deregister myself from queue '{}'", consumerKey, exceptionFactory.newException(result.cause()));
                                 } else {
-                                    log.debug("Deregister myself from queue '{}'", consumerKey);
+                                    log.debug("Deregistered myself from queue '{}'", consumerKey);
                                 }
                                 if (dequeueStatisticEnabled) {
                                     dequeueStatistic.computeIfPresent(queueName, (s, dequeueStatistic) -> {
