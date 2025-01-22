@@ -180,17 +180,17 @@ public class RedisQues extends AbstractVerticle {
     }
 
     private class QueueProcessingState {
-        QueueProcessingState(QueueState state, long timestamp){
+        QueueProcessingState(QueueState state, long timestampMillis){
             this.state = state;
-            this.lastConsumeTimestamp = timestamp;
+            this.lastConsumedTimestampMillis = timestampMillis;
         }
         QueueState state;
-        long lastConsumeTimestamp;
+        long lastConsumedTimestampMillis;
     }
 
     // Identifies the consumer
     private final String uid = UUID.randomUUID().toString();
-    private static int emptyQueueLiveTime;
+    private static int emptyQueueLiveTimeMillis;
 
     private MessageConsumer<String> uidMessageConsumer;
     private UpperBoundParallel upperBoundParallel;
@@ -369,10 +369,10 @@ public class RedisQues extends AbstractVerticle {
         locksKey = modConfig.getRedisPrefix() + "locks";
         queueCheckLastexecKey = modConfig.getRedisPrefix() + "check:lastexec";
         consumerLockTime = modConfig.getConsumerLockMultiplier() * modConfig.getRefreshPeriod(); // lock is kept twice as long as its refresh interval -> never expires as long as the consumer ('we') are alive
+        // the time we let an empty queue live before we deregister ourselves
+        emptyQueueLiveTimeMillis = configurationProvider.configuration().getCheckIntervalTimerMs() * 2;
         timer = new RedisQuesTimer(vertx);
 
-        // the time we let an empty queue live before we deregister ourselves
-        emptyQueueLiveTime = configurationProvider.configuration().getCheckIntervalTimerMs() * 2;
         if (redisProvider == null) {
             redisProvider = new DefaultRedisProvider(vertx, configurationProvider);
         }
@@ -1107,10 +1107,10 @@ public class RedisQues extends AbstractVerticle {
                     } else {
                         // This can happen when requests to consume happen at the same moment the queue is emptied.
                         log.debug("Got a request to consume from empty queue {}", queueName);
-                        if (System.currentTimeMillis() > myQueues.get(queueName).lastConsumeTimestamp + emptyQueueLiveTime) {
+                        if (System.currentTimeMillis() > myQueues.get(queueName).lastConsumedTimestampMillis + emptyQueueLiveTimeMillis) {
                             // the queue has been empty for quite a while now
                             final String consumerKey = consumersPrefix + queueName;
-                            log.debug("empty queue {} has has been idle for {} ms, deregister", queueName, emptyQueueLiveTime);
+                            log.debug("empty queue {} has has been idle for {} ms, deregister", queueName, emptyQueueLiveTimeMillis);
                             myQueues.remove(queueName);
                             redisAPI.del(Collections.singletonList(consumerKey), result -> {
                                 if (result.failed()) {
@@ -1129,7 +1129,7 @@ public class RedisQues extends AbstractVerticle {
                         } else {
                             // still alive
                             setMyQueuesState(queueName, QueueState.READY);
-                            log.debug("queue {} is empty since: {}", queueName, myQueues.get(queueName).lastConsumeTimestamp);
+                            log.debug("queue {} is empty since: {}", queueName, myQueues.get(queueName).lastConsumedTimestampMillis);
                             if (dequeueStatisticEnabled) {
                                 dequeueStatistic.computeIfPresent(queueName, (s, dequeueStatistic) -> {
                                     dequeueStatistic.setMarkedForRemoval();
@@ -1466,7 +1466,6 @@ public class RedisQues extends AbstractVerticle {
         return promise.future();
     }
 
-
     private void setMyQueuesState(String queueName, QueueState state) {
         if (state == QueueState.CONSUMING) {
             // update timestamp
@@ -1474,8 +1473,8 @@ public class RedisQues extends AbstractVerticle {
         } else {
             myQueues.compute(queueName, (s, queueProcessingState) -> {
                 if (null == queueProcessingState) {
-                    // not in our list yet, add it along with a timestamp
-                    return new QueueProcessingState(QueueState.READY, System.currentTimeMillis());
+                    // not in our list yet
+                    return new QueueProcessingState(QueueState.READY, Long.MAX_VALUE);
                 } else {
                     // update the state but leave the timestamp unchanged
                     queueProcessingState.state = QueueState.READY;
