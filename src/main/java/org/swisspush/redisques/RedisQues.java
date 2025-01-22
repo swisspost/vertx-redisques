@@ -110,8 +110,7 @@ public class RedisQues extends AbstractVerticle {
         }
 
         /**
-         * How many active queue register refresh will trigger
-         * simultaneously. One of those components for example is
+         * How many active queues registrations will trigger at once
          */
         public RedisQuesBuilder withActiveQueueRegRefreshReqQuota(Semaphore quota) {
             this.activeQueueRegRefreshReqQuota = quota;
@@ -180,8 +179,8 @@ public class RedisQues extends AbstractVerticle {
         READY, CONSUMING
     }
 
-    private class QueueProcessStats {
-        QueueProcessStats(QueueState state, long timestamp){
+    private class QueueProcessingState {
+        QueueProcessingState(QueueState state, long timestamp){
             this.state = state;
             this.lastConsumeTimestamp = timestamp;
         }
@@ -196,8 +195,8 @@ public class RedisQues extends AbstractVerticle {
     private MessageConsumer<String> uidMessageConsumer;
     private UpperBoundParallel upperBoundParallel;
 
-    // The queues this verticle is listening to
-    private final Map<String, QueueProcessStats> myQueues = new HashMap<>();
+    // The queues this verticle instance is registered as a consumer
+    private final Map<String, QueueProcessingState> myQueues = new HashMap<>();
 
     private static final Logger log = LoggerFactory.getLogger(RedisQues.class);
 
@@ -327,7 +326,7 @@ public class RedisQues extends AbstractVerticle {
                 if ("OK".equals(value)) {
                     // I am now the registered consumer for this queue.
                     log.debug("RedisQues Now registered for queue {}", queueName);
-                    setMyQueuesStates(queueName, QueueState.READY);
+                    setMyQueuesState(queueName, QueueState.READY);
                     consume(queueName);
                 } else {
                     log.debug("RedisQues Missed registration for queue {}", queueName);
@@ -371,7 +370,9 @@ public class RedisQues extends AbstractVerticle {
         queueCheckLastexecKey = modConfig.getRedisPrefix() + "check:lastexec";
         consumerLockTime = modConfig.getConsumerLockMultiplier() * modConfig.getRefreshPeriod(); // lock is kept twice as long as its refresh interval -> never expires as long as the consumer ('we') are alive
         timer = new RedisQuesTimer(vertx);
-        emptyQueueLiveTime = configurationProvider.configuration().getCheckIntervalTimerMs() * 2; // an empty queue need have a live time larger than queue check interval, to make sure the item is not removed too early.
+
+        // the time we let an empty queue live before we deregister ourselves
+        emptyQueueLiveTime = configurationProvider.configuration().getCheckIntervalTimerMs() * 2;
         if (redisProvider == null) {
             redisProvider = new DefaultRedisProvider(vertx, configurationProvider);
         }
@@ -537,17 +538,7 @@ public class RedisQues extends AbstractVerticle {
                                 log.trace(response.toString());
                             }
                         }
-
-                        long consumingCounter = 0;
-                        long readyCounter = 0;
-                        for (int i = 0; i < myQueues.size(); i++) {
-                            if (((QueueProcessStats) myQueues.values().toArray()[i]).state == QueueState.READY) {
-                                readyCounter++;
-                            } else {
-                                consumingCounter++;
-                            }
-                        }
-                        log.debug("{} not expired consumers keys found, {} keys in myQueues list, {} / {} [Consuming / Ready]", keys.size(), myQueues.size(), consumingCounter, readyCounter);
+                        log.debug("{} not expired consumers keys found, {} keys in myQueues list", keys.size(), myQueues.size());
                     }))
                     .onFailure(throwable -> log.error("Redis: Unable to get redis keys of consumers", throwable));
         });
@@ -671,27 +662,27 @@ public class RedisQues extends AbstractVerticle {
         // Periodic refresh of my registrations on active queues.
         var periodMs = configurationProvider.configuration().getRefreshPeriod() * 1000L;
         periodicSkipScheduler.setPeriodic(periodMs, "registerActiveQueueRegistrationRefresh", new Consumer<Runnable>() {
-            Iterator<Map.Entry<String, QueueProcessStats>> iter;
+            Iterator<Map.Entry<String, QueueProcessingState>> iter;
             @Override public void accept(Runnable onPeriodicDone) {
                 // Need a copy to prevent concurrent modification issuses.
                 iter = new HashMap<>(myQueues).entrySet().iterator();
-                // Trigger only a limitted amount of requests in parallel.
+                // Trigger only a limited amount of requests in parallel.
                 upperBoundParallel.request(activeQueueRegRefreshReqQuota, iter, new UpperBoundParallel.Mentor<>() {
-                    @Override public boolean runOneMore(BiConsumer<Throwable, Void> onQueueDone, Iterator<Map.Entry<String, QueueProcessStats>> iter) {
-                        handleNextQueueOfInterest(onQueueDone);
+                    @Override public boolean runOneMore(BiConsumer<Throwable, Void> onQueueDone, Iterator<Map.Entry<String, QueueProcessingState>> iter) {
+                        refreshConsumerRegistration(onQueueDone);
                         return iter.hasNext();
                     }
-                    @Override public boolean onError(Throwable ex, Iterator<Map.Entry<String, QueueProcessStats>> iter) {
+                    @Override public boolean onError(Throwable ex, Iterator<Map.Entry<String, QueueProcessingState>> iter) {
                         if (log.isWarnEnabled()) log.warn("TODO error handling", exceptionFactory.newException(ex));
                         onPeriodicDone.run();
                         return false;
                     }
-                    @Override public void onDone(Iterator<Map.Entry<String, QueueProcessStats>> iter) {
+                    @Override public void onDone(Iterator<Map.Entry<String, QueueProcessingState>> iter) {
                         onPeriodicDone.run();
                     }
                 });
             }
-            void handleNextQueueOfInterest(BiConsumer<Throwable, Void> onQueueDone) {
+            void refreshConsumerRegistration(BiConsumer<Throwable, Void> onQueueDone) {
                 while (iter.hasNext()) {
                     var entry = iter.next();
                     if (entry.getValue().state != QueueState.CONSUMING) continue;
@@ -868,7 +859,7 @@ public class RedisQues extends AbstractVerticle {
         final Promise<Void> result = Promise.promise();
         log.debug("RedisQues unregister consumers. force={}", force);
         final List<Future> futureList = new ArrayList<>(myQueues.size());
-        for (final Map.Entry<String, QueueProcessStats> entry : myQueues.entrySet()) {
+        for (final Map.Entry<String, QueueProcessingState> entry : myQueues.entrySet()) {
             final Promise<Void> promise = Promise.promise();
             futureList.add(promise.future());
             final String queue = entry.getKey();
@@ -966,7 +957,7 @@ public class RedisQues extends AbstractVerticle {
                             QueueState state = myQueues.get(queueName).state;
                             log.trace("RedisQues consumer: {} queue: {} state: {}", consumer, queueName, state);
                             if (state != QueueState.CONSUMING) {
-                                setMyQueuesStates(queueName, QueueState.CONSUMING);
+                                setMyQueuesState(queueName, QueueState.CONSUMING);
                                 if (state == null) {
                                     // No previous state was stored. Maybe the
                                     // consumer was restarted
@@ -1065,7 +1056,7 @@ public class RedisQues extends AbstractVerticle {
                                         dequeueCounter.increment();
                                     }
                                     log.debug("RedisQues Message removed, queue {} is ready again", queueName);
-                                    setMyQueuesStates(queueName, QueueState.READY);
+                                    setMyQueuesState(queueName, QueueState.READY);
 
                                     Handler<Void> nextMsgHandler = event -> {
                                         // Issue notification to consume next message if any
@@ -1116,16 +1107,16 @@ public class RedisQues extends AbstractVerticle {
                     } else {
                         // This can happen when requests to consume happen at the same moment the queue is emptied.
                         log.debug("Got a request to consume from empty queue {}", queueName);
-                        if (myQueues.get(queueName).lastConsumeTimestamp + emptyQueueLiveTime < System.currentTimeMillis()) {
-                            // expired
+                        if (System.currentTimeMillis() > myQueues.get(queueName).lastConsumeTimestamp + emptyQueueLiveTime) {
+                            // the queue has been empty for quite a while now
                             final String consumerKey = consumersPrefix + queueName;
-                            log.debug("queue {} has no item, and no more active after {} ms", queueName, emptyQueueLiveTime);
+                            log.debug("empty queue {} has has been idle for {} ms, deregister", queueName, emptyQueueLiveTime);
                             myQueues.remove(queueName);
                             redisAPI.del(Collections.singletonList(consumerKey), result -> {
                                 if (result.failed()) {
-                                    log.warn("Failed to removed from consumer '{}'", consumerKey, exceptionFactory.newException(result.cause()));
+                                    log.warn("Failed to deregister myself from queue '{}'", consumerKey, exceptionFactory.newException(result.cause()));
                                 } else {
-                                    log.debug("no more item to process, {} consumer key removed", result.result().toLong());
+                                    log.debug("Deregister myself from queue '{}'", consumerKey);
                                 }
                                 if (dequeueStatisticEnabled) {
                                     dequeueStatistic.computeIfPresent(queueName, (s, dequeueStatistic) -> {
@@ -1137,8 +1128,8 @@ public class RedisQues extends AbstractVerticle {
                             });
                         } else {
                             // still alive
-                            setMyQueuesStates(queueName, QueueState.READY);
-                            log.debug("queue {} has no item, last consuming time: {}", queueName, myQueues.get(queueName).lastConsumeTimestamp);
+                            setMyQueuesState(queueName, QueueState.READY);
+                            log.debug("queue {} is empty since: {}", queueName, myQueues.get(queueName).lastConsumeTimestamp);
                             if (dequeueStatisticEnabled) {
                                 dequeueStatistic.computeIfPresent(queueName, (s, dequeueStatistic) -> {
                                     dequeueStatistic.setMarkedForRemoval();
@@ -1151,12 +1142,12 @@ public class RedisQues extends AbstractVerticle {
                 })).onFailure(throwable -> {
                     // We should return here. See: "https://softwareengineering.stackexchange.com/a/190535"
                     log.warn("Redis: Error on readQueue", throwable);
-                    setMyQueuesStates(queueName, QueueState.READY);
+                    setMyQueuesState(queueName, QueueState.READY);
                     promise.complete();
                 });
             } else {
                 log.debug("Got a request to consume from locked queue {}", queueName);
-                setMyQueuesStates(queueName, QueueState.READY);
+                setMyQueuesState(queueName, QueueState.READY);
                 promise.complete();
             }
         });
@@ -1183,7 +1174,7 @@ public class RedisQues extends AbstractVerticle {
                             "notifyConsumer(" + queueName + ") failed", event.cause()));
                 }
                 // reset the queue state to be consumed by {@link RedisQues#consume(String)}
-                setMyQueuesStates(queueName, QueueState.READY);
+                setMyQueuesState(queueName, QueueState.READY);
             });
         });
     }
@@ -1277,7 +1268,7 @@ public class RedisQues extends AbstractVerticle {
     }
 
     private void refreshRegistration(String queueName, Handler<AsyncResult<Response>> handler) {
-        log.debug("RedisQues Refreshing registration of queue {}, expire in {} s", queueName, consumerLockTime);
+        log.debug("RedisQues Refreshing registration of queue consumer {}, expire in {} s", queueName, consumerLockTime);
         String consumerKey = consumersPrefix + queueName;
         if (handler == null) {
             throw new RuntimeException("Handler must be set");
@@ -1476,16 +1467,20 @@ public class RedisQues extends AbstractVerticle {
     }
 
 
-    private void setMyQueuesStates(String queueName, QueueState state) {
+    private void setMyQueuesState(String queueName, QueueState state) {
         if (state == QueueState.CONSUMING) {
-            myQueues.put(queueName, new QueueProcessStats(QueueState.CONSUMING, System.currentTimeMillis()));
+            // update timestamp
+            myQueues.put(queueName, new QueueProcessingState(QueueState.CONSUMING, System.currentTimeMillis()));
         } else {
-            myQueues.compute(queueName, (s, queueProcessStats) -> {
-                if (null == queueProcessStats) {
-                    return new QueueProcessStats(QueueState.READY, System.currentTimeMillis());
+            myQueues.compute(queueName, (s, queueProcessingState) -> {
+                if (null == queueProcessingState) {
+                    // not in our list yet, add it along with a timestamp
+                    return new QueueProcessingState(QueueState.READY, System.currentTimeMillis());
+                } else {
+                    // update the state but leave the timestamp unchanged
+                    queueProcessingState.state = QueueState.READY;
+                    return queueProcessingState;
                 }
-                queueProcessStats.state = QueueState.READY;
-                return queueProcessStats;
             });
         }
     }
