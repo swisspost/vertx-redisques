@@ -196,15 +196,14 @@ public class UpperBoundParallelTest {
     }
 
     @Test
-    public  void testSemaphoreAreAllReleasedBeforeOnDoneCall(TestContext testContext) {
+    public void testSemaphoreAreAllReleasedBeforeOnDoneCall(TestContext testContext) {
         Async async = testContext.async();
         int semaphoreLimit = 3;
         int totalTasks = 10;
-        Semaphore semaphore = new Semaphore(semaphoreLimit);
-        CountDownLatch latch = new CountDownLatch(totalTasks);
+        Semaphore limiter = new Semaphore(semaphoreLimit);
         AtomicInteger completedTasks = new AtomicInteger(0);
-        UpperBoundParallel parallel = new UpperBoundParallel(vertx,  newWastefulExceptionFactory());
-        parallel.request(semaphore, null, new UpperBoundParallel.Mentor<>() {
+        UpperBoundParallel parallel = new UpperBoundParallel(vertx, newWastefulExceptionFactory());
+        parallel.request(limiter, null, new UpperBoundParallel.Mentor<>() {
             private final AtomicInteger taskCounter = new AtomicInteger(0);
 
             @Override
@@ -218,10 +217,9 @@ public class UpperBoundParallelTest {
                         completedTasks.incrementAndGet();
                     } finally {
                         onDone.accept(null, null); // Mark task as done.
-                        latch.countDown();
                     }
                 });
-                return taskId < totalTasks-1;
+                return taskId < totalTasks - 1;
             }
 
             @Override
@@ -234,7 +232,7 @@ public class UpperBoundParallelTest {
             public void onDone(Object ctx) {
                 System.out.println("All tasks completed.");
                 testContext.assertEquals(totalTasks, completedTasks.get(), "Number of completed tasks should match total tasks.");
-                testContext.assertEquals(semaphoreLimit, semaphore.availablePermits(), "All semaphore permits should be released.");
+                testContext.assertEquals(semaphoreLimit, limiter.availablePermits(), "All semaphore permits should be released.");
                 async.complete();
             }
         });
