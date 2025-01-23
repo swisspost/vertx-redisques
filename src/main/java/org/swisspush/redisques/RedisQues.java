@@ -518,6 +518,8 @@ public class RedisQues extends AbstractVerticle {
                             });
                         }
                     }));
+                } else {
+                    log.debug("queue {} is empty since: {}", queueName, state.lastConsumedTimestampMillis);
                 }
             }
         });
@@ -989,7 +991,10 @@ public class RedisQues extends AbstractVerticle {
                         if (uid.equals(consumer)) {
                             QueueState state = myQueues.get(queueName).state;
                             log.trace("RedisQues consumer: {} queue: {} state: {}", consumer, queueName, state);
+                            // Get the next message only once the previous has
+                            // been completely processed
                             if (state != QueueState.CONSUMING) {
+                                setMyQueuesState(queueName, QueueState.CONSUMING);
                                 if (state == null) {
                                     // No previous state was stored. Maybe the
                                     // consumer was restarted
@@ -1141,9 +1146,8 @@ public class RedisQues extends AbstractVerticle {
                     } else {
                         // This can happen when requests to consume happen at the same moment the queue is emptied.
                         log.debug("Got a request to consume from empty queue {}", queueName);
-
                         setMyQueuesState(queueName, QueueState.READY);
-                        log.debug("queue {} is empty since: {}", queueName, myQueues.get(queueName).lastConsumedTimestampMillis);
+
                         if (dequeueStatisticEnabled) {
                             dequeueStatistic.computeIfPresent(queueName, (s, dequeueStatistic) -> {
                                 dequeueStatistic.setMarkedForRemoval();
