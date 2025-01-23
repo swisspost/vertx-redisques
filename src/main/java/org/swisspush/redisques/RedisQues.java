@@ -179,6 +179,11 @@ public class RedisQues extends AbstractVerticle {
         READY, CONSUMING
     }
 
+    private enum UnregisterConsumerType {
+        FORCE, GRACEFUL, QUIET_FOR_SOMETIME
+    }
+
+
     private class QueueProcessingState {
         QueueProcessingState(QueueState state, long timestampMillis){
             this.state = state;
@@ -494,34 +499,7 @@ public class RedisQues extends AbstractVerticle {
     private void registerMyqueuesCleanup() {
         final long periodMs = configurationProvider.configuration().getRefreshPeriod() * 1000L;
         vertx.setPeriodic(10000, periodMs, event -> {
-            Iterator<Map.Entry<String, QueueProcessingState>> iterator = new HashMap<>(myQueues).entrySet().iterator();
-            while (iterator.hasNext()) {
-                Map.Entry<String, QueueProcessingState> entry = iterator.next();
-                final String queueName = entry.getKey();
-                final QueueProcessingState state = entry.getValue();
-                if (state.lastConsumedTimestampMillis > 0
-                        && System.currentTimeMillis() > state.lastConsumedTimestampMillis + emptyQueueLiveTimeMillis) {
-                    // the queue has been empty for quite a while now
-                    final String consumerKey = consumersPrefix + queueName;
-                    log.debug("empty queue {} has has been idle for {} ms, deregister", queueName, emptyQueueLiveTimeMillis);
-                    myQueues.remove(queueName);
-                    redisProvider.redis().onSuccess(redisAPI -> redisAPI.del(Collections.singletonList(consumerKey), result -> {
-                        if (result.failed()) {
-                            log.warn("Failed to deregister myself from queue '{}'", consumerKey, exceptionFactory.newException(result.cause()));
-                        } else {
-                            log.debug("Deregistered myself from queue '{}'", consumerKey);
-                        }
-                        if (dequeueStatisticEnabled) {
-                            dequeueStatistic.computeIfPresent(queueName, (s, dequeueStatistic) -> {
-                                dequeueStatistic.setMarkedForRemoval();
-                                return dequeueStatistic;
-                            });
-                        }
-                    }));
-                } else {
-                    log.debug("queue {} is empty since: {}", queueName, state.lastConsumedTimestampMillis);
-                }
-            }
+            unregisterConsumers(UnregisterConsumerType.QUIET_FOR_SOMETIME);
         });
     }
 
@@ -858,7 +836,7 @@ public class RedisQues extends AbstractVerticle {
 
     @Override
     public void stop() {
-        unregisterConsumers(true);
+        unregisterConsumers(UnregisterConsumerType.FORCE);
         if(redisMonitor != null) {
             redisMonitor.stop();
             redisMonitor = null;
@@ -876,7 +854,7 @@ public class RedisQues extends AbstractVerticle {
             consumersAliveMessageConsumer.unregister(event1 -> {
                 if (event1.failed()) log.warn("TODO error handling", exceptionFactory.newException(
                         "unregister(" + event1 + ") failed", event1.cause()));
-                unregisterConsumers(false).onComplete(unregisterConsumersEvent -> {
+                unregisterConsumers(UnregisterConsumerType.GRACEFUL).onComplete(unregisterConsumersEvent -> {
                     if (unregisterConsumersEvent.failed()) {
                         log.warn("TODO error handling", exceptionFactory.newException(
                                 "unregisterConsumers(false) failed", unregisterConsumersEvent.cause()));
@@ -890,44 +868,75 @@ public class RedisQues extends AbstractVerticle {
         }));
     }
 
-    private Future<Void> unregisterConsumers(boolean force) {
+    private Future<Void> unregisterConsumers(UnregisterConsumerType type) {
         final Promise<Void> result = Promise.promise();
-        log.debug("RedisQues unregister consumers. force={}", force);
+        log.debug("RedisQues unregister consumers. type={}", type);
         final List<Future> futureList = new ArrayList<>(myQueues.size());
         for (final Map.Entry<String, QueueProcessingState> entry : myQueues.entrySet()) {
             final Promise<Void> promise = Promise.promise();
             futureList.add(promise.future());
-            final String queue = entry.getKey();
-            if (force || entry.getValue().state == QueueState.READY) {
-                log.trace("RedisQues unregister consumers queue: {}", queue);
-                refreshRegistration(queue, event -> {
-                    if (event.failed()) {
-                        log.warn("TODO error handling", exceptionFactory.newException(
-                            "refreshRegistration(" + queue + ") failed", event.cause()));
+            final String queueName = entry.getKey();
+            final QueueProcessingState state = entry.getValue();
+            switch (type) {
+                case FORCE:
+                    break;
+                case GRACEFUL:
+                    if (entry.getValue().state != QueueState.READY) {
+                        promise.complete();
+                        continue;
                     }
-                    // Make sure that I am still the registered consumer
-                    String consumerKey = consumersPrefix + queue;
-                    log.trace("RedisQues unregister consumers get: {}", consumerKey);
-                    redisProvider.redis().onSuccess(redisAPI -> redisAPI.get(consumerKey, getEvent -> {
-                        if (getEvent.failed()) {
-                            log.warn("Failed to retrieve consumer '{}'.", consumerKey, getEvent.cause());
-                            // IMO we should 'fail()' here. But we don't, to keep backward compatibility.
-                        }
-                        String consumer = Objects.toString(getEvent.result(), "");
-                        log.trace("RedisQues unregister consumers get result: {}", consumer);
-                        if (uid.equals(consumer)) {
-                            log.debug("RedisQues Removing queue {} from the list", queue);
-                            myQueues.remove(queue);
-                        }
+                    break;
+                case QUIET_FOR_SOMETIME:
+                    if (state.lastConsumedTimestampMillis > 0
+                            && System.currentTimeMillis() > state.lastConsumedTimestampMillis + emptyQueueLiveTimeMillis) {
+                        // the queue has been empty for quite a while now
+                        log.debug("empty queue {} has has been idle for {} ms, deregister", queueName, emptyQueueLiveTimeMillis);
+                    } else {
+                        log.debug("queue {} is empty since: {}", queueName, state.lastConsumedTimestampMillis);
                         promise.complete();
-                    })).onFailure(throwable -> {
-                        log.warn("Failed to retrieve consumer '{}'.", consumerKey, throwable);
-                        promise.complete();
-                    });
-                });
-            } else {
-                promise.complete();
+                        continue;
+                    }
+                    break;
+                default:
+                    log.error("Unsupported UnregisterConsumerType: {}", type);
+                    promise.complete();
             }
+
+            log.trace("RedisQues unregister consumers queue: {}", queueName);
+            refreshRegistration(queueName, event -> {
+                if (event.failed()) {
+                    log.warn("TODO error handling", exceptionFactory.newException(
+                            "refreshRegistration(" + queueName + ") failed", event.cause()));
+                }
+                // Make sure that I am still the registered consumer
+                final String consumerKey = consumersPrefix + queueName;
+                log.trace("RedisQues unregister consumers get: {}", consumerKey);
+                redisProvider.redis().onSuccess(redisAPI -> redisAPI.get(consumerKey, getEvent -> {
+                    if (getEvent.failed()) {
+                        log.warn("Failed to retrieve consumer '{}'.", consumerKey, getEvent.cause());
+                        // IMO we should 'fail()' here. But we don't, to keep backward compatibility.
+                    }
+                    String consumer = Objects.toString(getEvent.result(), "");
+                    log.trace("RedisQues unregister consumers get result: {}", consumer);
+                    if (uid.equals(consumer)) {
+                        log.debug("RedisQues remove consumer: {}", uid);
+                        myQueues.remove(queueName);
+                        redisAPI.del(Collections.singletonList(consumerKey), delResult -> {
+                            if (delResult.failed()) {
+                                log.warn("Failed to deregister myself from queue '{}'", consumerKey, exceptionFactory.newException(delResult.cause()));
+                            } else {
+                                log.debug("Deregistered myself from queue '{}'", consumerKey);
+                            }
+                            promise.complete();
+                        });
+                    } else {
+                        promise.complete();
+                    }
+                })).onFailure(throwable -> {
+                    log.warn("Failed to retrieve consumer '{}'.", consumerKey, throwable);
+                    promise.complete();
+                });
+            });
         }
         CompositeFuture.all(futureList).onComplete(ev -> {
             if (ev.failed()) log.warn("TODO error handling", exceptionFactory.newException(ev.cause()));
@@ -1120,7 +1129,7 @@ public class RedisQues extends AbstractVerticle {
 
                                     // Notify that we are stopped in case it was the last active consumer
                                     if (stoppedHandler != null) {
-                                        unregisterConsumers(false).onComplete(event -> {
+                                        unregisterConsumers(UnregisterConsumerType.GRACEFUL).onComplete(event -> {
                                             if (event.failed()) {
                                                 log.warn("TODO error handling", exceptionFactory.newException(
                                                     "unregisterConsumers() failed", event.cause()));
@@ -1485,36 +1494,21 @@ public class RedisQues extends AbstractVerticle {
     }
 
     private void setMyQueuesState(String queueName, QueueState state) {
-//        myQueues.compute(queueName, (s, queueProcessingState) -> {
-//            if (null == queueProcessingState) {
-//                // not in our list yet
-//                return new QueueProcessingState(state, 0);
-//            } else {
-//                // update the state but leave the timestamp unchanged
-//                if (queueProcessingState.state == QueueState.CONSUMING && state == QueueState.READY) {
-//                    // update the state and the timestamp when we change from CONSUMING to READY
-//                    return new QueueProcessingState(QueueState.READY, System.currentTimeMillis());
-//                } else {
-//                    queueProcessingState.state = QueueState.READY;
-//                    return queueProcessingState;
-//                }
-//            }
-//        });
-        if (state == QueueState.CONSUMING) {
-            // update timestamp
-            myQueues.put(queueName, new QueueProcessingState(QueueState.CONSUMING, System.currentTimeMillis()));
-        } else {
-            myQueues.compute(queueName, (s, queueProcessingState) -> {
-                if (null == queueProcessingState) {
-                    // not in our list yet
-                    return new QueueProcessingState(QueueState.READY, 0);
+        myQueues.compute(queueName, (s, queueProcessingState) -> {
+            if (null == queueProcessingState) {
+                // not in our list yet
+                return new QueueProcessingState(state, 0);
+            } else {
+                if (queueProcessingState.state == QueueState.CONSUMING && state == QueueState.READY) {
+                    // update the state and the timestamp when we change from CONSUMING to READY
+                    return new QueueProcessingState(QueueState.READY, System.currentTimeMillis());
                 } else {
                     // update the state but leave the timestamp unchanged
-                    queueProcessingState.state = QueueState.READY;
+                    queueProcessingState.state = state;
                     return queueProcessingState;
                 }
-            });
-        }
+            }
+        });
     }
     /**
      * find first matching Queue-Configuration
