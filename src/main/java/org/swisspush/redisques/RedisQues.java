@@ -488,6 +488,39 @@ public class RedisQues extends AbstractVerticle {
         registerMetricsGathering(configuration);
         registerNotExpiredQueueCheck();
         registerKeepConsumerAlive();
+        registerMyqueuesCleanup();
+    }
+
+    private void registerMyqueuesCleanup() {
+        final long periodMs = configurationProvider.configuration().getRefreshPeriod() * 1000L;
+        vertx.setPeriodic(10000, periodMs, event -> {
+            Iterator<Map.Entry<String, QueueProcessingState>> iterator = new HashMap<>(myQueues).entrySet().iterator();
+            while (iterator.hasNext()) {
+                Map.Entry<String, QueueProcessingState> entry = iterator.next();
+                final String queueName = entry.getKey();
+                final QueueProcessingState state = entry.getValue();
+                if (state.lastConsumedTimestampMillis > 0
+                        && System.currentTimeMillis() > state.lastConsumedTimestampMillis + emptyQueueLiveTimeMillis) {
+                    // the queue has been empty for quite a while now
+                    final String consumerKey = consumersPrefix + queueName;
+                    log.debug("empty queue {} has has been idle for {} ms, deregister", queueName, emptyQueueLiveTimeMillis);
+                    myQueues.remove(queueName);
+                    redisProvider.redis().onSuccess(redisAPI -> redisAPI.del(Collections.singletonList(consumerKey), result -> {
+                        if (result.failed()) {
+                            log.warn("Failed to deregister myself from queue '{}'", consumerKey, exceptionFactory.newException(result.cause()));
+                        } else {
+                            log.debug("Deregistered myself from queue '{}'", consumerKey);
+                        }
+                        if (dequeueStatisticEnabled) {
+                            dequeueStatistic.computeIfPresent(queueName, (s, dequeueStatistic) -> {
+                                dequeueStatistic.setMarkedForRemoval();
+                                return dequeueStatistic;
+                            });
+                        }
+                    }));
+                }
+            }
+        });
     }
 
     private void registerKeepConsumerAlive() {
@@ -957,12 +990,13 @@ public class RedisQues extends AbstractVerticle {
                             QueueState state = myQueues.get(queueName).state;
                             log.trace("RedisQues consumer: {} queue: {} state: {}", consumer, queueName, state);
                             if (state != QueueState.CONSUMING) {
-                                setMyQueuesState(queueName, QueueState.CONSUMING);
                                 if (state == null) {
                                     // No previous state was stored. Maybe the
                                     // consumer was restarted
                                     log.warn("Received request to consume from a queue I did not know about: {}", queueName);
                                 }
+                                // We have item, start to consuming
+                                setMyQueuesState(queueName, QueueState.CONSUMING);
                                 log.trace("RedisQues Starting to consume queue {}", queueName);
                                 readQueue(queueName).onComplete(readQueueEvent -> {
                                     if (readQueueEvent.failed()) {
@@ -1107,37 +1141,17 @@ public class RedisQues extends AbstractVerticle {
                     } else {
                         // This can happen when requests to consume happen at the same moment the queue is emptied.
                         log.debug("Got a request to consume from empty queue {}", queueName);
-                        if (System.currentTimeMillis() > myQueues.get(queueName).lastConsumedTimestampMillis + emptyQueueLiveTimeMillis) {
-                            // the queue has been empty for quite a while now
-                            final String consumerKey = consumersPrefix + queueName;
-                            log.debug("empty queue {} has has been idle for {} ms, deregister", queueName, emptyQueueLiveTimeMillis);
-                            myQueues.remove(queueName);
-                            redisAPI.del(Collections.singletonList(consumerKey), result -> {
-                                if (result.failed()) {
-                                    log.warn("Failed to deregister myself from queue '{}'", consumerKey, exceptionFactory.newException(result.cause()));
-                                } else {
-                                    log.debug("Deregistered myself from queue '{}'", consumerKey);
-                                }
-                                if (dequeueStatisticEnabled) {
-                                    dequeueStatistic.computeIfPresent(queueName, (s, dequeueStatistic) -> {
-                                        dequeueStatistic.setMarkedForRemoval();
-                                        return dequeueStatistic;
-                                    });
-                                }
-                                promise.complete();
+
+                        setMyQueuesState(queueName, QueueState.READY);
+                        log.debug("queue {} is empty since: {}", queueName, myQueues.get(queueName).lastConsumedTimestampMillis);
+                        if (dequeueStatisticEnabled) {
+                            dequeueStatistic.computeIfPresent(queueName, (s, dequeueStatistic) -> {
+                                dequeueStatistic.setMarkedForRemoval();
+                                return dequeueStatistic;
                             });
-                        } else {
-                            // still alive
-                            setMyQueuesState(queueName, QueueState.READY);
-                            log.debug("queue {} is empty since: {}", queueName, myQueues.get(queueName).lastConsumedTimestampMillis);
-                            if (dequeueStatisticEnabled) {
-                                dequeueStatistic.computeIfPresent(queueName, (s, dequeueStatistic) -> {
-                                    dequeueStatistic.setMarkedForRemoval();
-                                    return dequeueStatistic;
-                                });
-                            }
-                            promise.complete();
                         }
+                        promise.complete();
+
                     }
                 })).onFailure(throwable -> {
                     // We should return here. See: "https://softwareengineering.stackexchange.com/a/190535"
@@ -1467,6 +1481,21 @@ public class RedisQues extends AbstractVerticle {
     }
 
     private void setMyQueuesState(String queueName, QueueState state) {
+//        myQueues.compute(queueName, (s, queueProcessingState) -> {
+//            if (null == queueProcessingState) {
+//                // not in our list yet
+//                return new QueueProcessingState(state, 0);
+//            } else {
+//                // update the state but leave the timestamp unchanged
+//                if (queueProcessingState.state == QueueState.CONSUMING && state == QueueState.READY) {
+//                    // update the state and the timestamp when we change from CONSUMING to READY
+//                    return new QueueProcessingState(QueueState.READY, System.currentTimeMillis());
+//                } else {
+//                    queueProcessingState.state = QueueState.READY;
+//                    return queueProcessingState;
+//                }
+//            }
+//        });
         if (state == QueueState.CONSUMING) {
             // update timestamp
             myQueues.put(queueName, new QueueProcessingState(QueueState.CONSUMING, System.currentTimeMillis()));
@@ -1474,7 +1503,7 @@ public class RedisQues extends AbstractVerticle {
             myQueues.compute(queueName, (s, queueProcessingState) -> {
                 if (null == queueProcessingState) {
                     // not in our list yet
-                    return new QueueProcessingState(QueueState.READY, Long.MAX_VALUE);
+                    return new QueueProcessingState(QueueState.READY, 0);
                 } else {
                     // update the state but leave the timestamp unchanged
                     queueProcessingState.state = QueueState.READY;
