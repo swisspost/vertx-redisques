@@ -91,11 +91,11 @@ public class UpperBoundParallel {
                 if (!req.hasMore) {
                     if (req.numInProgress == 0 && !req.isDoneCalled) {
                         req.isDoneCalled = true;
-                        // give up lock because we don't know how much time mentor will use.
-                        req.lock.unlock();
                         log.debug("Release remaining {} tokens", req.numTokensAvailForOurself);
                         req.limit.release(req.numTokensAvailForOurself);
                         req.numTokensAvailForOurself = 0;
+                        // give up lock because we don't know how much time mentor will use.
+                        req.lock.unlock();
                         log.trace("call 'mentor.onDone()'");
                         try {
                             req.mentor.onDone(req.ctx);
