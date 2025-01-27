@@ -91,6 +91,9 @@ public class UpperBoundParallel {
                 if (!req.hasMore) {
                     if (req.numInProgress == 0 && !req.isDoneCalled) {
                         req.isDoneCalled = true;
+                        log.debug("Release remaining {} tokens", req.numTokensAvailForOurself);
+                        req.limit.release(req.numTokensAvailForOurself);
+                        req.numTokensAvailForOurself = 0;
                         // give up lock because we don't know how much time mentor will use.
                         req.lock.unlock();
                         log.trace("call 'mentor.onDone()'");
@@ -99,9 +102,6 @@ public class UpperBoundParallel {
                         } finally {
                             req.lock.lock(); // MUST get back our lock RIGHT NOW.
                         }
-                        log.debug("Release remaining {} tokens", req.numTokensAvailForOurself);
-                        req.limit.release(req.numTokensAvailForOurself);
-                        req.numTokensAvailForOurself = 0;
                     } else {
                         log.trace("return for now (hasMore = {}, numInProgress = {})", req.hasMore, req.numInProgress);
                     }
@@ -165,7 +165,7 @@ public class UpperBoundParallel {
                     assert req.numTokensAvailForOurself == 0 : "assert(numTokensAvailForOurself != " + req.numTokensAvailForOurself + ")";
                 } else {
                     log.error("If you see this log, some unreachable code got reached. numInProgress={}, hasStarted={}",
-                        req.numInProgress, req.hasStarted);
+                            req.numInProgress, req.hasStarted);
                     vertx.setTimer(4000, nonsense -> resume(req));
                 }
             }

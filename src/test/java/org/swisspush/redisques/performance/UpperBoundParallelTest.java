@@ -11,7 +11,9 @@ import org.swisspush.redisques.exception.ResourceExhaustionException;
 
 import java.util.Iterator;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
 
 import static org.swisspush.redisques.exception.RedisQuesExceptionFactory.newWastefulExceptionFactory;
@@ -193,4 +195,46 @@ public class UpperBoundParallelTest {
         });
     }
 
+    @Test
+    public void testSemaphoreAreAllReleasedBeforeOnDoneCall(TestContext testContext) {
+        Async async = testContext.async();
+        int semaphoreLimit = 3;
+        int totalTasks = 10;
+        Semaphore limiter = new Semaphore(semaphoreLimit);
+        AtomicInteger completedTasks = new AtomicInteger(0);
+        UpperBoundParallel parallel = new UpperBoundParallel(vertx, newWastefulExceptionFactory());
+        parallel.request(limiter, null, new UpperBoundParallel.Mentor<>() {
+            private final AtomicInteger taskCounter = new AtomicInteger(0);
+
+            @Override
+            public boolean runOneMore(BiConsumer<Throwable, Void> onDone, Object ctx) {
+                int taskId = taskCounter.getAndIncrement();
+                System.out.println("runOneMore: " + taskId);
+                // Simulate task execution with a slight delay.
+                vertx.setTimer(100, id -> {
+                    try {
+                        System.out.println("Task completed: " + taskId);
+                        completedTasks.incrementAndGet();
+                    } finally {
+                        onDone.accept(null, null); // Mark task as done.
+                    }
+                });
+                return taskId < totalTasks - 1;
+            }
+
+            @Override
+            public boolean onError(Throwable ex, Object ctx) {
+                System.err.println("Error in task: " + ex.getMessage());
+                return false; // Stop processing on error.
+            }
+
+            @Override
+            public void onDone(Object ctx) {
+                System.out.println("All tasks completed.");
+                testContext.assertEquals(totalTasks, completedTasks.get(), "Number of completed tasks should match total tasks.");
+                testContext.assertEquals(semaphoreLimit, limiter.availablePermits(), "All semaphore permits should be released.");
+                async.complete();
+            }
+        });
+    }
 }
