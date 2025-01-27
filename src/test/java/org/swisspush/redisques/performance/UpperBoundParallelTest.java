@@ -230,7 +230,7 @@ public class UpperBoundParallelTest {
 
             @Override
             public void onDone(Object ctx) {
-                System.out.println("All tasks completed.");
+                System.out.println("All tasks completed without error.");
                 testContext.assertEquals(totalTasks, completedTasks.get(), "Number of completed tasks should match total tasks.");
                 testContext.assertEquals(semaphoreLimit, limiter.availablePermits(), "All semaphore permits should be released.");
                 async.complete();
