@@ -873,17 +873,15 @@ public class RedisQues extends AbstractVerticle {
         log.debug("RedisQues unregister consumers. type={}", type);
         final List<Future> futureList = new ArrayList<>(myQueues.size());
         for (final Map.Entry<String, QueueProcessingState> entry : myQueues.entrySet()) {
-            final Promise<Void> promise = Promise.promise();
-            futureList.add(promise.future());
             final String queueName = entry.getKey();
             final QueueProcessingState state = entry.getValue();
             switch (type) {
                 case FORCE:
+                    futureList.add(unregisterMyQueue(queueName));
                     break;
                 case GRACEFUL:
-                    if (entry.getValue().state != QueueState.READY) {
-                        promise.complete();
-                        continue;
+                    if (entry.getValue().state == QueueState.READY) {
+                        futureList.add(unregisterMyQueue(queueName));
                     }
                     break;
                 case QUIET_FOR_SOMETIME:
@@ -891,58 +889,60 @@ public class RedisQues extends AbstractVerticle {
                             && System.currentTimeMillis() > state.lastConsumedTimestampMillis + emptyQueueLiveTimeMillis) {
                         // the queue has been empty for quite a while now
                         log.debug("empty queue {} has has been idle for {} ms, deregister", queueName, emptyQueueLiveTimeMillis);
+                        futureList.add(unregisterMyQueue(queueName));
                     } else {
                         log.debug("queue {} is empty since: {}", queueName, state.lastConsumedTimestampMillis);
-                        promise.complete();
-                        continue;
                     }
                     break;
                 default:
                     log.error("Unsupported UnregisterConsumerType: {}", type);
-                    promise.complete();
             }
-
-            log.trace("RedisQues unregister consumers queue: {}", queueName);
-            refreshRegistration(queueName, event -> {
-                if (event.failed()) {
-                    log.warn("TODO error handling", exceptionFactory.newException(
-                            "refreshRegistration(" + queueName + ") failed", event.cause()));
-                }
-                // Make sure that I am still the registered consumer
-                final String consumerKey = consumersPrefix + queueName;
-                log.trace("RedisQues unregister consumers get: {}", consumerKey);
-                redisProvider.redis().onSuccess(redisAPI -> redisAPI.get(consumerKey, getEvent -> {
-                    if (getEvent.failed()) {
-                        log.warn("Failed to retrieve consumer '{}'.", consumerKey, getEvent.cause());
-                        // IMO we should 'fail()' here. But we don't, to keep backward compatibility.
-                    }
-                    String consumer = Objects.toString(getEvent.result(), "");
-                    log.trace("RedisQues unregister consumers get result: {}", consumer);
-                    if (uid.equals(consumer)) {
-                        log.debug("RedisQues remove consumer: {}", uid);
-                        myQueues.remove(queueName);
-                        redisAPI.del(Collections.singletonList(consumerKey), delResult -> {
-                            if (delResult.failed()) {
-                                log.warn("Failed to deregister myself from queue '{}'", consumerKey, exceptionFactory.newException(delResult.cause()));
-                            } else {
-                                log.debug("Deregistered myself from queue '{}'", consumerKey);
-                            }
-                            promise.complete();
-                        });
-                    } else {
-                        promise.complete();
-                    }
-                })).onFailure(throwable -> {
-                    log.warn("Failed to retrieve consumer '{}'.", consumerKey, throwable);
-                    promise.complete();
-                });
-            });
         }
         CompositeFuture.all(futureList).onComplete(ev -> {
             if (ev.failed()) log.warn("TODO error handling", exceptionFactory.newException(ev.cause()));
             result.complete();
         });
         return result.future();
+    }
+
+    private Future<Void> unregisterMyQueue(String queueName) {
+        log.trace("RedisQues unregister consumers queue: {}", queueName);
+        Promise<Void> promise = Promise.promise();
+        refreshRegistration(queueName, event -> {
+            if (event.failed()) {
+                log.warn("TODO error handling", exceptionFactory.newException(
+                        "refreshRegistration(" + queueName + ") failed", event.cause()));
+            }
+            // Make sure that I am still the registered consumer
+            final String consumerKey = consumersPrefix + queueName;
+            log.trace("RedisQues unregister consumers get: {}", consumerKey);
+            redisProvider.redis().onSuccess(redisAPI -> redisAPI.get(consumerKey, getEvent -> {
+                if (getEvent.failed()) {
+                    log.warn("Failed to retrieve consumer '{}'.", consumerKey, getEvent.cause());
+                    // IMO we should 'fail()' here. But we don't, to keep backward compatibility.
+                }
+                String consumer = Objects.toString(getEvent.result(), "");
+                log.trace("RedisQues unregister consumers get result: {}", consumer);
+                if (uid.equals(consumer)) {
+                    log.debug("RedisQues remove consumer: {}", uid);
+                    myQueues.remove(queueName);
+                    redisAPI.del(Collections.singletonList(consumerKey), delResult -> {
+                        if (delResult.failed()) {
+                            log.warn("Failed to deregister myself from queue '{}'", consumerKey, exceptionFactory.newException(delResult.cause()));
+                        } else {
+                            log.debug("Deregistered myself from queue '{}'", consumerKey);
+                        }
+                        promise.complete();
+                    });
+                } else {
+                    promise.complete();
+                }
+            })).onFailure(throwable -> {
+                log.warn("Failed to retrieve consumer '{}'.", consumerKey, throwable);
+                promise.complete();
+            });
+        });
+        return promise.future();
     }
 
     /**
