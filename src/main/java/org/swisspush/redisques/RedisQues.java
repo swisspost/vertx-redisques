@@ -877,11 +877,11 @@ public class RedisQues extends AbstractVerticle {
             final QueueProcessingState state = entry.getValue();
             switch (type) {
                 case FORCE:
-                    futureList.add(unregisterMyQueue(queueName));
+                    futureList.add(unregisterQueue(queueName));
                     break;
                 case GRACEFUL:
                     if (entry.getValue().state == QueueState.READY) {
-                        futureList.add(unregisterMyQueue(queueName));
+                        futureList.add(unregisterQueue(queueName));
                     }
                     break;
                 case QUIET_FOR_SOMETIME:
@@ -889,7 +889,7 @@ public class RedisQues extends AbstractVerticle {
                             && System.currentTimeMillis() > state.lastConsumedTimestampMillis + emptyQueueLiveTimeMillis) {
                         // the queue has been empty for quite a while now
                         log.debug("empty queue {} has has been idle for {} ms, deregister", queueName, emptyQueueLiveTimeMillis);
-                        futureList.add(unregisterMyQueue(queueName));
+                        futureList.add(unregisterQueue(queueName));
                     } else {
                         log.debug("queue {} is empty since: {}", queueName, state.lastConsumedTimestampMillis);
                     }
@@ -905,7 +905,7 @@ public class RedisQues extends AbstractVerticle {
         return result.future();
     }
 
-    private Future<Void> unregisterMyQueue(String queueName) {
+    private Future<Void> unregisterQueue(String queueName) {
         log.trace("RedisQues unregister consumers queue: {}", queueName);
         Promise<Void> promise = Promise.promise();
         refreshRegistration(queueName, event -> {
