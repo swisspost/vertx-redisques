@@ -375,7 +375,7 @@ public class RedisQues extends AbstractVerticle {
         queueCheckLastexecKey = modConfig.getRedisPrefix() + "check:lastexec";
         consumerLockTime = modConfig.getConsumerLockMultiplier() * modConfig.getRefreshPeriod(); // lock is kept twice as long as its refresh interval -> never expires as long as the consumer ('we') are alive
         // the time we let an empty queue live before we deregister ourselves
-        emptyQueueLiveTimeMillis = configurationProvider.configuration().getCheckIntervalTimerMs() * 2;
+        emptyQueueLiveTimeMillis = modConfig.getEmptyQueueLiveTimeMillis();
         timer = new RedisQuesTimer(vertx);
 
         if (redisProvider == null) {
@@ -497,6 +497,9 @@ public class RedisQues extends AbstractVerticle {
     }
 
     private void registerMyqueuesCleanup() {
+        if (emptyQueueLiveTimeMillis <= 0) {
+            return; // disabled
+        }
         final long periodMs = configurationProvider.configuration().getRefreshPeriod() * 1000L;
         vertx.setPeriodic(10000, periodMs, event -> {
             unregisterConsumers(UnregisterConsumerType.QUIET_FOR_SOMETIME);
@@ -885,6 +888,9 @@ public class RedisQues extends AbstractVerticle {
                     }
                     break;
                 case QUIET_FOR_SOMETIME:
+                    if (emptyQueueLiveTimeMillis <= 0) {
+                        break; // disabled
+                    }
                     if (state.lastConsumedTimestampMillis > 0
                             && System.currentTimeMillis() > state.lastConsumedTimestampMillis + emptyQueueLiveTimeMillis) {
                         // the queue has been empty for quite a while now

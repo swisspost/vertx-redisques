@@ -60,6 +60,7 @@ public class RedisquesConfiguration {
     private final int redisReconnectDelaySec;
     private final int redisPoolRecycleTimeoutMs;
     private final int dequeueStatisticReportIntervalSec;
+    private final int emptyQueueLiveTimeMs;
 
     private static final int DEFAULT_CHECK_INTERVAL_S = 60; // 60s
     private static final int DEFAULT_PROCESSOR_TIMEOUT_MS = 240000; // 240s
@@ -71,6 +72,7 @@ public class RedisquesConfiguration {
     private static final int DEFAULT_REDIS_RECONNECT_DELAY_SEC = 30;
     private static final int DEFAULT_REDIS_POOL_RECYCLE_TIMEOUT_MS = 180_000;
     private static final int DEFAULT_CONSUMER_LOCK_MULTIPLIER = 2;
+    private static final int DEFAULT_EMPTY_QUEUE_LIVE_TIME_MS = -1;
 
     // We want to have more than the default of 24 max waiting requests and therefore
     // set the default here to infinity value. See as well:
@@ -133,7 +135,7 @@ public class RedisquesConfiguration {
     public static final String PROP_MEMORY_USAGE_CHECK_INTERVAL_SEC = "memoryUsageCheckIntervalSec";
     public static final String PROP_REDIS_READY_CHECK_INTERVAL_MS = "redisReadyCheckIntervalMs";
     public static final String PROP_DEQUEUE_STATISTIC_REPORT_INTERVAL_SEC = "dequeueStatisticReportIntervalSec";
-
+    public static final String PROP_EMPTY_QUEUE_LIVE_TIME_MS = "emptyQueueLiveTimeMs";
     /**
      * Constructor with default values. Use the {@link RedisquesConfigurationBuilder} class
      * for simplified custom configuration.
@@ -168,7 +170,7 @@ public class RedisquesConfiguration {
                 DEFAULT_REDIS_MAX_PIPELINE_WAIT_SIZE, DEFAULT_QUEUE_SPEED_INTERVAL_SEC, DEFAULT_MEMORY_USAGE_LIMIT_PCT,
                 DEFAULT_MEMORY_USAGE_CHECK_INTERVAL_SEC, DEFAULT_REDIS_RECONNECT_ATTEMPTS, DEFAULT_REDIS_RECONNECT_DELAY_SEC,
                 DEFAULT_REDIS_POOL_RECYCLE_TIMEOUT_MS, DEFAULT_DEQUEUE_STATISTIC_REPORT_INTERVAL_SEC,
-                DEFAULT_REDIS_READY_CHECK_INTERVAL_MS);
+                DEFAULT_REDIS_READY_CHECK_INTERVAL_MS, DEFAULT_EMPTY_QUEUE_LIVE_TIME_MS);
     }
 
     /**
@@ -195,7 +197,7 @@ public class RedisquesConfiguration {
                 DEFAULT_REDIS_MAX_PIPELINE_WAIT_SIZE, DEFAULT_QUEUE_SPEED_INTERVAL_SEC, DEFAULT_MEMORY_USAGE_LIMIT_PCT,
                 DEFAULT_MEMORY_USAGE_CHECK_INTERVAL_SEC, DEFAULT_REDIS_RECONNECT_ATTEMPTS, DEFAULT_REDIS_RECONNECT_DELAY_SEC,
                 DEFAULT_REDIS_POOL_RECYCLE_TIMEOUT_MS, DEFAULT_DEQUEUE_STATISTIC_REPORT_INTERVAL_SEC,
-                DEFAULT_REDIS_READY_CHECK_INTERVAL_MS);
+                DEFAULT_REDIS_READY_CHECK_INTERVAL_MS, DEFAULT_EMPTY_QUEUE_LIVE_TIME_MS);
     }
 
     /**
@@ -221,7 +223,7 @@ public class RedisquesConfiguration {
                 DEFAULT_REDIS_MAX_PIPELINE_WAIT_SIZE, DEFAULT_QUEUE_SPEED_INTERVAL_SEC, DEFAULT_MEMORY_USAGE_LIMIT_PCT,
                 DEFAULT_MEMORY_USAGE_CHECK_INTERVAL_SEC, DEFAULT_REDIS_RECONNECT_ATTEMPTS, DEFAULT_REDIS_RECONNECT_DELAY_SEC,
                 DEFAULT_REDIS_POOL_RECYCLE_TIMEOUT_MS, DEFAULT_DEQUEUE_STATISTIC_REPORT_INTERVAL_SEC,
-                DEFAULT_REDIS_READY_CHECK_INTERVAL_MS);
+                DEFAULT_REDIS_READY_CHECK_INTERVAL_MS, DEFAULT_EMPTY_QUEUE_LIVE_TIME_MS);
     }
 
     /**
@@ -247,7 +249,7 @@ public class RedisquesConfiguration {
                 DEFAULT_REDIS_MAX_PIPELINE_WAIT_SIZE, DEFAULT_QUEUE_SPEED_INTERVAL_SEC, DEFAULT_MEMORY_USAGE_LIMIT_PCT,
                 DEFAULT_MEMORY_USAGE_CHECK_INTERVAL_SEC, DEFAULT_REDIS_RECONNECT_ATTEMPTS, DEFAULT_REDIS_RECONNECT_DELAY_SEC,
                 DEFAULT_REDIS_POOL_RECYCLE_TIMEOUT_MS, DEFAULT_DEQUEUE_STATISTIC_REPORT_INTERVAL_SEC,
-                DEFAULT_REDIS_READY_CHECK_INTERVAL_MS);
+                DEFAULT_REDIS_READY_CHECK_INTERVAL_MS, DEFAULT_EMPTY_QUEUE_LIVE_TIME_MS);
     }
 
     private RedisquesConfiguration(String address, String configurationUpdatedAddress, String redisPrefix, String processorAddress,
@@ -263,7 +265,7 @@ public class RedisquesConfiguration {
                                    int maxPoolSize, int maxPoolWaitSize, int maxPipelineWaitSize,
                                    int queueSpeedIntervalSec, int memoryUsageLimitPercent, int memoryUsageCheckIntervalSec,
                                    int redisReconnectAttempts, int redisReconnectDelaySec, int redisPoolRecycleTimeoutMs,
-                                   int dequeueStatisticReportIntervalSec, int redisReadyCheckIntervalMs) {
+                                   int dequeueStatisticReportIntervalSec, int redisReadyCheckIntervalMs, int emptyQueueLiveTimeMs) {
         this.address = address;
         this.configurationUpdatedAddress = configurationUpdatedAddress;
         this.redisPrefix = redisPrefix;
@@ -361,6 +363,7 @@ public class RedisquesConfiguration {
         this.redisPoolRecycleTimeoutMs = redisPoolRecycleTimeoutMs;
         this.dequeueStatisticReportIntervalSec = dequeueStatisticReportIntervalSec;
         this.redisReadyCheckIntervalMs = redisReadyCheckIntervalMs;
+        this.emptyQueueLiveTimeMs = emptyQueueLiveTimeMs;
     }
 
     public static RedisquesConfigurationBuilder with() {
@@ -388,7 +391,8 @@ public class RedisquesConfiguration {
                 builder.redisReconnectDelaySec,
                 builder.redisPoolRecycleTimeoutMs,
                 builder.dequeueStatisticReportIntervalSec,
-                builder.redisReadyCheckIntervalMs);
+                builder.redisReadyCheckIntervalMs,
+                builder.emptyQueueLiveTimeMs);
     }
 
     public JsonObject asJsonObject() {
@@ -437,6 +441,7 @@ public class RedisquesConfiguration {
         obj.put(PROP_MEMORY_USAGE_CHECK_INTERVAL_SEC, getMemoryUsageCheckIntervalSec());
         obj.put(PROP_REDIS_READY_CHECK_INTERVAL_MS, getRedisReadyCheckIntervalMs());
         obj.put(PROP_DEQUEUE_STATISTIC_REPORT_INTERVAL_SEC, getDequeueStatisticReportIntervalSec());
+        obj.put(PROP_EMPTY_QUEUE_LIVE_TIME_MS, getEmptyQueueLiveTimeMillis());
         return obj;
     }
 
@@ -576,6 +581,9 @@ public class RedisquesConfiguration {
         }
         if (json.containsKey(PROP_DEQUEUE_STATISTIC_REPORT_INTERVAL_SEC)) {
             builder.dequeueStatisticReportIntervalSec(json.getInteger(PROP_DEQUEUE_STATISTIC_REPORT_INTERVAL_SEC));
+        }
+        if (json.containsKey(PROP_EMPTY_QUEUE_LIVE_TIME_MS)) {
+            builder.emptyQueueLiveTimeMs(json.getInteger(PROP_EMPTY_QUEUE_LIVE_TIME_MS));
         }
         return builder.build();
     }
@@ -785,6 +793,10 @@ public class RedisquesConfiguration {
         return getDequeueStatisticReportIntervalSec() > 0;
     }
 
+    public int getEmptyQueueLiveTimeMillis() {
+        return emptyQueueLiveTimeMs;
+    }
+
     /**
      * RedisquesConfigurationBuilder class for simplified configuration.
      *
@@ -840,6 +852,7 @@ public class RedisquesConfiguration {
         private int memoryUsageLimitPercent;
         private int memoryUsageCheckIntervalSec;
         private int redisReadyCheckIntervalMs;
+        private int emptyQueueLiveTimeMs;
 
         public RedisquesConfigurationBuilder() {
             this.address = "redisques";
@@ -878,6 +891,7 @@ public class RedisquesConfiguration {
             this.memoryUsageCheckIntervalSec = DEFAULT_MEMORY_USAGE_CHECK_INTERVAL_SEC;
             this.dequeueStatisticReportIntervalSec = DEFAULT_DEQUEUE_STATISTIC_REPORT_INTERVAL_SEC;
             this.redisReadyCheckIntervalMs = DEFAULT_REDIS_READY_CHECK_INTERVAL_MS;
+            this.emptyQueueLiveTimeMs = DEFAULT_EMPTY_QUEUE_LIVE_TIME_MS;
         }
 
         public RedisquesConfigurationBuilder address(String address) {
@@ -1094,9 +1108,12 @@ public class RedisquesConfiguration {
             this.redisReadyCheckIntervalMs = redisReadyCheckIntervalMs;
             return this;
         }
-
         public RedisquesConfigurationBuilder dequeueStatisticReportIntervalSec(int dequeueStatisticReportIntervalSec) {
             this.dequeueStatisticReportIntervalSec = dequeueStatisticReportIntervalSec;
+            return this;
+        }
+        public RedisquesConfigurationBuilder emptyQueueLiveTimeMs(int emptyQueueLiveTimeMs) {
+            this.emptyQueueLiveTimeMs = emptyQueueLiveTimeMs;
             return this;
         }
         public RedisquesConfiguration build() {
