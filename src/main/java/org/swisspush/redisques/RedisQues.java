@@ -195,7 +195,7 @@ public class RedisQues extends AbstractVerticle {
 
     // Identifies the consumer
     private final String uid = UUID.randomUUID().toString();
-    private static int emptyQueueLiveTimeMillis;
+    private int emptyQueueLiveTimeMillis;
 
     private MessageConsumer<String> uidMessageConsumer;
     private UpperBoundParallel upperBoundParallel;
