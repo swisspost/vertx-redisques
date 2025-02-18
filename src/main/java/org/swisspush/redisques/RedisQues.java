@@ -195,7 +195,7 @@ public class RedisQues extends AbstractVerticle {
 
     // Identifies the consumer
     private final String uid = UUID.randomUUID().toString();
-    private static int emptyQueueLiveTimeMillis;
+    private int emptyQueueLiveTimeMillis;
 
     private MessageConsumer<String> uidMessageConsumer;
     private UpperBoundParallel upperBoundParallel;
@@ -815,15 +815,18 @@ public class RedisQues extends AbstractVerticle {
 
 
     private void registerQueueCheck() {
-        periodicSkipScheduler.setPeriodic(configurationProvider.configuration().getCheckIntervalTimerMs(), "checkQueues", periodicEvent -> {
+        periodicSkipScheduler.setPeriodic(configurationProvider.configuration().getCheckIntervalTimerMs(), "checkQueues", onDone -> {
             redisProvider.redis().compose((RedisAPI redisAPI) -> {
                 int checkInterval = configurationProvider.configuration().getCheckInterval();
                 return redisAPI.send(Command.SET, queueCheckLastexecKey, String.valueOf(currentTimeMillis()), "NX", "EX", String.valueOf(checkInterval));
             }).compose((Response todoExplainWhyThisIsIgnored) -> {
                 log.info("periodic queue check is triggered now");
                 return checkQueues();
-            }).onFailure((Throwable ex) -> {
-                if (log.isErrorEnabled()) log.error("TODO error handling", exceptionFactory.newException(ex));
+            }).onComplete((AsyncResult<Void> ev) -> {
+                if (ev.failed()) {
+                    if (log.isErrorEnabled()) log.error("TODO error handling", exceptionFactory.newException(ev.cause()));
+                }
+                onDone.run();
             });
         });
     }
