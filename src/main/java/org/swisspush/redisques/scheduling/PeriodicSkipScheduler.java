@@ -32,6 +32,25 @@ public class PeriodicSkipScheduler {
     /**
      * Same idea as {@link Vertx#setPeriodic(long, long, Handler)}. BUT prevents
      * tasks which start to overtake themself.
+     *
+     * <p>Usage example:</p>
+     * <pre>
+     *     periodicSkipScheduler.setPeriodic(1000, "Hi_its_me", onDone -> {
+     *         asyncSaysHi().compose(() -> {
+     *             return doSomethingAsyncAgain();
+     *         }).compose(() -> {
+     *             return andAgain();
+     *         }).onComplete((AsyncResult<Void> ev) -> {
+     *             if( ev.failed() ){
+     *                 log.error("TODO", new org.swisspush.redisques.exception.NoStacktraceException(ev.cause()));
+     *             }
+     *             // The callback MUST be called AT THE VERY END and EXACTLY ONCE,
+     *             // no matter if there was an error or not. Calling this
+     *             // signalizes to PeriodicSkipScheduler that the task has ended.
+     *             onDone.run();
+     *         });
+     *     }
+     * </pre>
      */
     public Timer setPeriodic(long initDelayMy, long periodMs, String dbgHint, Consumer<Runnable> task) {
         var timer = new Timer(task);
