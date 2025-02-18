@@ -821,8 +821,14 @@ public class RedisQues extends AbstractVerticle {
                 return redisAPI.send(Command.SET, queueCheckLastexecKey, String.valueOf(currentTimeMillis()), "NX", "EX", String.valueOf(checkInterval));
             }).compose((Response todoExplainWhyThisIsIgnored) -> {
                 log.info("periodic queue check is triggered now");
-                return checkQueues();
+                return checkQueues().onComplete(event -> {
+                    if(event.failed()) {
+                        if (log.isErrorEnabled()) log.error("Failed to check queues", exceptionFactory.newException(event.cause()));
+                    }
+                    periodicEvent.run();
+                });
             }).onFailure((Throwable ex) -> {
+                periodicEvent.run();
                 if (log.isErrorEnabled()) log.error("TODO error handling", exceptionFactory.newException(ex));
             });
         });
