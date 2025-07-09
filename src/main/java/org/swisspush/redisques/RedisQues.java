@@ -1007,7 +1007,13 @@ public class RedisQues extends AbstractVerticle {
                         String consumer = Objects.toString(event1.result(), "");
                         log.trace("RedisQues refresh registration consumer: {}", consumer);
                         if (uid.equals(consumer)) {
-                            QueueState state = myQueues.get(queueName).state;
+                            QueueProcessingState queueProcessingState = myQueues.get(queueName);
+                            if (queueProcessingState == null) {
+                                log.trace("RedisQues Queue {} is already being consumed or handed by other consumer", queueName);
+                                promise.complete();
+                                return;
+                            }
+                            QueueState state = queueProcessingState.state;
                             log.trace("RedisQues consumer: {} queue: {} state: {}", consumer, queueName, state);
                             // Get the next message only once the previous has
                             // been completely processed
