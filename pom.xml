@@ -243,8 +243,8 @@
                 <version>1.0-m5.1</version>
                 <configuration>
                     <flowInitContext>
-                        <masterBranchName>master</masterBranchName>
-                        <developBranchName>develop</developBranchName>
+                        <masterBranchName>master-fake</masterBranchName>
+                        <developBranchName>dev-migration</developBranchName>
                         <featureBranchPrefix>feature-</featureBranchPrefix>
                         <releaseBranchPrefix>release-</releaseBranchPrefix>
                         <hotfixBranchPrefix>hotfix-</hotfixBranchPrefix>
@@ -253,7 +253,7 @@
                     <pullDevelop>true</pullDevelop>
                     <username>USERNAME_FOR_A_GIT_USER</username>
                     <password>PASSWORD_FOR_A_GIT_USER</password>
-                    <!--<noDeploy>true</noDeploy>-->
+                    <!--<noDeploy>true</noDeploy>
                     <allowUntracked>true</allowUntracked>
                     <autoVersionSubmodules>true</autoVersionSubmodules>
                     <!--<noReleaseMerge>true</noReleaseMerge>-->
@@ -314,37 +314,6 @@
             </plugin>
         </plugins>
     </build>
-
-    <repositories>
-        <repository>
-            <id>sonatype-nexus-snapshots</id>
-            <name>Sonatype Nexus Snapshots</name>
-            <url>
-                https://oss.sonatype.org/content/repositories/snapshots
-            </url>
-            <releases>
-                <enabled>false</enabled>
-            </releases>
-            <snapshots>
-                <enabled>true</enabled>
-            </snapshots>
-        </repository>
-    </repositories>
-    <distributionManagement>
-        <snapshotRepository>
-            <id>sonatype-nexus-snapshots</id>
-            <name>Sonatype Nexus Snapshots</name>
-            <url>${sonatypeOssDistMgmtSnapshotsUrl}</url>
-        </snapshotRepository>
-        <repository>
-            <id>sonatype-nexus-staging</id>
-            <name>Nexus Release Repository</name>
-            <url>
-                https://oss.sonatype.org/service/local/staging/deployByRepositoryId/${repositoryId}
-            </url>
-        </repository>
-    </distributionManagement>
-
 
     <profiles>
         <profile>
@@ -413,6 +382,17 @@
                             </execution>
                         </executions>
                     </plugin>
+                    <plugin>
+                        <groupId>org.sonatype.central</groupId>
+                        <artifactId>central-publishing-maven-plugin</artifactId>
+                        <version>0.8.0</version>
+                        <extensions>true</extensions>
+                        <configuration>
+                            <publishingServerId>central</publishingServerId>
+                            <tokenAuth>true</tokenAuth>
+                            <autoPublish>false</autoPublish>
+                        </configuration>
+                    </plugin>
                 </plugins>
             </build>
         </profile>
@@ -430,9 +410,6 @@
         <commons-coded.version>1.16.0</commons-coded.version>
         <jackson-databind.version>2.17.0</jackson-databind.version>
         <project.build.sourceEncoding>UTF8</project.build.sourceEncoding>
-        <sonatypeOssDistMgmtSnapshotsUrl>
-            https://oss.sonatype.org/content/repositories/snapshots/
-        </sonatypeOssDistMgmtSnapshotsUrl>
         <arguments />
         <repositoryId />
     </properties>
