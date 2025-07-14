@@ -43,7 +43,7 @@ jobs:
         uses: codecov/codecov-action@v3
 
       - name: Release to maven central
-        if: github.repository == 'swisspost/vertx-redisques'
+        if: github.ref_name == 'master-fake' && github.event_name != 'pull_request' && github.repository == 'swisspost/vertx-redisques'
         run: |
           curl -s https://get.sdkman.io | bash
           source "$HOME/.sdkman/bin/sdkman-init.sh"
