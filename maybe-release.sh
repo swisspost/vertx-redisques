@@ -2,7 +2,7 @@
 set -ev
 git fetch
 git reset --hard
-mvn mvn -B -Prelease jgitflow:release-start jgitflow:release-finish
+mvn -B -Prelease jgitflow:release-start jgitflow:release-finish
 rc=$?
 if [ $rc -eq 0 ]
 then
