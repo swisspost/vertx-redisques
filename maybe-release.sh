@@ -2,9 +2,7 @@
 set -ev
 git fetch
 git reset --hard
-mvn -B -Prelease gitflow:release-start -DskipTests
-mvn -B -Prelease --batch-mode deploy -DskipTests
-mvn -B -Prelease gitflow:release-finish -DskipTests
+mvn mvn -B -Prelease jgitflow:release-start jgitflow:release-finish
 rc=$?
 if [ $rc -eq 0 ]
 then
