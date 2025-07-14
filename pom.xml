@@ -248,7 +248,7 @@
                     <pullDevelop>true</pullDevelop>
                     <username>USERNAME_FOR_A_GIT_USER</username>
                     <password>PASSWORD_FOR_A_GIT_USER</password>
-                    <!--<noDeploy>true</noDeploy>-->
+                    <noDeploy>true</noDeploy>
                     <allowUntracked>true</allowUntracked>
                     <autoVersionSubmodules>true</autoVersionSubmodules>
                     <!--<noReleaseMerge>true</noReleaseMerge>-->
