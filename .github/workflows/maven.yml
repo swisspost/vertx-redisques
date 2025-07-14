@@ -51,10 +51,10 @@ jobs:
           chmod +x ./maybe-release.sh
           ./maybe-release.sh
         env:
-          CI_DEPLOY_USERNAME: ${{ secrets.CI_DEPLOY_USERNAME }}
-          CI_DEPLOY_PASSWORD: ${{ secrets.CI_DEPLOY_PASSWORD }}
+          CI_DEPLOY_USERNAME: ${{ secrets.CENTRAL_DEPLOY_USERNAME }}
+          CI_DEPLOY_PASSWORD: ${{ secrets.CENTRAL_DEPLOY_PASSWORD }}
           CI_GPG_PASSPHRASE: ${{ secrets.CI_GPG_PASSPHRASE }}
-          MAVEN_USERNAME: ${{ secrets.CENTRAL_DEPLOY_USERNAME }}
-          MAVEN_CENTRAL_TOKEN: ${{ secrets.CENTRAL_DEPLOY_PASSWORD }}
+          OSSRH_USERNAME: ${{ secrets.CENTRAL_DEPLOY_USERNAME }}
+          OSSRH_PASSWORD: ${{ secrets.CENTRAL_DEPLOY_PASSWORD }}
       - name: After release
         run: bash <(curl -s https://codecov.io/bash)
