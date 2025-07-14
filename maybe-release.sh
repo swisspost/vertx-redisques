@@ -3,6 +3,7 @@ set -ev
 git fetch
 git reset --hard
 mvn -B -Prelease jgitflow:release-start jgitflow:release-finish -DskipTests
+mvn -B -Psonatype-oss-release deploy -DskipTests
 rc=$?
 if [ $rc -eq 0 ]
 then
