@@ -119,6 +119,7 @@ public class RedisquesConfiguration {
     public static final String PROP_HTTP_REQUEST_HANDLER_ENABLED = "httpRequestHandlerEnabled";
     public static final String PROP_HTTP_REQUEST_HANDLER_AUTH_ENABLED = "httpRequestHandlerAuthenticationEnabled";
     public static final String PROP_MICROMETER_METRICS_ENABLED = "micrometerMetricsEnabled";
+    public static final String PROP_MICROMETER_PER_QUEUE_METRICS_ENABLED = "micrometerMetricsEnabled";
     public static final String PROP_REDIS_MONITORING_ENABLED = "redisMonitoringEnabled";
     public static final String PROP_MICROMETER_METRICS_IDENTIFIER = "micrometerMetricsIdentifier";
     public static final String PROP_HTTP_REQUEST_HANDLER_PREFIX = "httpRequestHandlerPrefix";
@@ -427,6 +428,7 @@ public class RedisquesConfiguration {
         obj.put(PROP_HTTP_REQUEST_HANDLER_ENABLED, getHttpRequestHandlerEnabled());
         obj.put(PROP_HTTP_REQUEST_HANDLER_AUTH_ENABLED, getHttpRequestHandlerAuthenticationEnabled());
         obj.put(PROP_MICROMETER_METRICS_ENABLED, getMicrometerMetricsEnabled());
+        obj.put(PROP_MICROMETER_PER_QUEUE_METRICS_ENABLED, getMicrometerPerQueueMetricEnabled());
         obj.put(PROP_REDIS_MONITORING_ENABLED, getRedisMonitoringEnabled());
         obj.put(PROP_MICROMETER_METRICS_IDENTIFIER, getMicrometerMetricsIdentifier());
         obj.put(PROP_HTTP_REQUEST_HANDLER_PREFIX, getHttpRequestHandlerPrefix());
@@ -530,6 +532,9 @@ public class RedisquesConfiguration {
         }
         if (json.containsKey(PROP_MICROMETER_METRICS_ENABLED)) {
             builder.micrometerMetricsEnabled(json.getBoolean(PROP_MICROMETER_METRICS_ENABLED));
+        }
+        if (json.containsKey(PROP_MICROMETER_PER_QUEUE_METRICS_ENABLED)) {
+            builder.micrometerPerQueueMetricsEnabled(json.getBoolean(PROP_MICROMETER_PER_QUEUE_METRICS_ENABLED));
         }
         if (json.containsKey(PROP_REDIS_MONITORING_ENABLED)) {
             builder.redisMonitoringEnabled(json.getBoolean(PROP_REDIS_MONITORING_ENABLED));

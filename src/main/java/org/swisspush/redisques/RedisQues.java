@@ -4,6 +4,7 @@ import com.google.common.base.Strings;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.LongTaskTimer;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.CompositeFuture;
@@ -462,9 +463,11 @@ public class RedisQues extends AbstractVerticle {
     }
 
     private void initMicrometerMetrics(RedisquesConfiguration modConfig) {
+
         if(meterRegistry == null) {
             meterRegistry = BackendRegistries.getDefaultNow();
         }
+
         String metricsIdentifier = modConfig.getMicrometerMetricsIdentifier();
         dequeueCounter = Counter.builder(MetricMeter.DEQUEUE.getId())
                 .description(MetricMeter.DEQUEUE.getDescription()).tag(MetricTags.IDENTIFIER.getId(), metricsIdentifier).register(meterRegistry);
