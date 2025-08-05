@@ -14,8 +14,11 @@ public class MetricsCollectorScheduler {
 
         long collectIntervalMs = collectIntervalSec * 1000;
 
-        vertx.setPeriodic(collectIntervalMs, event -> updateActiveQueuesCount());
-        vertx.setPeriodic(collectIntervalMs, event -> updateMaxQueueSize());
+        vertx.setPeriodic(collectIntervalMs, event -> {
+            updateActiveQueuesCount();
+            updateMaxQueueSize();
+            updateMyQueuesStateCount();
+        });
     }
 
     private void updateActiveQueuesCount() {
@@ -32,5 +35,9 @@ public class MetricsCollectorScheduler {
                 log.warn("Failed to update max queue size", updateEvent.cause());
             }
         });
+    }
+
+    private void updateMyQueuesStateCount() {
+        metricsCollector.updateMyQueuesStateCount();
     }
 }

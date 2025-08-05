@@ -4,11 +4,13 @@ import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.netty.util.internal.StringUtil;
 import io.vertx.core.*;
+import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.swisspush.redisques.RedisQues;
 import org.swisspush.redisques.exception.NoStacktraceException;
 import org.swisspush.redisques.lock.Lock;
 import org.swisspush.redisques.util.LockUtil;
@@ -17,7 +19,11 @@ import org.swisspush.redisques.util.MetricTags;
 
 import java.net.InetAddress;
 import java.net.UnknownHostException;
+import java.util.EnumMap;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import static org.swisspush.redisques.util.DebugInfo.__WHERE__;
 import static org.swisspush.redisques.util.RedisquesAPI.*;
@@ -37,14 +43,18 @@ public class MetricsCollector {
 
     private final AtomicLong activeQueuesCount = new AtomicLong(0);
     private final AtomicLong maxQueueSize = new AtomicLong(0);
+    private final AtomicLong queueStateReadyCount = new AtomicLong(0);
+    private final AtomicLong queueStateConsumingCount = new AtomicLong(0);
+    private final RedisQues redisQues;
 
     public MetricsCollector(Vertx vertx, String uid, String redisquesAddress,
-                            String identifier, MeterRegistry meterRegistry, Lock lock, long metricCollectIntervalSec) {
+                            String identifier, MeterRegistry meterRegistry, Lock lock, long metricCollectIntervalSec, RedisQues redisQues) {
         this.vertx = vertx;
         this.uid = uid;
         this.redisquesAddress = redisquesAddress;
         this.lock = lock;
         this.metricCollectIntervalMs = metricCollectIntervalSec * 1000;
+        this.redisQues = redisQues;
 
         String id = identifier;
 
@@ -70,6 +80,17 @@ public class MetricsCollector {
                 .tag(MetricTags.IDENTIFIER.getId(), id)
                 .description(MetricMeter.MAX_QUEUE_SIZE.getDescription())
                 .register(meterRegistry);
+
+        Gauge.builder(MetricMeter.QUEUE_STATE_READY_SIZE.getId(), queueStateReadyCount, AtomicLong::get)
+                .tag(MetricTags.IDENTIFIER.getId(), id)
+                .description(MetricMeter.QUEUE_STATE_READY_SIZE.getDescription())
+                .register(meterRegistry);
+
+        Gauge.builder(MetricMeter.QUEUE_STATE_CONSUMING_SIZE.getId(), queueStateConsumingCount, AtomicLong::get)
+                .tag(MetricTags.IDENTIFIER.getId(), id)
+                .description(MetricMeter.QUEUE_STATE_CONSUMING_SIZE.getDescription())
+                .register(meterRegistry);
+
 
     }
 
@@ -171,5 +192,17 @@ public class MetricsCollector {
 
     private String createToken(String appendix) {
         return this.uid + "_" + System.currentTimeMillis() + "_" + appendix;
+    }
+
+    public void updateMyQueuesStateCount() {
+        Map<RedisQues.QueueState, Long> queueStateCount = redisQues.getQueueStateCount();
+        queueStateCount.compute(RedisQues.QueueState.READY, (queueState, aLong) -> {
+            queueStateReadyCount.set(aLong == null? 0 : aLong);
+            return aLong;
+        });
+        queueStateCount.compute(RedisQues.QueueState.CONSUMING, (queueState, aLong) -> {
+            queueStateConsumingCount.set(aLong == null? 0 : aLong);
+            return aLong;
+        });
     }
 }
