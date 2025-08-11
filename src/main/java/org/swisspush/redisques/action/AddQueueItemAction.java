@@ -28,11 +28,27 @@ public class AddQueueItemAction extends AbstractQueueAction {
 
     @Override
     public void execute(Message<JsonObject> event) {
-        String key1 = queuesPrefix + event.body().getJsonObject(PAYLOAD).getString(QUEUENAME);
+        final String queueName = event.body().getJsonObject(PAYLOAD).getString(QUEUENAME);
+        final String key1 = queuesPrefix + queueName;
         String valueAddItem = event.body().getJsonObject(PAYLOAD).getString(BUFFER);
         var p = redisProvider.redis();
-        p.onSuccess(redisAPI -> redisAPI.rpush(Arrays.asList(key1, valueAddItem), new AddQueueItemHandler(event, exceptionFactory)));
-        p.onFailure(ex -> handleFail(event,"Operation AddQueueItemAction failed", ex));
-    }
+        final QueueConfiguration queueConfiguration = findQueueConfiguration(queueName);
 
+        p.onSuccess(redisAPI -> redisAPI.rpush(Arrays.asList(key1, valueAddItem), asyncResult -> {
+            final AddQueueItemHandler handler = new AddQueueItemHandler(event, exceptionFactory);
+            if (asyncResult.succeeded()) {
+                if (queueConfiguration != null && queueConfiguration.getMaxQueueEntries() > 0) {
+                    final int maxQueueEntries = queueConfiguration.getMaxQueueEntries();
+                    // we have limit set for this queue
+                    log.debug("RedisQues Max queue entries {} found for queue {}", maxQueueEntries, queueName);
+                    redisAPI.ltrim(key1, "-" + maxQueueEntries, "-1", handler);
+                } else {
+                    handler.handle(asyncResult);
+                }
+                return;
+            }
+            handler.handle(asyncResult);
+        }));
+        p.onFailure(ex -> handleFail(event, "Operation AddQueueItemAction failed", ex));
+    }
 }
