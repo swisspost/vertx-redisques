@@ -1018,22 +1018,43 @@ public class RedisQues extends AbstractVerticle {
                             // Get the next message only once the previous has
                             // been completely processed
                             if (state != QueueState.CONSUMING) {
-                                setMyQueuesState(queueName, QueueState.CONSUMING);
-                                if (state == null) {
-                                    // No previous state was stored. Maybe the
-                                    // consumer was restarted
-                                    log.warn("Received request to consume from a queue I did not know about: {}", queueName);
-                                }
-                                // We have item, start to consuming
-                                setMyQueuesState(queueName, QueueState.CONSUMING);
-                                log.trace("RedisQues Starting to consume queue {}", queueName);
-                                readQueue(queueName).onComplete(readQueueEvent -> {
-                                    if (readQueueEvent.failed()) {
-                                        log.warn("TODO error handling", exceptionFactory.newException(
-                                                "readQueue(" + queueName + ") failed", readQueueEvent.cause()));
+                                final QueueConfiguration queueConfiguration = findQueueConfiguration(queueName);
+                                final String keyEnqueue = queuesPrefix + queueName;
+
+                                final Handler<Void> processHandler = event2 -> {
+                                    setMyQueuesState(queueName, QueueState.CONSUMING);
+                                    if (state == null) {
+                                        // No previous state was stored. Maybe the
+                                        // consumer was restarted
+                                        log.warn("Received request to consume from a queue I did not know about: {}", queueName);
                                     }
-                                    promise.complete();
-                                });
+                                    // We have item, start to consuming
+                                    setMyQueuesState(queueName, QueueState.CONSUMING);
+                                    log.trace("RedisQues Starting to consume queue {}", queueName);
+                                    readQueue(queueName).onComplete(readQueueEvent -> {
+                                        if (readQueueEvent.failed()) {
+                                            log.warn("TODO error handling", exceptionFactory.newException(
+                                                    "readQueue(" + queueName + ") failed", readQueueEvent.cause()));
+                                        }
+                                        promise.complete();
+                                    });
+                                };
+
+                                // trim items if limits set
+                                if (queueConfiguration != null && queueConfiguration.getMaxQueueEntries() > 0) {
+                                    final int maxQueueEntries = queueConfiguration.getMaxQueueEntries();
+                                    log.debug("RedisQues Max queue entries {} found for queue {}", maxQueueEntries, queueName);
+                                    redisAPI.ltrim(keyEnqueue, "-" + maxQueueEntries, "-1").onComplete(ltrimResponse -> {
+                                        if (ltrimResponse.failed()) {
+                                            log.warn("Failed to trim the queue items ", exceptionFactory.newException(
+                                                    "readQueue(" + queueName + ") failed", ltrimResponse.cause()));
+                                        }
+                                        processHandler.handle(null);
+                                    });
+                                } else {
+                                    processHandler.handle(null);
+                                }
+
                             } else {
                                 log.trace("RedisQues Queue {} is already being consumed", queueName);
                                 promise.complete();

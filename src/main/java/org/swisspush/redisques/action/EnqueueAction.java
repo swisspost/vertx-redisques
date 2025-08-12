@@ -2,11 +2,9 @@ package org.swisspush.redisques.action;
 
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
-import io.vertx.core.AsyncResult;
 import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonObject;
-import io.vertx.redis.client.Response;
 import org.slf4j.Logger;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.util.*;
@@ -60,62 +58,45 @@ public class EnqueueAction extends AbstractQueueAction {
             String keyEnqueue = queuesPrefix + queueName;
             String valueEnqueue = event.body().getString(MESSAGE);
 
-            final QueueConfiguration queueConfiguration = findQueueConfiguration(queueName);
             var p = redisProvider.redis();
-            p.onSuccess(redisAPI -> redisAPI.rpush(Arrays.asList(keyEnqueue, valueEnqueue)).onComplete(rpushResponse -> {
-                if (rpushResponse.succeeded()) {
-                    if (queueConfiguration != null && queueConfiguration.getMaxQueueEntries() > 0) {
-                        final int maxQueueEntries = queueConfiguration.getMaxQueueEntries();
-                        log.debug("RedisQues Max queue entries {} found for queue {}", maxQueueEntries, queueName);
-                        redisAPI.ltrim(keyEnqueue, "-" + maxQueueEntries, "-1").onComplete(ltrimResponse -> {
-                            if (ltrimResponse.succeeded()) {
-                                successHandler(queueName,queueConfiguration, event,rpushResponse);
-                            }else {
-                                replyError(event, queueName, ltrimResponse.cause());
-                            }
-                        });
-                    } else {
-                        successHandler(queueName,queueConfiguration, event,rpushResponse);
+            p.onSuccess(redisAPI -> redisAPI.rpush(Arrays.asList(keyEnqueue, valueEnqueue)).onComplete(enqueueEvent -> {
+                JsonObject reply = new JsonObject();
+                if (enqueueEvent.succeeded()) {
+                    if (log.isDebugEnabled()) {
+                        log.debug("RedisQues Enqueued message into queue {}", queueName);
                     }
+                    long queueLength = enqueueEvent.result().toLong();
+                    notifyConsumer(queueName);
+                    reply.put(STATUS, OK);
+                    reply.put(MESSAGE, "enqueued");
+
+                    incrEnqueueSuccessCount();
+
+                    // feature EN-queue slow-down (the larger the queue the longer we delay "OK" response)
+                    long delayReplyMillis = 0;
+                    QueueConfiguration queueConfiguration = findQueueConfiguration(queueName);
+                    if (queueConfiguration != null) {
+                        float enqueueDelayFactorMillis = queueConfiguration.getEnqueueDelayFactorMillis();
+                        if (enqueueDelayFactorMillis > 0f) {
+                            // minus one as we need the queueLength _before_ our en-queue here
+                            delayReplyMillis = (long) ((queueLength - 1) * enqueueDelayFactorMillis);
+                            int max = queueConfiguration.getEnqueueMaxDelayMillis();
+                            if (max > 0 && delayReplyMillis > max) {
+                                delayReplyMillis = max;
+                            }
+                        }
+                    }
+                    if (delayReplyMillis > 0) {
+                        vertx.setTimer(delayReplyMillis, timeIsUp -> event.reply(reply));
+                    } else {
+                        event.reply(reply);
+                    }
+                    queueStatisticsCollector.setQueueBackPressureTime(queueName, delayReplyMillis);
                 } else {
-                    replyError(event, queueName, rpushResponse.cause());
+                    replyError(event, queueName, enqueueEvent.cause());
                 }
-            }).onFailure(ex -> replyError(event, queueName, ex)));
-
+            })).onFailure(ex -> replyError(event, queueName, ex));
         });
-    }
-
-    private void successHandler(String queueName, QueueConfiguration queueConfiguration, Message<JsonObject> event, AsyncResult<Response> rpushResponse) {
-        if (log.isDebugEnabled()) {
-            log.debug("RedisQues Enqueued message into queue {}", queueName);
-        }
-        long queueLength = rpushResponse.result().toLong();
-        notifyConsumer(queueName);
-        JsonObject reply = new JsonObject();
-        reply.put(STATUS, OK);
-        reply.put(MESSAGE, "enqueued");
-
-        incrEnqueueSuccessCount();
-
-        // feature EN-queue slow-down (the larger the queue the longer we delay "OK" response)
-        long delayReplyMillis = 0;
-        if (queueConfiguration != null) {
-            float enqueueDelayFactorMillis = queueConfiguration.getEnqueueDelayFactorMillis();
-            if (enqueueDelayFactorMillis > 0f) {
-                // minus one as we need the queueLength _before_ our en-queue here
-                delayReplyMillis = (long) ((queueLength - 1) * enqueueDelayFactorMillis);
-                int max = queueConfiguration.getEnqueueMaxDelayMillis();
-                if (max > 0 && delayReplyMillis > max) {
-                    delayReplyMillis = max;
-                }
-            }
-        }
-        if (delayReplyMillis > 0) {
-            vertx.setTimer(delayReplyMillis, timeIsUp -> event.reply(reply));
-        } else {
-            event.reply(reply);
-        }
-        queueStatisticsCollector.setQueueBackPressureTime(queueName, delayReplyMillis);
     }
 
     private void incrEnqueueSuccessCount() {
