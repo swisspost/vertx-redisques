@@ -1,4 +1,4 @@
-package org.swisspush.redisques;
+package org.swisspush.redisques.metrics;
 
 import io.micrometer.core.instrument.LongTaskTimer;
 public class LongTaskTimerSamplePair {

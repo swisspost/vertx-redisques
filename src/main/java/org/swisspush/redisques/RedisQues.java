@@ -4,7 +4,6 @@ import com.google.common.base.Strings;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.LongTaskTimer;
 import io.micrometer.core.instrument.MeterRegistry;
-import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.CompositeFuture;
@@ -29,18 +28,17 @@ import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.handler.RedisquesHttpRequestHandler;
 import org.swisspush.redisques.lock.Lock;
 import org.swisspush.redisques.lock.impl.RedisBasedLock;
+import org.swisspush.redisques.metrics.LongTaskTimerSamplePair;
 import org.swisspush.redisques.metrics.MetricsCollector;
 import org.swisspush.redisques.metrics.MetricsCollectorScheduler;
 import org.swisspush.redisques.performance.UpperBoundParallel;
 import org.swisspush.redisques.scheduling.PeriodicSkipScheduler;
 import org.swisspush.redisques.util.*;
 
-import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
-import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -52,10 +50,7 @@ import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
-import java.util.function.BiFunction;
 import java.util.function.Consumer;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 
 import static java.lang.System.currentTimeMillis;
 import static org.swisspush.redisques.exception.RedisQuesExceptionFactory.newThriftyExceptionFactory;
@@ -191,12 +186,12 @@ public class RedisQues extends AbstractVerticle {
     }
 
 
-    private class QueueProcessingState {
-        QueueProcessingState(QueueState state, long timestampMillis){
+    public static class QueueProcessingState {
+        public QueueProcessingState(QueueState state, long timestampMillis){
             this.state = state;
             this.lastConsumedTimestampMillis = timestampMillis;
         }
-        QueueState state;
+        public QueueState state;
         long lastConsumedTimestampMillis;
     }
 
@@ -479,7 +474,7 @@ public class RedisQues extends AbstractVerticle {
         int metricRefreshPeriod = modConfig.getMetricRefreshPeriod();
         if (metricRefreshPeriod > 0) {
             String identifier = modConfig.getMicrometerMetricsIdentifier();
-            MetricsCollector metricsCollector = new MetricsCollector(vertx, uid, address, identifier, meterRegistry, lock, metricRefreshPeriod, this);
+            MetricsCollector metricsCollector = new MetricsCollector(vertx, uid, address, identifier, meterRegistry, lock, metricRefreshPeriod, getMyQueueList());
             new MetricsCollectorScheduler(vertx, metricsCollector, metricRefreshPeriod);
         }
     }
@@ -1621,13 +1616,7 @@ public class RedisQues extends AbstractVerticle {
         return null;
     }
 
-    public Map<RedisQues.QueueState, Long> getQueueStateCount() {
-        return myQueues.values().stream()
-               .map(queueProcessingState -> queueProcessingState.state)
-               .collect(Collectors.groupingBy(
-                       Function.identity(),
-                       () -> new EnumMap<>(RedisQues.QueueState.class),
-                       Collectors.counting()
-               ));
+    public Map<String, QueueProcessingState> getMyQueueList() {
+        return myQueues;
     }
 }

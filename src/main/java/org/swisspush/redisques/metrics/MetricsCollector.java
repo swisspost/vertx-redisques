@@ -45,16 +45,16 @@ public class MetricsCollector {
     private final AtomicLong maxQueueSize = new AtomicLong(0);
     private final AtomicLong queueStateReadyCount = new AtomicLong(0);
     private final AtomicLong queueStateConsumingCount = new AtomicLong(0);
-    private final RedisQues redisQues;
+    private final Map<String, RedisQues.QueueProcessingState> myQueues;
 
     public MetricsCollector(Vertx vertx, String uid, String redisquesAddress,
-                            String identifier, MeterRegistry meterRegistry, Lock lock, long metricCollectIntervalSec, RedisQues redisQues) {
+                            String identifier, MeterRegistry meterRegistry, Lock lock, long metricCollectIntervalSec, Map<String, RedisQues.QueueProcessingState> myQueues) {
         this.vertx = vertx;
         this.uid = uid;
         this.redisquesAddress = redisquesAddress;
         this.lock = lock;
         this.metricCollectIntervalMs = metricCollectIntervalSec * 1000;
-        this.redisQues = redisQues;
+        this.myQueues = myQueues;
 
         String id = identifier;
 
@@ -195,7 +195,7 @@ public class MetricsCollector {
     }
 
     public void updateMyQueuesStateCount() {
-        Map<RedisQues.QueueState, Long> queueStateCount = redisQues.getQueueStateCount();
+        Map<RedisQues.QueueState, Long> queueStateCount = getQueueStateCount();
         queueStateCount.compute(RedisQues.QueueState.READY, (queueState, aLong) -> {
             queueStateReadyCount.set(aLong == null? 0 : aLong);
             return aLong;
@@ -204,5 +204,15 @@ public class MetricsCollector {
             queueStateConsumingCount.set(aLong == null? 0 : aLong);
             return aLong;
         });
+    }
+
+    private Map<RedisQues.QueueState, Long> getQueueStateCount() {
+        return myQueues.values().stream()
+                .map(queueProcessingState -> queueProcessingState.state)
+                .collect(Collectors.groupingBy(
+                        Function.identity(),
+                        () -> new EnumMap<>(RedisQues.QueueState.class),
+                        Collectors.counting()
+                ));
     }
 }

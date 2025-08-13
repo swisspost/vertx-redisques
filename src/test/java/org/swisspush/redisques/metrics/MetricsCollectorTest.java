@@ -40,6 +40,7 @@ public class MetricsCollectorTest extends AbstractTestCase {
     private Lock lock;
 
     private final String metricsIdentifier = "foo";
+    private Map<String, RedisQues.QueueProcessingState> fakeMyQueue = new HashMap<>();
 
     @Rule
     public Timeout rule = Timeout.seconds(10);
@@ -75,8 +76,12 @@ public class MetricsCollectorTest extends AbstractTestCase {
                 .withMeterRegistry(meterRegistry)
                 .build();
         redisQuesMock = Mockito.mock(RedisQues.class);
+
+
+
+
         metricsCollector = new MetricsCollector(vertx, "myuid", "redisques", "foo",
-                meterRegistry, lock, 10, redisQuesMock);
+                meterRegistry, lock, 10, fakeMyQueue);
 
         vertx.deployVerticle(redisQues, new DeploymentOptions().setConfig(config), context.asyncAssertSuccess(event -> {
             deploymentId = event;
@@ -92,10 +97,15 @@ public class MetricsCollectorTest extends AbstractTestCase {
 
     @Test
     public void testUpdateMyQueuesStateCount(TestContext context) {
-        Map<RedisQues.QueueState, Long> predeinedStates = new HashMap<>();
-        predeinedStates.put(RedisQues.QueueState.READY, 10L);
-        predeinedStates.put(RedisQues.QueueState.CONSUMING, 5L);
-        when(redisQuesMock.getQueueStateCount()).thenReturn(predeinedStates);
+        for (int i=0; i <10; i++){
+            RedisQues.QueueProcessingState queueProcessingState1 = new RedisQues.QueueProcessingState(RedisQues.QueueState.READY, i);
+            fakeMyQueue.put("queue-1" + i, queueProcessingState1);
+            if ((i % 2) == 1) {
+                RedisQues.QueueProcessingState queueProcessingState2 = new RedisQues.QueueProcessingState(RedisQues.QueueState.CONSUMING, i);
+                fakeMyQueue.put("queue-2" + i, queueProcessingState2);
+            }
+        }
+
         metricsCollector.updateMyQueuesStateCount();
         context.assertEquals(10.0, getQueueReadySizeGauge().value());
         context.assertEquals(5.0, getQueueConsumingSizeGauge().value());
