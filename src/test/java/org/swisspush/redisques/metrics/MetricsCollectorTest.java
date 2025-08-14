@@ -101,7 +101,7 @@ public class MetricsCollectorTest extends AbstractTestCase {
                     context.assertEquals(OK, message2.result().body().getString(STATUS));
                     try {
                         // wait few seconds.
-                        Thread.sleep(2000);
+                        Thread.sleep(5000);
                     } catch (InterruptedException e) {
                         throw new RuntimeException(e);
                     }
