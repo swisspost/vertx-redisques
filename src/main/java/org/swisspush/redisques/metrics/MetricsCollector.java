@@ -40,21 +40,22 @@ public class MetricsCollector {
     private static final String DEFAULT_IDENTIFIER = "default";
     private final String UPDATE_ACTIVE_QUEUES_LOCK;
     private final String UPDATE_MAX_QUEUE_SIZE_LOCK;
+    private final String UPDATE_QUEUE_STATE_COUNT_LOCK;
 
     private final AtomicLong activeQueuesCount = new AtomicLong(0);
     private final AtomicLong maxQueueSize = new AtomicLong(0);
     private final AtomicLong queueStateReadyCount = new AtomicLong(0);
     private final AtomicLong queueStateConsumingCount = new AtomicLong(0);
-    private final Map<String, RedisQues.QueueProcessingState> myQueues;
+
+    public static final String QUEUE_STATE_COUNT_KEY = "queueStateCount";
 
     public MetricsCollector(Vertx vertx, String uid, String redisquesAddress,
-                            String identifier, MeterRegistry meterRegistry, Lock lock, long metricCollectIntervalSec, Map<String, RedisQues.QueueProcessingState> myQueues) {
+                            String identifier, MeterRegistry meterRegistry, Lock lock, long metricCollectIntervalSec) {
         this.vertx = vertx;
         this.uid = uid;
         this.redisquesAddress = redisquesAddress;
         this.lock = lock;
         this.metricCollectIntervalMs = metricCollectIntervalSec * 1000;
-        this.myQueues = myQueues;
 
         String id = identifier;
 
@@ -70,6 +71,7 @@ public class MetricsCollector {
         }
         UPDATE_ACTIVE_QUEUES_LOCK = "updateActiveQueuesLock_" + hostName + "_"  + id;
         UPDATE_MAX_QUEUE_SIZE_LOCK = "updateMaxQueueSizeLock_" + hostName + "_"  + id;
+        UPDATE_QUEUE_STATE_COUNT_LOCK = "updateQueueStateCount" + hostName + "_"  + id;
 
         Gauge.builder(MetricMeter.ACTIVE_QUEUES.getId(), activeQueuesCount, AtomicLong::get)
                 .tag(MetricTags.IDENTIFIER.getId(), id)
@@ -146,6 +148,37 @@ public class MetricsCollector {
         return promise.future();
     }
 
+    public Future<Void> updateMyQueuesStateCount() {
+        final Promise<Void> promise = Promise.promise();
+        acquireLock(UPDATE_QUEUE_STATE_COUNT_LOCK, createToken(UPDATE_QUEUE_STATE_COUNT_LOCK)).onComplete(lockEvent -> {
+            if (lockEvent.failed()) {
+                promise.fail(new NoStacktraceException(__WHERE__(), lockEvent.cause()));
+                return;
+            }
+            if(lockEvent.result()) {
+                log.info("About to queue state count with lock {}", UPDATE_QUEUE_STATE_COUNT_LOCK);
+                vertx.eventBus().request(getAddress(), null, (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
+                    if (reply.failed()) {
+                        log.warn("TODO error handling", reply.cause());
+                    } else if (reply.succeeded()) {
+                        JsonObject jsonObject = reply.result().body();
+                        Long readyCount = jsonObject.getLong(RedisQues.QueueState.READY.name());
+                        Long consumingCount = jsonObject.getLong(RedisQues.QueueState.CONSUMING.name());
+
+                        queueStateReadyCount.set(readyCount == null ? 0 : readyCount);
+                        queueStateReadyCount.set(consumingCount == null ? 0 : consumingCount);
+                    } else {
+                        log.warn("Error gathering max queue size. Cause: {}", reply.result().body().getString(MESSAGE));
+                    }
+                    promise.complete();
+                });
+            } else {
+                promise.complete();
+            }
+        });
+        return promise.future();
+    }
+
     private void extractMaxQueueSize(JsonObject result){
         JsonObject valueObj = result.getJsonObject(VALUE);
         if (valueObj == null) {
@@ -194,25 +227,7 @@ public class MetricsCollector {
         return this.uid + "_" + System.currentTimeMillis() + "_" + appendix;
     }
 
-    public void updateMyQueuesStateCount() {
-        Map<RedisQues.QueueState, Long> queueStateCount = getQueueStateCount();
-        queueStateCount.compute(RedisQues.QueueState.READY, (queueState, aLong) -> {
-            queueStateReadyCount.set(aLong == null? 0 : aLong);
-            return aLong;
-        });
-        queueStateCount.compute(RedisQues.QueueState.CONSUMING, (queueState, aLong) -> {
-            queueStateConsumingCount.set(aLong == null? 0 : aLong);
-            return aLong;
-        });
-    }
-
-    private Map<RedisQues.QueueState, Long> getQueueStateCount() {
-        return myQueues.values().stream()
-                .map(queueProcessingState -> queueProcessingState.state)
-                .collect(Collectors.groupingBy(
-                        Function.identity(),
-                        () -> new EnumMap<>(RedisQues.QueueState.class),
-                        Collectors.counting()
-                ));
+    public String getAddress() {
+        return redisquesAddress + "-" + uid + "-" + QUEUE_STATE_COUNT_KEY;
     }
 }

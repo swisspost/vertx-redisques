@@ -119,7 +119,7 @@ public class RedisquesConfiguration {
     public static final String PROP_HTTP_REQUEST_HANDLER_ENABLED = "httpRequestHandlerEnabled";
     public static final String PROP_HTTP_REQUEST_HANDLER_AUTH_ENABLED = "httpRequestHandlerAuthenticationEnabled";
     public static final String PROP_MICROMETER_METRICS_ENABLED = "micrometerMetricsEnabled";
-    public static final String PROP_MICROMETER_PER_QUEUE_METRICS_ENABLED = "micrometerMetricsEnabled";
+    public static final String PROP_MICROMETER_PER_QUEUE_METRICS_ENABLED = "micrometerPerQueueMetricsEnabled";
     public static final String PROP_REDIS_MONITORING_ENABLED = "redisMonitoringEnabled";
     public static final String PROP_MICROMETER_METRICS_IDENTIFIER = "micrometerMetricsIdentifier";
     public static final String PROP_HTTP_REQUEST_HANDLER_PREFIX = "httpRequestHandlerPrefix";

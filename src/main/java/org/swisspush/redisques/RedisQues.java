@@ -39,6 +39,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -51,6 +52,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import static java.lang.System.currentTimeMillis;
 import static org.swisspush.redisques.exception.RedisQuesExceptionFactory.newThriftyExceptionFactory;
@@ -185,6 +188,9 @@ public class RedisQues extends AbstractVerticle {
         FORCE, GRACEFUL, QUIET_FOR_SOMETIME
     }
 
+    public String getUid() {
+        return uid;
+    }
 
     public static class QueueProcessingState {
         public QueueProcessingState(QueueState state, long timestampMillis){
@@ -474,8 +480,16 @@ public class RedisQues extends AbstractVerticle {
         int metricRefreshPeriod = modConfig.getMetricRefreshPeriod();
         if (metricRefreshPeriod > 0) {
             String identifier = modConfig.getMicrometerMetricsIdentifier();
-            MetricsCollector metricsCollector = new MetricsCollector(vertx, uid, address, identifier, meterRegistry, lock, metricRefreshPeriod, getMyQueueList());
+            MetricsCollector metricsCollector = new MetricsCollector(vertx, uid, address, identifier, meterRegistry, lock, metricRefreshPeriod);
             new MetricsCollectorScheduler(vertx, metricsCollector, metricRefreshPeriod);
+
+            vertx.eventBus().consumer(metricsCollector.getAddress(), (Handler<Message<Void>>) event -> {
+                Map<QueueState, Long> stateCount = getQueueStateCount();
+                JsonObject jsonObject = new JsonObject();
+                stateCount.forEach((queueState, aLong) -> jsonObject.put(queueState.name(), aLong));
+                event.reply(jsonObject);
+            });
+
         }
     }
 
@@ -1616,7 +1630,13 @@ public class RedisQues extends AbstractVerticle {
         return null;
     }
 
-    public Map<String, QueueProcessingState> getMyQueueList() {
-        return myQueues;
+    public Map<RedisQues.QueueState, Long> getQueueStateCount() {
+        return myQueues.values().stream()
+                .map(queueProcessingState -> queueProcessingState.state)
+                .collect(Collectors.groupingBy(
+                        Function.identity(),
+                        () -> new EnumMap<>(RedisQues.QueueState.class),
+                        Collectors.counting()
+                ));
     }
 }

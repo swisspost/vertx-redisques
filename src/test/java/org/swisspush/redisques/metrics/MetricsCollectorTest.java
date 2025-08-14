@@ -34,13 +34,11 @@ import static org.swisspush.redisques.util.RedisquesAPI.*;
 public class MetricsCollectorTest extends AbstractTestCase {
 
     private RedisQues redisQues;
-    private RedisQues redisQuesMock;
     private MeterRegistry meterRegistry;
     private MetricsCollector metricsCollector;
     private Lock lock;
 
     private final String metricsIdentifier = "foo";
-    private Map<String, RedisQues.QueueProcessingState> fakeMyQueue = new HashMap<>();
 
     @Rule
     public Timeout rule = Timeout.seconds(10);
@@ -55,7 +53,7 @@ public class MetricsCollectorTest extends AbstractTestCase {
                 .redisMonitoringEnabled(false)
                 .micrometerMetricsEnabled(true)
                 .micrometerMetricsIdentifier(metricsIdentifier)
-                .metricRefreshPeriod(0) // do not periodically refresh because it interferes the test
+                .metricRefreshPeriod(999999) // use a large periodically refresh because it may interferes the test
                 .refreshPeriod(2)
                 .publishMetricsAddress("my-metrics-eb-address")
                 .metricStorageName("foobar")
@@ -75,13 +73,9 @@ public class MetricsCollectorTest extends AbstractTestCase {
                 .withRedisquesRedisquesConfigurationProvider(new DefaultRedisquesConfigurationProvider(vertx, config))
                 .withMeterRegistry(meterRegistry)
                 .build();
-        redisQuesMock = Mockito.mock(RedisQues.class);
 
-
-
-
-        metricsCollector = new MetricsCollector(vertx, "myuid", "redisques", "foo",
-                meterRegistry, lock, 10, fakeMyQueue);
+        metricsCollector = new MetricsCollector(vertx, redisQues.getUid(), "redisques", "foo",
+                meterRegistry, lock, 10);
 
         vertx.deployVerticle(redisQues, new DeploymentOptions().setConfig(config), context.asyncAssertSuccess(event -> {
             deploymentId = event;
@@ -97,18 +91,29 @@ public class MetricsCollectorTest extends AbstractTestCase {
 
     @Test
     public void testUpdateMyQueuesStateCount(TestContext context) {
-        for (int i=0; i <10; i++){
-            RedisQues.QueueProcessingState queueProcessingState1 = new RedisQues.QueueProcessingState(RedisQues.QueueState.READY, i);
-            fakeMyQueue.put("queue-1" + i, queueProcessingState1);
-            if ((i % 2) == 1) {
-                RedisQues.QueueProcessingState queueProcessingState2 = new RedisQues.QueueProcessingState(RedisQues.QueueState.CONSUMING, i);
-                fakeMyQueue.put("queue-2" + i, queueProcessingState2);
-            }
-        }
-
-        metricsCollector.updateMyQueuesStateCount();
-        context.assertEquals(10.0, getQueueReadySizeGauge().value());
-        context.assertEquals(5.0, getQueueConsumingSizeGauge().value());
+        Async async = context.async();
+        flushAll();
+        eventBusSend(buildEnqueueOperation("queueEnqueue", "helloEnqueue"), message -> {
+            context.assertEquals(OK, message.result().body().getString(STATUS));
+            eventBusSend(buildEnqueueOperation("queueEnqueue2", "helloEnqueue2"), message1 -> {
+                context.assertEquals(OK, message1.result().body().getString(STATUS));
+                eventBusSend(buildEnqueueOperation("queueEnqueue3", "helloEnqueue3"), message2 -> {
+                    context.assertEquals(OK, message2.result().body().getString(STATUS));
+                    try {
+                        // wait few seconds.
+                        Thread.sleep(2000);
+                    } catch (InterruptedException e) {
+                        throw new RuntimeException(e);
+                    }
+                    Mockito.when(lock.acquireLock(Mockito.anyString(), Mockito.anyString(), Mockito.anyLong())).thenReturn(Future.succeededFuture(true));
+                    metricsCollector.updateMyQueuesStateCount().onComplete(event -> {
+                        context.assertEquals(3.0, getQueueReadySizeGauge().value());
+                        context.assertEquals(0.0, getQueueConsumingSizeGauge().value());
+                        async.complete();
+                    });
+                });
+            });
+        });
     }
 
     @Test

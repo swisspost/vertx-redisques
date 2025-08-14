@@ -38,6 +38,10 @@ public class MetricsCollectorScheduler {
     }
 
     private void updateMyQueuesStateCount() {
-        metricsCollector.updateMyQueuesStateCount();
+        metricsCollector.updateMyQueuesStateCount().onComplete(updateEvent -> {
+            if(updateEvent.failed()) {
+                log.warn("Failed to update queue state count", updateEvent.cause());
+            }
+        });
     }
 }
