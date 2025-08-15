@@ -160,15 +160,13 @@ public class MetricsCollector {
                 vertx.eventBus().request(getAddress(), null, (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
                     if (reply.failed()) {
                         log.warn("TODO error handling", reply.cause());
-                    } else if (reply.succeeded()) {
+                    } else {
                         JsonObject jsonObject = reply.result().body();
                         Long readyCount = jsonObject.getLong(RedisQues.QueueState.READY.name());
                         Long consumingCount = jsonObject.getLong(RedisQues.QueueState.CONSUMING.name());
 
                         queueStateReadyCount.set(readyCount == null ? 0 : readyCount);
                         queueStateReadyCount.set(consumingCount == null ? 0 : consumingCount);
-                    } else {
-                        log.warn("Error gathering max queue size. Cause: {}", reply.result().body().getString(MESSAGE));
                     }
                     promise.complete();
                 });

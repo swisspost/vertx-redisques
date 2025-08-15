@@ -192,12 +192,12 @@ public class RedisQues extends AbstractVerticle {
         return uid;
     }
 
-    public static class QueueProcessingState {
-        public QueueProcessingState(QueueState state, long timestampMillis){
+    private static class QueueProcessingState {
+        private QueueProcessingState(QueueState state, long timestampMillis){
             this.state = state;
             this.lastConsumedTimestampMillis = timestampMillis;
         }
-        public QueueState state;
+        QueueState state;
         long lastConsumedTimestampMillis;
     }
 
@@ -461,6 +461,7 @@ public class RedisQues extends AbstractVerticle {
             longTaskTimerSamplePair.getSample().stop();
             return null;
         });
+        perQueueMetrics.remove(queueName);
     }
 
     private void initMicrometerMetrics(RedisquesConfiguration modConfig) {
@@ -1606,7 +1607,7 @@ public class RedisQues extends AbstractVerticle {
             } else {
                 if (queueProcessingState.state == QueueState.CONSUMING && state == QueueState.READY) {
                     // update the state and the timestamp when we change from CONSUMING to READY
-                    return new QueueProcessingState(QueueState.READY, System.currentTimeMillis());
+                    return new QueueProcessingState(QueueState.READY, currentTimeMillis());
                 } else {
                     // update the state but leave the timestamp unchanged
                     queueProcessingState.state = state;
