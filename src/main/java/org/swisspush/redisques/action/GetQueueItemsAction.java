@@ -27,31 +27,20 @@ public class GetQueueItemsAction extends AbstractQueueAction {
 
     @Override
     public void execute(Message<JsonObject> event) {
-        final String queueName = event.body().getJsonObject(PAYLOAD).getString(QUEUENAME);
-        final String queueKey = queuesPrefix + queueName;
-        final int maxQueueItemCountIndex = getMaxQueueItemCountIndex(event.body().getJsonObject(PAYLOAD).getString(LIMIT));
+        String queueName = event.body().getJsonObject(PAYLOAD).getString(QUEUENAME);
+        String keyListRange = queuesPrefix + queueName;
+        int maxQueueItemCountIndex = getMaxQueueItemCountIndex(event.body().getJsonObject(PAYLOAD).getString(LIMIT));
 
-        redisProvider.redis().onSuccess(redisAPI -> redisAPI.llen(queueKey).onSuccess(countReply -> {
-                    Long queueItemCount = countReply.toLong();
-                    if (queueItemCount != null) {
-                        final QueueConfiguration queueConfiguration = findQueueConfiguration(queueName);
-
-                        if (queueConfiguration != null && queueConfiguration.getMaxQueueEntries() > 0) {
-                            final int maxQueueEntries = queueConfiguration.getMaxQueueEntries();
-                            long startRange = Math.max(0, queueItemCount - maxQueueEntries);
-                            long endRange = queueItemCount;
-                            long endIndex = Math.min(startRange + maxQueueItemCountIndex, endRange);
-                            redisAPI.lrange(queueKey, String.valueOf(startRange), String.valueOf(endIndex),
-                                    new GetQueueItemsHandler(event, Math.min(maxQueueEntries, queueItemCount)));
-                        } else {
-                            redisAPI.lrange(queueKey, "0", String.valueOf(maxQueueItemCountIndex),
-                                    new GetQueueItemsHandler(event, queueItemCount));
-                        }
-                    } else {
-                        event.reply(exceptionFactory.newReplyException(
-                                "Operation getQueueItems failed to extract queueItemCount", null));
-                    }
-                }).onFailure(throwable -> handleFail(event, "Operation getQueueItems failed", throwable)))
+        redisProvider.redis().onSuccess(redisAPI -> redisAPI.llen(keyListRange).onSuccess(countReply -> {
+            Long queueItemCount = countReply.toLong();
+            if(queueItemCount != null) {
+                redisAPI.lrange(keyListRange, "0", String.valueOf(maxQueueItemCountIndex),
+                        new GetQueueItemsHandler(event, queueItemCount));
+            } else {
+                event.reply(exceptionFactory.newReplyException(
+                    "Operation getQueueItems failed to extract queueItemCount", null));
+            }
+        }).onFailure(throwable -> handleFail(event, "Operation getQueueItems failed", throwable)))
                 .onFailure(throwable -> handleFail(event, "Operation getQueueItems failed", throwable));
     }
 

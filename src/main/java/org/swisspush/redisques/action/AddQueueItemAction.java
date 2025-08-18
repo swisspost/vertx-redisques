@@ -28,11 +28,18 @@ public class AddQueueItemAction extends AbstractQueueAction {
 
     @Override
     public void execute(Message<JsonObject> event) {
-        String key1 = queuesPrefix + event.body().getJsonObject(PAYLOAD).getString(QUEUENAME);
+        String queueName = event.body().getJsonObject(PAYLOAD).getString(QUEUENAME);
+        String key1 = queuesPrefix + queueName;
         String valueAddItem = event.body().getJsonObject(PAYLOAD).getString(BUFFER);
         var p = redisProvider.redis();
-        p.onSuccess(redisAPI -> redisAPI.rpush(Arrays.asList(key1, valueAddItem), new AddQueueItemHandler(event, exceptionFactory)));
-        p.onFailure(ex -> handleFail(event, "Operation AddQueueItemAction failed", ex));
+        p.onSuccess(redisAPI -> redisAPI.rpush(Arrays.asList(key1, valueAddItem),
+                rpushResult -> processTrimRequestByState(queueName).onComplete(asyncResult -> {
+            if (asyncResult.failed()) {
+                log.warn("Failed to do the trim for  {}", queueName);
+            }
+            new AddQueueItemHandler(event, exceptionFactory).handle(rpushResult);
+        }))).onFailure(ex -> handleFail(event, "Operation AddQueueItemAction failed", ex));
+
     }
 
 }

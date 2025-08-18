@@ -58,8 +58,8 @@ public class RedisQuesTest extends AbstractTestCase {
                 .memoryUsageLimitPercent(80)
                 .redisReadyCheckIntervalMs(2000)
                 .queueConfigurations(List.of(new QueueConfiguration()
-                                .withPattern("queue.*")
-                                .withRetryIntervals(2, 7, 12, 17, 22, 27, 32, 37, 42, 47, 52),
+                        .withPattern("queue.*")
+                        .withRetryIntervals(2, 7, 12, 17, 22, 27, 32, 37, 42, 47, 52),
                         new QueueConfiguration()
                                 .withPattern("limited-queue-1.*")
                                 .withMaxQueueEntries(1),
@@ -73,7 +73,7 @@ public class RedisQuesTest extends AbstractTestCase {
         MeterRegistry meterRegistry = new SimpleMeterRegistry();
         enqueueCounterSuccess = meterRegistry.counter(MetricMeter.ENQUEUE_SUCCESS.getId(), MetricTags.IDENTIFIER.getId(), metricsIdentifier);
         enqueueCounterFail = meterRegistry.counter(MetricMeter.ENQUEUE_FAIL.getId(), MetricTags.IDENTIFIER.getId(), metricsIdentifier);
-        dequeueCounter = meterRegistry.counter(MetricMeter.DEQUEUE.getId(), MetricTags.IDENTIFIER.getId(), metricsIdentifier);
+        dequeueCounter =  meterRegistry.counter(MetricMeter.DEQUEUE.getId(), MetricTags.IDENTIFIER.getId(), metricsIdentifier);
 
         memoryUsageProvider = new TestMemoryUsageProvider(Optional.of(50));
         redisQues = RedisQues.builder()
@@ -95,7 +95,7 @@ public class RedisQuesTest extends AbstractTestCase {
 
         vertx.eventBus().localConsumer("my-metrics-eb-address", (Handler<Message<JsonObject>>) message -> {
             context.assertTrue(message.body().getString("name").startsWith("redis.foobar."));
-            if (!messageReceived.get()) {
+            if(!messageReceived.get()) {
                 messageReceived.set(true);
                 async.complete();
             }
@@ -1166,37 +1166,37 @@ public class RedisQuesTest extends AbstractTestCase {
 
         // send message success (reset the failure count)
         context.assertEquals(0, redisQues.updateQueueFailureCountAndGetRetryInterval(queue, true), "The retry interval is wrong when failure count is 0.");
-
+        
         // send message fail
         context.assertEquals(2, redisQues.updateQueueFailureCountAndGetRetryInterval(queue, false), "The retry interval is wrong when failure count is 1.");
-
+        
         // send message fail
         context.assertEquals(7, redisQues.updateQueueFailureCountAndGetRetryInterval(queue, false), "The retry interval is wrong when failure count is 2.");
-
+        
         // send message fail
         context.assertEquals(12, redisQues.updateQueueFailureCountAndGetRetryInterval(queue, false), "The retry interval is wrong when failure count is 3.");
-
+        
         // send message fail
         context.assertEquals(17, redisQues.updateQueueFailureCountAndGetRetryInterval(queue, false), "The retry interval is wrong when failure count is 4.");
-
+        
         // send message fail
         context.assertEquals(22, redisQues.updateQueueFailureCountAndGetRetryInterval(queue, false), "The retry interval is wrong when failure count is 5.");
-
+        
         // send message fail
         context.assertEquals(27, redisQues.updateQueueFailureCountAndGetRetryInterval(queue, false), "The retry interval is wrong when failure count is 6.");
-
+        
         // send message fail
         context.assertEquals(32, redisQues.updateQueueFailureCountAndGetRetryInterval(queue, false), "The retry interval is wrong when failure count is 7.");
-
+        
         // send message fail
         context.assertEquals(37, redisQues.updateQueueFailureCountAndGetRetryInterval(queue, false), "The retry interval is wrong when failure count is 8.");
-
+        
         // send message fail
         context.assertEquals(42, redisQues.updateQueueFailureCountAndGetRetryInterval(queue, false), "The retry interval is wrong when failure count is 9.");
-
+        
         // send message fail
         context.assertEquals(47, redisQues.updateQueueFailureCountAndGetRetryInterval(queue, false), "The retry interval is wrong when failure count is 10.");
-
+        
         // send message fail
         context.assertEquals(52, redisQues.updateQueueFailureCountAndGetRetryInterval(queue, false), "The retry interval is wrong when failure count is 11.");
 
@@ -1215,7 +1215,7 @@ public class RedisQuesTest extends AbstractTestCase {
 
         // send message fail
         context.assertEquals(2, redisQues.updateQueueFailureCountAndGetRetryInterval(queue, false), "The retry interval is wrong");
-
+        
         // send message fail
         context.assertEquals(7, redisQues.updateQueueFailureCountAndGetRetryInterval(queue, false), "The retry interval is wrong");
     }
@@ -1223,17 +1223,17 @@ public class RedisQuesTest extends AbstractTestCase {
     @Test
     public void getQueueRescheduleRefreshPeriodAfterProcessMessageSuccess(TestContext context) {
         final String queue = "queue1";
-
+        
         // send message success (reset the failure count)
         context.assertEquals(0, redisQues.updateQueueFailureCountAndGetRetryInterval(queue, true), "The retry interval is wrong");
-
+        
         // send message fail
         context.assertEquals(2, redisQues.updateQueueFailureCountAndGetRetryInterval(queue, false), "The retry interval is wrong");
 
         // send message success
         context.assertEquals(0, redisQues.updateQueueFailureCountAndGetRetryInterval(queue, true), "The retry interval is wrong");
     }
-
+    
     @Test
     public void getRescheduleRefreshPeriodOfUnknownQueue(TestContext context) {
         final String queue = "unknownqueue";
@@ -1250,9 +1250,10 @@ public class RedisQuesTest extends AbstractTestCase {
     }
 
     @Test
-    public void QueueItemsLimits(TestContext context) {
+    public void enqueueWithLimits(TestContext context) {
         Async async = context.async();
         flushAll();
+
         eventBusSend(buildEnqueueOperation("limited-queue-1.test", "message_1-1"), e1 -> {
             eventBusSend(buildEnqueueOperation("limited-queue-1.test", "message_1-2"), e2 -> {
                 eventBusSend(buildEnqueueOperation("limited-queue-1.test", "message_1-3"), e3 -> {
@@ -1265,61 +1266,28 @@ public class RedisQuesTest extends AbstractTestCase {
                                             eventBusSend(buildEnqueueOperation("limited-queue-4.test", "message_4-7"), e10 -> {
                                                 eventBusSend(buildEnqueueOperation("limited-queue-4.test", "message_4-8"), e11 -> {
                                                     assertQueuesCount(context, 2);
+                                                    // wait few seconds.
+                                                    try {
+                                                        Thread.sleep(5000);
+                                                    } catch (InterruptedException e) {
+                                                        throw new RuntimeException(e);
+                                                    }
+                                                    assertQueueItemsCount(context, "limited-queue-1.test", 1);
+                                                    assertQueueItemsCount(context, "limited-queue-4.test", 4);
                                                     eventBusSend(buildGetQueueItemsOperation("limited-queue-1.test", null), event -> {
                                                         context.assertEquals(OK, event.result().body().getString(STATUS));
                                                         context.assertEquals(1, event.result().body().getJsonArray(VALUE).size());
                                                         context.assertEquals("message_1-3", event.result().body().getJsonArray(VALUE).getString(0));
                                                         context.assertEquals(1, event.result().body().getJsonArray(INFO).getInteger(0));
                                                         context.assertEquals(1, event.result().body().getJsonArray(INFO).getInteger(1));
-                                                        eventBusSend(buildGetQueueItemsOperation("limited-queue-1.test", "2"), event1 -> {
-                                                            context.assertEquals(OK, event1.result().body().getString(STATUS));
-                                                            context.assertEquals(1, event1.result().body().getJsonArray(VALUE).size());
-                                                            context.assertEquals("message_1-3", event1.result().body().getJsonArray(VALUE).getString(0));
-                                                            context.assertEquals(1, event1.result().body().getJsonArray(INFO).getInteger(0));
-                                                            context.assertEquals(1, event1.result().body().getJsonArray(INFO).getInteger(1));
-                                                            eventBusSend(buildGetQueueItemsCountOperation("limited-queue-1.test"), eventCount -> {
-                                                                context.assertEquals(OK, eventCount.result().body().getString(STATUS));
-                                                                context.assertEquals(1, eventCount.result().body().getInteger(VALUE));
-                                                                eventBusSend(buildEnqueueOperation("limited-queue-1.test", "message_1-4"), e12 -> {
-                                                                    eventBusSend(buildGetQueueItemsCountOperation("limited-queue-1.test"), eventCount1 -> {
-                                                                        context.assertEquals(OK, eventCount1.result().body().getString(STATUS));
-                                                                        context.assertEquals(1, eventCount1.result().body().getInteger(VALUE));
-                                                                        eventBusSend(buildGetQueueItemsOperation("limited-queue-4.test", null), event2 -> {
-                                                                            context.assertEquals(OK, event2.result().body().getString(STATUS));
-                                                                            context.assertEquals(4, event2.result().body().getJsonArray(VALUE).size());
-                                                                            context.assertEquals("message_4-5", event2.result().body().getJsonArray(VALUE).getString(0));
-                                                                            context.assertEquals("message_4-6", event2.result().body().getJsonArray(VALUE).getString(1));
-                                                                            context.assertEquals("message_4-7", event2.result().body().getJsonArray(VALUE).getString(2));
-                                                                            context.assertEquals("message_4-8", event2.result().body().getJsonArray(VALUE).getString(3));
-                                                                            context.assertEquals(4, event2.result().body().getJsonArray(INFO).getInteger(0));
-                                                                            context.assertEquals(4, event2.result().body().getJsonArray(INFO).getInteger(1));
-                                                                            eventBusSend(buildGetQueueItemsOperation("limited-queue-4.test", "2"), event3 -> {
-                                                                                context.assertEquals(OK, event3.result().body().getString(STATUS));
-                                                                                context.assertEquals(2, event3.result().body().getJsonArray(VALUE).size());
-                                                                                context.assertEquals("message_4-5", event3.result().body().getJsonArray(VALUE).getString(0));
-                                                                                context.assertEquals("message_4-6", event3.result().body().getJsonArray(VALUE).getString(1));
-                                                                                context.assertEquals(2, event3.result().body().getJsonArray(INFO).getInteger(0));
-                                                                                context.assertEquals(4, event3.result().body().getJsonArray(INFO).getInteger(1));
-                                                                                eventBusSend(buildGetQueueItemsOperation("limited-queue-4.test", "10"), event4 -> {
-                                                                                    context.assertEquals(OK, event4.result().body().getString(STATUS));
-                                                                                    context.assertEquals(4, event4.result().body().getJsonArray(VALUE).size());
-                                                                                    context.assertEquals("message_4-5", event4.result().body().getJsonArray(VALUE).getString(0));
-                                                                                    context.assertEquals("message_4-6", event4.result().body().getJsonArray(VALUE).getString(1));
-                                                                                    context.assertEquals("message_4-7", event4.result().body().getJsonArray(VALUE).getString(2));
-                                                                                    context.assertEquals("message_4-8", event4.result().body().getJsonArray(VALUE).getString(3));
-                                                                                    context.assertEquals(4, event4.result().body().getJsonArray(INFO).getInteger(0));
-                                                                                    context.assertEquals(4, event4.result().body().getJsonArray(INFO).getInteger(1));
-                                                                                    eventBusSend(buildGetQueueItemsCountOperation("limited-queue-4.test"), eventCount2 -> {
-                                                                                        context.assertEquals(OK, eventCount2.result().body().getString(STATUS));
-                                                                                        context.assertEquals(4, eventCount2.result().body().getInteger(VALUE));
-                                                                                        async.complete();
-                                                                                    });
-                                                                                });
-                                                                            });
-                                                                        });
-                                                                    });
-                                                                });
-                                                            });
+                                                        eventBusSend(buildGetQueueItemsOperation("limited-queue-4.test", null), event2 -> {
+                                                            context.assertEquals(OK, event2.result().body().getString(STATUS));
+                                                            context.assertEquals(4, event2.result().body().getJsonArray(VALUE).size());
+                                                            context.assertEquals("message_4-5", event2.result().body().getJsonArray(VALUE).getString(0));
+                                                            context.assertEquals("message_4-6", event2.result().body().getJsonArray(VALUE).getString(1));
+                                                            context.assertEquals("message_4-7", event2.result().body().getJsonArray(VALUE).getString(2));
+                                                            context.assertEquals("message_4-8", event2.result().body().getJsonArray(VALUE).getString(3));
+                                                            async.complete();
                                                         });
                                                     });
                                                 });
@@ -1335,7 +1303,55 @@ public class RedisQuesTest extends AbstractTestCase {
         });
     }
 
-    private void assertEnqueueCounts(TestContext context, double successCount, double failCount) {
+
+    @Test
+    public void addQueueItemWithLimits(TestContext context) {
+        Async async = context.async();
+        flushAll();
+        eventBusSend(buildAddQueueItemOperation("limited-queue-1.test", "message_1-1"), e1 -> {
+            eventBusSend(buildAddQueueItemOperation("limited-queue-1.test", "message_1-2"), e2 -> {
+                eventBusSend(buildAddQueueItemOperation("limited-queue-1.test", "message_1-3"), e3 -> {
+                    eventBusSend(buildAddQueueItemOperation("limited-queue-4.test", "message_4-1"), e4 -> {
+                        eventBusSend(buildAddQueueItemOperation("limited-queue-4.test", "message_4-2"), e5 -> {
+                            eventBusSend(buildAddQueueItemOperation("limited-queue-4.test", "message_4-3"), e6 -> {
+                                eventBusSend(buildAddQueueItemOperation("limited-queue-4.test", "message_4-4"), e7 -> {
+                                    eventBusSend(buildAddQueueItemOperation("limited-queue-4.test", "message_4-5"), e8 -> {
+                                        eventBusSend(buildAddQueueItemOperation("limited-queue-4.test", "message_4-6"), e9 -> {
+                                            eventBusSend(buildAddQueueItemOperation("limited-queue-4.test", "message_4-7"), e10 -> {
+                                                eventBusSend(buildAddQueueItemOperation("limited-queue-4.test", "message_4-8"), e11 -> {
+                                                    assertQueuesCount(context, 2);
+                                                    assertQueueItemsCount(context, "limited-queue-1.test", 1);
+                                                    assertQueueItemsCount(context, "limited-queue-4.test", 4);
+                                                    eventBusSend(buildGetQueueItemsOperation("limited-queue-1.test", null), event -> {
+                                                        context.assertEquals(OK, event.result().body().getString(STATUS));
+                                                        context.assertEquals(1, event.result().body().getJsonArray(VALUE).size());
+                                                        context.assertEquals("message_1-3", event.result().body().getJsonArray(VALUE).getString(0));
+                                                        context.assertEquals(1, event.result().body().getJsonArray(INFO).getInteger(0));
+                                                        context.assertEquals(1, event.result().body().getJsonArray(INFO).getInteger(1));
+                                                        eventBusSend(buildGetQueueItemsOperation("limited-queue-4.test", null), event2 -> {
+                                                            context.assertEquals(OK, event2.result().body().getString(STATUS));
+                                                            context.assertEquals(4, event2.result().body().getJsonArray(VALUE).size());
+                                                            context.assertEquals("message_4-5", event2.result().body().getJsonArray(VALUE).getString(0));
+                                                            context.assertEquals("message_4-6", event2.result().body().getJsonArray(VALUE).getString(1));
+                                                            context.assertEquals("message_4-7", event2.result().body().getJsonArray(VALUE).getString(2));
+                                                            context.assertEquals("message_4-8", event2.result().body().getJsonArray(VALUE).getString(3));
+                                                            async.complete();
+                                                        });
+                                                    });
+                                                });
+                                            });
+                                        });
+                                    });
+                                });
+                            });
+                        });
+                    });
+                });
+            });
+        });
+    }
+
+    private void assertEnqueueCounts(TestContext context, double successCount, double failCount){
         context.assertEquals(successCount, enqueueCounterSuccess.count(), "Success enqueue count is wrong");
         context.assertEquals(failCount, enqueueCounterFail.count(), "Failed enqueue count is wrong");
     }

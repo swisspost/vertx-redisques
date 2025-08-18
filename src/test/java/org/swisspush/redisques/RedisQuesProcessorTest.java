@@ -13,16 +13,13 @@ import io.vertx.ext.unit.Async;
 import io.vertx.ext.unit.TestContext;
 import io.vertx.ext.unit.junit.Timeout;
 import org.junit.*;
-import org.swisspush.redisques.util.QueueConfiguration;
 import org.swisspush.redisques.util.RedisquesConfiguration;
 import redis.clients.jedis.Jedis;
 
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -69,27 +66,12 @@ public class RedisQuesProcessorTest extends AbstractTestCase {
 
     protected void deployRedisques(TestContext context) {
         vertx = Vertx.vertx();
-
-        ArrayList<QueueConfiguration> qc = new ArrayList<>();
-        // Queues 'to vehicles' with a fix retry interval of 10 seconds
-        qc.add(
-                new QueueConfiguration()
-                        .withPattern("listener-hook-http+eagle.*")
-                        .withRetryIntervals(10));
-
         JsonObject config = RedisquesConfiguration.with()
                 .address(getRedisquesAddress())
                 .redisPrefix(CUSTOM_REDIS_KEY_PREFIX)
                 .processorAddress("processor-address")
                 .refreshPeriod(2)
                 .processorTimeout(10)
-                .queueConfigurations(List.of(
-                        new QueueConfiguration()
-                                .withPattern("limited-queue-1.*")
-                                .withMaxQueueEntries(1),
-                        new QueueConfiguration()
-                                .withPattern("limited-queue-4.*")
-                                .withMaxQueueEntries(4)))
                 .build()
                 .asJsonObject();
 
@@ -405,91 +387,6 @@ public class RedisQuesProcessorTest extends AbstractTestCase {
                 context.assertTrue(processorCalled.get(), "QueueProcessor should have been called immediately after queue unlock");
                 async.complete();
             })).start();
-        });
-    }
-
-
-    @Test
-    public void queueProcessorWithLimiter_ONE_ShouldHaveBeenNotifiedImmediatelyAfterQueueUnlock(TestContext context) {
-        Async async = context.async();
-        flushAll();
-
-        String queue = "limited-queue-1.test-with-lock";
-        lockQueue(queue);
-        queueProcessor.handler(event -> {
-            context.assertEquals("hello3", event.body().getString(PAYLOAD));
-            async.complete();
-        });
-
-        eventBusSend(buildEnqueueOperation(queue, "hello1"), reply -> {
-            context.assertEquals(OK, reply.result().body().getString(STATUS));
-            eventBusSend(buildEnqueueOperation(queue, "hello2"), reply1 -> {
-                context.assertEquals(OK, reply1.result().body().getString(STATUS));
-                eventBusSend(buildEnqueueOperation(queue, "hello3"), reply2 -> {
-                    context.assertEquals(OK, reply2.result().body().getString(STATUS));
-                    new Thread(() -> eventBusSend(buildDeleteLockOperation(queue), event -> {
-                        context.assertEquals(OK, event.result().body().getString(STATUS));
-                    })).start();
-                });
-            });
-        });
-    }
-
-    @Test
-    public void queueProcessorWithLimiter_FOUR_ShouldHaveBeenNotifiedImmediatelyAfterQueueUnlock(TestContext context) {
-        Async async = context.async();
-        flushAll();
-
-        String queue = "limited-queue-4.test-with-lock";
-        final AtomicBoolean processorCalled = new AtomicBoolean(false);
-        AtomicInteger index = new AtomicInteger();
-        lockQueue(queue);
-
-        queueProcessor.handler(event -> {
-            String msg = event.body().getString(PAYLOAD);
-            if (index.get() == 0) {
-                context.assertEquals("hello4", msg);
-            }
-            if (index.get() == 1) {
-                context.assertEquals("hello5", msg);
-            }
-            if (index.get() == 2) {
-                context.assertEquals("hello6", msg);
-            }
-            if (index.get() == 3) {
-                context.assertEquals("hello7", msg);
-            }
-            index.getAndIncrement();
-            event.reply(new JsonObject().put(STATUS, OK));
-
-            if (index.get() == 4) {
-                async.complete();
-            }
-        });
-
-        eventBusSend(buildEnqueueOperation(queue, "hello1"), reply -> {
-            context.assertEquals(OK, reply.result().body().getString(STATUS));
-            eventBusSend(buildEnqueueOperation(queue, "hello2"), reply1 -> {
-                context.assertEquals(OK, reply1.result().body().getString(STATUS));
-                eventBusSend(buildEnqueueOperation(queue, "hello3"), reply2 -> {
-                    context.assertEquals(OK, reply2.result().body().getString(STATUS));
-                    eventBusSend(buildEnqueueOperation(queue, "hello4"), reply3 -> {
-                        context.assertEquals(OK, reply3.result().body().getString(STATUS));
-                        eventBusSend(buildEnqueueOperation(queue, "hello5"), reply4 -> {
-                            context.assertEquals(OK, reply4.result().body().getString(STATUS));
-                            eventBusSend(buildEnqueueOperation(queue, "hello6"), reply5 -> {
-                                context.assertEquals(OK, reply5.result().body().getString(STATUS));
-                                eventBusSend(buildEnqueueOperation(queue, "hello7"), reply6 -> {
-                                    context.assertEquals(OK, reply6.result().body().getString(STATUS));
-                                    new Thread(() -> eventBusSend(buildDeleteLockOperation(queue), event -> {
-                                        context.assertEquals(OK, event.result().body().getString(STATUS));
-                                    })).start();
-                                });
-                            });
-                        });
-                    });
-                });
-            });
         });
     }
 
