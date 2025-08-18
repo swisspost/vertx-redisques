@@ -410,13 +410,13 @@ public class RedisQues extends AbstractVerticle {
     }
 
     private void createMetricForQueueIfNeeded(String queueName) {
-        if (!configurationProvider.configuration().getMicrometerMetricsEnabled() ||
-                !configurationProvider.configuration().getMicrometerPerQueueMetricEnabled()
+        if (!(configurationProvider.configuration().getMicrometerMetricsEnabled() &&
+                configurationProvider.configuration().getMicrometerPerQueueMetricEnabled())
         ) {
             return;
         }
-        LongTaskTimer task = LongTaskTimer.builder(MetricMeter.QUEUE_CONSUMING.getId())
-                .description(MetricMeter.ALIVE_CONSUMER.getDescription())
+        LongTaskTimer task = LongTaskTimer.builder(MetricMeter.QUEUE_CONSUMER_LIFE_CYCLE.getId())
+                .description(MetricMeter.QUEUE_CONSUMER_LIFE_CYCLE.getDescription())
                 .tag(MetricTags.IDENTIFIER.getId(), configurationProvider.configuration().getMicrometerMetricsIdentifier())
                 .tag(MetricTags.CONSUMER_UID.getId(), uid)
                 .tag(MetricTags.QUEUE_NAME.getId(), queueName)
@@ -426,18 +426,26 @@ public class RedisQues extends AbstractVerticle {
         perQueueMetrics.put(queueName, pair);
     }
 
+    /**
+     * create a timer metric for a queue's consumer, and start a Sample (Consumer Created)
+     * @param queueName
+     */
     private void perQueueMetricsReg(String queueName) {
-        if (!configurationProvider.configuration().getMicrometerMetricsEnabled() ||
-                !configurationProvider.configuration().getMicrometerPerQueueMetricEnabled()
+        if (!(configurationProvider.configuration().getMicrometerMetricsEnabled() &&
+                configurationProvider.configuration().getMicrometerPerQueueMetricEnabled())
         ) {
             return;
         }
         createMetricForQueueIfNeeded(queueName);
     }
 
+    /**
+     * create a new Sample for timer metric of queue consumer, and stop previous one (Consumer Refresh)
+     * @param queueName
+     */
     private void perQueueMetricsRefresh(String queueName) {
-        if (!configurationProvider.configuration().getMicrometerMetricsEnabled() ||
-                !configurationProvider.configuration().getMicrometerPerQueueMetricEnabled()
+        if (!(configurationProvider.configuration().getMicrometerMetricsEnabled() &&
+                configurationProvider.configuration().getMicrometerPerQueueMetricEnabled())
         ) {
             return;
         }
@@ -450,9 +458,13 @@ public class RedisQues extends AbstractVerticle {
         });
     }
 
+    /**
+     * stop previous Sample of queue consumer, and remove this timer metric. (Consumer EOL)
+     * @param queueName
+     */
     private void perQueueMetricsRemove(String queueName) {
-        if (!configurationProvider.configuration().getMicrometerMetricsEnabled() ||
-                !configurationProvider.configuration().getMicrometerPerQueueMetricEnabled()
+        if (!(configurationProvider.configuration().getMicrometerMetricsEnabled() &&
+                configurationProvider.configuration().getMicrometerPerQueueMetricEnabled())
         ) {
             return;
         }
@@ -474,8 +486,8 @@ public class RedisQues extends AbstractVerticle {
         dequeueCounter = Counter.builder(MetricMeter.DEQUEUE.getId())
                 .description(MetricMeter.DEQUEUE.getDescription()).tag(MetricTags.IDENTIFIER.getId(), metricsIdentifier).register(meterRegistry);
 
-        consumerCounter = Counter.builder(MetricMeter.ALIVE_CONSUMER.getId())
-                .description(MetricMeter.ALIVE_CONSUMER.getDescription()).tag(MetricTags.IDENTIFIER.getId(), metricsIdentifier).register(meterRegistry);
+        consumerCounter = Counter.builder(MetricMeter.QUEUE_CONSUMER_COUNT.getId())
+                .description(MetricMeter.QUEUE_CONSUMER_COUNT.getDescription()).tag(MetricTags.IDENTIFIER.getId(), metricsIdentifier).register(meterRegistry);
 
         String address = modConfig.getAddress();
         int metricRefreshPeriod = modConfig.getMetricRefreshPeriod();

@@ -1068,13 +1068,18 @@ Besides the API, redisques provides some key metrics collected by [micrometer.io
 
 The collected metrics include:
 
-| Metric name                     | Description                                                 |
-|:--------------------------------|:------------------------------------------------------------|
-| redisques_enqueue_success_total | Overall count of queue items to be enqueued                 |
-| redisques_enqueue_fail_total    | Overall count of failing enqueues                           |
-| redisques_dequeue_total         | Overall count of queue items to be dequeued from the queues |
-| redisques_active_queues         | Overall count of active queues                              |
-| redisques_max_queue_size        | Amount of queue items of the biggest queue                  |
+| Metric name                          | Description                                                 |
+|:-------------------------------------|:------------------------------------------------------------|
+| redisques_enqueue_success_total      | Overall count of queue items to be enqueued                 |
+| redisques_enqueue_fail_total         | Overall count of failing enqueues                           |
+| redisques_dequeue_total              | Overall count of queue items to be dequeued from the queues |
+| redisques_active_queues              | Overall count of active queues                              |
+| redisques_max_queue_size             | Amount of queue items of the biggest queue                  |
+| redisques_queue_state_ready_size     | Amount of queue in state ready                              |
+| redisques_queue_state_consuming_size | Amount of queue in state consuming                          |
+| redisques_queue_consumers            | Amount of consumer registered                               |
+| redisques_queue_consumers            | Amount of consumer registered                               |
+| redisques_queue_consumer_life_cycle  | A time line trace for each consumer                         |
 
 ### Testing locally
 When you include redisques in you project, you probably already have the configuration for publishing the metrics.
