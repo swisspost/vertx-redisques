@@ -4,6 +4,7 @@ import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.vertx.core.*;
+import io.vertx.core.Future;
 import io.vertx.core.json.JsonObject;
 import io.vertx.ext.unit.Async;
 import io.vertx.ext.unit.TestContext;
@@ -12,6 +13,7 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
+import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.swisspush.redisques.AbstractTestCase;
 import org.swisspush.redisques.RedisQues;
@@ -21,6 +23,7 @@ import redis.clients.jedis.Jedis;
 
 import java.util.*;
 
+import static org.mockito.Mockito.when;
 import static org.swisspush.redisques.util.RedisquesAPI.*;
 
 /**
@@ -50,7 +53,7 @@ public class MetricsCollectorTest extends AbstractTestCase {
                 .redisMonitoringEnabled(false)
                 .micrometerMetricsEnabled(true)
                 .micrometerMetricsIdentifier(metricsIdentifier)
-                .metricRefreshPeriod(0) // do not periodically refresh because it interferes the test
+                .metricRefreshPeriod(999999) // use a large periodically refresh because it may interferes the test
                 .refreshPeriod(2)
                 .publishMetricsAddress("my-metrics-eb-address")
                 .metricStorageName("foobar")
@@ -66,13 +69,14 @@ public class MetricsCollectorTest extends AbstractTestCase {
         lock = Mockito.mock(Lock.class);
         meterRegistry = new SimpleMeterRegistry();
 
-        metricsCollector = new MetricsCollector(vertx, "myuid", "redisques", "foo",
-                meterRegistry, lock, 10);
-
         redisQues = RedisQues.builder()
                 .withRedisquesRedisquesConfigurationProvider(new DefaultRedisquesConfigurationProvider(vertx, config))
                 .withMeterRegistry(meterRegistry)
                 .build();
+
+        metricsCollector = new MetricsCollector(vertx, redisQues.getUid(), "redisques", "foo",
+                meterRegistry, lock, 10);
+
         vertx.deployVerticle(redisQues, new DeploymentOptions().setConfig(config), context.asyncAssertSuccess(event -> {
             deploymentId = event;
             log.info("vert.x Deploy - {} was successful.", redisQues.getClass().getSimpleName());
@@ -83,6 +87,33 @@ public class MetricsCollectorTest extends AbstractTestCase {
     @After
     public void tearDown(TestContext context) {
         vertx.close(context.asyncAssertSuccess());
+    }
+
+    @Test
+    public void testUpdateMyQueuesStateCount(TestContext context) {
+        Async async = context.async();
+        flushAll();
+        eventBusSend(buildEnqueueOperation("queueEnqueue", "helloEnqueue"), message -> {
+            context.assertEquals(OK, message.result().body().getString(STATUS));
+            eventBusSend(buildEnqueueOperation("queueEnqueue2", "helloEnqueue2"), message1 -> {
+                context.assertEquals(OK, message1.result().body().getString(STATUS));
+                eventBusSend(buildEnqueueOperation("queueEnqueue3", "helloEnqueue3"), message2 -> {
+                    context.assertEquals(OK, message2.result().body().getString(STATUS));
+                    try {
+                        // wait few seconds.
+                        Thread.sleep(5000);
+                    } catch (InterruptedException e) {
+                        throw new RuntimeException(e);
+                    }
+                    Mockito.when(lock.acquireLock(Mockito.anyString(), Mockito.anyString(), Mockito.anyLong())).thenReturn(Future.succeededFuture(true));
+                    metricsCollector.updateMyQueuesStateCount().onComplete(event -> {
+                        context.assertEquals(3.0, getQueueReadySizeGauge().value());
+                        context.assertEquals(0.0, getQueueConsumingSizeGauge().value());
+                        async.complete();
+                    });
+                });
+            });
+        });
     }
 
     @Test
@@ -177,5 +208,13 @@ public class MetricsCollectorTest extends AbstractTestCase {
 
     private Gauge getMaxQueueSizeGauge(){
         return meterRegistry.get(MetricMeter.MAX_QUEUE_SIZE.getId()).tag(MetricTags.IDENTIFIER.getId(), metricsIdentifier).gauge();
+    }
+
+    private Gauge getQueueConsumingSizeGauge(){
+        return meterRegistry.get(MetricMeter.QUEUE_STATE_CONSUMING_SIZE.getId()).tag(MetricTags.IDENTIFIER.getId(), metricsIdentifier).gauge();
+    }
+
+    private Gauge getQueueReadySizeGauge(){
+        return meterRegistry.get(MetricMeter.QUEUE_STATE_READY_SIZE.getId()).tag(MetricTags.IDENTIFIER.getId(), metricsIdentifier).gauge();
     }
 }

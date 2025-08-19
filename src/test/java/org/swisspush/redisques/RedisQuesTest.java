@@ -49,6 +49,7 @@ public class RedisQuesTest extends AbstractTestCase {
         JsonObject config = RedisquesConfiguration.with()
                 .processorAddress(PROCESSOR_ADDRESS)
                 .micrometerMetricsEnabled(true)
+                .micrometerPerQueueMetricsEnabled(true)
                 .micrometerMetricsIdentifier(metricsIdentifier)
                 .refreshPeriod(2)
                 .publishMetricsAddress("my-metrics-eb-address")

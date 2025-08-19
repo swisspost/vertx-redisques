@@ -2,6 +2,7 @@ package org.swisspush.redisques;
 
 import com.google.common.base.Strings;
 import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.LongTaskTimer;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.AsyncResult;
@@ -27,6 +28,7 @@ import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.handler.RedisquesHttpRequestHandler;
 import org.swisspush.redisques.lock.Lock;
 import org.swisspush.redisques.lock.impl.RedisBasedLock;
+import org.swisspush.redisques.metrics.LongTaskTimerSamplePair;
 import org.swisspush.redisques.metrics.MetricsCollector;
 import org.swisspush.redisques.metrics.MetricsCollectorScheduler;
 import org.swisspush.redisques.performance.UpperBoundParallel;
@@ -37,6 +39,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -49,6 +52,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import static java.lang.System.currentTimeMillis;
 import static org.swisspush.redisques.exception.RedisQuesExceptionFactory.newThriftyExceptionFactory;
@@ -174,18 +179,16 @@ public class RedisQues extends AbstractVerticle {
         }
     }
 
-    // State of each queue. Consuming means there is a message being processed.
-    private enum QueueState {
-        READY, CONSUMING
-    }
-
     private enum UnregisterConsumerType {
         FORCE, GRACEFUL, QUIET_FOR_SOMETIME
     }
 
+    public String getUid() {
+        return uid;
+    }
 
-    private class QueueProcessingState {
-        QueueProcessingState(QueueState state, long timestampMillis){
+    private static class QueueProcessingState {
+        private QueueProcessingState(QueueState state, long timestampMillis){
             this.state = state;
             this.lastConsumedTimestampMillis = timestampMillis;
         }
@@ -235,6 +238,7 @@ public class RedisQues extends AbstractVerticle {
 
     private MeterRegistry meterRegistry;
     private Counter dequeueCounter;
+    private Counter consumerCounter;
 
     private Map<QueueOperation, QueueAction> queueActions = new HashMap<>();
 
@@ -249,6 +253,7 @@ public class RedisQues extends AbstractVerticle {
     private final Semaphore getQueuesItemsCountRedisRequestQuota;
     private final Semaphore activeQueueRegRefreshReqQuota;
     private Lock lock;
+    private final Map<String, LongTaskTimerSamplePair> perQueueMetrics = new ConcurrentHashMap<>();
 
     public RedisQues() {
         this(null, null, null, newThriftyExceptionFactory(), new Semaphore(Integer.MAX_VALUE),
@@ -326,8 +331,12 @@ public class RedisQues extends AbstractVerticle {
         // Try to register for this queue
         redisSetWithOptions(consumersPrefix + queueName, uid, true, consumerLockTime, event -> {
             if (event.succeeded()) {
+                perQueueMetricsReg(queueName);
                 String value = event.result() != null ? event.result().toString() : null;
                 log.trace("RedisQues setxn result: {} for queue: {}", value, queueName);
+                if (configurationProvider.configuration().getMicrometerMetricsEnabled()) {
+                    consumerCounter.increment(1);
+                }
                 if ("OK".equals(value)) {
                     // I am now the registered consumer for this queue.
                     log.debug("RedisQues Now registered for queue {}", queueName);
@@ -343,6 +352,7 @@ public class RedisQues extends AbstractVerticle {
             }
         });
     }
+
 
     @Override
     public void start(Promise<Void> promise) {
@@ -394,13 +404,85 @@ public class RedisQues extends AbstractVerticle {
         });
     }
 
+    private void createMetricForQueueIfNeeded(String queueName) {
+        if (!(configurationProvider.configuration().getMicrometerMetricsEnabled() &&
+                configurationProvider.configuration().getMicrometerPerQueueMetricEnabled())
+        ) {
+            return;
+        }
+        LongTaskTimer task = LongTaskTimer.builder(MetricMeter.QUEUE_CONSUMER_LIFE_CYCLE.getId())
+                .description(MetricMeter.QUEUE_CONSUMER_LIFE_CYCLE.getDescription())
+                .tag(MetricTags.IDENTIFIER.getId(), configurationProvider.configuration().getMicrometerMetricsIdentifier())
+                .tag(MetricTags.CONSUMER_UID.getId(), uid)
+                .tag(MetricTags.QUEUE_NAME.getId(), queueName)
+                .register(meterRegistry);
+        LongTaskTimer.Sample sample = task.start();
+        LongTaskTimerSamplePair pair = new LongTaskTimerSamplePair(task, sample);
+        perQueueMetrics.put(queueName, pair);
+    }
+
+    /**
+     * create a timer metric for a queue's consumer, and start a Sample (Consumer Created)
+     * @param queueName
+     */
+    private void perQueueMetricsReg(String queueName) {
+        if (!(configurationProvider.configuration().getMicrometerMetricsEnabled() &&
+                configurationProvider.configuration().getMicrometerPerQueueMetricEnabled())
+        ) {
+            return;
+        }
+        createMetricForQueueIfNeeded(queueName);
+    }
+
+    /**
+     * create a new Sample for timer metric of queue consumer, and stop previous one (Consumer Refresh)
+     * @param queueName
+     */
+    private void perQueueMetricsRefresh(String queueName) {
+        if (!(configurationProvider.configuration().getMicrometerMetricsEnabled() &&
+                configurationProvider.configuration().getMicrometerPerQueueMetricEnabled())
+        ) {
+            return;
+        }
+        createMetricForQueueIfNeeded(queueName);
+        perQueueMetrics.computeIfPresent(queueName, (key, longTaskTimerSamplePair) -> {
+            // A refresh cycle, create a new sample
+            longTaskTimerSamplePair.getSample().stop();
+            longTaskTimerSamplePair.setSample(longTaskTimerSamplePair.getLongTaskTimer().start());
+            return longTaskTimerSamplePair;
+        });
+    }
+
+    /**
+     * stop previous Sample of queue consumer, and remove this timer metric. (Consumer EOL)
+     * @param queueName
+     */
+    private void perQueueMetricsRemove(String queueName) {
+        if (!(configurationProvider.configuration().getMicrometerMetricsEnabled() &&
+                configurationProvider.configuration().getMicrometerPerQueueMetricEnabled())
+        ) {
+            return;
+        }
+        perQueueMetrics.computeIfPresent(queueName, (key, longTaskTimerSamplePair) -> {
+            // Queue have been Deregistered, remove this LongTaskTimer
+            longTaskTimerSamplePair.getSample().stop();
+            return null;
+        });
+        perQueueMetrics.remove(queueName);
+    }
+
     private void initMicrometerMetrics(RedisquesConfiguration modConfig) {
+
         if(meterRegistry == null) {
             meterRegistry = BackendRegistries.getDefaultNow();
         }
+
         String metricsIdentifier = modConfig.getMicrometerMetricsIdentifier();
         dequeueCounter = Counter.builder(MetricMeter.DEQUEUE.getId())
                 .description(MetricMeter.DEQUEUE.getDescription()).tag(MetricTags.IDENTIFIER.getId(), metricsIdentifier).register(meterRegistry);
+
+        consumerCounter = Counter.builder(MetricMeter.QUEUE_CONSUMER_COUNT.getId())
+                .description(MetricMeter.QUEUE_CONSUMER_COUNT.getDescription()).tag(MetricTags.IDENTIFIER.getId(), metricsIdentifier).register(meterRegistry);
 
         String address = modConfig.getAddress();
         int metricRefreshPeriod = modConfig.getMetricRefreshPeriod();
@@ -408,6 +490,14 @@ public class RedisQues extends AbstractVerticle {
             String identifier = modConfig.getMicrometerMetricsIdentifier();
             MetricsCollector metricsCollector = new MetricsCollector(vertx, uid, address, identifier, meterRegistry, lock, metricRefreshPeriod);
             new MetricsCollectorScheduler(vertx, metricsCollector, metricRefreshPeriod);
+
+            vertx.eventBus().consumer(metricsCollector.getAddress(), (Handler<Message<Void>>) event -> {
+                Map<QueueState, Long> stateCount = getQueueStateCount();
+                JsonObject jsonObject = new JsonObject();
+                stateCount.forEach((queueState, aLong) -> jsonObject.put(queueState.name(), aLong));
+                event.reply(jsonObject);
+            });
+
         }
     }
 
@@ -516,6 +606,9 @@ public class RedisQues extends AbstractVerticle {
                 if (currentTimeMillis() > entry.getValue()) {
                     log.info("RedisQues consumer with id {}' has expired", entry.getKey());
                     iterator.remove();
+                    if (configurationProvider.configuration().getMicrometerMetricsEnabled()) {
+                        consumerCounter.increment(-1);
+                    }
                 }
             }
             vertx.eventBus().publish(address + "-consumer-alive", uid);
@@ -734,6 +827,7 @@ public class RedisQues extends AbstractVerticle {
                                     onDone.accept(exceptionFactory.newException("TODO error handling", ev.cause()), null);
                                     return;
                                 }
+                                perQueueMetricsRefresh(queue);
                                 updateTimestamp(queue, ev3 -> {
                                     Throwable ex = ev3.succeeded() ? null : exceptionFactory.newException(
                                         "updateTimestamp(" + queue + ") failed", ev3.cause());
@@ -922,6 +1016,7 @@ public class RedisQues extends AbstractVerticle {
                 log.warn("TODO error handling", exceptionFactory.newException(
                         "refreshRegistration(" + queueName + ") failed", event.cause()));
             }
+            perQueueMetricsRefresh(queueName);
             // Make sure that I am still the registered consumer
             final String consumerKey = consumersPrefix + queueName;
             log.trace("RedisQues unregister consumers get: {}", consumerKey);
@@ -939,6 +1034,7 @@ public class RedisQues extends AbstractVerticle {
                         if (delResult.failed()) {
                             log.warn("Failed to deregister myself from queue '{}'", consumerKey, exceptionFactory.newException(delResult.cause()));
                         } else {
+                            perQueueMetricsRemove(queueName);
                             log.debug("Deregistered myself from queue '{}'", consumerKey);
                         }
                         promise.complete();
@@ -996,6 +1092,7 @@ public class RedisQues extends AbstractVerticle {
                 log.warn("Failed to refresh registration for queue '{}'.", queueName, event.cause());
                 // We should return here. See: "https://softwareengineering.stackexchange.com/a/190535"
             }
+            perQueueMetricsRefresh(queueName);
             // Make sure that I am still the registered consumer
             final String consumerKey = consumersPrefix + queueName;
             log.trace("RedisQues consume get: {}", consumerKey);
@@ -1395,6 +1492,7 @@ public class RedisQues extends AbstractVerticle {
                                 if (refreshRegistrationEvent.failed()) log.warn("TODO error handling",
                                         exceptionFactory.newException("refreshRegistration(" + queueName + ") failed",
                                         refreshRegistrationEvent.cause()));
+                                perQueueMetricsRefresh(queueName);
                                 // And trigger its consumer.
                                 notifyConsumer(queueName).onComplete(notifyConsumerEvent -> {
                                     if (notifyConsumerEvent.failed()) log.warn("TODO error handling",
@@ -1516,7 +1614,7 @@ public class RedisQues extends AbstractVerticle {
             } else {
                 if (queueProcessingState.state == QueueState.CONSUMING && state == QueueState.READY) {
                     // update the state and the timestamp when we change from CONSUMING to READY
-                    return new QueueProcessingState(QueueState.READY, System.currentTimeMillis());
+                    return new QueueProcessingState(QueueState.READY, currentTimeMillis());
                 } else {
                     // update the state but leave the timestamp unchanged
                     queueProcessingState.state = state;
@@ -1538,5 +1636,15 @@ public class RedisQues extends AbstractVerticle {
             }
         }
         return null;
+    }
+
+    public Map<QueueState, Long> getQueueStateCount() {
+        return myQueues.values().stream()
+                .map(queueProcessingState -> queueProcessingState.state)
+                .collect(Collectors.groupingBy(
+                        Function.identity(),
+                        () -> new EnumMap<>(QueueState.class),
+                        Collectors.counting()
+                ));
     }
 }
