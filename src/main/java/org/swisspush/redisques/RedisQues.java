@@ -179,11 +179,6 @@ public class RedisQues extends AbstractVerticle {
         }
     }
 
-    // State of each queue. Consuming means there is a message being processed.
-    public enum QueueState {
-        READY, CONSUMING
-    }
-
     private enum UnregisterConsumerType {
         FORCE, GRACEFUL, QUIET_FOR_SOMETIME
     }
@@ -1643,12 +1638,12 @@ public class RedisQues extends AbstractVerticle {
         return null;
     }
 
-    public Map<RedisQues.QueueState, Long> getQueueStateCount() {
+    public Map<QueueState, Long> getQueueStateCount() {
         return myQueues.values().stream()
                 .map(queueProcessingState -> queueProcessingState.state)
                 .collect(Collectors.groupingBy(
                         Function.identity(),
-                        () -> new EnumMap<>(RedisQues.QueueState.class),
+                        () -> new EnumMap<>(QueueState.class),
                         Collectors.counting()
                 ));
     }

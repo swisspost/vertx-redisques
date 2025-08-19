@@ -10,7 +10,7 @@ import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.swisspush.redisques.RedisQues;
+import org.swisspush.redisques.QueueState;
 import org.swisspush.redisques.exception.NoStacktraceException;
 import org.swisspush.redisques.lock.Lock;
 import org.swisspush.redisques.util.LockUtil;
@@ -162,8 +162,8 @@ public class MetricsCollector {
                         log.warn("TODO error handling", reply.cause());
                     } else {
                         JsonObject jsonObject = reply.result().body();
-                        Long readyCount = jsonObject.getLong(RedisQues.QueueState.READY.name());
-                        Long consumingCount = jsonObject.getLong(RedisQues.QueueState.CONSUMING.name());
+                        Long readyCount = jsonObject.getLong(QueueState.READY.name());
+                        Long consumingCount = jsonObject.getLong(QueueState.CONSUMING.name());
 
                         queueStateReadyCount.set(readyCount == null ? 0 : readyCount);
                         queueStateReadyCount.set(consumingCount == null ? 0 : consumingCount);
