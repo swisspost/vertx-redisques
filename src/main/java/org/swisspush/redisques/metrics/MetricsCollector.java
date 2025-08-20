@@ -4,11 +4,13 @@ import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.netty.util.internal.StringUtil;
 import io.vertx.core.*;
+import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.swisspush.redisques.QueueState;
 import org.swisspush.redisques.exception.NoStacktraceException;
 import org.swisspush.redisques.lock.Lock;
 import org.swisspush.redisques.util.LockUtil;
@@ -17,7 +19,11 @@ import org.swisspush.redisques.util.MetricTags;
 
 import java.net.InetAddress;
 import java.net.UnknownHostException;
+import java.util.EnumMap;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import static org.swisspush.redisques.util.DebugInfo.__WHERE__;
 import static org.swisspush.redisques.util.RedisquesAPI.*;
@@ -34,9 +40,14 @@ public class MetricsCollector {
     private static final String DEFAULT_IDENTIFIER = "default";
     private final String UPDATE_ACTIVE_QUEUES_LOCK;
     private final String UPDATE_MAX_QUEUE_SIZE_LOCK;
+    private final String UPDATE_QUEUE_STATE_COUNT_LOCK;
 
     private final AtomicLong activeQueuesCount = new AtomicLong(0);
     private final AtomicLong maxQueueSize = new AtomicLong(0);
+    private final AtomicLong queueStateReadyCount = new AtomicLong(0);
+    private final AtomicLong queueStateConsumingCount = new AtomicLong(0);
+
+    public static final String QUEUE_STATE_COUNT_KEY = "queueStateCount";
 
     public MetricsCollector(Vertx vertx, String uid, String redisquesAddress,
                             String identifier, MeterRegistry meterRegistry, Lock lock, long metricCollectIntervalSec) {
@@ -60,6 +71,7 @@ public class MetricsCollector {
         }
         UPDATE_ACTIVE_QUEUES_LOCK = "updateActiveQueuesLock_" + hostName + "_"  + id;
         UPDATE_MAX_QUEUE_SIZE_LOCK = "updateMaxQueueSizeLock_" + hostName + "_"  + id;
+        UPDATE_QUEUE_STATE_COUNT_LOCK = "updateQueueStateCount" + hostName + "_"  + id;
 
         Gauge.builder(MetricMeter.ACTIVE_QUEUES.getId(), activeQueuesCount, AtomicLong::get)
                 .tag(MetricTags.IDENTIFIER.getId(), id)
@@ -70,6 +82,17 @@ public class MetricsCollector {
                 .tag(MetricTags.IDENTIFIER.getId(), id)
                 .description(MetricMeter.MAX_QUEUE_SIZE.getDescription())
                 .register(meterRegistry);
+
+        Gauge.builder(MetricMeter.QUEUE_STATE_READY_SIZE.getId(), queueStateReadyCount, AtomicLong::get)
+                .tag(MetricTags.IDENTIFIER.getId(), id)
+                .description(MetricMeter.QUEUE_STATE_READY_SIZE.getDescription())
+                .register(meterRegistry);
+
+        Gauge.builder(MetricMeter.QUEUE_STATE_CONSUMING_SIZE.getId(), queueStateConsumingCount, AtomicLong::get)
+                .tag(MetricTags.IDENTIFIER.getId(), id)
+                .description(MetricMeter.QUEUE_STATE_CONSUMING_SIZE.getDescription())
+                .register(meterRegistry);
+
 
     }
 
@@ -115,6 +138,35 @@ public class MetricsCollector {
                         extractMaxQueueSize(reply.result().body());
                     } else {
                         log.warn("Error gathering max queue size. Cause: {}", reply.result().body().getString(MESSAGE));
+                    }
+                    promise.complete();
+                });
+            } else {
+                promise.complete();
+            }
+        });
+        return promise.future();
+    }
+
+    public Future<Void> updateMyQueuesStateCount() {
+        final Promise<Void> promise = Promise.promise();
+        acquireLock(UPDATE_QUEUE_STATE_COUNT_LOCK, createToken(UPDATE_QUEUE_STATE_COUNT_LOCK)).onComplete(lockEvent -> {
+            if (lockEvent.failed()) {
+                promise.fail(new NoStacktraceException(__WHERE__(), lockEvent.cause()));
+                return;
+            }
+            if(lockEvent.result()) {
+                log.info("About to queue state count with lock {}", UPDATE_QUEUE_STATE_COUNT_LOCK);
+                vertx.eventBus().request(getAddress(), null, (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
+                    if (reply.failed()) {
+                        log.warn("TODO error handling", reply.cause());
+                    } else {
+                        JsonObject jsonObject = reply.result().body();
+                        Long readyCount = jsonObject.getLong(QueueState.READY.name());
+                        Long consumingCount = jsonObject.getLong(QueueState.CONSUMING.name());
+
+                        queueStateReadyCount.set(readyCount == null ? 0 : readyCount);
+                        queueStateReadyCount.set(consumingCount == null ? 0 : consumingCount);
                     }
                     promise.complete();
                 });
@@ -171,5 +223,9 @@ public class MetricsCollector {
 
     private String createToken(String appendix) {
         return this.uid + "_" + System.currentTimeMillis() + "_" + appendix;
+    }
+
+    public String getAddress() {
+        return redisquesAddress + "-" + uid + "-" + QUEUE_STATE_COUNT_KEY;
     }
 }

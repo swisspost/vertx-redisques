@@ -2,7 +2,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>org.swisspush</groupId>
     <artifactId>redisques</artifactId>
-    <version>4.1.18-SNAPSHOT</version>
+    <version>4.1.19-SNAPSHOT</version>
     <name>redisques</name>
     <description>
         A highly scalable redis-persistent queuing system for vertx
@@ -370,7 +370,7 @@
     </profiles>
     <properties>
         <vertx.version>4.5.2</vertx.version>
-        <micrometer.version>1.12.13</micrometer.version>
+        <micrometer.version>1.15.2</micrometer.version>
         <slf4j.version>2.0.10</slf4j.version>
         <mockito.version>5.8.0</mockito.version>
         <junit.version>4.13.2</junit.version>

@@ -69,6 +69,7 @@ The following configuration values are available:
 | redisMonitoringEnabled                  | true                            | Enable / disable monitoring of redis metrics                                                                                                                                                                     |
 | micrometerMetricsEnabled                | false                           | Enable / disable collection of metrics using micrometer                                                                                                                                                          |
 | micrometerMetricsIdentifier             | default                         | Identifier to track values from multiple redisques instances                                                                                                                                                     |
+| micrometerPerQueueMetricsEnabled        | false                           | Enable / disable monitoring of per queue registration metric, Note: high memory usage and will have performance impact.                                                                                          |    
 | httpRequestHandlerEnabled               | false                           | Enable / disable the HTTP API                                                                                                                                                                                    |
 | httpRequestHandlerAuthenticationEnabled | false                           | Enable / disable authentication for the HTTP API                                                                                                                                                                 |
 | httpRequestHandlerUsername              |                                 | The username for the HTTP API authentication                                                                                                                                                                     |
@@ -77,7 +78,7 @@ The following configuration values are available:
 | httpRequestHandlerPrefix                | /queuing                        | The url prefix for all HTTP API endpoints                                                                                                                                                                        |
 | httpRequestHandlerPort                  | 7070                            | The port of the HTTP API                                                                                                                                                                                         |
 | httpRequestHandlerUserHeader            | x-rp-usr                        | The name of the header property where the user information is provided. Used for the HTTP API                                                                                                                    |
-| queueConfigurations                     |                                 | Configure retry intervals and enqueue delaying for queue patterns                                                                                                                                                |
+| queueConfigurations                     |                                 | Configure retry intervals, enqueue delaying and queue item limit for queue patterns                                                                                                                              |
 | dequeueStatisticReportIntervalSec       | -1                              | The interval [s] to publish the dequeue statistics into shared map. Use **-1** to not publish at all. In a hazelcast-cluster environment need config Semaphore first, see: [Semaphore Config](#Semaphore Config) |
 | publish-metrics-address                 |                                 | The EventBus address to send collected redis metrics to                                                                                                                                                          |
 | metric-storage-name                     | queue                           | The name of the storage used in the published metrics                                                                                                                                                            |
@@ -733,7 +734,8 @@ The result will be a json object with the configuration values like the example 
     "pattern": "queue.*",
     "retryIntervals": [2, 7, 12, 17, 22, 27, 32, 37, 42, 47, 52],
     "enqueueDelayFactorMillis": 0.0,
-    "enqueueMaxDelayMillis": 0
+    "enqueueMaxDelayMillis": 0,
+    "maxQueueEntries": 10
   }],
   "enableQueueNameDecoding": true,
   "maxPoolSize": 200,
@@ -1067,13 +1069,18 @@ Besides the API, redisques provides some key metrics collected by [micrometer.io
 
 The collected metrics include:
 
-| Metric name                     | Description                                                 |
-|:--------------------------------|:------------------------------------------------------------|
-| redisques_enqueue_success_total | Overall count of queue items to be enqueued                 |
-| redisques_enqueue_fail_total    | Overall count of failing enqueues                           |
-| redisques_dequeue_total         | Overall count of queue items to be dequeued from the queues |
-| redisques_active_queues         | Overall count of active queues                              |
-| redisques_max_queue_size        | Amount of queue items of the biggest queue                  |
+| Metric name                          | Description                                                 |
+|:-------------------------------------|:------------------------------------------------------------|
+| redisques_enqueue_success_total      | Overall count of queue items to be enqueued                 |
+| redisques_enqueue_fail_total         | Overall count of failing enqueues                           |
+| redisques_dequeue_total              | Overall count of queue items to be dequeued from the queues |
+| redisques_active_queues              | Overall count of active queues                              |
+| redisques_max_queue_size             | Amount of queue items of the biggest queue                  |
+| redisques_queue_state_ready_size     | Amount of queue in state ready                              |
+| redisques_queue_state_consuming_size | Amount of queue in state consuming                          |
+| redisques_queue_consumers            | Amount of consumer registered                               |
+| redisques_queue_consumers            | Amount of consumer registered                               |
+| redisques_queue_consumer_life_cycle  | A time line trace for each consumer                         |
 
 ### Testing locally
 When you include redisques in you project, you probably already have the configuration for publishing the metrics.

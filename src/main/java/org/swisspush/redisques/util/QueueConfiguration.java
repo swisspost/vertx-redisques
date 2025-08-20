@@ -37,6 +37,12 @@ public class QueueConfiguration {
      */
     private int enqueueMaxDelayMillis = 0;
 
+    /**
+     * Maximum queue items allowed in queue, as FIFO (First-In, First-Out) limited queue.
+     * default "0" means: no limit
+     */
+    private int maxQueueEntries = 0;
+
     public String getPattern() {
         return pattern.pattern();
     }
@@ -61,6 +67,10 @@ public class QueueConfiguration {
 
     public int getEnqueueMaxDelayMillis() {
         return enqueueMaxDelayMillis;
+    }
+
+    public int getMaxQueueEntries() {
+        return maxQueueEntries;
     }
 
     public JsonObject asJsonObject() {
@@ -100,6 +110,14 @@ public class QueueConfiguration {
             throw new IllegalArgumentException("enqueueMaxDelayMillis must be >=0 but is " + enqueueMaxDelayMillis);
         }
         this.enqueueMaxDelayMillis = enqueueMaxDelayMillis;
+        return this;
+    }
+
+    public QueueConfiguration withMaxQueueEntries(int maxQueueEntries) {
+        if (maxQueueEntries < 0) {
+            throw new IllegalArgumentException("maxQueueEntries must be >=0 but is " + maxQueueEntries);
+        }
+        this.maxQueueEntries = maxQueueEntries;
         return this;
     }
 }
