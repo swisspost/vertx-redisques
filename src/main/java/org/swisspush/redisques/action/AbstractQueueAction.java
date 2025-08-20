@@ -2,6 +2,7 @@ package org.swisspush.redisques.action;
 
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
+import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.EventBus;
 import io.vertx.core.eventbus.Message;
@@ -9,6 +10,7 @@ import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.redis.client.Response;
 import org.slf4j.Logger;
+import org.swisspush.redisques.RedisQues;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.util.QueueConfiguration;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
@@ -199,5 +201,60 @@ public abstract class AbstractQueueAction implements QueueAction {
             log.warn("Redis: Failed to get consumer for queue '{}'", queueName, throwable);
             // We should return here. See: "https://softwareengineering.stackexchange.com/a/190535"
         });
+    }
+
+    /**
+     * Try to trim a Queue by it states:
+     * 1. Have a Consumer registered, will ask the consumer to process the trim request
+     * 2. No Consumer registered, will trim it now.
+     * 3. Failed to get Consumer, will do nothing, let the queue consumer itself to trim while process the queue
+     * @param queueName
+     * @return always succeeded future.
+     */
+    protected Future<Void> processTrimRequestByState(String queueName) {
+        final Promise<Void> promise = Promise.promise();
+        final QueueConfiguration queueConfiguration = findQueueConfiguration(queueName);
+        if (queueConfiguration != null && queueConfiguration.getMaxQueueEntries() > 0) {
+            final int maxQueueEntries = queueConfiguration.getMaxQueueEntries();
+            final EventBus eb = vertx.eventBus();
+            // we have limit set for this queue
+            log.debug("RedisQues Max queue entries {} found for queue {}", maxQueueEntries, queueName);
+
+            String consumerKey = consumersPrefix + queueName;
+            if (log.isTraceEnabled()) {
+                log.trace("RedisQues notify consumer get: {}", consumerKey);
+            }
+
+            redisProvider.redis().onSuccess(redisAPI -> redisAPI.get(consumerKey, event -> {
+                if (event.failed()) {
+                    log.warn("Failed to get consumer for queue '{}'", queueName, event.cause());
+                    //Skip Trim
+                    promise.complete();
+                    return;
+                }
+                String consumer = Objects.toString(event.result(), null);
+                if (consumer == null) {
+                    // No consumer for this queue, trim now
+                    final String key = queuesPrefix + queueName;
+                    redisAPI.ltrim(key,"-" + maxQueueEntries, "-1").onComplete(event1 -> {
+                        if (event1.failed()) {
+                            log.warn("Failed to trim queue '{}'", queueName, event1.cause());
+                        }
+                        promise.complete();
+                    });
+                } else {
+                    // Notify the registered consumer to do the Trim
+                    log.debug("RedisQues Notifying consumer {} to trim queue {}", consumer, queueName);
+                    eb.send(RedisQues.TRIM_REQUEST_KEY + consumer, queueName); // just send, no need to wait
+                    promise.complete();
+                }
+            })).onFailure(throwable -> {
+                log.warn("Redis: Failed to get redisAPI for queue '{}'", queueName, throwable);
+                promise.complete();
+            });
+        } else {
+            promise.complete();
+        }
+        return promise.future();
     }
 }

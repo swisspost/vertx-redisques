@@ -179,6 +179,8 @@ public class RedisQues extends AbstractVerticle {
         }
     }
 
+    public final static String TRIM_REQUEST_KEY = "trim_request_";
+
     private enum UnregisterConsumerType {
         FORCE, GRACEFUL, QUIET_FOR_SOMETIME
     }
@@ -201,6 +203,7 @@ public class RedisQues extends AbstractVerticle {
     private int emptyQueueLiveTimeMillis;
 
     private MessageConsumer<String> uidMessageConsumer;
+    private MessageConsumer<String> trimRequestConsumer;
     private UpperBoundParallel upperBoundParallel;
 
     // The queues this verticle instance is registered as a consumer
@@ -227,6 +230,7 @@ public class RedisQues extends AbstractVerticle {
     private String consumersPrefix;
     private String locksKey;
     private String queueCheckLastexecKey;
+
 
     private int consumerLockTime;
 
@@ -576,6 +580,30 @@ public class RedisQues extends AbstractVerticle {
             }
             log.debug("RedisQues got notification for queue '{}'", queue);
             consume(queue);
+        });
+
+        // handles trim request
+        trimRequestConsumer = vertx.eventBus().consumer(TRIM_REQUEST_KEY + uid, event -> {
+            final String queueName = event.body();
+            if (queueName == null) {
+                log.warn("Got event bus trim request msg with empty body! uid={}  address={}  replyAddress={}", uid, event.address(), event.replyAddress());
+                return;
+            }
+            log.debug("RedisQues got notification for trim queue '{}'", queueName);
+            QueueProcessingState queueProcessingState = myQueues.get(queueName);
+            if (queueProcessingState == null) {
+                log.trace("RedisQues Queue {} is handed by other consumer", queueName);
+                return;
+            }
+            QueueState state = queueProcessingState.state;
+            log.trace("RedisQues consumer: {} queue: {} state: {}", uid, queueName, state);
+            if (state != QueueState.CONSUMING) {
+                //not in state consuming, trim now
+                redisProvider.redis().onSuccess(redisAPI -> trimQueueItemIfNeeded(redisAPI, queueName))
+                        .onFailure(throwable -> log.error("Redis: Unable to get redis api", throwable));
+            } else {
+                log.debug("RedisQues Queue {} is state of consuming, trim will process while consuming", queueName);
+            }
         });
 
         registerActiveQueueRegistrationRefresh();
@@ -959,10 +987,16 @@ public class RedisQues extends AbstractVerticle {
                         log.warn("TODO error handling", exceptionFactory.newException(
                                 "unregisterConsumers(false) failed", unregisterConsumersEvent.cause()));
                     }
-                    stoppedHandler = doneHandler;
-                    if (myQueues.keySet().isEmpty()) {
-                        doneHandler.handle(null);
-                    }
+                    trimRequestConsumer.unregister(unregisterTrimEvent -> {
+                        if (unregisterTrimEvent.failed()) {
+                            log.warn("TODO error handling", exceptionFactory.newException(
+                                    "unregister trimRequestConsumer failed", unregisterTrimEvent.cause()));
+                        }
+                        stoppedHandler = doneHandler;
+                        if (myQueues.keySet().isEmpty()) {
+                            doneHandler.handle(null);
+                        }
+                    });
                 });
             });
         }));
@@ -1123,14 +1157,17 @@ public class RedisQues extends AbstractVerticle {
                                 }
                                 // We have item, start to consuming
                                 setMyQueuesState(queueName, QueueState.CONSUMING);
-                                log.trace("RedisQues Starting to consume queue {}", queueName);
-                                readQueue(queueName).onComplete(readQueueEvent -> {
-                                    if (readQueueEvent.failed()) {
-                                        log.warn("TODO error handling", exceptionFactory.newException(
-                                                "readQueue(" + queueName + ") failed", readQueueEvent.cause()));
-                                    }
-                                    promise.complete();
+                                trimQueueItemIfNeeded(redisAPI, queueName).onComplete(event22 -> {
+                                    log.trace("RedisQues Starting to consume queue {}", queueName);
+                                    readQueue(queueName).onComplete(readQueueEvent -> {
+                                        if (readQueueEvent.failed()) {
+                                            log.warn("TODO error handling", exceptionFactory.newException(
+                                                    "readQueue(" + queueName + ") failed", readQueueEvent.cause()));
+                                        }
+                                        promise.complete();
+                                    });
                                 });
+
                             } else {
                                 log.trace("RedisQues Queue {} is already being consumed", queueName);
                                 promise.complete();
@@ -1150,6 +1187,34 @@ public class RedisQues extends AbstractVerticle {
                     }))
                     .onFailure(throwable -> log.error("Redis: Unable to get consumer for queue {}", queueName, throwable));
         });
+        return promise.future();
+    }
+
+    /**
+     * trim the queue items, if limit set. this function will always return as a succeededFuture.
+     *
+     * @param redisAPI
+     * @param queueName
+     * @return Future
+     */
+    private Future<Void> trimQueueItemIfNeeded(RedisAPI redisAPI, final String queueName) {
+        final Promise<Void> promise = Promise.promise();
+        final String queueKey = queuesPrefix + queueName;
+        final QueueConfiguration queueConfiguration = findQueueConfiguration(queueName);
+        // trim items if limits set
+        if (queueConfiguration != null && queueConfiguration.getMaxQueueEntries() > 0) {
+            final int maxQueueEntries = queueConfiguration.getMaxQueueEntries();
+            log.debug("RedisQues Max queue entries {} found for queue {}", maxQueueEntries, queueName);
+            redisAPI.ltrim(queueKey, "-" + maxQueueEntries, "-1").onComplete(ltrimResponse -> {
+                if (ltrimResponse.failed()) {
+                    log.warn("Failed to trim the queue items ", exceptionFactory.newException(
+                            "readQueue(" + queueName + ") failed", ltrimResponse.cause()));
+                }
+                promise.complete();
+            });
+        } else {
+            promise.complete();
+        }
         return promise.future();
     }
 

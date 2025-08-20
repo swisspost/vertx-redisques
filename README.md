@@ -78,7 +78,7 @@ The following configuration values are available:
 | httpRequestHandlerPrefix                | /queuing                        | The url prefix for all HTTP API endpoints                                                                                                                                                                        |
 | httpRequestHandlerPort                  | 7070                            | The port of the HTTP API                                                                                                                                                                                         |
 | httpRequestHandlerUserHeader            | x-rp-usr                        | The name of the header property where the user information is provided. Used for the HTTP API                                                                                                                    |
-| queueConfigurations                     |                                 | Configure retry intervals and enqueue delaying for queue patterns                                                                                                                                                |
+| queueConfigurations                     |                                 | Configure retry intervals, enqueue delaying and queue item limit for queue patterns                                                                                                                              |
 | dequeueStatisticReportIntervalSec       | -1                              | The interval [s] to publish the dequeue statistics into shared map. Use **-1** to not publish at all. In a hazelcast-cluster environment need config Semaphore first, see: [Semaphore Config](#Semaphore Config) |
 | publish-metrics-address                 |                                 | The EventBus address to send collected redis metrics to                                                                                                                                                          |
 | metric-storage-name                     | queue                           | The name of the storage used in the published metrics                                                                                                                                                            |
@@ -734,7 +734,8 @@ The result will be a json object with the configuration values like the example 
     "pattern": "queue.*",
     "retryIntervals": [2, 7, 12, 17, 22, 27, 32, 37, 42, 47, 52],
     "enqueueDelayFactorMillis": 0.0,
-    "enqueueMaxDelayMillis": 0
+    "enqueueMaxDelayMillis": 0,
+    "maxQueueEntries": 10
   }],
   "enableQueueNameDecoding": true,
   "maxPoolSize": 200,
