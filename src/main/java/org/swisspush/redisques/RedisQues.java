@@ -1149,7 +1149,6 @@ public class RedisQues extends AbstractVerticle {
                             // Get the next message only once the previous has
                             // been completely processed
                             if (state != QueueState.CONSUMING) {
-                                final QueueConfiguration queueConfiguration = findQueueConfiguration(queueName);
                                 setMyQueuesState(queueName, QueueState.CONSUMING);
                                 if (state == null) {
                                     // No previous state was stored. Maybe the
