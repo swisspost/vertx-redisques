@@ -29,8 +29,7 @@ public class AddQueueItemActionTest extends AbstractQueueActionTest {
     @Override
     public void setup() {
         super.setup();
-        action = new AddQueueItemAction(vertx, redisProvider,
-                "addr", "q-", "prefix-", "c-", "l-",
+        action = new AddQueueItemAction(vertx, redisService, keyspaceHelper,
                 new ArrayList<>(), exceptionFactory, Mockito.mock(QueueStatisticsCollector.class), Mockito.mock(Logger.class));
     }
 
@@ -48,16 +47,11 @@ public class AddQueueItemActionTest extends AbstractQueueActionTest {
     @Test
     public void testAddQueueItem(TestContext context){
         when(message.body()).thenReturn(buildAddQueueItemOperation("queue2", "fooBar"));
-
-        doAnswer(invocation -> {
-            var handler = createResponseHandler(invocation,1);
-            handler.handle(Future.succeededFuture());
-            return null;
-        }).when(redisAPI).rpush(anyList(), any());
+        when(redisAPI.rpush(anyList())).thenReturn(Future.succeededFuture());
 
         action.execute(message);
 
-        verify(redisAPI, times(1)).rpush(anyList(), any());
+        verify(redisAPI, times(1)).rpush(anyList());
         verify(message, times(1)).reply(eq(STATUS_OK));
 
     }
@@ -65,16 +59,11 @@ public class AddQueueItemActionTest extends AbstractQueueActionTest {
     @Test
     public void testAddQueueItemRPUSHFail(TestContext context){
         when(message.body()).thenReturn(buildAddQueueItemOperation("queue2", "fooBar"));
-
-        doAnswer(invocation -> {
-            var handler = createResponseHandler(invocation,1);
-            handler.handle(Future.failedFuture("booom"));
-            return null;
-        }).when(redisAPI).rpush(anyList(), any());
+        when(redisAPI.rpush(anyList())).thenReturn(Future.failedFuture("booom"));
 
         action.execute(message);
 
-        verify(redisAPI, times(1)).rpush(anyList(), any());
+        verify(redisAPI, times(1)).rpush(anyList());
         verify(message, times(1)).reply(isA(ReplyException.class));
     }
 }

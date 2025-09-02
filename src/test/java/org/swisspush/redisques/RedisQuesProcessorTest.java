@@ -219,7 +219,6 @@ public class RedisQuesProcessorTest extends AbstractTestCase {
             async.complete();
         });
 
-
         final JsonObject operation = buildEnqueueOperation("check-queue", "hello");
         eventBusSend(operation, reply -> context.assertEquals(OK, reply.result().body().getString(STATUS)));
     }

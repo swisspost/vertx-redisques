@@ -6,13 +6,13 @@ import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
-import io.vertx.redis.client.RedisAPI;
 import io.vertx.redis.client.Response;
 import io.vertx.redis.client.impl.types.NumberType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.performance.UpperBoundParallel;
+import org.swisspush.redisques.queue.RedisService;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -28,7 +28,6 @@ import java.util.function.BiConsumer;
 
 import static io.vertx.core.Future.failedFuture;
 import static io.vertx.core.Future.succeededFuture;
-import static io.vertx.redis.client.Command.LLEN;
 import static java.lang.System.currentTimeMillis;
 import static org.swisspush.redisques.util.RedisquesAPI.MONITOR_QUEUE_NAME;
 import static org.swisspush.redisques.util.RedisquesAPI.MONITOR_QUEUE_SIZE;
@@ -69,7 +68,7 @@ public class QueueStatisticsCollector {
     private final Map<String, Long> queueSlowDownTime = new HashMap<>();
     private final ConcurrentMap<String, AtomicLong> queueMessageSpeedCtr = new ConcurrentHashMap<>();
     private volatile Map<String, Long> queueMessageSpeed = new HashMap<>();
-    private final RedisProvider redisProvider;
+    private final RedisService redisService;
     private final String queuePrefix;
     private final Vertx vertx;
     private final RedisQuesExceptionFactory exceptionFactory;
@@ -77,14 +76,14 @@ public class QueueStatisticsCollector {
     private final UpperBoundParallel upperBoundParallel;
 
     public QueueStatisticsCollector(
-        RedisProvider redisProvider,
-        String queuePrefix,
-        Vertx vertx,
-        RedisQuesExceptionFactory exceptionFactory,
-        Semaphore redisRequestQuota,
-        int speedIntervalSec
+            RedisService redisService,
+            String queuePrefix,
+            Vertx vertx,
+            RedisQuesExceptionFactory exceptionFactory,
+            Semaphore redisRequestQuota,
+            int speedIntervalSec
     ) {
-        this.redisProvider = redisProvider;
+        this.redisService = redisService;
         this.queuePrefix = queuePrefix;
         this.vertx = vertx;
         this.exceptionFactory = exceptionFactory;
@@ -181,16 +180,22 @@ public class QueueStatisticsCollector {
         upperBoundParallel.request(redisRequestQuota, null, new UpperBoundParallel.Mentor<Void>() {
             int i = 0;
             final int size = queues.size();
-            @Override public boolean runOneMore(BiConsumer<Throwable, Void> onDone, Void ctx) {
+
+            @Override
+            public boolean runOneMore(BiConsumer<Throwable, Void> onDone, Void ctx) {
                 String queueName = queues.getString(i++);
                 resetQueueFailureStatistics(queueName, onDone);
                 return i >= size;
             }
-            @Override public boolean onError(Throwable ex, Void ctx) {
+
+            @Override
+            public boolean onError(Throwable ex, Void ctx) {
                 onDone.accept(ex, null);
                 return false;
             }
-            @Override public void onDone(Void ctx) {
+
+            @Override
+            public void onDone(Void ctx) {
                 onDone.accept(null, null);
             }
         });
@@ -361,21 +366,18 @@ public class QueueStatisticsCollector {
                 obj.put(QUEUE_FAILURES, failures);
                 obj.put(QUEUE_SLOWDOWNTIME, slowDownTime);
                 obj.put(QUEUE_BACKPRESSURE, backpressureTime);
-                redisProvider.redis()
-                        .onSuccess(redisAPI -> {
-                            redisAPI.hset(List.of(STATSKEY, queueName, obj.toString()), ev -> {
-                                onDone.accept(ev.failed() ? exceptionFactory.newException("redisAPI.hset() failed", ev.cause()) : null, null);
-                            });
-                        })
-                        .onFailure(ex -> onDone.accept(exceptionFactory.newException("redisProvider.redis() failed", ex), null));
+                redisService.hset(STATSKEY, queueName, obj.toString())
+                        .onComplete(event ->
+                                onDone.accept(event.failed() ? exceptionFactory.newException("redisAPI.hset() failed", event.cause()) : null, null))
+                        .onFailure(ex ->
+                                onDone.accept(exceptionFactory.newException("redisProvider.redis() failed", ex), null));
+
             } else {
-                redisProvider.redis()
-                        .onSuccess(redisAPI -> {
-                            redisAPI.hdel(List.of(STATSKEY, queueName), ev -> {
-                                onDone.accept(ev.failed() ? exceptionFactory.newException("redisAPI.hdel() failed", ev.cause()) : null, null);
-                            });
-                        })
-                        .onFailure(ex -> onDone.accept(exceptionFactory.newException("redisProvider.redis() failed", ex), null));
+                redisService.hdel(STATSKEY, queueName)
+                        .onComplete(ev ->
+                                onDone.accept(ev.failed() ? exceptionFactory.newException("redisAPI.hdel() failed", ev.cause()) : null, null))
+                        .onFailure(ex ->
+                                onDone.accept(exceptionFactory.newException("redisProvider.redis() failed", ex), null));
             }
         } catch (RuntimeException ex) {
             onDone.accept(ex, null);
@@ -470,34 +472,18 @@ public class QueueStatisticsCollector {
         var ctx = new RequestCtx();
         ctx.queueNames = queues;
         step1(ctx).compose(
-                nothing1 -> step2(ctx).compose(
-                        nothing2 -> step3(ctx).compose(
-                                        nothing3 -> step4(ctx).compose(
-                                                nothing4 -> step5(ctx))
-                                ))).onComplete(promise);
+                nothing2 -> step2(ctx).compose(
+                        nothing3 -> step3(ctx).compose(
+                                nothing4 -> step4(ctx))
+                )).onComplete(promise);
         return promise.future();
     }
+
 
     /**
-     * <p>init redis connection.</p>
+     * <p>Query queue lengths.</p>
      */
     Future<Void> step1(RequestCtx ctx) {
-        final Promise<Void> promise = Promise.promise();
-        redisProvider.redis()
-                .onFailure(throwable -> {
-                    promise.fail(new Exception("Redis: Failed to get queue length.", throwable));
-                })
-                .onSuccess(redisAPI -> {
-                    assert redisAPI != null;
-                    ctx.redisAPI = redisAPI;
-                    promise.complete();
-                });
-        return promise.future();
-    }
-
-    /** <p>Query queue lengths.</p> */
-    Future<Void> step2(RequestCtx ctx) {
-        assert ctx.redisAPI != null;
         int numQueues = ctx.queueNames.size();
         log.debug("About to perform {} requests to redis just for monitoring", numQueues);
         long begRedisRequestsEpochMs = currentTimeMillis();
@@ -507,31 +493,37 @@ public class QueueStatisticsCollector {
         var upperBoundPromise = Promise.<Void>promise();
         upperBoundParallel.request(redisRequestQuota, ctx, new UpperBoundParallel.Mentor<>() {
             Iterator<String> queueNamesIter = ctx.queueNames.iterator();
-            @Override public boolean runOneMore(BiConsumer<Throwable, Void> onDone, RequestCtx ctx) {
+
+            @Override
+            public boolean runOneMore(BiConsumer<Throwable, Void> onDone, RequestCtx ctx) {
                 if (queueNamesIter.hasNext()) {
                     String queueName = queueNamesIter.next();
                     /* [TODO](https://github.com/swisspost/vertx-redisques/issues/198) */
-                    vertx.executeBlocking(() -> {
-                        return ctx.redisAPI.send(LLEN, queuePrefix + queueName);
-                    }).compose((Future<Response> rspWrappedInsideAFuture) -> {
-                        return rspWrappedInsideAFuture;
-                    }).<Void>compose((Response rsp) -> {
-                        NumberType num = (NumberType) rsp;
-                        ctx.queueLengthList.add(num);
-                        onDone.accept(null, null);
-                        return succeededFuture();
-                    }).onFailure((Throwable ex) -> {
-                        onDone.accept(exceptionFactory.newException(ex), null);
-                    });
+                    vertx.executeBlocking(() ->
+                                    redisService.llen(queuePrefix + queueName))
+                            .compose((Future<Response> rspWrappedInsideAFuture) ->
+                                    rspWrappedInsideAFuture).<Void>compose((Response rsp) ->
+                            {
+                                NumberType num = (NumberType) rsp;
+                                ctx.queueLengthList.add(num);
+                                onDone.accept(null, null);
+                                return succeededFuture();
+                            }).onFailure((Throwable ex) -> {
+                                onDone.accept(exceptionFactory.newException(ex), null);
+                            });
                 }
                 return queueNamesIter.hasNext();
             }
-            @Override public boolean onError(Throwable ex, RequestCtx ctx) {
+
+            @Override
+            public boolean onError(Throwable ex, RequestCtx ctx) {
                 upperBoundPromise.fail(exceptionFactory.newException(
                         "Unexpected queue length result", ex));
                 return false;
             }
-            @Override public void onDone(RequestCtx ctx) {
+
+            @Override
+            public void onDone(RequestCtx ctx) {
                 upperBoundPromise.complete();
             }
         });
@@ -545,7 +537,7 @@ public class QueueStatisticsCollector {
             }
             if (ctx.queueLengthList.size() != ctx.queueNames.size()) {
                 return failedFuture(exceptionFactory.newException("Unexpected queue length result with unequal size "
-                    + ctx.queueNames.size() + " : " + ctx.queueLengthList.size()));
+                        + ctx.queueNames.size() + " : " + ctx.queueLengthList.size()));
             }
             return succeededFuture();
         }).compose((Void v) -> {
@@ -555,14 +547,16 @@ public class QueueStatisticsCollector {
             }
             if (ctx.queueLengthList.size() != ctx.queueNames.size()) {
                 return failedFuture(exceptionFactory.newException("Unexpected queue length result with unequal size "
-                    + ctx.queueNames.size() + " : " + ctx.queueLengthList.size()));
+                        + ctx.queueNames.size() + " : " + ctx.queueLengthList.size()));
             }
             return succeededFuture();
         });
     }
 
-    /** <p>init queue statistics.</p> */
-    Future<Void> step3(RequestCtx ctx) {
+    /**
+     * <p>init queue statistics.</p>
+     */
+    Future<Void> step2(RequestCtx ctx) {
         assert ctx.queueLengthList != null;
         // populate the list of queue statistics in a Hashmap for later fast merging
         ctx.statistics = new HashMap<>(ctx.queueNames.size());
@@ -579,11 +573,9 @@ public class QueueStatisticsCollector {
      * <p>retrieve all available failure statistics from Redis and merge them
      * together with the previous populated common queue statistics map</p>
      */
-    Future<Void> step4(RequestCtx ctx) {
-        assert ctx.redisAPI != null;
+    Future<Void> step3(RequestCtx ctx) {
         assert ctx.statistics != null;
-
-        return vertx.executeBlocking(executeBlockingPromise -> ctx.redisAPI.hvals(STATSKEY, statisticsSet -> {
+        return vertx.executeBlocking(executeBlockingPromise -> redisService.hvals(STATSKEY).onComplete(statisticsSet -> {
             if (statisticsSet == null || statisticsSet.failed()) {
                 executeBlockingPromise.fail(new RuntimeException("statistics queue evaluation failed",
                         statisticsSet == null ? null : statisticsSet.cause()));
@@ -593,11 +585,14 @@ public class QueueStatisticsCollector {
             assert ctx.redisFailStats != null;
             executeBlockingPromise.complete();
         }));
+
     }
 
-    /** <p>put received statistics data to the former prepared statistics objects per
-     *  queue.</p> */
-    Future<JsonObject> step5(RequestCtx ctx){
+    /**
+     * <p>put received statistics data to the former prepared statistics objects per
+     * queue.</p>
+     */
+    Future<JsonObject> step4(RequestCtx ctx) {
         assert ctx.redisFailStats != null;
         return vertx.executeBlocking(executeBlockingPromise -> {
             for (Response response : ctx.redisFailStats) {
@@ -648,11 +643,12 @@ public class QueueStatisticsCollector {
         event.reply(new JsonObject().put(STATUS, OK).put(STATISTIC_QUEUE_SPEED, speed));
     }
 
-    /** <p>Holds intermediate state related to a {@link #getQueueStatistics(List)}
-     *  request.</p> */
+    /**
+     * <p>Holds intermediate state related to a {@link #getQueueStatistics(List)}
+     * request.</p>
+     */
     private static class RequestCtx {
         private List<String> queueNames; // Requested queues to analyze
-        private RedisAPI redisAPI;
         private List<NumberType> queueLengthList;
         private HashMap<String, QueueStatistic> statistics; // Stats we're going to populate
         private Response redisFailStats; // failure stats we got from redis.

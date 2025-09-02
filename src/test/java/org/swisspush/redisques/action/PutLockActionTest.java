@@ -31,8 +31,7 @@ public class PutLockActionTest extends AbstractQueueActionTest {
     @Override
     public void setup() {
         super.setup();
-        action = new PutLockAction(vertx, redisProvider,
-                "addr", "q-", "prefix-", "c-", "l-",
+        action = new PutLockAction(vertx, redisService, keyspaceHelper,
                 new ArrayList<>(), exceptionFactory, Mockito.mock(QueueStatisticsCollector.class), Mockito.mock(Logger.class));
     }
 
@@ -71,15 +70,11 @@ public class PutLockActionTest extends AbstractQueueActionTest {
     public void testPutLock(TestContext context){
         when(message.body()).thenReturn(buildPutLockOperation("q1", "geronimo"));
 
-        doAnswer(invocation -> {
-            var handler = createResponseHandler(invocation,1);
-            handler.handle(Future.succeededFuture());
-            return null;
-        }).when(redisAPI).hmset(anyList(), any());
+        when(redisAPI.hmset(anyList())).thenReturn(Future.succeededFuture());
 
         action.execute(message);
 
-        verify(redisAPI, times(1)).hmset(anyList(), any());
+        verify(redisAPI, times(1)).hmset(anyList());
         verify(message, times(1)).reply(eq(STATUS_OK));
     }
 
@@ -87,15 +82,10 @@ public class PutLockActionTest extends AbstractQueueActionTest {
     public void testPutLockHMSETFail(TestContext context){
         when(message.body()).thenReturn(buildPutLockOperation("q1", "geronimo"));
 
-        doAnswer(invocation -> {
-            var handler = createResponseHandler(invocation,1);
-            handler.handle(Future.failedFuture("booom"));
-            return null;
-        }).when(redisAPI).hmset(anyList(), any());
-
+        when(redisAPI.hmset(anyList())).thenReturn(Future.failedFuture("booom"));
         action.execute(message);
 
-        verify(redisAPI, times(1)).hmset(anyList(), any());
+        verify(redisAPI, times(1)).hmset(anyList());
         verify(message, times(1)).reply(isA(ReplyException.class));
     }
 }

@@ -43,8 +43,7 @@ public class EnqueueActionTest extends AbstractQueueActionTest {
         MeterRegistry meterRegistry = new SimpleMeterRegistry();
         enqueueCounterSuccess = meterRegistry.counter(MetricMeter.ENQUEUE_SUCCESS.getId(), MetricTags.IDENTIFIER.getId(), "foo");
         enqueueCounterFail = meterRegistry.counter(MetricMeter.ENQUEUE_FAIL.getId(), MetricTags.IDENTIFIER.getId(), "foo");
-        action = new EnqueueAction(vertx, redisProvider,
-                "addr", "q-", "prefix-", "c-", "l-",
+        action = new EnqueueAction(vertx, redisService, keyspaceHelper,
                 new ArrayList<>(), exceptionFactory, Mockito.mock(QueueStatisticsCollector.class),
                 Mockito.mock(Logger.class), memoryUsageProvider, 80, meterRegistry, "foo");
     }

@@ -17,6 +17,7 @@ import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.swisspush.redisques.queue.RedisService;
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.exceptions.JedisConnectionException;
 
@@ -45,36 +46,38 @@ public class RedisBasedLockTest {
     public Timeout rule = Timeout.seconds(5);
 
     @BeforeClass
-    public static void setupLock(){
+    public static void setupLock() {
         vertx = Vertx.vertx();
         RedisAPI redisAPI = RedisAPI.api(new RedisClient(vertx, new NetClientOptions(), new PoolOptions(),
                 new RedisStandaloneConnectOptions(), TracingPolicy.IGNORE));
-        redisBasedLock = new RedisBasedLock(() -> Future.succeededFuture(redisAPI), newWastefulExceptionFactory());
+
+        redisBasedLock = new RedisBasedLock(new RedisService(() -> Future.succeededFuture(redisAPI)),
+                newWastefulExceptionFactory());
     }
 
     @Before
-    public void setUp(){
+    public void setUp() {
         jedis = new Jedis("localhost");
         try {
             jedis.flushAll();
-        } catch (JedisConnectionException e){
+        } catch (JedisConnectionException e) {
             org.junit.Assume.assumeNoException("Ignoring this test because no running redis is available. This is the case during release", e);
         }
     }
 
     @After
-    public void tearDown(){
-        if(jedis != null){
+    public void tearDown() {
+        if (jedis != null) {
             jedis.close();
         }
     }
 
-    private String lockKey(String lock){
+    private String lockKey(String lock) {
         return RedisBasedLock.STORAGE_PREFIX + lock;
     }
 
     @Test
-    public void testAcquireLock(TestContext context){
+    public void testAcquireLock(TestContext context) {
         Async async = context.async();
         context.assertFalse(jedis.exists(lockKey(lock_1)));
         redisBasedLock.acquireLock(lock_1, token_1, 500).onComplete(event -> {
@@ -87,7 +90,7 @@ public class RedisBasedLockTest {
     }
 
     @Test
-    public void testAcquireMultipleLocks(TestContext context){
+    public void testAcquireMultipleLocks(TestContext context) {
         Async async = context.async();
         context.assertFalse(jedis.exists(lockKey(lock_1)));
         redisBasedLock.acquireLock(lock_1, token_1, 500).onComplete(event -> {
@@ -112,7 +115,7 @@ public class RedisBasedLockTest {
     }
 
     @Test
-    public void testAcquireLockAgain(TestContext context){
+    public void testAcquireLockAgain(TestContext context) {
         Async async = context.async();
         context.assertFalse(jedis.exists(lockKey(lock_1)));
         redisBasedLock.acquireLock(lock_1, token_1, 300).onComplete(event -> {
@@ -131,7 +134,7 @@ public class RedisBasedLockTest {
     }
 
     @Test
-    public void testAcquireLockAfterExpired(TestContext context){
+    public void testAcquireLockAfterExpired(TestContext context) {
         Async async = context.async();
         context.assertFalse(jedis.exists(lockKey(lock_1)));
         redisBasedLock.acquireLock(lock_1, token_1, 300).onComplete(event -> {
@@ -151,7 +154,7 @@ public class RedisBasedLockTest {
     }
 
     @Test
-    public void testReleaseNonExistingLock(TestContext context){
+    public void testReleaseNonExistingLock(TestContext context) {
         Async async = context.async();
         context.assertFalse(jedis.exists(lockKey(lock_1)));
         redisBasedLock.releaseLock(lock_1, token_1).onComplete(event -> {
@@ -163,7 +166,7 @@ public class RedisBasedLockTest {
     }
 
     @Test
-    public void testReleaseExpiredLock(TestContext context){
+    public void testReleaseExpiredLock(TestContext context) {
         Async async = context.async();
         context.assertFalse(jedis.exists(lockKey(lock_1)));
         redisBasedLock.acquireLock(lock_1, token_1, 500).onComplete(event -> {
@@ -182,7 +185,7 @@ public class RedisBasedLockTest {
     }
 
     @Test
-    public void testReleaseExistingLockWithCorrectToken(TestContext context){
+    public void testReleaseExistingLockWithCorrectToken(TestContext context) {
         Async async = context.async();
         context.assertFalse(jedis.exists(lockKey(lock_1)));
         redisBasedLock.acquireLock(lock_1, token_1, 500).onComplete(event -> {
@@ -200,7 +203,7 @@ public class RedisBasedLockTest {
     }
 
     @Test
-    public void testReleaseExistingLockWithWrongToken(TestContext context){
+    public void testReleaseExistingLockWithWrongToken(TestContext context) {
         Async async = context.async();
         context.assertFalse(jedis.exists(lockKey(lock_1)));
         redisBasedLock.acquireLock(lock_1, token_1, 500).onComplete(event -> {
@@ -219,7 +222,7 @@ public class RedisBasedLockTest {
     }
 
     @Test
-    public void testReleaseLockRespectingOwnership(TestContext context){
+    public void testReleaseLockRespectingOwnership(TestContext context) {
         Async async = context.async();
         context.assertFalse(jedis.exists(lockKey(lock_1)));
         redisBasedLock.acquireLock(lock_1, token_1, 500).onComplete(event -> {
@@ -250,7 +253,7 @@ public class RedisBasedLockTest {
         });
     }
 
-    private void waitMaxUntilExpired(String key, long expireMs){
+    private void waitMaxUntilExpired(String key, long expireMs) {
         await().pollInterval(50, MILLISECONDS).atMost(Duration.ofMillis(expireMs)).until(() -> !jedis.exists(key));
     }
 }

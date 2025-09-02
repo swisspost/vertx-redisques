@@ -1,20 +1,19 @@
 package org.swisspush.redisques.handler;
 
 import io.vertx.core.AsyncResult;
+import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
-import io.vertx.redis.client.Command;
-import io.vertx.redis.client.RedisAPI;
 import io.vertx.redis.client.Response;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.swisspush.redisques.performance.UpperBoundParallel;
+import org.swisspush.redisques.queue.RedisService;
 import org.swisspush.redisques.util.HandlerUtil;
-import org.swisspush.redisques.util.RedisProvider;
 
 import java.util.Iterator;
 import java.util.List;
@@ -42,7 +41,7 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
     private final Message<JsonObject> event;
     private final Optional<Pattern> filterPattern;
     private final String queuesPrefix;
-    private final RedisProvider redisProvider;
+    private final RedisService redisService;
     private final UpperBoundParallel upperBoundParallel;
     private final RedisQuesExceptionFactory exceptionFactory;
     private final Semaphore redisRequestQuota;
@@ -52,7 +51,7 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
             Message<JsonObject> event,
             Optional<Pattern> filterPattern,
             String queuesPrefix,
-            RedisProvider redisProvider,
+            RedisService redisService,
             RedisQuesExceptionFactory exceptionFactory,
             Semaphore redisRequestQuota
     ) {
@@ -60,7 +59,7 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
         this.event = event;
         this.filterPattern = filterPattern;
         this.queuesPrefix = queuesPrefix;
-        this.redisProvider = redisProvider;
+        this.redisService = redisService;
         this.upperBoundParallel = new UpperBoundParallel(vertx, exceptionFactory);
         this.exceptionFactory = exceptionFactory;
         this.redisRequestQuota = redisRequestQuota;
@@ -73,8 +72,7 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
             event.reply(new JsonObject().put(STATUS, ERROR));
             return;
         }
-        var ctx = new Object(){
-            RedisAPI redis;
+        var ctx = new Object() {
             Iterator<String> iter;
             List<String> queues = HandlerUtil.filterByPattern(handleQueues.result(), filterPattern);
             int iNumberResult;
@@ -91,29 +89,33 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
             return;
         }
 
-        redisProvider.redis().compose((RedisAPI redis_) -> {
-            ctx.redis = redis_;
+        Future.succeededFuture().compose(o -> {
             ctx.queueLengths = new int[ctx.queues.size()];
             ctx.iter = ctx.queues.iterator();
             var p = Promise.<Void>promise();
             upperBoundParallel.request(redisRequestQuota, null, new UpperBoundParallel.Mentor<Void>() {
-                @Override public boolean runOneMore(BiConsumer<Throwable, Void> onLLenDone, Void unused) {
+                @Override
+                public boolean runOneMore(BiConsumer<Throwable, Void> onLLenDone, Void unused) {
                     if (ctx.iter.hasNext()) {
                         String queue = ctx.iter.next();
                         int iNum = ctx.iNumberResult++;
-                        ctx.redis.send(Command.LLEN, queuesPrefix + queue).onSuccess((Response rsp) -> {
+                        redisService.llen(queuesPrefix + queue).onSuccess((Response rsp) -> {
                             ctx.queueLengths[iNum] = rsp.toInteger();
                             onLLenDone.accept(null, null);
                         }).onFailure((Throwable ex) -> onLLenDone.accept(ex, null));
                     }
                     return ctx.iter.hasNext();
                 }
-                @Override public boolean onError(Throwable ex, Void ctx_) {
+
+                @Override
+                public boolean onError(Throwable ex, Void ctx_) {
                     log.error("Unexpected queue length result", exceptionFactory.newException(ex));
                     event.reply(new JsonObject().put(STATUS, ERROR));
                     return false;
                 }
-                @Override public void onDone(Void ctx_) {
+
+                @Override
+                public void onDone(Void ctx_) {
                     p.complete();
                 }
             });
@@ -136,7 +138,7 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
                 if (jsonCreateDurationMs > 10) {
                     log.info("Creating JSON with {} entries did block this thread for {}ms",
                             ctx.queueLengths.length, jsonCreateDurationMs);
-                }else{
+                } else {
                     log.debug("Creating JSON with {} entries did block this thread for {}ms",
                             ctx.queueLengths.length, jsonCreateDurationMs);
                 }
