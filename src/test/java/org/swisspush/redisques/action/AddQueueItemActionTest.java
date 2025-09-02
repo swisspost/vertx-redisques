@@ -13,7 +13,6 @@ import org.swisspush.redisques.util.QueueStatisticsCollector;
 
 import java.util.ArrayList;
 
-import static io.vertx.core.eventbus.ReplyFailure.RECIPIENT_FAILURE;
 import static org.mockito.Mockito.*;
 import static org.swisspush.redisques.util.RedisquesAPI.buildAddQueueItemOperation;
 

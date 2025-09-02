@@ -3,7 +3,6 @@ package org.swisspush.redisques.metrics;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.netty.util.internal.StringUtil;
-import io.vertx.core.*;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
@@ -23,11 +22,7 @@ import org.swisspush.redisques.util.MetricTags;
 
 import java.net.InetAddress;
 import java.net.UnknownHostException;
-import java.util.EnumMap;
-import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 
 import static org.swisspush.redisques.util.DebugInfo.__WHERE__;
 import static org.swisspush.redisques.util.RedisquesAPI.*;

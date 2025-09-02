@@ -23,10 +23,8 @@ import org.swisspush.redisques.util.*;
 import java.util.UUID;
 import java.util.concurrent.Semaphore;
 
-import static java.lang.System.currentTimeMillis;
 import static org.swisspush.redisques.exception.RedisQuesExceptionFactory.newThriftyExceptionFactory;
 import static org.swisspush.redisques.util.RedisquesAPI.*;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.*;
 
 public class RedisQues extends AbstractVerticle {
 
@@ -165,7 +163,7 @@ public class RedisQues extends AbstractVerticle {
                 configuration.getQueueSpeedIntervalSec());
         this.queueMetrics = new QueueMetrics(vertx, keyspaceHelper, redisService, meterRegistry, configurationProvider, exceptionFactory);
 
-        queueMetrics.initMicrometerMetrics(configuration);
+        queueMetrics.initMicrometerMetrics();
         RedisquesHttpRequestHandler.init(
                 vertx, configuration, queueStatisticsCollector, dequeueStatisticCollector,
                 exceptionFactory, queueStatsRequestQuota);

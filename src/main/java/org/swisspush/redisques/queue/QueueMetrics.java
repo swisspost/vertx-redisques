@@ -19,7 +19,6 @@ import org.swisspush.redisques.util.DequeueStatisticCollector;
 import org.swisspush.redisques.util.MetricMeter;
 import org.swisspush.redisques.util.MetricTags;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
-import org.swisspush.redisques.util.RedisquesConfiguration;
 import org.swisspush.redisques.util.RedisquesConfigurationProvider;
 
 import javax.annotation.Nullable;
@@ -195,23 +194,23 @@ public class QueueMetrics {
         perQueueMetrics.remove(queueName);
     }
 
-    public void initMicrometerMetrics(RedisquesConfiguration modConfig) {
+    public void initMicrometerMetrics() {
         if(configurationProvider.configuration().getMicrometerMetricsEnabled()) {
             if (meterRegistry == null) {
                 meterRegistry = BackendRegistries.getDefaultNow();
             }
 
-            String metricsIdentifier = modConfig.getMicrometerMetricsIdentifier();
+            String metricsIdentifier = configurationProvider.configuration().getMicrometerMetricsIdentifier();
             dequeueCounter = Counter.builder(MetricMeter.DEQUEUE.getId())
                     .description(MetricMeter.DEQUEUE.getDescription()).tag(MetricTags.IDENTIFIER.getId(), metricsIdentifier).register(meterRegistry);
 
             consumerCounter = Counter.builder(MetricMeter.QUEUE_CONSUMER_COUNT.getId())
                     .description(MetricMeter.QUEUE_CONSUMER_COUNT.getDescription()).tag(MetricTags.IDENTIFIER.getId(), metricsIdentifier).register(meterRegistry);
 
-            String address = modConfig.getAddress();
-            int metricRefreshPeriod = modConfig.getMetricRefreshPeriod();
+            String address = configurationProvider.configuration().getAddress();
+            int metricRefreshPeriod = configurationProvider.configuration().getMetricRefreshPeriod();
             if (metricRefreshPeriod > 0) {
-                String identifier = modConfig.getMicrometerMetricsIdentifier();
+                String identifier = configurationProvider.configuration().getMicrometerMetricsIdentifier();
                 metricsCollector = new MetricsCollector(vertx, keyspaceHelper.getVerticleUid(), address, identifier, meterRegistry, lock, metricRefreshPeriod);
                 new MetricsCollectorScheduler(vertx, metricsCollector, metricRefreshPeriod);
             }

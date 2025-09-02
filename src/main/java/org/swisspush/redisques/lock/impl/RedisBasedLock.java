@@ -1,12 +1,7 @@
 package org.swisspush.redisques.lock.impl;
 
-import io.vertx.core.AsyncResult;
 import io.vertx.core.Future;
-import io.vertx.core.Handler;
 import io.vertx.core.Promise;
-import io.vertx.core.json.JsonArray;
-import io.vertx.redis.client.Command;
-import io.vertx.redis.client.Response;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
@@ -15,9 +10,6 @@ import org.swisspush.redisques.lock.lua.LockLuaScripts;
 import org.swisspush.redisques.lua.LuaScriptState;
 import org.swisspush.redisques.lock.lua.ReleaseLockRedisCommand;
 import org.swisspush.redisques.queue.RedisService;
-import org.swisspush.redisques.util.FailedAsyncResult;
-import org.swisspush.redisques.util.RedisProvider;
-import org.swisspush.redisques.util.RedisUtils;
 
 import java.util.Collections;
 import java.util.List;

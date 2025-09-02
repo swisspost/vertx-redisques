@@ -19,9 +19,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.Semaphore;
 
-import static org.swisspush.redisques.util.RedisquesAPI.ERROR;
-import static org.swisspush.redisques.util.RedisquesAPI.MESSAGE;
-import static org.swisspush.redisques.util.RedisquesAPI.OPERATION;
 import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.addQueueItem;
 import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.bulkDeleteLocks;
 import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.bulkDeleteQueues;

@@ -3,8 +3,9 @@ package org.swisspush.redisques.metrics;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
-import io.vertx.core.*;
+import io.vertx.core.DeploymentOptions;
 import io.vertx.core.Future;
+import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonObject;
 import io.vertx.ext.unit.Async;
 import io.vertx.ext.unit.TestContext;
@@ -13,7 +14,6 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
-import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.swisspush.redisques.AbstractTestCase;
 import org.swisspush.redisques.RedisQues;
@@ -23,7 +23,6 @@ import redis.clients.jedis.Jedis;
 
 import java.util.*;
 
-import static org.mockito.Mockito.when;
 import static org.swisspush.redisques.util.RedisquesAPI.*;
 
 /**
