@@ -18,11 +18,14 @@ import org.mockito.Mockito;
 import org.swisspush.redisques.AbstractTestCase;
 import org.swisspush.redisques.RedisQues;
 import org.swisspush.redisques.lock.Lock;
+import org.swisspush.redisques.queue.KeyspaceHelper;
 import org.swisspush.redisques.util.*;
 import redis.clients.jedis.Jedis;
 
 import java.util.*;
 
+import static org.mockito.Mockito.when;
+import static org.swisspush.redisques.queue.KeyspaceHelper.QUEUE_STATE_COUNT_KEY;
 import static org.swisspush.redisques.util.RedisquesAPI.*;
 
 /**
@@ -35,6 +38,7 @@ public class MetricsCollectorTest extends AbstractTestCase {
     private RedisQues redisQues;
     private MeterRegistry meterRegistry;
     private MetricsCollector metricsCollector;
+    private KeyspaceHelper keyspaceHelper;
     private Lock lock;
 
     private final String metricsIdentifier = "foo";
@@ -67,13 +71,16 @@ public class MetricsCollectorTest extends AbstractTestCase {
 
         lock = Mockito.mock(Lock.class);
         meterRegistry = new SimpleMeterRegistry();
-
+        keyspaceHelper = Mockito.mock(KeyspaceHelper.class);
         redisQues = RedisQues.builder()
                 .withRedisquesRedisquesConfigurationProvider(new DefaultRedisquesConfigurationProvider(vertx, config))
                 .withMeterRegistry(meterRegistry)
                 .build();
 
-        metricsCollector = new MetricsCollector(vertx, redisQues.getUid(), "redisques", "foo",
+        when(keyspaceHelper.getVerticleUid()).thenReturn(redisQues.getUid());
+        when(keyspaceHelper.getAddress()).thenReturn("redisques");
+        when(keyspaceHelper.getMetricsCollectorAddress()).thenReturn( "redisques"  + "-" + redisQues.getUid() + "-" + QUEUE_STATE_COUNT_KEY);
+        metricsCollector = new MetricsCollector(vertx, keyspaceHelper, "foo",
                 meterRegistry, lock, 10);
 
         vertx.deployVerticle(redisQues, new DeploymentOptions().setConfig(config), context.asyncAssertSuccess(event -> {
@@ -104,7 +111,7 @@ public class MetricsCollectorTest extends AbstractTestCase {
                     } catch (InterruptedException e) {
                         throw new RuntimeException(e);
                     }
-                    Mockito.when(lock.acquireLock(Mockito.anyString(), Mockito.anyString(), Mockito.anyLong())).thenReturn(Future.succeededFuture(true));
+                    when(lock.acquireLock(Mockito.anyString(), Mockito.anyString(), Mockito.anyLong())).thenReturn(Future.succeededFuture(true));
                     metricsCollector.updateMyQueuesStateCount().onComplete(event -> {
                         context.assertEquals(3.0, getQueueReadySizeGauge().value());
                         context.assertEquals(0.0, getQueueConsumingSizeGauge().value());
@@ -134,7 +141,7 @@ public class MetricsCollectorTest extends AbstractTestCase {
                     eventBusSend(buildEnqueueOperation("queueEnqueue2", "testItem3"), messageEnqueue3 -> {
                         context.assertEquals(OK, messageEnqueue3.result().body().getString(STATUS));
 
-                        Mockito.when(lock.acquireLock(Mockito.anyString(), Mockito.anyString(), Mockito.anyLong())).thenReturn(Future.succeededFuture(true));
+                        when(lock.acquireLock(Mockito.anyString(), Mockito.anyString(), Mockito.anyLong())).thenReturn(Future.succeededFuture(true));
                         metricsCollector.updateActiveQueuesCount().onComplete(event -> {
                             context.assertEquals(2.0, getActiveQueuesCountGauge().value());
 
@@ -157,14 +164,14 @@ public class MetricsCollectorTest extends AbstractTestCase {
         eventBusSend(buildEnqueueOperation("queueEnqueue", "helloEnqueue"), message -> {
             context.assertEquals(OK, message.result().body().getString(STATUS));
 
-            Mockito.when(lock.acquireLock(Mockito.anyString(), Mockito.anyString(), Mockito.anyLong())).thenReturn(Future.succeededFuture(true));
+            when(lock.acquireLock(Mockito.anyString(), Mockito.anyString(), Mockito.anyLong())).thenReturn(Future.succeededFuture(true));
             metricsCollector.updateActiveQueuesCount().onComplete(event -> {
                 context.assertEquals(1.0, getActiveQueuesCountGauge().value());
 
                 eventBusSend(buildEnqueueOperation("queueEnqueue2", "helloEnqueue2"), message2 -> {
                     context.assertEquals(OK, message2.result().body().getString(STATUS));
 
-                    Mockito.when(lock.acquireLock(Mockito.anyString(), Mockito.anyString(), Mockito.anyLong())).thenReturn(Future.succeededFuture(false));
+                    when(lock.acquireLock(Mockito.anyString(), Mockito.anyString(), Mockito.anyLong())).thenReturn(Future.succeededFuture(false));
                     metricsCollector.updateActiveQueuesCount().onComplete(event2 -> {
                         context.assertEquals(1.0, getActiveQueuesCountGauge().value(), "Queue count should still be 1");
                         async.complete();
@@ -183,14 +190,14 @@ public class MetricsCollectorTest extends AbstractTestCase {
         eventBusSend(buildEnqueueOperation("queueEnqueue", "helloEnqueue"), message -> {
             context.assertEquals(OK, message.result().body().getString(STATUS));
 
-            Mockito.when(lock.acquireLock(Mockito.anyString(), Mockito.anyString(), Mockito.anyLong())).thenReturn(Future.succeededFuture(true));
+            when(lock.acquireLock(Mockito.anyString(), Mockito.anyString(), Mockito.anyLong())).thenReturn(Future.succeededFuture(true));
             metricsCollector.updateActiveQueuesCount().onComplete(event -> {
                 context.assertEquals(1.0, getActiveQueuesCountGauge().value());
 
                 eventBusSend(buildEnqueueOperation("queueEnqueue2", "helloEnqueue2"), message2 -> {
                     context.assertEquals(OK, message2.result().body().getString(STATUS));
 
-                    Mockito.when(lock.acquireLock(Mockito.anyString(), Mockito.anyString(), Mockito.anyLong())).thenReturn(Future.failedFuture("boooom"));
+                    when(lock.acquireLock(Mockito.anyString(), Mockito.anyString(), Mockito.anyLong())).thenReturn(Future.failedFuture("boooom"));
                     metricsCollector.updateActiveQueuesCount().onComplete(event2 -> {
                         context.assertEquals(1.0, getActiveQueuesCountGauge().value(), "Queue count should still be 1");
                         async.complete();

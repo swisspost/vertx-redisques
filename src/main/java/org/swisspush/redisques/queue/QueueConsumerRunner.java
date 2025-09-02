@@ -14,6 +14,7 @@ import io.vertx.redis.client.Response;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.swisspush.redisques.QueueState;
+import org.swisspush.redisques.QueueStatsService;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.util.QueueConfiguration;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
@@ -40,6 +41,7 @@ public class QueueConsumerRunner {
     private final RedisService redisService;
     private final RedisQuesExceptionFactory exceptionFactory;
     private final QueueMetrics metrics;
+    private final QueueStatsService queueStatsService;
     private final KeyspaceHelper keyspaceHelper;
     private final RedisquesConfigurationProvider configurationProvider;
     private final QueueStatisticsCollector queueStatisticsCollector;
@@ -50,13 +52,15 @@ public class QueueConsumerRunner {
     // The queues this verticle instance is registered as a consumer
     private final Map<String, QueueProcessingState> myQueues = new HashMap<>();
 
-    public QueueConsumerRunner(Vertx vertx, RedisService redisService, QueueMetrics metrics, KeyspaceHelper keyspaceHelper,
+    public QueueConsumerRunner(Vertx vertx, RedisService redisService, QueueMetrics metrics, QueueStatsService queueStatsService,
+                               KeyspaceHelper keyspaceHelper,
                                RedisquesConfigurationProvider configurationProvider, RedisQuesExceptionFactory exceptionFactory,
                                QueueStatisticsCollector queueStatisticsCollector) {
         this.vertx = vertx;
         this.redisService = redisService;
         this.exceptionFactory = exceptionFactory;
         this.metrics = metrics;
+        this.queueStatsService = queueStatsService;
         this.keyspaceHelper = keyspaceHelper;
         this.configurationProvider = configurationProvider;
         this.queueStatisticsCollector = queueStatisticsCollector;
@@ -85,7 +89,7 @@ public class QueueConsumerRunner {
         });
         int metricRefreshPeriod = configurationProvider.configuration().getMetricRefreshPeriod();
         if (metricRefreshPeriod > 0) {
-            vertx.eventBus().consumer(metrics.getMetricsCollectorAddress(), (Handler<Message<Void>>) event -> {
+            vertx.eventBus().consumer(keyspaceHelper.getMetricsCollectorAddress(), (Handler<Message<Void>>) event -> {
                 Map<QueueState, Long> stateCount = getQueueStateCount();
                 JsonObject jsonObject = new JsonObject();
                 stateCount.forEach((queueState, aLong) -> jsonObject.put(queueState.name(), aLong));
@@ -198,8 +202,8 @@ public class QueueConsumerRunner {
                     Response response = answer.result();
                     log.trace("RedisQues read queue lindex result: {}", response);
                     if (response != null) {
-                        metrics.createDequeueStatisticIfMissing(queueName);
-                        metrics.dequeueStatisticSetLastDequeueAttemptTimestamp(queueName, System.currentTimeMillis());
+                        queueStatsService.createDequeueStatisticIfMissing(queueName);
+                        queueStatsService.dequeueStatisticSetLastDequeueAttemptTimestamp(queueName, System.currentTimeMillis());
                         processMessageWithTimeout(queueName, response.toString(), success -> {
 
                             // update the queue failure count and get a retry interval
@@ -259,7 +263,7 @@ public class QueueConsumerRunner {
                         // This can happen when requests to consume happen at the same moment the queue is emptied.
                         log.debug("Got a request to consume from empty queue {}", queueName);
                         setMyQueuesState(queueName, QueueState.READY);
-                        metrics.dequeueStatisticMarkedForRemoval(queueName);
+                        queueStatsService.dequeueStatisticMarkedForRemoval(queueName);
                         promise.complete();
 
                     }
@@ -294,7 +298,7 @@ public class QueueConsumerRunner {
         log.trace("RedsQues reschedule after failure for queue: {}", queueName);
 
         vertx.setTimer(retryInSeconds * 1000L, timerId -> {
-            metrics.dequeueStatisticSetNextDequeueDueTimestamp(queueName, retryInSeconds * 1000L);
+            queueStatsService.dequeueStatisticSetNextDequeueDueTimestamp(queueName, retryInSeconds * 1000L);
             if (log.isDebugEnabled()) {
                 log.debug("RedisQues re-notify the consumer of queue '{}' at {}", queueName, new Date(System.currentTimeMillis()));
             }
@@ -334,8 +338,8 @@ public class QueueConsumerRunner {
                 if (reply.succeeded()) {
                     success = OK.equals(reply.result().body().getString(STATUS));
                     if (success) {
-                        metrics.dequeueStatisticSetLastDequeueSuccessTimestamp(queue,System.currentTimeMillis());
-                        metrics.dequeueStatisticSetNextDequeueDueTimestamp(queue,null);
+                        queueStatsService.dequeueStatisticSetLastDequeueSuccessTimestamp(queue,System.currentTimeMillis());
+                        queueStatsService.dequeueStatisticSetNextDequeueDueTimestamp(queue,null);
                     }
                 } else {
                     log.info("RedisQues QUEUE_ERROR: Consumer failed {} queue: {}",

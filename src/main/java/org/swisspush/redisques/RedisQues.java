@@ -33,11 +33,6 @@ public class RedisQues extends AbstractVerticle {
     // Identifies the consumer
     private final String uid = UUID.randomUUID().toString();
     private final MeterRegistry meterRegistry;
-
-    public String getUid() {
-        return uid;
-    }
-
     private RedisService redisService;
 
     // The queues this verticle instance is registered as a consumer
@@ -50,6 +45,7 @@ public class RedisQues extends AbstractVerticle {
     private RedisProvider redisProvider;
     private QueueActionsService queueActionsService;
     private QueueRegistryService queueRegistryService;
+    private QueueStatsService queueStatsService;
     private QueueMetrics queueMetrics;
     private KeyspaceHelper keyspaceHelper;
 
@@ -119,6 +115,9 @@ public class RedisQues extends AbstractVerticle {
         return new RedisQuesBuilder();
     }
 
+    public String getUid() {
+        return uid;
+    }
 
     @Override
     public void start(Promise<Void> promise) {
@@ -150,8 +149,6 @@ public class RedisQues extends AbstractVerticle {
             }
         });
         redisService = new RedisService(redisProvider);
-
-
     }
 
     private void initialize() {
@@ -161,12 +158,15 @@ public class RedisQues extends AbstractVerticle {
         this.queueStatisticsCollector = new QueueStatisticsCollector(
                 redisService, keyspaceHelper.getQueuesPrefix(), vertx, exceptionFactory, redisMonitoringReqQuota,
                 configuration.getQueueSpeedIntervalSec());
-        this.queueMetrics = new QueueMetrics(vertx, keyspaceHelper, redisService, meterRegistry, configurationProvider, exceptionFactory);
 
-        queueMetrics.initMicrometerMetrics();
-        RedisquesHttpRequestHandler.init(
-                vertx, configuration, queueStatisticsCollector, dequeueStatisticCollector,
+        this.queueStatsService = new QueueStatsService(
+                vertx, configuration, keyspaceHelper.getAddress(), queueStatisticsCollector, dequeueStatisticCollector,
                 exceptionFactory, queueStatsRequestQuota);
+
+        this.queueMetrics = new QueueMetrics(vertx, keyspaceHelper, redisService, meterRegistry, configurationProvider, exceptionFactory);
+        queueMetrics.initMicrometerMetrics();
+
+        RedisquesHttpRequestHandler.init(vertx, configuration, queueStatsService, exceptionFactory);
 
         // only initialize memoryUsageProvider when not provided in the constructor
         if (memoryUsageProvider == null) {
@@ -177,11 +177,10 @@ public class RedisQues extends AbstractVerticle {
         assert getQueuesItemsCountRedisRequestQuota != null;
 
         queueActionsService = new QueueActionsService(vertx, redisService, keyspaceHelper, configurationProvider, exceptionFactory, memoryUsageProvider, queueStatisticsCollector, getQueuesItemsCountRedisRequestQuota, meterRegistry);
-        queueRegistryService = new QueueRegistryService(vertx, redisService, configurationProvider, exceptionFactory, keyspaceHelper, queueMetrics, queueStatisticsCollector , checkQueueRequestsQuota, activeQueueRegRefreshReqQuota);
+        queueRegistryService = new QueueRegistryService(vertx, redisService, configurationProvider, exceptionFactory, keyspaceHelper, queueMetrics, queueStatsService, queueStatisticsCollector , checkQueueRequestsQuota, activeQueueRegRefreshReqQuota);
 
         // Handles operations
         vertx.eventBus().consumer(configurationProvider.configuration().getAddress(), operationsHandler());
-
         registerMetricsGathering(configuration);
     }
 

@@ -24,6 +24,7 @@ import java.util.Optional;
 
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.*;
+import static org.swisspush.redisques.queue.KeyspaceHelper.QUEUE_STATE_COUNT_KEY;
 
 /**
  * Tests for {@link EnqueueAction} class.
@@ -93,6 +94,7 @@ public class EnqueueActionTest extends AbstractQueueActionTest {
 
     @Test
     public void testEnqueueWhenUpdateTimestampSucceeds(TestContext context){
+        when(keyspaceHelper.getConsumersAddress()).thenReturn("addrsss" + "-consumers");
         when(message.body()).thenReturn(new JsonObject(Buffer.buffer("{\"operation\":\"enqueue\",\"payload\":{\"queuename\":\"someQueue\"},\"message\":\"hello\"}")));
 
         when(redisAPI.zadd(anyList()))

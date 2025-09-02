@@ -13,6 +13,7 @@ import io.vertx.redis.client.Response;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.swisspush.redisques.QueueState;
+import org.swisspush.redisques.QueueStatsService;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.performance.UpperBoundParallel;
 import org.swisspush.redisques.scheduling.PeriodicSkipScheduler;
@@ -59,6 +60,7 @@ public class QueueRegistryService {
     private final Semaphore checkQueueRequestsQuota;
     private final Semaphore activeQueueRegRefreshReqQuota;
     private final int emptyQueueLiveTimeMillis;
+    private final QueueStatsService queueStatsService;
     private Handler<Void> stoppedHandler = null;
     private PeriodicSkipScheduler periodicSkipScheduler;
     private Map<String, Long> aliveConsumers = new ConcurrentHashMap<>();
@@ -70,7 +72,8 @@ public class QueueRegistryService {
 
     public QueueRegistryService(Vertx vertx, RedisService redisService, RedisquesConfigurationProvider configurationProvider,
                                 RedisQuesExceptionFactory exceptionFactory, KeyspaceHelper keyspaceHelper, QueueMetrics metrics,
-                                QueueStatisticsCollector queueStatisticsCollector, Semaphore checkQueueRequestsQuota, Semaphore activeQueueRegRefreshReqQuota) {
+                                QueueStatsService queueStatsService, QueueStatisticsCollector queueStatisticsCollector,
+                                Semaphore checkQueueRequestsQuota, Semaphore activeQueueRegRefreshReqQuota) {
         this.vertx = vertx;
         this.redisService = redisService;
         this.configurationProvider = configurationProvider;
@@ -78,19 +81,22 @@ public class QueueRegistryService {
         this.exceptionFactory = exceptionFactory;
         this.periodicSkipScheduler = new PeriodicSkipScheduler(vertx);
         this.metrics = metrics;
+        this.queueStatsService = queueStatsService;
         this.queueStatisticsCollector = queueStatisticsCollector;
         this.checkQueueRequestsQuota = checkQueueRequestsQuota;
         this.activeQueueRegRefreshReqQuota = activeQueueRegRefreshReqQuota;
         String address = getConfiguration().getAddress();
 
         // Handles registration requests
-        consumersMessageConsumer = vertx.eventBus().consumer(address + "-consumers", this::handleRegistrationRequest);
-        consumersAliveMessageConsumer = vertx.eventBus().consumer(address + "-consumer-alive", this::handleConsumerAlive);
+        consumersMessageConsumer = vertx.eventBus().consumer(keyspaceHelper.getConsumersAddress(), this::handleRegistrationRequest);
+        consumersAliveMessageConsumer = vertx.eventBus().consumer(keyspaceHelper.getConsumersAliveAddress(), this::handleConsumerAlive);
         refreshRegistrationConsumer = vertx.eventBus().consumer(keyspaceHelper.getVerticleRefreshRegistrationKey(), this::handleRefreshRegistration);
         notifyConsumer = vertx.eventBus().consumer(keyspaceHelper.getVerticleNotifyConsumerKey(), this::handleNotifyConsumer);
+
         consumerLockTime = getConfiguration().getConsumerLockMultiplier() * getConfiguration().getRefreshPeriod(); // lock is kept twice as long as its refresh interval -> never expires as long as the consumer ('we') are alive
-        queueConsumerRunner = new QueueConsumerRunner(vertx, redisService, metrics, keyspaceHelper, configurationProvider, exceptionFactory, queueStatisticsCollector);
+        queueConsumerRunner = new QueueConsumerRunner(vertx, redisService, metrics, queueStatsService, keyspaceHelper, configurationProvider, exceptionFactory, queueStatisticsCollector);
         upperBoundParallel = new UpperBoundParallel(vertx, exceptionFactory);
+
         // the time we let an empty queue live before we deregister ourselves
         emptyQueueLiveTimeMillis = configurationProvider.configuration().getEmptyQueueLiveTimeMillis();
         // Handles notifications
@@ -310,7 +316,6 @@ public class QueueRegistryService {
 
     private void registerKeepConsumerAlive() {
         final long periodMs = getConfiguration().getRefreshPeriod() * 1000L;
-        final String address = getConfiguration().getAddress();
         vertx.setPeriodic(10, periodMs, event -> {
             Iterator<Map.Entry<String, Long>> iterator = aliveConsumers.entrySet().iterator();
             while (iterator.hasNext()) {
@@ -321,7 +326,7 @@ public class QueueRegistryService {
                     metrics.consumerCounterIncrement(-1);
                 }
             }
-            vertx.eventBus().publish(address + "-consumer-alive", keyspaceHelper.getVerticleUid());
+            vertx.eventBus().publish(keyspaceHelper.getConsumersAliveAddress(), keyspaceHelper.getVerticleUid());
             log.debug("RedisQues consumer {} keep alive published", keyspaceHelper.getVerticleUid());
         });
     }
@@ -549,7 +554,7 @@ public class QueueRegistryService {
                                 if (log.isTraceEnabled()) {
                                     log.trace("RedisQues remove old queue: {}", queueName);
                                 }
-                                metrics.dequeueStatisticMarkedForRemoval(queueName);
+                                queueStatsService.dequeueStatisticMarkedForRemoval(queueName);
                                 if (ctx.counter.decrementAndGet() == 0) {
                                     removeOldQueues(ctx.limit).onComplete(removeOldQueuesEvent -> {
                                         if (removeOldQueuesEvent.failed() && log.isWarnEnabled()) {
@@ -682,7 +687,7 @@ public class QueueRegistryService {
             if (consumer == null) {
                 // No consumer for this queue, let's make a peer become consumer
                 log.debug("RedisQues Sending registration request for queue {}", queueName);
-                eb.send(configurationProvider.configuration().getAddress() + "-consumers", queueName);
+                eb.send(keyspaceHelper.getConsumersAddress(), queueName);
                 promise.complete();
             } else if (!aliveConsumers.containsKey(consumer)) {
                 log.warn("RedisQues consumer {} of queue {} does not exist.", consumer, queueName);

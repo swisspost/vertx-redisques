@@ -12,9 +12,13 @@ public class KeyspaceHelper {
 
     private final String verticleUid;
     private final String verticleRefreshRegistrationKey;
-    private final String verticleStartConsumeKey;
     private final String verticleNotifyConsumerKey;
     private final String trimRequestKey;
+    private final String consumersAddress;
+    private final String consumersAliveAddress;
+    private final String metricsCollectorAddress;
+    public static final String QUEUE_STATE_COUNT_KEY = "queueStateCount";
+
     public KeyspaceHelper(RedisquesConfiguration configuration, String verticleUid) {
         this.configuration = configuration;
         this.verticleUid = verticleUid;
@@ -24,15 +28,16 @@ public class KeyspaceHelper {
         locksKey = configuration.getRedisPrefix() + "locks";
         queueCheckLastexecKey = configuration.getRedisPrefix() + "check:lastexec";
         verticleRefreshRegistrationKey = "refreshRegistration:" + verticleUid;
-        verticleStartConsumeKey = "startConsumer:" + verticleUid;
         verticleNotifyConsumerKey = "notifyConsumer:" + verticleUid;
         trimRequestKey = "trim_request:" + verticleUid;
+        consumersAddress = configuration.getAddress() + "-consumers";
+        consumersAliveAddress = configuration.getAddress() + "-consumer-alive";
+        metricsCollectorAddress = configuration.getAddress()  + "-" + verticleUid + "-" + QUEUE_STATE_COUNT_KEY;
     }
 
     public String getAddress() {
         return configuration.getAddress();
     }
-
 
     public String getVerticleUid() {
         return verticleUid;
@@ -62,15 +67,23 @@ public class KeyspaceHelper {
         return verticleRefreshRegistrationKey;
     }
 
-    public String getVerticleStartConsumeKey() {
-        return verticleStartConsumeKey;
-    }
-
     public String getVerticleNotifyConsumerKey() {
         return verticleNotifyConsumerKey;
     }
 
     public String getTrimRequestKey() {
         return trimRequestKey;
+    }
+
+    public String getConsumersAddress() {
+        return consumersAddress;
+    }
+
+    public String getConsumersAliveAddress() {
+        return consumersAliveAddress;
+    }
+
+    public  String getMetricsCollectorAddress() {
+        return metricsCollectorAddress;
     }
 }

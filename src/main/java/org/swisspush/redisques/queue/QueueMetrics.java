@@ -3,7 +3,6 @@ package org.swisspush.redisques.queue;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.LongTaskTimer;
 import io.micrometer.core.instrument.MeterRegistry;
-import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.micrometer.backends.BackendRegistries;
 import org.slf4j.Logger;
@@ -14,24 +13,12 @@ import org.swisspush.redisques.lock.impl.RedisBasedLock;
 import org.swisspush.redisques.metrics.LongTaskTimerSamplePair;
 import org.swisspush.redisques.metrics.MetricsCollector;
 import org.swisspush.redisques.metrics.MetricsCollectorScheduler;
-import org.swisspush.redisques.util.DequeueStatistic;
-import org.swisspush.redisques.util.DequeueStatisticCollector;
 import org.swisspush.redisques.util.MetricMeter;
 import org.swisspush.redisques.util.MetricTags;
-import org.swisspush.redisques.util.QueueStatisticsCollector;
 import org.swisspush.redisques.util.RedisquesConfigurationProvider;
 
-import javax.annotation.Nullable;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
-
-import static java.lang.System.currentTimeMillis;
 
 public class QueueMetrics {
     private static final Logger log = LoggerFactory.getLogger(QueueMetrics.class);
@@ -42,13 +29,8 @@ public class QueueMetrics {
     private MeterRegistry meterRegistry;
     private Counter dequeueCounter;
     private Counter consumerCounter;
-    private Map<String, DequeueStatistic> dequeueStatistic = new ConcurrentHashMap<>();
-    private DequeueStatisticCollector dequeueStatisticCollector;
-    private QueueStatisticsCollector queueStatisticsCollector;
-    private boolean dequeueStatisticEnabled = false;
     MetricsCollector metricsCollector;
     private Lock lock;
-
 
     void dequeueCounterIncrement() {
         if (dequeueCounter == null) {
@@ -64,65 +46,14 @@ public class QueueMetrics {
         consumerCounter.increment();
     }
 
-
     public QueueMetrics(Vertx vertx, KeyspaceHelper keyspaceHelper, RedisService redisService, MeterRegistry meterRegistry, RedisquesConfigurationProvider configurationProvider,
                         RedisQuesExceptionFactory exceptionFactory) {
         this.meterRegistry = meterRegistry;
         this.vertx = vertx;
         this.configurationProvider = configurationProvider;
         this.keyspaceHelper = keyspaceHelper;
-        int dequeueStatisticReportIntervalSec = configurationProvider.configuration().getDequeueStatisticReportIntervalSec();
-        if (configurationProvider.configuration().isDequeueStatsEnabled()) {
-            dequeueStatisticEnabled = true;
-            Runnable publisher = newDequeueStatisticPublisher();
-            vertx.setPeriodic(1000L * dequeueStatisticReportIntervalSec, time -> publisher.run());
-        }
-        if (this.dequeueStatisticCollector == null) {
-            this.dequeueStatisticCollector = new DequeueStatisticCollector(vertx, dequeueStatisticEnabled);
-        }
         this.lock = new RedisBasedLock(redisService, exceptionFactory);
     }
-
-    public void dequeueStatisticSetLastDequeueAttemptTimestamp(String queue, @Nullable Long lastDequeueAttemptTimestamp) {
-        if (dequeueStatisticEnabled) {
-            dequeueStatistic.computeIfPresent(queue, (s, dequeueStatistic) -> {
-                dequeueStatistic.setLastDequeueAttemptTimestamp(lastDequeueAttemptTimestamp);
-                return dequeueStatistic;
-            });
-        }
-    }
-
-    public void dequeueStatisticSetLastDequeueSuccessTimestamp(String queue, @Nullable Long lastDequeueSuccessTimestamp) {
-        if (dequeueStatisticEnabled) {
-            dequeueStatistic.computeIfPresent(queue, (s, dequeueStatistic) -> {
-                dequeueStatistic.setLastDequeueSuccessTimestamp(lastDequeueSuccessTimestamp);
-                return dequeueStatistic;
-            });
-        }
-    }
-
-    public void dequeueStatisticSetNextDequeueDueTimestamp(String queue, @Nullable Long dueTimestamp) {
-        if (dequeueStatisticEnabled) {
-            dequeueStatistic.computeIfPresent(queue, (s, dequeueStatistic) -> {
-                dequeueStatistic.setNextDequeueDueTimestamp(dueTimestamp);
-                return dequeueStatistic;
-            });
-        }
-    }
-
-    public void dequeueStatisticMarkedForRemoval(String queue) {
-        if (dequeueStatisticEnabled) {
-            dequeueStatistic.computeIfPresent(queue, (s, dequeueStatistic) -> {
-                dequeueStatistic.setMarkedForRemoval();
-                return dequeueStatistic;
-            });
-        }
-    }
-
-    public void createDequeueStatisticIfMissing(String queueName) {
-        dequeueStatistic.computeIfAbsent(queueName, s -> new DequeueStatistic());
-    }
-
 
     private void createMetricForQueueIfNeeded(String queueName) {
         if (!(configurationProvider.configuration().getMicrometerMetricsEnabled() &&
@@ -207,119 +138,12 @@ public class QueueMetrics {
             consumerCounter = Counter.builder(MetricMeter.QUEUE_CONSUMER_COUNT.getId())
                     .description(MetricMeter.QUEUE_CONSUMER_COUNT.getDescription()).tag(MetricTags.IDENTIFIER.getId(), metricsIdentifier).register(meterRegistry);
 
-            String address = configurationProvider.configuration().getAddress();
             int metricRefreshPeriod = configurationProvider.configuration().getMetricRefreshPeriod();
             if (metricRefreshPeriod > 0) {
                 String identifier = configurationProvider.configuration().getMicrometerMetricsIdentifier();
-                metricsCollector = new MetricsCollector(vertx, keyspaceHelper.getVerticleUid(), address, identifier, meterRegistry, lock, metricRefreshPeriod);
+                metricsCollector = new MetricsCollector(vertx, keyspaceHelper, identifier, meterRegistry, lock, metricRefreshPeriod);
                 new MetricsCollectorScheduler(vertx, metricsCollector, metricRefreshPeriod);
             }
         }
-    }
-
-    public String getMetricsCollectorAddress() {
-        return metricsCollector.getAddress();
-    }
-
-    class Task {
-        private final String queueName;
-        private final DequeueStatistic dequeueStatistic;
-
-        Task(String queueName, DequeueStatistic dequeueStatistic) {
-            this.queueName = queueName;
-            this.dequeueStatistic = dequeueStatistic;
-        }
-
-        Future<Void> execute() {
-            // switch to a worker thread
-            return vertx.executeBlocking(promise -> {
-                dequeueStatisticCollector.setDequeueStatistic(queueName, dequeueStatistic).onComplete(event -> {
-                    if (event.failed()) {
-                        log.error("Future that should always succeed has failed, ignore it", event.cause());
-                    }
-                    promise.complete();
-                });
-            });
-        }
-    }
-
-    private Runnable newDequeueStatisticPublisher() {
-        return new Runnable() {
-            final AtomicBoolean isRunning = new AtomicBoolean();
-            Iterator<Map.Entry<String, DequeueStatistic>> iter;
-            long startEpochMs;
-            AtomicInteger i = new AtomicInteger();
-            int size;
-
-            public void run() {
-                if (!isRunning.compareAndSet(false, true)) {
-                    log.warn("Previous publish run still in progress at idx {} of {} since {}ms",
-                            i, size, currentTimeMillis() - startEpochMs);
-                    return;
-                }
-                try {
-                    // Local copy to prevent changes between 'size' and 'iterator' call, plus
-                    // to prevent changes of the backing set while we're iterating.
-                    Map<String, DequeueStatistic> localCopy = new HashMap<>(dequeueStatistic);
-                    size = localCopy.size();
-                    iter = localCopy.entrySet().iterator();
-
-                    // use local copy to clean up
-                    localCopy.forEach((queueName, dequeueStatistic) -> {
-                        if (dequeueStatistic.isMarkedForRemoval()) {
-                            QueueMetrics.this.dequeueStatistic.remove(queueName);
-                        }
-                    });
-
-                    i.set(0);
-                    startEpochMs = currentTimeMillis();
-                    if (size > 5_000) log.warn("Going to report {} dequeue statistics towards collector", size);
-                    else if (size > 500) log.info("Going to report {} dequeue statistics towards collector", size);
-                    else log.trace("Going to report {} dequeue statistics towards collector", size);
-                } catch (Throwable ex) {
-                    isRunning.set(false);
-                    throw ex;
-                }
-                resume();
-            }
-
-            void resume() {
-                // here we are executing in an event loop thread
-                try {
-                    List<Task> entryList = new ArrayList<>();
-                    while (iter.hasNext()) {
-                        var entry = iter.next();
-                        var queueName = entry.getKey();
-                        var dequeueStatistic = entry.getValue();
-                        entryList.add(new Task(queueName, dequeueStatistic));
-                    }
-
-                    Future<List<Void>> startFuture = Future.succeededFuture(new ArrayList<>());
-                    // chain the futures sequentially to execute tasks
-                    Future<List<Void>> resultFuture = entryList.stream()
-                            .reduce(startFuture, (future, task) -> future.compose(previousResults -> {
-                                // perform asynchronous task
-                                return task.execute().compose(taskResult -> {
-                                    // append task result to previous results
-                                    previousResults.add(taskResult);
-                                    i.incrementAndGet();
-                                    return Future.succeededFuture(previousResults);
-                                });
-                            }), (a, b) -> Future.succeededFuture());
-                    resultFuture.onComplete(event -> {
-                        if (event.failed()) {
-                            log.error("publishing dequeue statistics not complete, just continue", event.cause());
-                        }
-                        if (log.isTraceEnabled()) {
-                            log.trace("Done publishing {} dequeue statistics. Took {}ms", i, currentTimeMillis() - startEpochMs);
-                        }
-                        isRunning.set(false);
-                    });
-                } catch (Throwable ex) {
-                    isRunning.set(false);
-                    throw ex;
-                }
-            }
-        };
     }
 }

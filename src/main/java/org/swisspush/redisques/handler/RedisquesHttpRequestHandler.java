@@ -75,22 +75,19 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     private final String userHeader;
     private final boolean enableQueueNameDecoding;
     private final int queueSpeedIntervalSec;
-    private final QueueStatisticsCollector queueStatisticsCollector;
     private final RedisQuesExceptionFactory exceptionFactory;
     private final QueueStatsService queueStatsService;
     private final GetQueueStatsMentor<RoutingContext> queueStatsMentor = new MyQueueStatsMentor();
 
     public static void init(
-            Vertx vertx, RedisquesConfiguration modConfig, QueueStatisticsCollector queueStatisticsCollector,
-            DequeueStatisticCollector dequeueStatisticCollector, RedisQuesExceptionFactory exceptionFactory,
-            Semaphore queueStatsRequestQuota
+            Vertx vertx, RedisquesConfiguration modConfig, QueueStatsService queueStatsService,
+            RedisQuesExceptionFactory exceptionFactory
     ) {
         log.info("Enabling http request handler: {}", modConfig.getHttpRequestHandlerEnabled());
         if (modConfig.getHttpRequestHandlerEnabled()) {
             if (modConfig.getHttpRequestHandlerPort() != null && modConfig.getHttpRequestHandlerUserHeader() != null) {
                 var handler = new RedisquesHttpRequestHandler(
-                        vertx, modConfig, queueStatisticsCollector, dequeueStatisticCollector,
-                        exceptionFactory, queueStatsRequestQuota);
+                        vertx, modConfig, queueStatsService, exceptionFactory);
                 // in Vert.x 2x 100-continues was activated per default, in vert.x 3x it is off per default.
                 HttpServerOptions options = new HttpServerOptions().setHandle100ContinueAutomatically(true);
                 vertx.createHttpServer(options).requestHandler(handler).listen(modConfig.getHttpRequestHandlerPort(), result -> {
@@ -122,10 +119,8 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     private RedisquesHttpRequestHandler(
             Vertx vertx,
             RedisquesConfiguration modConfig,
-            QueueStatisticsCollector queueStatisticsCollector,
-            DequeueStatisticCollector dequeueStatisticCollector,
-            RedisQuesExceptionFactory exceptionFactory,
-            Semaphore queueStatsRequestQuota
+            QueueStatsService queueStatsService,
+            RedisQuesExceptionFactory exceptionFactory
     ) {
         this.vertx = vertx;
         this.router = Router.router(vertx);
@@ -134,11 +129,8 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         this.userHeader = modConfig.getHttpRequestHandlerUserHeader();
         this.enableQueueNameDecoding = modConfig.getEnableQueueNameDecoding();
         this.queueSpeedIntervalSec = modConfig.getQueueSpeedIntervalSec();
-        this.queueStatisticsCollector = queueStatisticsCollector;
         this.exceptionFactory = exceptionFactory;
-        this.queueStatsService = new QueueStatsService(
-                vertx, eventBus, redisquesAddress, queueStatisticsCollector, dequeueStatisticCollector,
-                exceptionFactory, queueStatsRequestQuota);
+        this.queueStatsService = queueStatsService;
 
         final String prefix = modConfig.getHttpRequestHandlerPrefix();
 

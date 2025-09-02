@@ -178,7 +178,7 @@ public abstract class AbstractQueueAction implements QueueAction {
                 if (log.isDebugEnabled()) {
                     log.debug("RedisQues Sending registration request for queue {}", queueName);
                 }
-                eb.send(keyspaceHelper.getAddress() + "-consumers", queueName);
+                eb.send(keyspaceHelper.getConsumersAddress(), queueName);
             } else {
                 // Notify the registered consumer
                 log.debug("RedisQues Notifying consumer {} to consume queue {}", consumer, queueName);
