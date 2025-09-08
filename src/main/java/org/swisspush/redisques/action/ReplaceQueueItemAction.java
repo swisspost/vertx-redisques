@@ -6,9 +6,10 @@ import io.vertx.core.json.JsonObject;
 import org.slf4j.Logger;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.handler.ReplaceQueueItemHandler;
+import org.swisspush.redisques.queue.KeyspaceHelper;
+import org.swisspush.redisques.queue.RedisService;
 import org.swisspush.redisques.util.QueueConfiguration;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
-import org.swisspush.redisques.util.RedisProvider;
 
 import java.util.List;
 
@@ -17,25 +18,21 @@ import static org.swisspush.redisques.util.RedisquesAPI.*;
 public class ReplaceQueueItemAction extends AbstractQueueAction {
 
     public ReplaceQueueItemAction(
-            Vertx vertx, RedisProvider redisProvider, String address, String queuesKey,
-            String queuesPrefix, String consumersPrefix, String locksKey,
+            Vertx vertx, RedisService redisService, KeyspaceHelper keyspaceHelper,
             List<QueueConfiguration> queueConfigurations,
             RedisQuesExceptionFactory exceptionFactory,
             QueueStatisticsCollector queueStatisticsCollector, Logger log
     ) {
-        super(vertx, redisProvider, address, queuesKey, queuesPrefix, consumersPrefix,
-                locksKey, queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
+        super(vertx, redisService, keyspaceHelper, queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
     }
 
     @Override
     public void execute(Message<JsonObject> event) {
-        String keyReplaceItem = queuesPrefix + event.body().getJsonObject(PAYLOAD).getString(QUEUENAME);
+        String keyReplaceItem = keyspaceHelper.getQueuesPrefix() + event.body().getJsonObject(PAYLOAD).getString(QUEUENAME);
         int indexReplaceItem = event.body().getJsonObject(PAYLOAD).getInteger(INDEX);
         String bufferReplaceItem = event.body().getJsonObject(PAYLOAD).getString(BUFFER);
-        var p = redisProvider.redis();
-        p.onSuccess(redisAPI -> redisAPI.lset(keyReplaceItem, String.valueOf(indexReplaceItem),
-                bufferReplaceItem, new ReplaceQueueItemHandler(event, exceptionFactory)));
-        p.onFailure(ex -> handleFail(event, "Operation ReplaceQueueItemAction failed", ex));
+        redisService.lset(keyReplaceItem, String.valueOf(indexReplaceItem),
+                bufferReplaceItem).onComplete(response -> new ReplaceQueueItemHandler(event, exceptionFactory).handle(response));
     }
 
 }

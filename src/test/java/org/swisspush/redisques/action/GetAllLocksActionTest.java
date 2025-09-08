@@ -34,8 +34,7 @@ public class GetAllLocksActionTest extends AbstractQueueActionTest {
     @Override
     public void setup() {
         super.setup();
-        action = new GetAllLocksAction(vertx, redisProvider,
-                "addr", "q-", "prefix-", "c-", "l-",
+        action = new GetAllLocksAction(vertx, redisService, keyspaceHelper,
                 new ArrayList<>(), exceptionFactory, Mockito.mock(QueueStatisticsCollector.class), Mockito.mock(Logger.class));
     }
 
@@ -59,6 +58,7 @@ public class GetAllLocksActionTest extends AbstractQueueActionTest {
         verify(message, times(1)).reply(eq(new JsonObject(
                 Buffer.buffer("{\"status\":\"error\",\"errorType\":\"bad input\",\"message\":\"Error while compile" +
                         " regex pattern. Cause: Unclosed group near index 6\\nxyz(.*\"}"))));
+
         verifyNoInteractions(redisAPI);
     }
 
@@ -66,15 +66,11 @@ public class GetAllLocksActionTest extends AbstractQueueActionTest {
     public void testGetAllLocksHKEYSFail(TestContext context){
         when(message.body()).thenReturn(buildGetAllLocksOperation());
 
-        doAnswer(invocation -> {
-            var handler = createResponseHandler(invocation, 1);
-            handler.handle(new FailedFuture("booom"));
-            return null;
-        }).when(redisAPI).hkeys(anyString(), any());
+        when(redisAPI.hkeys(anyString())).thenReturn(new FailedFuture("booom"));
 
         action.execute(message);
 
-        verify(redisAPI, times(1)).hkeys(anyString(), any());
+        verify(redisAPI, times(1)).hkeys(anyString());
         verify(message, times(1)).reply(eq(new JsonObject(Buffer.buffer("{\"status\":\"error\"}"))));
     }
 
@@ -82,18 +78,14 @@ public class GetAllLocksActionTest extends AbstractQueueActionTest {
     public void testGetAllLocks(TestContext context){
         when(message.body()).thenReturn(buildGetAllLocksOperation());
 
-        doAnswer(invocation -> {
-            var handler = createResponseHandler(invocation, 1);
-            MultiType response = MultiType.create(2, false);
-            response.add(SimpleStringType.create("foo"));
-            response.add(SimpleStringType.create("bar"));
-            handler.handle(new SucceededFuture<>(response));
-            return null;
-        }).when(redisAPI).hkeys(anyString(), any());
+        MultiType response = MultiType.create(2, false);
+        response.add(SimpleStringType.create("foo"));
+        response.add(SimpleStringType.create("bar"));
+        when(redisAPI.hkeys(anyString())).thenReturn(new SucceededFuture<>(response));
 
         action.execute(message);
 
-        verify(redisAPI, times(1)).hkeys(anyString(), any());
+        verify(redisAPI, times(1)).hkeys(anyString());
         verify(message, times(1)).reply(eq(new JsonObject(Buffer.buffer("{\"status\":\"ok\",\"value\":{\"locks\":[\"foo\",\"bar\"]}}"))));
     }
 }

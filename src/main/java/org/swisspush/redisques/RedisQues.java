@@ -32,6 +32,8 @@ import org.swisspush.redisques.metrics.LongTaskTimerSamplePair;
 import org.swisspush.redisques.metrics.MetricsCollector;
 import org.swisspush.redisques.metrics.MetricsCollectorScheduler;
 import org.swisspush.redisques.performance.UpperBoundParallel;
+import org.swisspush.redisques.queue.KeyspaceHelper;
+import org.swisspush.redisques.queue.RedisService;
 import org.swisspush.redisques.scheduling.PeriodicSkipScheduler;
 import org.swisspush.redisques.util.*;
 
@@ -223,6 +225,8 @@ public class RedisQues extends AbstractVerticle {
     // Configuration
 
     private RedisProvider redisProvider;
+    private RedisService redisService;
+    private KeyspaceHelper keyspaceHelper;
 
     // varia more specific prefixes
     private String queuesKey;
@@ -406,6 +410,7 @@ public class RedisQues extends AbstractVerticle {
                 promise.fail(new Exception(event.cause()));
             }
         });
+        redisService = new RedisService(redisProvider);
     }
 
     private void createMetricForQueueIfNeeded(String queueName) {
@@ -507,6 +512,7 @@ public class RedisQues extends AbstractVerticle {
 
     private void initialize() {
         RedisquesConfiguration configuration = configurationProvider.configuration();
+        this.keyspaceHelper = new KeyspaceHelper(configuration, uid);
         this.queueStatisticsCollector = new QueueStatisticsCollector(
                 redisProvider, queuesPrefix, vertx, exceptionFactory, redisMonitoringReqQuota,
                 configuration.getQueueSpeedIntervalSec());
@@ -531,7 +537,7 @@ public class RedisQues extends AbstractVerticle {
 
         assert getQueuesItemsCountRedisRequestQuota != null;
         queueActionFactory = new QueueActionFactory(
-                redisProvider, vertx, client, log, queuesKey, queuesPrefix, consumersPrefix, locksKey,
+                redisService, vertx, client, log, keyspaceHelper,
                 memoryUsageProvider, queueStatisticsCollector, exceptionFactory,
                 configurationProvider, getQueuesItemsCountRedisRequestQuota, meterRegistry);
 
