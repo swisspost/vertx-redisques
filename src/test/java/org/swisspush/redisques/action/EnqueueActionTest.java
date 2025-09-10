@@ -96,7 +96,8 @@ public class EnqueueActionTest extends AbstractQueueActionTest {
     public void testEnqueueWhenUpdateTimestampSucceeds(TestContext context){
         when(keyspaceHelper.getConsumersAddress()).thenReturn("addrsss" + "-consumers");
         when(message.body()).thenReturn(new JsonObject(Buffer.buffer("{\"operation\":\"enqueue\",\"payload\":{\"queuename\":\"someQueue\"},\"message\":\"hello\"}")));
-
+        when(redisAPI.get(any()))
+                .thenReturn(Future.succeededFuture());
         when(redisAPI.zadd(anyList()))
                 .thenReturn(Future.succeededFuture());
         when(redisAPI.rpush(anyList())).thenReturn(Future.succeededFuture(BulkType.create(Buffer.buffer("1"), false)));
