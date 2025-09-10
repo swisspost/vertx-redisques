@@ -40,7 +40,7 @@ public class DeleteLockAction extends AbstractQueueAction {
                 notifyConsumer(queueName);
             }
 
-            redisService.hdels(Arrays.asList(keyspaceHelper.getLocksKey(), queueName)).onComplete(response -> new DeleteLockHandler(event, exceptionFactory).handle(response));
+            redisService.hdel(Arrays.asList(keyspaceHelper.getLocksKey(), queueName)).onComplete(response -> new DeleteLockHandler(event, exceptionFactory).handle(response));
         });
     }
 }

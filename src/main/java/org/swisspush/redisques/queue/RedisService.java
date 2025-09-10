@@ -32,66 +32,50 @@ public class RedisService {
     }
 
     public Future<Response> script(String name, String sha) {
-        Promise<Response> p = Promise.promise();
         return redis().compose((RedisAPI redisAPI) ->
-                redisAPI.script(Arrays.asList(name, sha)).onSuccess(resp -> p.complete())
-                        .onFailure(p::fail)
+                redisAPI.script(Arrays.asList(name, sha))
         );
     }
 
     public Future<Response> evalsha(List<String> args) {
-        Promise<Response> p = Promise.promise();
         return redis().compose((RedisAPI redisAPI) ->
-                redisAPI.evalsha(args).onSuccess(resp -> p.complete())
-                        .onFailure(p::fail)
+                redisAPI.evalsha(args)
         );
     }
 
     public Future<Response> info(List<String> args) {
-        Promise<Response> p = Promise.promise();
         return redis().compose((RedisAPI redisAPI) ->
-                redisAPI.info(args).onSuccess(resp -> p.complete())
-                        .onFailure(p::fail)
+                redisAPI.info(args)
         );
     }
 
     public Future<Response> lpop(List<String> args) {
-        Promise<Response> p = Promise.promise();
         return redis().compose((RedisAPI redisAPI) ->
-                redisAPI.lpop(args).onSuccess(resp -> p.complete())
-                        .onFailure(p::fail)
+                redisAPI.lpop(args)
         );
     }
 
     public Future<Response> exists(List<String> args) {
-        Promise<Response> p = Promise.promise();
         return redis().compose((RedisAPI redisAPI) ->
-                redisAPI.exists(args).onSuccess(resp -> p.complete())
-                        .onFailure(p::fail)
+                redisAPI.exists(args)
         );
     }
 
     public Future<Response> del(List<String> args) {
-        Promise<Response> p = Promise.promise();
         return redis().compose((RedisAPI redisAPI) ->
-                redisAPI.del(args).onSuccess(resp -> p.complete())
-                        .onFailure(p::fail)
+                redisAPI.del(args)
         );
     }
 
     public Future<Response> hmset(List<String> args) {
-        Promise<Response> p = Promise.promise();
         return redis().compose((RedisAPI redisAPI) ->
-                redisAPI.hmset(args).onSuccess(resp -> p.complete())
-                        .onFailure(p::fail)
+                redisAPI.hmset(args)
         );
     }
 
     public Future<Response> get(String key) {
-        Promise<Response> p = Promise.promise();
         return redis().compose((RedisAPI redisAPI) ->
-                redisAPI.get(key).onSuccess(resp -> p.complete())
-                        .onFailure(p::fail)
+                redisAPI.get(key)
         );
     }
 
@@ -125,166 +109,126 @@ public class RedisService {
     }
 
     public Future<Response> zadd(String queuesKey, String queueName, String value) {
-        Promise<Response> p = Promise.promise();
         return redis().compose((RedisAPI redisAPI) ->
-                redisAPI.zadd(Arrays.asList(queuesKey, value, queueName)).onSuccess(resp -> p.complete())
-                        .onFailure(p::fail)
+                redisAPI.zadd(Arrays.asList(queuesKey, value, queueName))
         );
     }
 
     public Future<Response> hset(String queuesKey, String queueName, String value) {
-        Promise<Response> p = Promise.promise();
         return redis().compose((RedisAPI redisAPI) ->
-                redisAPI.hset(Arrays.asList(queuesKey, queueName, value)).onSuccess(resp -> p.complete())
-                        .onFailure(p::fail)
+                redisAPI.hset(Arrays.asList(queuesKey, queueName, value))
         );
     }
 
     public Future<Response> hdel(String key, String queueName) {
-        Promise<Response> p = Promise.promise();
         return redis().compose((RedisAPI redisAPI) ->
-                redisAPI.hdel(Arrays.asList(key, queueName)).onSuccess(resp -> p.complete())
-                        .onFailure(p::fail)
+                redisAPI.hdel(Arrays.asList(key, queueName))
         );
     }
 
-    public Future<Response> hdels(List<String> args) {
-        Promise<Response> p = Promise.promise();
+    public Future<Response> hdel(List<String> args) {
         return redis().compose((RedisAPI redisAPI) ->
-                redisAPI.hdel(args).onSuccess(resp -> p.complete())
-                        .onFailure(p::fail)
+                redisAPI.hdel(args)
         );
     }
 
     public Future<Response> llen(String key) {
-        Promise<Response> p = Promise.promise();
         return redis().compose((RedisAPI redisAPI) ->
-                redisAPI.llen(key).onSuccess(resp -> p.complete())
-                        .onFailure(p::fail)
+                redisAPI.llen(key)
         );
     }
 
     public Future<Response> hvals(String key) {
-        Promise<Response> p = Promise.promise();
         return redis().compose((RedisAPI redisAPI) ->
-                redisAPI.hvals(key).onSuccess(resp -> p.complete())
-                        .onFailure(p::fail)
+                redisAPI.hvals(key)
         );
     }
 
     public Future<Response> hget(String key, String field) {
-        Promise<Response> p = Promise.promise();
         return redis().compose((RedisAPI redisAPI) ->
-                redisAPI.hget(key, field).onSuccess(resp -> p.complete())
-                        .onFailure(p::fail)
+                redisAPI.hget(key, field)
         );
     }
+
     public Future<Response> ltrim(String key, String start, String stop) {
-        Promise<Response> p = Promise.promise();
         return redis().compose((RedisAPI redisAPI) ->
-                redisAPI.ltrim(key, start, stop).onSuccess(resp -> p.complete())
-                        .onFailure(p::fail)
+                redisAPI.ltrim(key, start, stop)
         );
     }
 
     public Future<Response> lrange(String key, String start, String stop) {
-        Promise<Response> p = Promise.promise();
         return redis().compose((RedisAPI redisAPI) ->
-                redisAPI.lrange(key, start, stop).onSuccess(resp -> p.complete())
-                        .onFailure(p::fail)
+                redisAPI.lrange(key, start, stop)
         );
     }
 
     public Future<Response> hexists(String key, String value) {
-        Promise<Response> p = Promise.promise();
         return redis().compose((RedisAPI redisAPI) ->
-                redisAPI.hexists(key, value).onSuccess(resp -> p.complete())
-                        .onFailure(p::fail)
+                redisAPI.hexists(key, value)
         );
     }
 
     public Future<Response> lindex(String key, String index) {
-        Promise<Response> p = Promise.promise();
         return redis().compose((RedisAPI redisAPI) ->
-                redisAPI.lindex(key, index).onSuccess(resp -> p.complete())
-                        .onFailure(p::fail)
+                redisAPI.lindex(key, index)
         );
     }
 
     public Future<Response> lset(String key, String index, String element) {
-        Promise<Response> p = Promise.promise();
         return redis().compose((RedisAPI redisAPI) ->
-                redisAPI.lset(key, index, element).onSuccess(resp -> p.complete())
-                        .onFailure(p::fail)
+                redisAPI.lset(key, index, element)
         );
     }
 
     public Future<Response> lrem(String key, String count, String element) {
-        Promise<Response> p = Promise.promise();
         return redis().compose((RedisAPI redisAPI) ->
-                redisAPI.lrem(key, count, element).onSuccess(resp -> p.complete())
-                        .onFailure(p::fail)
+                redisAPI.lrem(key, count, element)
         );
     }
 
     public Future<Response> zremrangebyscore(String key, String min, String max) {
-        Promise<Response> p = Promise.promise();
         return redis().compose((RedisAPI redisAPI) ->
-                redisAPI.zremrangebyscore(key, min, max).onSuccess(resp -> p.complete())
-                        .onFailure(p::fail)
+                redisAPI.zremrangebyscore(key, min, max)
         );
     }
 
     public Future<Response> zrangebyscore(String key, String min, String max) {
-        Promise<Response> p = Promise.promise();
         return redis().compose((RedisAPI redisAPI) ->
-                redisAPI.zrangebyscore(Arrays.asList(key, min, max)).onSuccess(resp -> p.complete())
-                        .onFailure(p::fail)
+                redisAPI.zrangebyscore(Arrays.asList(key, min, max))
         );
     }
 
     public Future<Response> zcount(String key, String min, String max) {
-        Promise<Response> p = Promise.promise();
         return redis().compose((RedisAPI redisAPI) ->
-                redisAPI.zcount(key, min, max).onSuccess(resp -> p.complete())
-                        .onFailure(p::fail)
+                redisAPI.zcount(key, min, max)
         );
     }
 
     public Future<Response> rpush(String key, String item) {
-        Promise<Response> p = Promise.promise();
         return redis().compose((RedisAPI redisAPI) ->
-                redisAPI.rpush(Arrays.asList(key, item)).onSuccess(resp -> p.complete())
-                        .onFailure(p::fail)
+                redisAPI.rpush(Arrays.asList(key, item))
         );
     }
 
     public Future<Response> hkeys(String key) {
-        Promise<Response> p = Promise.promise();
         return redis().compose((RedisAPI redisAPI) ->
-                redisAPI.hkeys(key).onSuccess(resp -> p.complete())
-                        .onFailure(p::fail)
+                redisAPI.hkeys(key)
         );
     }
 
     public Future<Response> keys(String pattern) {
-        Promise<Response> p = Promise.promise();
         return redis().compose((RedisAPI redisAPI) ->
-                redisAPI.keys(pattern).onSuccess(resp -> p.complete())
-                        .onFailure(p::fail)
+                redisAPI.keys(pattern)
         );
     }
 
     public Future<Response> expire(String key, String seconds) {
-        Promise<Response> p = Promise.promise();
         return redis().compose((RedisAPI redisAPI) ->
-                redisAPI.expire(Arrays.asList(key, seconds)).onSuccess(resp -> p.complete())
-                        .onFailure(p::fail)
+                redisAPI.expire(Arrays.asList(key, seconds))
         );
     }
 
     public Future<Response> scan(String cursor, @Nullable String pattern, @Nullable String count, @Nullable String type) {
-        Promise<Response> p = Promise.promise();
         List<String> args = new ArrayList<>();
         args.add(cursor);
         if (pattern != null) {
@@ -301,8 +245,7 @@ public class RedisService {
             args.add(type);
         }
         return redis().compose((RedisAPI redisAPI) ->
-                redisAPI.scan(args).onSuccess(resp -> p.complete())
-                        .onFailure(p::fail)
+                redisAPI.scan(args)
         );
     }
 }

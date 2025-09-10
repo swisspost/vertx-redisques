@@ -121,7 +121,7 @@ public abstract class AbstractQueueAction implements QueueAction {
             args.add(response.toString());
         }
 
-        redisService.hdels(args).onComplete(delManyResult -> {
+        redisService.hdel(args).onComplete(delManyResult -> {
             if (delManyResult.succeeded()) {
                 log.info("Successfully deleted {} locks", delManyResult.result());
                 event.reply(createOkReply().put(VALUE, delManyResult.result().toLong()));
@@ -229,7 +229,7 @@ public abstract class AbstractQueueAction implements QueueAction {
                 } else {
                     // Notify the registered consumer to do the Trim
                     log.debug("RedisQues Notifying consumer {} to trim queue {}", consumer, queueName);
-                    eb.send(keyspaceHelper.getTrimRequestKey(), queueName); // just send, no need to wait
+                    eb.send(keyspaceHelper.getTrimRequestKey() + consumer, queueName); // just send, no need to wait
                     promise.complete();
                 }
             });
