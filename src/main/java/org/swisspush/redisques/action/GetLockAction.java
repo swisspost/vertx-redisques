@@ -36,6 +36,7 @@ public class GetLockAction extends AbstractQueueAction {
                     event.address() + " replyAddress=" + event.replyAddress()));
             return;
         }
-        redisService.hget(keyspaceHelper.getLocksKey(), body.getJsonObject(PAYLOAD).getString(QUEUENAME)).onComplete(response -> new GetLockHandler(event, exceptionFactory).handle(response));
+        redisService.hget(keyspaceHelper.getLocksKey(), body.getJsonObject(PAYLOAD).getString(QUEUENAME))
+                .onComplete(response -> new GetLockHandler(event, exceptionFactory).handle(response));
     }
 }

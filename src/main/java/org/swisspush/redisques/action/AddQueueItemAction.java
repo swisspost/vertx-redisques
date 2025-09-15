@@ -29,13 +29,18 @@ public class AddQueueItemAction extends AbstractQueueAction {
         String queueName = event.body().getJsonObject(PAYLOAD).getString(QUEUENAME);
         String key = keyspaceHelper.getQueuesPrefix() + queueName;
         String valueAddItem = event.body().getJsonObject(PAYLOAD).getString(BUFFER);
-        redisService.rpush(key, valueAddItem).onComplete(rpushResult ->
+        redisService.rpush(key, valueAddItem).onComplete(rpushResult -> {
+            if (rpushResult.succeeded()) {
                 processTrimRequestByState(queueName).onComplete(asyncResult -> {
                     if (asyncResult.failed()) {
                         log.warn("Failed to do the trim for  {}", queueName);
                     }
                     new AddQueueItemHandler(event, exceptionFactory).handle(rpushResult);
-                }));
+                });
+            } else {
+                handleFail(event, "Operation AddQueueItemAction failed", rpushResult.cause());
+            }
+        });
 
     }
 
