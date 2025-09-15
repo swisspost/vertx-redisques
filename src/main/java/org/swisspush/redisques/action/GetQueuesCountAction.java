@@ -6,6 +6,8 @@ import io.vertx.core.json.JsonObject;
 import org.slf4j.Logger;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.handler.GetQueuesCountHandler;
+import org.swisspush.redisques.queue.KeyspaceHelper;
+import org.swisspush.redisques.queue.RedisService;
 import org.swisspush.redisques.util.*;
 
 import java.util.List;
@@ -17,12 +19,11 @@ import static org.swisspush.redisques.util.RedisquesAPI.*;
 public class GetQueuesCountAction extends GetQueuesAction {
 
     public GetQueuesCountAction(
-            Vertx vertx, RedisProvider redisProvider, String address, String queuesKey,
-            String queuesPrefix, String consumersPrefix, String locksKey,
+            Vertx vertx, RedisService redisService, KeyspaceHelper keyspaceHelper,
             List<QueueConfiguration> queueConfigurations, RedisQuesExceptionFactory exceptionFactory,
             QueueStatisticsCollector queueStatisticsCollector, Logger log
     ) {
-        super(vertx, redisProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey,
+        super(vertx, redisService, keyspaceHelper,
                 queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
     }
 
@@ -40,9 +41,8 @@ public class GetQueuesCountAction extends GetQueuesAction {
         if (result.getOk().isPresent()) {
             getQueues(event, true, result);
         } else {
-            redisProvider.redis().onSuccess(redisAPI -> redisAPI.zcount(queuesKey, String.valueOf(getMaxAgeTimestamp()),
-                            String.valueOf(Double.MAX_VALUE), new GetQueuesCountHandler(event)))
-                    .onFailure(ex -> replyErrorMessageHandler(event).handle(ex));
+            redisService.zcount(keyspaceHelper.getQueuesKey(), String.valueOf(getMaxAgeTimestamp()),
+                    String.valueOf(Double.MAX_VALUE)).onComplete(response -> new GetQueuesCountHandler(event).handle(response));
         }
     }
 

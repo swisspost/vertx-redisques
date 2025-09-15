@@ -13,6 +13,8 @@ import org.junit.Before;
 import org.mockito.Mockito;
 import org.mockito.invocation.InvocationOnMock;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
+import org.swisspush.redisques.queue.KeyspaceHelper;
+import org.swisspush.redisques.queue.RedisService;
 import org.swisspush.redisques.util.MemoryUsageProvider;
 import org.swisspush.redisques.util.RedisProvider;
 
@@ -25,7 +27,9 @@ public abstract class AbstractQueueActionTest {
 
     protected RedisAPI redisAPI;
     protected RedisProvider redisProvider;
+    protected RedisService redisService;
     protected RedisQuesExceptionFactory exceptionFactory;
+    protected KeyspaceHelper keyspaceHelper;
 
     protected Vertx vertx;
 
@@ -36,13 +40,21 @@ public abstract class AbstractQueueActionTest {
 
     protected static final JsonObject STATUS_OK = new JsonObject(Buffer.buffer("{\"status\":\"ok\"}"));
     protected static final JsonObject STATUS_ERROR = new JsonObject(Buffer.buffer("{\"status\":\"error\"}"));
-
     @Before
     public void setup() {
         redisAPI = Mockito.mock(RedisAPI.class);
+
         redisProvider = Mockito.mock(RedisProvider.class);
-        exceptionFactory = newWastefulExceptionFactory();
         when(redisProvider.redis()).thenReturn(Future.succeededFuture(redisAPI));
+
+        keyspaceHelper = Mockito.mock(KeyspaceHelper.class);
+        when(keyspaceHelper.getAddress()).thenReturn("addr");
+        when(keyspaceHelper.getQueuesKey()).thenReturn("q-");
+        when(keyspaceHelper.getQueuesPrefix()).thenReturn("prefix-");
+        when(keyspaceHelper.getConsumersPrefix()).thenReturn("c-");
+        when(keyspaceHelper.getLocksKey()).thenReturn("l-");
+        exceptionFactory = newWastefulExceptionFactory();
+        redisService = new RedisService(redisProvider);
 
         memoryUsageProvider = Mockito.mock(MemoryUsageProvider.class);
         when(memoryUsageProvider.currentMemoryUsagePercentage()).thenReturn(Optional.empty());

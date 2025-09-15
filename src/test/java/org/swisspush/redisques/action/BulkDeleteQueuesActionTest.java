@@ -34,8 +34,7 @@ public class BulkDeleteQueuesActionTest extends AbstractQueueActionTest {
     @Override
     public void setup() {
         super.setup();
-        action = new BulkDeleteQueuesAction(vertx, redisProvider,
-                "addr", "q-", "prefix-", "c-", "l-",
+        action = new BulkDeleteQueuesAction(vertx, redisService, keyspaceHelper,
                 new ArrayList<>(), exceptionFactory, Mockito.mock(QueueStatisticsCollector.class), Mockito.mock(Logger.class));
     }
 
@@ -54,15 +53,10 @@ public class BulkDeleteQueuesActionTest extends AbstractQueueActionTest {
     public void testBulkDeleteQueues(TestContext context){
         when(message.body()).thenReturn(buildBulkDeleteQueuesOperation(new JsonArray().add("q1").add("q3")));
 
-        doAnswer(invocation -> {
-            var handler = createResponseHandler(invocation,1);
-            handler.handle(Future.succeededFuture(SimpleStringType.create("2")));
-            return null;
-        }).when(redisAPI).del(anyList(), any());
-
+        when(redisAPI.del(anyList())).thenReturn(Future.succeededFuture(SimpleStringType.create("2")));
         action.execute(message);
 
-        verify(redisAPI, times(1)).del(anyList(), any());
+        verify(redisAPI, times(1)).del(anyList());
         verify(message, times(1)).reply(eq(new JsonObject(Buffer.buffer("{\"status\":\"ok\",\"value\":2}"))));
     }
 
@@ -70,15 +64,10 @@ public class BulkDeleteQueuesActionTest extends AbstractQueueActionTest {
     public void testBulkDeleteQueuesDELFail(TestContext context){
         when(message.body()).thenReturn(buildBulkDeleteQueuesOperation(new JsonArray().add("q1").add("q3")));
 
-        doAnswer(invocation -> {
-            var handler = createResponseHandler(invocation,1);
-            handler.handle(Future.failedFuture("booom"));
-            return null;
-        }).when(redisAPI).del(anyList(), any());
-
+        when(redisAPI.del(anyList())).thenReturn(Future.failedFuture("booom"));
         action.execute(message);
 
-        verify(redisAPI, times(1)).del(anyList(), any());
+        verify(redisAPI, times(1)).del(anyList());
         verify(message, times(1)).reply(isA(ReplyException.class));
     }
 

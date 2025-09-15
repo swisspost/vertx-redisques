@@ -24,6 +24,7 @@ import java.util.Optional;
 
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.*;
+import static org.swisspush.redisques.queue.KeyspaceHelper.QUEUE_STATE_COUNT_KEY;
 
 /**
  * Tests for {@link EnqueueAction} class.
@@ -43,8 +44,7 @@ public class EnqueueActionTest extends AbstractQueueActionTest {
         MeterRegistry meterRegistry = new SimpleMeterRegistry();
         enqueueCounterSuccess = meterRegistry.counter(MetricMeter.ENQUEUE_SUCCESS.getId(), MetricTags.IDENTIFIER.getId(), "foo");
         enqueueCounterFail = meterRegistry.counter(MetricMeter.ENQUEUE_FAIL.getId(), MetricTags.IDENTIFIER.getId(), "foo");
-        action = new EnqueueAction(vertx, redisProvider,
-                "addr", "q-", "prefix-", "c-", "l-",
+        action = new EnqueueAction(vertx, redisService, keyspaceHelper,
                 new ArrayList<>(), exceptionFactory, Mockito.mock(QueueStatisticsCollector.class),
                 Mockito.mock(Logger.class), memoryUsageProvider, 80, meterRegistry, "foo");
     }
@@ -94,8 +94,10 @@ public class EnqueueActionTest extends AbstractQueueActionTest {
 
     @Test
     public void testEnqueueWhenUpdateTimestampSucceeds(TestContext context){
+        when(keyspaceHelper.getConsumersAddress()).thenReturn("addrsss" + "-consumers");
         when(message.body()).thenReturn(new JsonObject(Buffer.buffer("{\"operation\":\"enqueue\",\"payload\":{\"queuename\":\"someQueue\"},\"message\":\"hello\"}")));
-
+        when(redisAPI.get(any()))
+                .thenReturn(Future.succeededFuture());
         when(redisAPI.zadd(anyList()))
                 .thenReturn(Future.succeededFuture());
         when(redisAPI.rpush(anyList())).thenReturn(Future.succeededFuture(BulkType.create(Buffer.buffer("1"), false)));

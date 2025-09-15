@@ -39,7 +39,7 @@ public class GetLockHandler implements Handler<AsyncResult<Response>> {
                 event.reply(new JsonObject().put(STATUS, NO_SUCH_LOCK));
             }
         } else {
-            event.reply(exceptionFactory.newReplyException(null, reply.cause()));
+            event.reply(exceptionFactory.newReplyException("Operation GetLockAction failed", reply.cause()));
         }
     }
 

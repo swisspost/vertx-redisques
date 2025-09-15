@@ -6,11 +6,11 @@ import io.vertx.core.json.JsonObject;
 import org.slf4j.Logger;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.handler.AddQueueItemHandler;
+import org.swisspush.redisques.queue.KeyspaceHelper;
+import org.swisspush.redisques.queue.RedisService;
 import org.swisspush.redisques.util.QueueConfiguration;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
-import org.swisspush.redisques.util.RedisProvider;
 
-import java.util.Arrays;
 import java.util.List;
 
 import static org.swisspush.redisques.util.RedisquesAPI.*;
@@ -18,27 +18,29 @@ import static org.swisspush.redisques.util.RedisquesAPI.*;
 public class AddQueueItemAction extends AbstractQueueAction {
 
     public AddQueueItemAction(
-            Vertx vertx, RedisProvider redisProvider, String address, String queuesKey, String queuesPrefix,
-            String consumersPrefix, String locksKey, List<QueueConfiguration> queueConfigurations,
+            Vertx vertx, RedisService redisService, KeyspaceHelper keyspaceHelper, List<QueueConfiguration> queueConfigurations,
             RedisQuesExceptionFactory exceptionFactory, QueueStatisticsCollector queueStatisticsCollector, Logger log
     ) {
-        super(vertx, redisProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey,
-                queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
+        super(vertx, redisService, keyspaceHelper, queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
     }
 
     @Override
     public void execute(Message<JsonObject> event) {
         String queueName = event.body().getJsonObject(PAYLOAD).getString(QUEUENAME);
-        String key1 = queuesPrefix + queueName;
+        String key = keyspaceHelper.getQueuesPrefix() + queueName;
         String valueAddItem = event.body().getJsonObject(PAYLOAD).getString(BUFFER);
-        var p = redisProvider.redis();
-        p.onSuccess(redisAPI -> redisAPI.rpush(Arrays.asList(key1, valueAddItem),
-                rpushResult -> processTrimRequestByState(queueName).onComplete(asyncResult -> {
-            if (asyncResult.failed()) {
-                log.warn("Failed to do the trim for  {}", queueName);
+        redisService.rpush(key, valueAddItem).onComplete(rpushResult -> {
+            if (rpushResult.succeeded()) {
+                processTrimRequestByState(queueName).onComplete(asyncResult -> {
+                    if (asyncResult.failed()) {
+                        log.warn("Failed to do the trim for  {}", queueName);
+                    }
+                    new AddQueueItemHandler(event, exceptionFactory).handle(rpushResult);
+                });
+            } else {
+                handleFail(event, "Operation AddQueueItemAction failed", rpushResult.cause());
             }
-            new AddQueueItemHandler(event, exceptionFactory).handle(rpushResult);
-        }))).onFailure(ex -> handleFail(event, "Operation AddQueueItemAction failed", ex));
+        });
 
     }
 

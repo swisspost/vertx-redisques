@@ -31,8 +31,7 @@ public class GetQueueItemActionTest extends AbstractQueueActionTest {
     @Override
     public void setup() {
         super.setup();
-        action = new GetQueueItemAction(vertx, redisProvider,
-                "addr", "q-", "prefix-", "c-", "l-",
+        action = new GetQueueItemAction(vertx, redisService, keyspaceHelper,
                 new ArrayList<>(), exceptionFactory, Mockito.mock(QueueStatisticsCollector.class), Mockito.mock(Logger.class));
     }
 
@@ -51,15 +50,11 @@ public class GetQueueItemActionTest extends AbstractQueueActionTest {
     public void testGetQueueItem(TestContext context){
         when(message.body()).thenReturn(buildGetQueueItemOperation("q1", 0));
 
-        doAnswer(invocation -> {
-            var handler = createResponseHandler(invocation,2);
-            handler.handle(Future.succeededFuture(SimpleStringType.create(new JsonObject().put("foo", "bar").encode())));
-            return null;
-        }).when(redisAPI).lindex(anyString(), anyString(), any());
+        when(redisAPI.lindex(anyString(), anyString())).thenReturn(Future.succeededFuture(SimpleStringType.create(new JsonObject().put("foo", "bar").encode())));
 
         action.execute(message);
 
-        verify(redisAPI, times(1)).lindex(anyString(), anyString(), any());
+        verify(redisAPI, times(1)).lindex(anyString(), anyString());
         verify(message, times(1)).reply(eq(new JsonObject(
                 Buffer.buffer("{\"status\":\"ok\",\"value\":\"{\\\"foo\\\":\\\"bar\\\"}\"}"))));
     }
@@ -68,15 +63,10 @@ public class GetQueueItemActionTest extends AbstractQueueActionTest {
     public void testGetQueueItemNotExistingIndex(TestContext context){
         when(message.body()).thenReturn(buildGetQueueItemOperation("q1", 0));
 
-        doAnswer(invocation -> {
-            var handler = createResponseHandler(invocation,2);
-            handler.handle(Future.succeededFuture());
-            return null;
-        }).when(redisAPI).lindex(anyString(), anyString(), any());
-
+        when(redisAPI.lindex(anyString(), anyString())).thenReturn(Future.succeededFuture());
         action.execute(message);
 
-        verify(redisAPI, times(1)).lindex(anyString(), anyString(), any());
+        verify(redisAPI, times(1)).lindex(anyString(), anyString());
         verify(message, times(1)).reply(eq(STATUS_ERROR));
     }
 
@@ -84,15 +74,10 @@ public class GetQueueItemActionTest extends AbstractQueueActionTest {
     public void testGetQueueItemLINDEXFail(TestContext context){
         when(message.body()).thenReturn(buildGetQueueItemOperation("q1", 0));
 
-        doAnswer(invocation -> {
-            var handler = createResponseHandler(invocation,2);
-            handler.handle(Future.failedFuture("booom"));
-            return null;
-        }).when(redisAPI).lindex(anyString(), anyString(), any());
-
+        when(redisAPI.lindex(anyString(), anyString())).thenReturn(Future.failedFuture("booom"));
         action.execute(message);
 
-        verify(redisAPI, times(1)).lindex(anyString(), anyString(), any());
+        verify(redisAPI, times(1)).lindex(anyString(), anyString());
         verify(message, times(1)).reply(isA(ReplyException.class));
     }
 }
