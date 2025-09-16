@@ -36,7 +36,7 @@ public class ReplaceQueueItemHandler implements Handler<AsyncResult<Response>> {
         } else if(checkRedisErrorCodes(reply.cause().getMessage())) {
             event.reply(new JsonObject().put(STATUS, ERROR));
         } else {
-            event.reply(exceptionFactory.newReplyException(null, reply.cause()));
+            event.reply(exceptionFactory.newReplyException("Operation ReplaceQueueItemAction failed", reply.cause()));
         }
     }
 
