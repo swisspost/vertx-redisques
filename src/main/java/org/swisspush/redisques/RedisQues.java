@@ -34,7 +34,9 @@ import org.swisspush.redisques.metrics.MetricsCollectorScheduler;
 import org.swisspush.redisques.performance.UpperBoundParallel;
 import org.swisspush.redisques.queue.KeyspaceHelper;
 import org.swisspush.redisques.queue.QueueActionsService;
+import org.swisspush.redisques.queue.QueueProcessingState;
 import org.swisspush.redisques.queue.RedisService;
+import org.swisspush.redisques.queue.UnregisterConsumerType;
 import org.swisspush.redisques.scheduling.PeriodicSkipScheduler;
 import org.swisspush.redisques.util.*;
 
@@ -51,7 +53,6 @@ import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Semaphore;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
@@ -61,144 +62,13 @@ import java.util.stream.Collectors;
 import static java.lang.System.currentTimeMillis;
 import static org.swisspush.redisques.exception.RedisQuesExceptionFactory.newThriftyExceptionFactory;
 import static org.swisspush.redisques.util.RedisquesAPI.*;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.*;
 
 public class RedisQues extends AbstractVerticle {
 
-    public static class RedisQuesBuilder {
-
-        private MemoryUsageProvider memoryUsageProvider;
-        private RedisquesConfigurationProvider configurationProvider;
-        private RedisProvider redisProvider;
-        private RedisQuesExceptionFactory exceptionFactory;
-        private MeterRegistry meterRegistry;
-        private Semaphore redisMonitoringReqQuota;
-        private Semaphore checkQueueRequestsQuota;
-        private Semaphore queueStatsRequestQuota;
-        private Semaphore getQueuesItemsCountRedisRequestQuota;
-        private Semaphore activeQueueRegRefreshReqQuota;
-
-        private RedisQuesBuilder() {
-            // Private, as clients should use "RedisQues.builder()" and not this class here directly.
-        }
-
-        public RedisQuesBuilder withMemoryUsageProvider(MemoryUsageProvider memoryUsageProvider) {
-            this.memoryUsageProvider = memoryUsageProvider;
-            return this;
-        }
-
-        public RedisQuesBuilder withRedisquesRedisquesConfigurationProvider(RedisquesConfigurationProvider configurationProvider) {
-            this.configurationProvider = configurationProvider;
-            return this;
-        }
-
-        public RedisQuesBuilder withRedisProvider(RedisProvider redisProvider) {
-            this.redisProvider = redisProvider;
-            return this;
-        }
-
-        public RedisQuesBuilder withExceptionFactory(RedisQuesExceptionFactory exceptionFactory) {
-            this.exceptionFactory = exceptionFactory;
-            return this;
-        }
-
-        public RedisQuesBuilder withMeterRegistry(MeterRegistry meterRegistry) {
-            this.meterRegistry = meterRegistry;
-            return this;
-        }
-
-        /**
-         * How many redis requests monitoring related component will trigger
-         * simultaneously. One of those components for example is
-         * {@link QueueStatisticsCollector}.
-         */
-        public RedisQuesBuilder withRedisMonitoringReqQuota(Semaphore quota) {
-            this.redisMonitoringReqQuota = quota;
-            return this;
-        }
-
-        /**
-         * How many active queues registrations will trigger at once
-         */
-        public RedisQuesBuilder withActiveQueueRegRefreshReqQuota(Semaphore quota) {
-            this.activeQueueRegRefreshReqQuota = quota;
-            return this;
-        }
-
-        /**
-         * How many redis requests {@link RedisQues#checkQueues()} will trigger
-         * simultaneously.
-         */
-        public RedisQuesBuilder withCheckQueueRequestsQuota(Semaphore quota) {
-            this.checkQueueRequestsQuota = quota;
-            return this;
-        }
-
-        /**
-         * How many incoming requests {@link QueueStatsService} will accept
-         * simultaneously.
-         */
-        public RedisQuesBuilder withQueueStatsRequestQuota(Semaphore quota) {
-            this.queueStatsRequestQuota = quota;
-            return this;
-        }
-
-        /**
-         * How many simultaneous redis requests will be performed maximally for
-         * {@link org.swisspush.redisques.handler.GetQueuesItemsCountHandler} requests.
-         */
-        public RedisQuesBuilder withGetQueuesItemsCountRedisRequestQuota(Semaphore quota) {
-            this.getQueuesItemsCountRedisRequestQuota = quota;
-            return this;
-        }
-
-        public RedisQues build() {
-            if (exceptionFactory == null) {
-                exceptionFactory = newThriftyExceptionFactory();
-            }
-            if (redisMonitoringReqQuota == null) {
-                redisMonitoringReqQuota = new Semaphore(Integer.MAX_VALUE);
-                log.warn("No redis request limit provided. Fallback to legacy behavior of {}.", Integer.MAX_VALUE);
-            }
-            if (activeQueueRegRefreshReqQuota == null) {
-                activeQueueRegRefreshReqQuota = new Semaphore(Integer.MAX_VALUE);
-                log.warn("No active queue register refresh limit provided. Fallback to legacy behavior of {}.", Integer.MAX_VALUE);
-            }
-            if (checkQueueRequestsQuota == null) {
-                checkQueueRequestsQuota = new Semaphore(Integer.MAX_VALUE);
-                log.warn("No redis check queue limit provided. Fallback to legacy behavior of {}.", Integer.MAX_VALUE);
-            }
-            if (queueStatsRequestQuota == null) {
-                queueStatsRequestQuota = new Semaphore(Integer.MAX_VALUE);
-                log.warn("No redis queue stats limit provided. Fallback to legacy behavior of {}.", Integer.MAX_VALUE);
-            }
-            if (getQueuesItemsCountRedisRequestQuota == null) {
-                getQueuesItemsCountRedisRequestQuota = new Semaphore(Integer.MAX_VALUE);
-                log.warn("No redis getQueueItemsCount quota provided. Fallback to legacy behavior of {}.", Integer.MAX_VALUE);
-            }
-            return new RedisQues(memoryUsageProvider, configurationProvider, redisProvider, exceptionFactory,
-                    redisMonitoringReqQuota, activeQueueRegRefreshReqQuota, checkQueueRequestsQuota, queueStatsRequestQuota,
-                    getQueuesItemsCountRedisRequestQuota, meterRegistry);
-        }
-    }
-
     public final static String TRIM_REQUEST_KEY = "trim_request_";
-
-    private enum UnregisterConsumerType {
-        FORCE, GRACEFUL, QUIET_FOR_SOMETIME
-    }
 
     public String getUid() {
         return uid;
-    }
-
-    private static class QueueProcessingState {
-        private QueueProcessingState(QueueState state, long timestampMillis){
-            this.state = state;
-            this.lastConsumedTimestampMillis = timestampMillis;
-        }
-        QueueState state;
-        long lastConsumedTimestampMillis;
     }
 
     // Identifies the consumer
@@ -570,7 +440,7 @@ public class RedisQues extends AbstractVerticle {
                 log.trace("RedisQues Queue {} is handed by other consumer", queueName);
                 return;
             }
-            QueueState state = queueProcessingState.state;
+            QueueState state = queueProcessingState.getState();
             log.trace("RedisQues consumer: {} queue: {} state: {}", uid, queueName, state);
             if (state != QueueState.CONSUMING) {
                 //not in state consuming, trim now
@@ -699,7 +569,7 @@ public class RedisQues extends AbstractVerticle {
             void refreshConsumerRegistration(BiConsumer<Throwable, Void> onQueueDone) {
                 while (iter.hasNext()) {
                     var entry = iter.next();
-                    if (entry.getValue().state != QueueState.CONSUMING) continue;
+                    if (entry.getValue().getState() != QueueState.CONSUMING) continue;
                     checkIfImStillTheRegisteredConsumer(entry.getKey(), onQueueDone);
                     return;
                 }
@@ -890,7 +760,7 @@ public class RedisQues extends AbstractVerticle {
                     futureList.add(unregisterQueue(queueName));
                     break;
                 case GRACEFUL:
-                    if (entry.getValue().state == QueueState.READY) {
+                    if (entry.getValue().getState() == QueueState.READY) {
                         futureList.add(unregisterQueue(queueName));
                     }
                     break;
@@ -898,13 +768,13 @@ public class RedisQues extends AbstractVerticle {
                     if (emptyQueueLiveTimeMillis <= 0) {
                         break; // disabled
                     }
-                    if (state.lastConsumedTimestampMillis > 0
-                            && System.currentTimeMillis() > state.lastConsumedTimestampMillis + emptyQueueLiveTimeMillis) {
+                    if (state.getLastConsumedTimestampMillis() > 0
+                            && System.currentTimeMillis() > state.getLastConsumedTimestampMillis() + emptyQueueLiveTimeMillis) {
                         // the queue has been empty for quite a while now
                         log.debug("empty queue {} has has been idle for {} ms, deregister", queueName, emptyQueueLiveTimeMillis);
                         futureList.add(unregisterQueue(queueName));
                     } else {
-                        log.debug("queue {} is empty since: {}", queueName, state.lastConsumedTimestampMillis);
+                        log.debug("queue {} is empty since: {}", queueName, state.getLastConsumedTimestampMillis());
                     }
                     break;
                 default:
@@ -1020,7 +890,7 @@ public class RedisQues extends AbstractVerticle {
                                 promise.complete();
                                 return;
                             }
-                            QueueState state = queueProcessingState.state;
+                            QueueState state = queueProcessingState.getState();
                             log.trace("RedisQues consumer: {} queue: {} state: {}", consumer, queueName, state);
                             // Get the next message only once the previous has
                             // been completely processed
@@ -1532,12 +1402,12 @@ public class RedisQues extends AbstractVerticle {
                 // not in our list yet
                 return new QueueProcessingState(state, 0);
             } else {
-                if (queueProcessingState.state == QueueState.CONSUMING && state == QueueState.READY) {
+                if (queueProcessingState.getState() == QueueState.CONSUMING && state == QueueState.READY) {
                     // update the state and the timestamp when we change from CONSUMING to READY
                     return new QueueProcessingState(QueueState.READY, currentTimeMillis());
                 } else {
                     // update the state but leave the timestamp unchanged
-                    queueProcessingState.state = state;
+                    queueProcessingState.setState(state);
                     return queueProcessingState;
                 }
             }
@@ -1560,7 +1430,7 @@ public class RedisQues extends AbstractVerticle {
 
     public Map<QueueState, Long> getQueueStateCount() {
         return myQueues.values().stream()
-                .map(queueProcessingState -> queueProcessingState.state)
+                .map(QueueProcessingState::getState)
                 .collect(Collectors.groupingBy(
                         Function.identity(),
                         () -> new EnumMap<>(QueueState.class),
