@@ -11,7 +11,6 @@ import org.swisspush.redisques.exception.ResourceExhaustionException;
 
 import java.util.Iterator;
 import java.util.List;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;

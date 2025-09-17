@@ -1,8 +1,6 @@
 package org.swisspush.redisques;
 
 import com.google.common.base.Strings;
-import io.micrometer.core.instrument.Counter;
-import io.micrometer.core.instrument.LongTaskTimer;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.AsyncResult;
@@ -17,7 +15,6 @@ import io.vertx.core.eventbus.MessageConsumer;
 import io.vertx.core.http.HttpClient;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
-import io.vertx.micrometer.backends.BackendRegistries;
 import io.vertx.redis.client.Command;
 import io.vertx.redis.client.RedisAPI;
 import io.vertx.redis.client.Response;
@@ -28,12 +25,10 @@ import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.handler.RedisquesHttpRequestHandler;
 import org.swisspush.redisques.lock.Lock;
 import org.swisspush.redisques.lock.impl.RedisBasedLock;
-import org.swisspush.redisques.metrics.LongTaskTimerSamplePair;
-import org.swisspush.redisques.metrics.MetricsCollector;
-import org.swisspush.redisques.metrics.MetricsCollectorScheduler;
 import org.swisspush.redisques.performance.UpperBoundParallel;
 import org.swisspush.redisques.queue.KeyspaceHelper;
 import org.swisspush.redisques.queue.QueueActionsService;
+import org.swisspush.redisques.queue.QueueMetrics;
 import org.swisspush.redisques.queue.QueueProcessingState;
 import org.swisspush.redisques.queue.RedisService;
 import org.swisspush.redisques.queue.UnregisterConsumerType;
@@ -111,17 +106,13 @@ public class RedisQues extends AbstractVerticle {
 
     private RedisQuesTimer timer;
     private MemoryUsageProvider memoryUsageProvider;
-    private QueueActionFactory queueActionFactory;
     private RedisquesConfigurationProvider configurationProvider;
     private RedisMonitor redisMonitor;
     private QueueActionsService queueActionsService;
     private QueueStatsService queueStatsService;
+    private QueueMetrics queueMetrics;
 
     private MeterRegistry meterRegistry;
-    private Counter dequeueCounter;
-    private Counter consumerCounter;
-
-    private Map<QueueOperation, QueueAction> queueActions = new HashMap<>();
 
     private Map<String, Long> aliveConsumers = new ConcurrentHashMap<>();
     private final RedisQuesExceptionFactory exceptionFactory;
@@ -132,7 +123,6 @@ public class RedisQues extends AbstractVerticle {
     private final Semaphore getQueuesItemsCountRedisRequestQuota;
     private final Semaphore activeQueueRegRefreshReqQuota;
     private Lock lock;
-    private final Map<String, LongTaskTimerSamplePair> perQueueMetrics = new ConcurrentHashMap<>();
 
     public RedisQues() {
         this(null, null, null, newThriftyExceptionFactory(), new Semaphore(Integer.MAX_VALUE),
@@ -210,11 +200,11 @@ public class RedisQues extends AbstractVerticle {
         // Try to register for this queue
         redisSetWithOptions(consumersPrefix + queueName, uid, true, consumerLockTime, event -> {
             if (event.succeeded()) {
-                perQueueMetricsReg(queueName);
+                queueMetrics.perQueueMetricsReg(queueName);
                 String value = event.result() != null ? event.result().toString() : null;
                 log.trace("RedisQues setxn result: {} for queue: {}", value, queueName);
                 if (configurationProvider.configuration().getMicrometerMetricsEnabled()) {
-                    consumerCounter.increment(1);
+                    queueMetrics.consumerCounterIncrement(1);
                 }
                 if ("OK".equals(value)) {
                     // I am now the registered consumer for this queue.
@@ -278,133 +268,43 @@ public class RedisQues extends AbstractVerticle {
         redisService = new RedisService(redisProvider);
     }
 
-    private void createMetricForQueueIfNeeded(String queueName) {
-        if (!(configurationProvider.configuration().getMicrometerMetricsEnabled() &&
-                configurationProvider.configuration().getMicrometerPerQueueMetricEnabled())
-        ) {
-            return;
-        }
-        LongTaskTimer task = LongTaskTimer.builder(MetricMeter.QUEUE_CONSUMER_LIFE_CYCLE.getId())
-                .description(MetricMeter.QUEUE_CONSUMER_LIFE_CYCLE.getDescription())
-                .tag(MetricTags.IDENTIFIER.getId(), configurationProvider.configuration().getMicrometerMetricsIdentifier())
-                .tag(MetricTags.CONSUMER_UID.getId(), uid)
-                .tag(MetricTags.QUEUE_NAME.getId(), queueName)
-                .register(meterRegistry);
-        LongTaskTimer.Sample sample = task.start();
-        LongTaskTimerSamplePair pair = new LongTaskTimerSamplePair(task, sample);
-        perQueueMetrics.put(queueName, pair);
-    }
-
-    /**
-     * create a timer metric for a queue's consumer, and start a Sample (Consumer Created)
-     * @param queueName
-     */
-    private void perQueueMetricsReg(String queueName) {
-        if (!(configurationProvider.configuration().getMicrometerMetricsEnabled() &&
-                configurationProvider.configuration().getMicrometerPerQueueMetricEnabled())
-        ) {
-            return;
-        }
-        createMetricForQueueIfNeeded(queueName);
-    }
-
-    /**
-     * create a new Sample for timer metric of queue consumer, and stop previous one (Consumer Refresh)
-     * @param queueName
-     */
-    private void perQueueMetricsRefresh(String queueName) {
-        if (!(configurationProvider.configuration().getMicrometerMetricsEnabled() &&
-                configurationProvider.configuration().getMicrometerPerQueueMetricEnabled())
-        ) {
-            return;
-        }
-        createMetricForQueueIfNeeded(queueName);
-        perQueueMetrics.computeIfPresent(queueName, (key, longTaskTimerSamplePair) -> {
-            // A refresh cycle, create a new sample
-            longTaskTimerSamplePair.getSample().stop();
-            longTaskTimerSamplePair.setSample(longTaskTimerSamplePair.getLongTaskTimer().start());
-            return longTaskTimerSamplePair;
-        });
-    }
-
-    /**
-     * stop previous Sample of queue consumer, and remove this timer metric. (Consumer EOL)
-     * @param queueName
-     */
-    private void perQueueMetricsRemove(String queueName) {
-        if (!(configurationProvider.configuration().getMicrometerMetricsEnabled() &&
-                configurationProvider.configuration().getMicrometerPerQueueMetricEnabled())
-        ) {
-            return;
-        }
-        perQueueMetrics.computeIfPresent(queueName, (key, longTaskTimerSamplePair) -> {
-            // Queue have been Deregistered, remove this LongTaskTimer
-            longTaskTimerSamplePair.getSample().stop();
-            return null;
-        });
-        perQueueMetrics.remove(queueName);
-    }
-
-    private void initMicrometerMetrics(RedisquesConfiguration modConfig) {
-
-        if(meterRegistry == null) {
-            meterRegistry = BackendRegistries.getDefaultNow();
-        }
-
-        String metricsIdentifier = modConfig.getMicrometerMetricsIdentifier();
-        dequeueCounter = Counter.builder(MetricMeter.DEQUEUE.getId())
-                .description(MetricMeter.DEQUEUE.getDescription()).tag(MetricTags.IDENTIFIER.getId(), metricsIdentifier).register(meterRegistry);
-
-        consumerCounter = Counter.builder(MetricMeter.QUEUE_CONSUMER_COUNT.getId())
-                .description(MetricMeter.QUEUE_CONSUMER_COUNT.getDescription()).tag(MetricTags.IDENTIFIER.getId(), metricsIdentifier).register(meterRegistry);
-
-        String address = modConfig.getAddress();
-        int metricRefreshPeriod = modConfig.getMetricRefreshPeriod();
-        if (metricRefreshPeriod > 0) {
-            String identifier = modConfig.getMicrometerMetricsIdentifier();
-            MetricsCollector metricsCollector = new MetricsCollector(vertx, uid, address, identifier, meterRegistry, lock, metricRefreshPeriod);
-            new MetricsCollectorScheduler(vertx, metricsCollector, metricRefreshPeriod);
-
-            vertx.eventBus().consumer(metricsCollector.getAddress(), (Handler<Message<Void>>) event -> {
-                Map<QueueState, Long> stateCount = getQueueStateCount();
-                JsonObject jsonObject = new JsonObject();
-                stateCount.forEach((queueState, aLong) -> jsonObject.put(queueState.name(), aLong));
-                event.reply(jsonObject);
-            });
-
-        }
-    }
-
     private void initialize() {
         RedisquesConfiguration configuration = configurationProvider.configuration();
         this.keyspaceHelper = new KeyspaceHelper(configuration, uid);
         this.queueStatisticsCollector = new QueueStatisticsCollector(
-                redisProvider, queuesPrefix, vertx, exceptionFactory, redisMonitoringReqQuota,
+                redisService, keyspaceHelper.getQueuesPrefix(), vertx, exceptionFactory, redisMonitoringReqQuota,
                 configuration.getQueueSpeedIntervalSec());
-
-        this.lock = new RedisBasedLock(redisProvider, exceptionFactory);
-
-        if(configurationProvider.configuration().getMicrometerMetricsEnabled()) {
-            initMicrometerMetrics(configuration);
-        }
+        this.lock = new RedisBasedLock(redisService, exceptionFactory);
 
         this.queueStatsService = new QueueStatsService(
                 vertx, configuration, keyspaceHelper.getAddress(), queueStatisticsCollector, dequeueStatisticCollector,
                 exceptionFactory, queueStatsRequestQuota);
 
+        this.queueMetrics = new QueueMetrics(vertx, keyspaceHelper, redisService, meterRegistry, configurationProvider, exceptionFactory);
+        queueMetrics.initMicrometerMetrics();
 
+        int metricRefreshPeriod = configurationProvider.configuration().getMetricRefreshPeriod();
+        if (metricRefreshPeriod > 0) {
+            vertx.eventBus().consumer(keyspaceHelper.getMetricsCollectorAddress(), (Handler<Message<Void>>) event -> {
+                Map<QueueState, Long> stateCount = getQueueStateCount();
+                JsonObject jsonObject = new JsonObject();
+                stateCount.forEach((queueState, aLong) -> jsonObject.put(queueState.name(), aLong));
+                event.reply(jsonObject);
+            });
+        }
         RedisquesHttpRequestHandler.init(vertx, configuration, queueStatsService, exceptionFactory);
 
         // only initialize memoryUsageProvider when not provided in the constructor
         if (memoryUsageProvider == null) {
-            memoryUsageProvider = new DefaultMemoryUsageProvider(redisProvider, vertx,
+            memoryUsageProvider = new DefaultMemoryUsageProvider(redisService, vertx,
                     configurationProvider.configuration().getMemoryUsageCheckIntervalSec());
         }
 
         HttpClient client = vertx.createHttpClient();
 
         assert getQueuesItemsCountRedisRequestQuota != null;
-        queueActionsService = new QueueActionsService(vertx, redisService, keyspaceHelper, configurationProvider, exceptionFactory, memoryUsageProvider, queueStatisticsCollector, getQueuesItemsCountRedisRequestQuota, meterRegistry);
+        queueActionsService = new QueueActionsService(vertx, redisService, keyspaceHelper, configurationProvider,
+                exceptionFactory, memoryUsageProvider, queueStatisticsCollector, getQueuesItemsCountRedisRequestQuota, meterRegistry);
 
         String address = configuration.getAddress();
 
@@ -479,9 +379,7 @@ public class RedisQues extends AbstractVerticle {
                 if (currentTimeMillis() > entry.getValue()) {
                     log.info("RedisQues consumer with id {}' has expired", entry.getKey());
                     iterator.remove();
-                    if (configurationProvider.configuration().getMicrometerMetricsEnabled()) {
-                        consumerCounter.increment(-1);
-                    }
+                    queueMetrics.consumerCounterIncrement(-1);
                 }
             }
             vertx.eventBus().publish(address + "-consumer-alive", uid);
@@ -538,7 +436,7 @@ public class RedisQues extends AbstractVerticle {
         String metricStorageName = configuration.getMetricStorageName();
         int metricRefreshPeriod = configuration.getMetricRefreshPeriod();
 
-        redisMonitor = new RedisMonitor(vertx, redisProvider, metricsAddress, metricStorageName, metricRefreshPeriod);
+        redisMonitor = new RedisMonitor(vertx, redisService, metricsAddress, metricStorageName, metricRefreshPeriod);
         redisMonitor.start();
     }
 
@@ -602,7 +500,7 @@ public class RedisQues extends AbstractVerticle {
                                     onDone.accept(exceptionFactory.newException("TODO error handling", ev.cause()), null);
                                     return;
                                 }
-                                perQueueMetricsRefresh(queue);
+                                queueMetrics.perQueueMetricsRefresh(queue);
                                 updateTimestamp(queue, ev3 -> {
                                     Throwable ex = ev3.succeeded() ? null : exceptionFactory.newException(
                                         "updateTimestamp(" + queue + ") failed", ev3.cause());
@@ -796,7 +694,7 @@ public class RedisQues extends AbstractVerticle {
                 log.warn("TODO error handling", exceptionFactory.newException(
                         "refreshRegistration(" + queueName + ") failed", event.cause()));
             }
-            perQueueMetricsRefresh(queueName);
+            queueMetrics.perQueueMetricsRefresh(queueName);
             // Make sure that I am still the registered consumer
             final String consumerKey = consumersPrefix + queueName;
             log.trace("RedisQues unregister consumers get: {}", consumerKey);
@@ -814,7 +712,7 @@ public class RedisQues extends AbstractVerticle {
                         if (delResult.failed()) {
                             log.warn("Failed to deregister myself from queue '{}'", consumerKey, exceptionFactory.newException(delResult.cause()));
                         } else {
-                            perQueueMetricsRemove(queueName);
+                            queueMetrics.perQueueMetricsRemove(queueName);
                             log.debug("Deregistered myself from queue '{}'", consumerKey);
                         }
                         promise.complete();
@@ -872,7 +770,7 @@ public class RedisQues extends AbstractVerticle {
                 log.warn("Failed to refresh registration for queue '{}'.", queueName, event.cause());
                 // We should return here. See: "https://softwareengineering.stackexchange.com/a/190535"
             }
-            perQueueMetricsRefresh(queueName);
+            queueMetrics.perQueueMetricsRefresh(queueName);
             // Make sure that I am still the registered consumer
             final String consumerKey = consumersPrefix + queueName;
             log.trace("RedisQues consume get: {}", consumerKey);
@@ -1021,9 +919,7 @@ public class RedisQues extends AbstractVerticle {
                                         log.error("Failed to pop from queue '{}'", queueName, jsonAnswer.cause());
                                         // We should return here. See: "https://softwareengineering.stackexchange.com/a/190535"
                                     }
-                                    if(dequeueCounter != null) {
-                                        dequeueCounter.increment();
-                                    }
+                                    queueMetrics.dequeueCounterIncrement();
                                     log.debug("RedisQues Message removed, queue {} is ready again", queueName);
                                     setMyQueuesState(queueName, QueueState.READY);
 
@@ -1287,7 +1183,7 @@ public class RedisQues extends AbstractVerticle {
                                 if (refreshRegistrationEvent.failed()) log.warn("TODO error handling",
                                         exceptionFactory.newException("refreshRegistration(" + queueName + ") failed",
                                         refreshRegistrationEvent.cause()));
-                                perQueueMetricsRefresh(queueName);
+                                queueMetrics.perQueueMetricsRefresh(queueName);
                                 // And trigger its consumer.
                                 notifyConsumer(queueName).onComplete(notifyConsumerEvent -> {
                                     if (notifyConsumerEvent.failed()) log.warn("TODO error handling",
