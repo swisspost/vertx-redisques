@@ -3,6 +3,7 @@ package org.swisspush.redisques.util;
 import io.vertx.core.Vertx;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.swisspush.redisques.queue.RedisService;
 
 import java.util.Collections;
 import java.util.Optional;
@@ -11,15 +12,15 @@ public class DefaultMemoryUsageProvider implements MemoryUsageProvider {
 
     private final Logger log = LoggerFactory.getLogger(DefaultMemoryUsageProvider.class);
 
-    private final RedisProvider redisProvider;
+    private final RedisService redisService;
 
     private Optional<Integer> currentMemoryUsagePercentageOpt = Optional.empty();
 
     private static final int MAX_PERCENTAGE = 100;
     private static final int MIN_PERCENTAGE = 0;
 
-    public DefaultMemoryUsageProvider(RedisProvider redisProvider, Vertx vertx, int memoryUsageCheckIntervalSec) {
-        this.redisProvider = redisProvider;
+    public DefaultMemoryUsageProvider(RedisService redisService, Vertx vertx, int memoryUsageCheckIntervalSec) {
+        this.redisService = redisService;
         updateCurrentMemoryUsage();
         vertx.setPeriodic(memoryUsageCheckIntervalSec * 1000L, event -> updateCurrentMemoryUsage());
     }
@@ -29,9 +30,7 @@ public class DefaultMemoryUsageProvider implements MemoryUsageProvider {
     }
 
     private void updateCurrentMemoryUsage() {
-        redisProvider.redis()
-                .onFailure( ex -> log.warn("TODO error handling", ex))
-                .onSuccess(redisAPI -> redisAPI.info(Collections.singletonList("memory"))
+        redisService.info(Collections.singletonList("memory"))
                 .onComplete(memoryInfoEvent -> {
                     if (memoryInfoEvent.failed()) {
                         log.error("Unable to get memory information from redis", memoryInfoEvent.cause());
@@ -63,9 +62,6 @@ public class DefaultMemoryUsageProvider implements MemoryUsageProvider {
                     int roundedValue = Math.round(currentMemoryUsagePercentage);
                     log.info("Current memory usage is {}%", roundedValue);
                     currentMemoryUsagePercentageOpt = Optional.of(roundedValue);
-                })).onFailure(throwable -> {
-                    log.error("Redis: Unable to get memory information from redis", throwable);
-                    currentMemoryUsagePercentageOpt = Optional.empty();
                 });
     }
 

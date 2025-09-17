@@ -5,6 +5,7 @@ import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.swisspush.redisques.queue.RedisService;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -13,7 +14,7 @@ import java.util.Map;
 
 public class RedisMonitor {
     private final Vertx vertx;
-    private final RedisProvider redisProvider;
+    private final RedisService redisService;
     private final int periodMs;
     private long timer;
     private final Logger log = LoggerFactory.getLogger(RedisMonitor.class);
@@ -23,34 +24,32 @@ public class RedisMonitor {
     private final MetricsPublisher publisher;
 
     /**
-     * @param vertx         vertx
-     * @param redisProvider RedisProvider
-     * @param name          name
-     * @param periodSec        in seconds.
+     * @param vertx        vertx
+     * @param redisService RedisService
+     * @param name         name
+     * @param periodSec    in seconds.
      */
-    public RedisMonitor(Vertx vertx, RedisProvider redisProvider, String monitoringAddress, String name, int periodSec) {
-        this(vertx, redisProvider, name, periodSec,
+    public RedisMonitor(Vertx vertx, RedisService redisService, String monitoringAddress, String name, int periodSec) {
+        this(vertx, redisService, name, periodSec,
                 new EventBusMetricsPublisher(vertx, monitoringAddress, "redis." + name + ".")
         );
     }
 
-    public RedisMonitor(Vertx vertx, RedisProvider redisProvider, String name, int periodSec, MetricsPublisher publisher) {
+    public RedisMonitor(Vertx vertx, RedisService redisService, String name, int periodSec, MetricsPublisher publisher) {
         this.vertx = vertx;
-        this.redisProvider = redisProvider;
+        this.redisService = redisService;
         this.periodMs = periodSec * 1000;
         this.publisher = publisher;
     }
 
     public void start() {
-        timer = vertx.setPeriodic(periodMs, timer -> redisProvider.redis().onSuccess(redisAPI -> {
-            redisAPI.info(new ArrayList<>()).onComplete(event -> {
-                if (event.succeeded()) {
-                    collectMetrics(event.result().toBuffer());
-                } else {
-                    log.warn("Cannot collect INFO from redis");
-                }
-            });
-        }).onFailure(throwable -> log.warn("Cannot collect INFO from redis", throwable)));
+        timer = vertx.setPeriodic(periodMs, timer -> redisService.info(new ArrayList<>()).onComplete(event -> {
+            if (event.succeeded()) {
+                collectMetrics(event.result().toBuffer());
+            } else {
+                log.warn("Cannot collect INFO from redis");
+            }
+        }));
     }
 
     public void stop() {
