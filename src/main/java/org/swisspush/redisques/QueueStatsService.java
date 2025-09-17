@@ -1,5 +1,6 @@
 package org.swisspush.redisques;
 
+import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.EventBus;
 import io.vertx.core.json.JsonArray;
@@ -8,10 +9,16 @@ import org.slf4j.Logger;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.util.*;
 
+import javax.annotation.Nullable;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
 
 import static java.lang.Long.compare;
@@ -45,23 +52,32 @@ public class QueueStatsService {
     private final DequeueStatisticCollector dequeueStatisticCollector;
     private final RedisQuesExceptionFactory exceptionFactory;
     private final Semaphore incomingRequestQuota;
+    private final Map<String, DequeueStatistic> dequeueStatistic = new ConcurrentHashMap<>();
+    private final RedisquesConfiguration configuration;
+    private boolean dequeueStatisticEnabled = false;
 
     public QueueStatsService(
             Vertx vertx,
-            EventBus eventBus,
-            String redisquesAddress,
+            RedisquesConfiguration configuration, String redisquesAddress,
             QueueStatisticsCollector queueStatisticsCollector,
             DequeueStatisticCollector dequeueStatisticCollector,
             RedisQuesExceptionFactory exceptionFactory,
             Semaphore incomingRequestQuota
     ) {
         this.vertx = vertx;
-        this.eventBus = eventBus;
+        this.configuration = configuration;
+        this.eventBus = vertx.eventBus();
         this.redisquesAddress = redisquesAddress;
         this.queueStatisticsCollector = queueStatisticsCollector;
         this.dequeueStatisticCollector = dequeueStatisticCollector;
         this.exceptionFactory = exceptionFactory;
         this.incomingRequestQuota = incomingRequestQuota;
+        int dequeueStatisticReportIntervalSec = configuration.getDequeueStatisticReportIntervalSec();
+        if (configuration.isDequeueStatsEnabled()) {
+            dequeueStatisticEnabled = true;
+            Runnable publisher = newDequeueStatisticPublisher();
+            vertx.setPeriodic(1000L * dequeueStatisticReportIntervalSec, time -> publisher.run());
+        }
     }
 
     public <CTX> void getQueueStats(CTX mCtx, GetQueueStatsMentor<CTX> mentor) {
@@ -294,4 +310,147 @@ public class QueueStatsService {
         public void onError(Throwable ex, CTX ctx);
     }
 
+    public void dequeueStatisticSetLastDequeueAttemptTimestamp(String queue, @Nullable Long lastDequeueAttemptTimestamp) {
+        if (dequeueStatisticEnabled) {
+            dequeueStatistic.computeIfPresent(queue, (s, dequeueStatistic) -> {
+                dequeueStatistic.setLastDequeueAttemptTimestamp(lastDequeueAttemptTimestamp);
+                return dequeueStatistic;
+            });
+        }
+    }
+
+    public void dequeueStatisticSetLastDequeueSuccessTimestamp(String queue, @Nullable Long lastDequeueSuccessTimestamp) {
+        if (dequeueStatisticEnabled) {
+            dequeueStatistic.computeIfPresent(queue, (s, dequeueStatistic) -> {
+                dequeueStatistic.setLastDequeueSuccessTimestamp(lastDequeueSuccessTimestamp);
+                return dequeueStatistic;
+            });
+        }
+    }
+
+    public void dequeueStatisticSetNextDequeueDueTimestamp(String queue, @Nullable Long dueTimestamp) {
+        if (dequeueStatisticEnabled) {
+            dequeueStatistic.computeIfPresent(queue, (s, dequeueStatistic) -> {
+                dequeueStatistic.setNextDequeueDueTimestamp(dueTimestamp);
+                return dequeueStatistic;
+            });
+        }
+    }
+
+    public void dequeueStatisticMarkedForRemoval(String queue) {
+        if (dequeueStatisticEnabled) {
+            dequeueStatistic.computeIfPresent(queue, (s, dequeueStatistic) -> {
+                dequeueStatistic.setMarkedForRemoval();
+                return dequeueStatistic;
+            });
+        }
+    }
+
+    public void createDequeueStatisticIfMissing(String queueName) {
+        if (dequeueStatisticEnabled) {
+            dequeueStatistic.computeIfAbsent(queueName, s -> new DequeueStatistic());
+        }
+    }
+
+    class Task {
+        private final String queueName;
+        private final DequeueStatistic dequeueStatistic;
+
+        Task(String queueName, DequeueStatistic dequeueStatistic) {
+            this.queueName = queueName;
+            this.dequeueStatistic = dequeueStatistic;
+        }
+
+        Future<Void> execute() {
+            // switch to a worker thread
+            return vertx.executeBlocking(promise -> {
+                dequeueStatisticCollector.setDequeueStatistic(queueName, dequeueStatistic).onComplete(event -> {
+                    if (event.failed()) {
+                        log.error("Future that should always succeed has failed, ignore it", event.cause());
+                    }
+                    promise.complete();
+                });
+            });
+        }
+    }
+
+    private Runnable newDequeueStatisticPublisher() {
+        return new Runnable() {
+            final AtomicBoolean isRunning = new AtomicBoolean();
+            Iterator<Map.Entry<String, DequeueStatistic>> iter;
+            long startEpochMs;
+            AtomicInteger i = new AtomicInteger();
+            int size;
+
+            public void run() {
+                if (!isRunning.compareAndSet(false, true)) {
+                    log.warn("Previous publish run still in progress at idx {} of {} since {}ms",
+                            i, size, currentTimeMillis() - startEpochMs);
+                    return;
+                }
+                try {
+                    // Local copy to prevent changes between 'size' and 'iterator' call, plus
+                    // to prevent changes of the backing set while we're iterating.
+                    Map<String, DequeueStatistic> localCopy = new HashMap<>(dequeueStatistic);
+                    size = localCopy.size();
+                    iter = localCopy.entrySet().iterator();
+
+                    // use local copy to clean up
+                    localCopy.forEach((queueName, dequeueStatistic) -> {
+                        if (dequeueStatistic.isMarkedForRemoval()) {
+                            QueueStatsService.this.dequeueStatistic.remove(queueName);
+                        }
+                    });
+
+                    i.set(0);
+                    startEpochMs = currentTimeMillis();
+                    if (size > 5_000) log.warn("Going to report {} dequeue statistics towards collector", size);
+                    else if (size > 500) log.info("Going to report {} dequeue statistics towards collector", size);
+                    else log.trace("Going to report {} dequeue statistics towards collector", size);
+                } catch (Throwable ex) {
+                    isRunning.set(false);
+                    throw ex;
+                }
+                resume();
+            }
+
+            void resume() {
+                // here we are executing in an event loop thread
+                try {
+                    List<Task> entryList = new ArrayList<>();
+                    while (iter.hasNext()) {
+                        var entry = iter.next();
+                        var queueName = entry.getKey();
+                        var dequeueStatistic = entry.getValue();
+                        entryList.add(new Task(queueName, dequeueStatistic));
+                    }
+
+                    Future<List<Void>> startFuture = Future.succeededFuture(new ArrayList<>());
+                    // chain the futures sequentially to execute tasks
+                    Future<List<Void>> resultFuture = entryList.stream()
+                            .reduce(startFuture, (future, task) -> future.compose(previousResults -> {
+                                // perform asynchronous task
+                                return task.execute().compose(taskResult -> {
+                                    // append task result to previous results
+                                    previousResults.add(taskResult);
+                                    i.incrementAndGet();
+                                    return Future.succeededFuture(previousResults);
+                                });
+                            }), (a, b) -> Future.succeededFuture());
+                    resultFuture.onComplete(event -> {
+                        if (event.failed()) {
+                            log.error("publishing dequeue statistics not complete, just continue", event.cause());
+                        }
+                        if (log.isTraceEnabled()) {
+                            log.trace("Done publishing {} dequeue statistics. Took {}ms", i, currentTimeMillis() - startEpochMs);
+                        }
+                        isRunning.set(false);
+                    });
+                } catch (Throwable ex) {
+                    isRunning.set(false);
+                    throw ex;
+                }
+            }
+        };
+    }
 }
