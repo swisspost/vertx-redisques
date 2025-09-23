@@ -53,19 +53,16 @@ public class QueueStatsService {
     private final RedisQuesExceptionFactory exceptionFactory;
     private final Semaphore incomingRequestQuota;
     private final Map<String, DequeueStatistic> dequeueStatistic = new ConcurrentHashMap<>();
-    private final RedisquesConfiguration configuration;
     private boolean dequeueStatisticEnabled = false;
 
     public QueueStatsService(
-            Vertx vertx,
-            RedisquesConfiguration configuration, String redisquesAddress,
+            Vertx vertx, RedisquesConfiguration configuration, String redisquesAddress,
             QueueStatisticsCollector queueStatisticsCollector,
             DequeueStatisticCollector dequeueStatisticCollector,
             RedisQuesExceptionFactory exceptionFactory,
             Semaphore incomingRequestQuota
     ) {
         this.vertx = vertx;
-        this.configuration = configuration;
         this.eventBus = vertx.eventBus();
         this.redisquesAddress = redisquesAddress;
         this.queueStatisticsCollector = queueStatisticsCollector;

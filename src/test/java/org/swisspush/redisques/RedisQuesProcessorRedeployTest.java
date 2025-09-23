@@ -110,7 +110,13 @@ public class RedisQuesProcessorRedeployTest extends AbstractTestCase {
 
                 // execute check operation, which registers a new consumer to the existing queue and process the queue
                 final JsonObject operation = buildCheckOperation();
-                eventBusSend(operation, reply -> context.assertEquals(OK, reply.result().body().getString(STATUS)));
+                eventBusSend(operation, reply -> {
+                    if (reply.failed()) {
+                        context.fail(reply.cause());
+                        return;
+                    }
+                    context.assertEquals(OK, reply.result().body().getString(STATUS));
+                });
             });
 
         });
