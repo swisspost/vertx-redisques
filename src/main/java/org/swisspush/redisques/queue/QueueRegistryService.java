@@ -219,7 +219,7 @@ public class QueueRegistryService {
 
     // QueueRegistry
     public Future<Boolean> tryRegister(String queueName, String uid) {
-        return redisService.setNxEx(queueName, uid, true, consumerLockTime);
+        return redisService.setNxPx(queueName, uid, true, 1000L * consumerLockTime);
     }
 
     public void refreshRegistration(String queueName, Handler<AsyncResult<Response>> handler) {
@@ -444,7 +444,7 @@ public class QueueRegistryService {
     private void registerQueueCheck() {
         periodicSkipScheduler.setPeriodic(configurationProvider.configuration().getCheckIntervalTimerMs(), "checkQueues", onDone -> {
             int checkInterval = configurationProvider.configuration().getCheckInterval();
-            redisService.setNxEx(keyspaceHelper.getQueueCheckLastExecKey(), String.valueOf(currentTimeMillis()), true, checkInterval).compose(aBoolean -> {
+            redisService.setNxPx(keyspaceHelper.getQueueCheckLastExecKey(), String.valueOf(currentTimeMillis()), true, 1000L * checkInterval).compose(aBoolean -> {
                 log.info("periodic queue check is triggered now");
                 return checkQueues();
             }).onComplete((AsyncResult<Void> ev) -> {

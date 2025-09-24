@@ -12,6 +12,7 @@ import org.swisspush.redisques.util.RedisProvider;
 import org.swisspush.redisques.util.RedisUtils;
 
 import javax.annotation.Nullable;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -79,39 +80,16 @@ public class RedisService {
         );
     }
 
-    public Future<Boolean> setNxPx(String key, String value, boolean nx, long duration) {
-        JsonArray options = new JsonArray();
-        options.add("PX").add(duration);
-        if (nx) {
-            options.add("NX");
-        }
+    public Future<Boolean> setNxPx(String key, String value, boolean setNx, long durationMillis) {
         Promise<Boolean> p = Promise.promise();
         redis().compose((RedisAPI redisAPI) -> {
                     Future<?> future;
-                    if (nx) {
-                        future = redisAPI.send(Command.SET, key, value, "NX", "PX", String.valueOf(duration));
+                    if (setNx) {
+                        future = redisAPI.send(Command.SET, key, value, "NX", "PX", String.valueOf(durationMillis));
                     } else {
-                        future = redisAPI.send(Command.SET, key, value, "PX", String.valueOf(duration));
+                        future = redisAPI.send(Command.SET, key, value, "PX", String.valueOf(durationMillis));
                     }
                     return future.onSuccess(resp -> p.complete(resp != null && "OK".equals(resp.toString())))
-                            .onFailure(p::fail);
-                }
-        );
-        return p.future();
-    }
-
-    public Future<Boolean> setNxEx(String key, String value, boolean nx, long duration) {
-        Promise<Boolean> p = Promise.promise();
-        redis().compose((RedisAPI redisAPI) -> {
-                    Future<?> future;
-                    if (nx) {
-                        future = redisAPI.send(Command.SET, key, value, "NX", "EX", String.valueOf(duration));
-                    } else {
-                        future = redisAPI.send(Command.SET, key, value, "EX", String.valueOf(duration));
-                    }
-                    return future.onSuccess(resp -> {
-                                p.complete(resp != null && "OK".equals(resp.toString()));
-                            })
                             .onFailure(p::fail);
                 }
         );
