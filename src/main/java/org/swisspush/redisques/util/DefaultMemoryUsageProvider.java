@@ -40,19 +40,19 @@ public class DefaultMemoryUsageProvider implements MemoryUsageProvider {
 
                     String memoryInfo = memoryInfoEvent.result().toString();
 
-                    Optional<Long> totalSystemMemory = totalSystemMemory(memoryInfo);
-                    if (totalSystemMemory.isEmpty()) {
+                    Optional<Long> availableMemory = availableMemory(memoryInfo);
+                    if (availableMemory.isEmpty()) {
                         currentMemoryUsagePercentageOpt = Optional.empty();
                         return;
                     }
 
-                    Optional<Long> usedMemory = usedMemory(memoryInfo);
+                    Optional<Long> usedMemory = evaluateProperty(memoryInfo, "used_memory", true);
                     if (usedMemory.isEmpty()) {
                         currentMemoryUsagePercentageOpt = Optional.empty();
                         return;
                     }
 
-                    float currentMemoryUsagePercentage = ((float) usedMemory.get() / totalSystemMemory.get()) * 100;
+                    float currentMemoryUsagePercentage = ((float) usedMemory.get() / availableMemory.get()) * 100;
                     if (currentMemoryUsagePercentage > MAX_PERCENTAGE) {
                         currentMemoryUsagePercentage = MAX_PERCENTAGE;
                     } else if (currentMemoryUsagePercentage < MIN_PERCENTAGE) {
@@ -65,44 +65,42 @@ public class DefaultMemoryUsageProvider implements MemoryUsageProvider {
                 });
     }
 
-    private Optional<Long> totalSystemMemory(String memoryInfo) {
-        long totalSystemMemory;
-        try {
-            Optional<String> totalSystemMemoryOpt = memoryInfo
-                    .lines()
-                    .filter(source -> source.startsWith("total_system_memory:"))
-                    .findAny();
-            if (totalSystemMemoryOpt.isEmpty()) {
-                log.warn("No 'total_system_memory' section received from redis. Unable to calculate the current memory usage");
+    /**
+     * Evaluate the available memory based on multiple possible redis configuration options.
+     * First try with 'maxmemory' and if not available try with 'total_system_memory' because the latter
+     * is not available anymore on AWS MemoryDB setups.
+     */
+    private Optional<Long> availableMemory(String memoryInfo) {
+        Optional<Long> availableMemoryOpt = evaluateProperty(memoryInfo, "maxmemory", false);
+        if (availableMemoryOpt.isEmpty()) {
+            log.trace("No 'maxmemory' available. Try with 'total_system_memory' section.");
+            availableMemoryOpt = evaluateProperty(memoryInfo, "total_system_memory", false);
+            if (availableMemoryOpt.isEmpty()) {
+                log.debug("No 'maxmemory' or 'total_system_memory' available. Unable to calculate the current memory usage");
                 return Optional.empty();
             }
-            totalSystemMemory = Long.parseLong(totalSystemMemoryOpt.get().split(":")[1]);
-            if (totalSystemMemory == 0L) {
-                log.warn("'total_system_memory' value 0 received from redis. Unable to calculate the current memory usage");
-                return Optional.empty();
-            }
-
-        } catch (NumberFormatException ex) {
-            logPropertyWarning("total_system_memory", ex);
-            return Optional.empty();
         }
-
-        return Optional.of(totalSystemMemory);
+        return availableMemoryOpt;
     }
 
-    private Optional<Long> usedMemory(String memoryInfo) {
+    private Optional<Long> evaluateProperty(String memoryInfo, String property, boolean allowZero) {
         try {
-            Optional<String> usedMemoryOpt = memoryInfo
+            Optional<String> propertyOpt = memoryInfo
                     .lines()
-                    .filter(source -> source.startsWith("used_memory:"))
+                    .filter(source -> source.startsWith(property + ":"))
                     .findAny();
-            if (usedMemoryOpt.isEmpty()) {
-                log.warn("No 'used_memory' section received from redis. Unable to calculate the current memory usage");
+            if (propertyOpt.isEmpty()) {
+                log.trace("No property '{}' section received from redis.", property);
                 return Optional.empty();
             }
-            return Optional.of(Long.parseLong(usedMemoryOpt.get().split(":")[1]));
+            long value = Long.parseLong(propertyOpt.get().split(":")[1]);
+            if (!allowZero && value == 0L) {
+                log.trace("Property '{}' value 0 received from redis", property);
+                return Optional.empty();
+            }
+            return Optional.of(value);
         } catch (NumberFormatException ex) {
-            logPropertyWarning("used_memory", ex);
+            logPropertyWarning(property, ex);
             return Optional.empty();
         }
     }
