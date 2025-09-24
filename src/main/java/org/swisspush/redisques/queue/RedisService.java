@@ -86,24 +86,34 @@ public class RedisService {
             options.add("NX");
         }
         Promise<Boolean> p = Promise.promise();
-        redis().compose((RedisAPI redisAPI) ->
-                redisAPI.send(Command.SET, RedisUtils.toPayload(key, value, options).toArray(new String[0]))
-                        .onSuccess(resp -> p.complete(resp != null && "OK".equals(resp.toString())))
-                        .onFailure(p::fail)
+        redis().compose((RedisAPI redisAPI) -> {
+                    Future<?> future;
+                    if (nx) {
+                        future = redisAPI.send(Command.SET, key, value, "NX", "PX", String.valueOf(duration));
+                    } else {
+                        future = redisAPI.send(Command.SET, key, value, "PX", String.valueOf(duration));
+                    }
+                    return future.onSuccess(resp -> p.complete(resp != null && "OK".equals(resp.toString())))
+                            .onFailure(p::fail);
+                }
         );
         return p.future();
     }
 
     public Future<Boolean> setNxEx(String key, String value, boolean nx, long duration) {
-        JsonArray opts = new JsonArray().add("EX").add(duration);
-        if (nx) {
-            opts.add("NX");
-        }
         Promise<Boolean> p = Promise.promise();
-        redis().compose((RedisAPI redisAPI) ->
-                redisAPI.send(Command.SET, RedisUtils.toPayload(key, value, opts).toArray(new String[0]))
-                        .onSuccess(resp -> p.complete(resp != null && "OK".equals(resp.toString())))
-                        .onFailure(p::fail)
+        redis().compose((RedisAPI redisAPI) -> {
+                    Future<?> future;
+                    if (nx) {
+                        future = redisAPI.send(Command.SET, key, value, "NX", "EX", String.valueOf(duration));
+                    } else {
+                        future = redisAPI.send(Command.SET, key, value, "EX", String.valueOf(duration));
+                    }
+                    return future.onSuccess(resp -> {
+                                p.complete(resp != null && "OK".equals(resp.toString()));
+                            })
+                            .onFailure(p::fail);
+                }
         );
         return p.future();
     }

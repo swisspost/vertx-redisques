@@ -197,10 +197,10 @@ public class QueueRegistryService {
             public void handle(AsyncResult<Boolean> event) {
                 if (event.succeeded()) {
                     metrics.perQueueMetricsReg(queueName);
-                    String value = event.result() != null ? event.result().toString() : null;
-                    log.trace("RedisQues setxn result: {} for queue: {}", value, queueName);
+                    boolean setDone = event.result() != null ? event.result() : false;
+                    log.trace("RedisQues setxn result: {} for queue: {}", setDone, queueName);
                     metrics.consumerCounterIncrement(1);
-                    if ("true".equalsIgnoreCase(value) ) {
+                    if (setDone) {
                         // I am now the registered consumer for this queue.
                         log.debug("RedisQues Now registered for queue {}", queueName);
                         queueConsumerRunner.setMyQueuesState(queueName, QueueState.READY);
@@ -445,11 +445,8 @@ public class QueueRegistryService {
         periodicSkipScheduler.setPeriodic(configurationProvider.configuration().getCheckIntervalTimerMs(), "checkQueues", onDone -> {
             int checkInterval = configurationProvider.configuration().getCheckInterval();
             redisService.setNxEx(keyspaceHelper.getQueueCheckLastExecKey(), String.valueOf(currentTimeMillis()), true, checkInterval).compose(aBoolean -> {
-                if (aBoolean) {
-                    log.info("periodic queue check is triggered now");
-                    return checkQueues();
-                }
-                return Future.failedFuture("Failed to set expire time");
+                log.info("periodic queue check is triggered now");
+                return checkQueues();
             }).onComplete((AsyncResult<Void> ev) -> {
                 if (ev.failed()) {
                     if (log.isErrorEnabled())
