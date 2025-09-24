@@ -32,14 +32,14 @@ public class QueueMetrics {
     MetricsCollector metricsCollector;
     private Lock lock;
 
-    public void dequeueCounterIncrement() {
+    void dequeueCounterIncrement() {
         if (dequeueCounter == null) {
             return;
         }
         dequeueCounter.increment();
     }
 
-    public void consumerCounterIncrement(int num) {
+    void consumerCounterIncrement(int num) {
         if (consumerCounter == null) {
             return;
         }
@@ -77,7 +77,7 @@ public class QueueMetrics {
      *
      * @param queueName
      */
-    public void perQueueMetricsReg(String queueName) {
+    void perQueueMetricsReg(String queueName) {
         if (!(configurationProvider.configuration().getMicrometerMetricsEnabled() &&
                 configurationProvider.configuration().getMicrometerPerQueueMetricEnabled())
         ) {
@@ -91,7 +91,7 @@ public class QueueMetrics {
      *
      * @param queueName
      */
-    public void perQueueMetricsRefresh(String queueName) {
+    void perQueueMetricsRefresh(String queueName) {
         if (!(configurationProvider.configuration().getMicrometerMetricsEnabled() &&
                 configurationProvider.configuration().getMicrometerPerQueueMetricEnabled())
         ) {
@@ -111,7 +111,7 @@ public class QueueMetrics {
      *
      * @param queueName
      */
-    public void perQueueMetricsRemove(String queueName) {
+    void perQueueMetricsRemove(String queueName) {
         if (!(configurationProvider.configuration().getMicrometerMetricsEnabled() &&
                 configurationProvider.configuration().getMicrometerPerQueueMetricEnabled())
         ) {

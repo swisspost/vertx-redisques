@@ -14,7 +14,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.swisspush.redisques.QueueState;
 import org.swisspush.redisques.QueueStatsService;
-import org.swisspush.redisques.RedisQues;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.performance.UpperBoundParallel;
 import org.swisspush.redisques.scheduling.PeriodicSkipScheduler;
@@ -53,6 +52,7 @@ public class QueueRegistryService {
     private final KeyspaceHelper keyspaceHelper;
     private final Vertx vertx;
     private final RedisQuesExceptionFactory exceptionFactory;
+    private final QueueConsumerRunner queueConsumerRunner;
     private final int consumerLockTime;
     private final QueueMetrics metrics;
     private final QueueStatisticsCollector queueStatisticsCollector;
@@ -61,7 +61,6 @@ public class QueueRegistryService {
     private final Semaphore activeQueueRegRefreshReqQuota;
     private final int emptyQueueLiveTimeMillis;
     private final QueueStatsService queueStatsService;
-    private final RedisQues redisQues;
     private Handler<Void> stoppedHandler = null;
     private PeriodicSkipScheduler periodicSkipScheduler;
     private Map<String, Long> aliveConsumers = new ConcurrentHashMap<>();
@@ -74,7 +73,7 @@ public class QueueRegistryService {
     public QueueRegistryService(Vertx vertx, RedisService redisService, RedisquesConfigurationProvider configurationProvider,
                                 RedisQuesExceptionFactory exceptionFactory, KeyspaceHelper keyspaceHelper, QueueMetrics metrics,
                                 QueueStatsService queueStatsService, QueueStatisticsCollector queueStatisticsCollector,
-                                Semaphore checkQueueRequestsQuota, Semaphore activeQueueRegRefreshReqQuota, RedisQues redisQues) {
+                                Semaphore checkQueueRequestsQuota, Semaphore activeQueueRegRefreshReqQuota) {
         this.vertx = vertx;
         this.redisService = redisService;
         this.configurationProvider = configurationProvider;
@@ -86,8 +85,7 @@ public class QueueRegistryService {
         this.queueStatisticsCollector = queueStatisticsCollector;
         this.checkQueueRequestsQuota = checkQueueRequestsQuota;
         this.activeQueueRegRefreshReqQuota = activeQueueRegRefreshReqQuota;
-        this.redisQues = redisQues;
-
+        String address = getConfiguration().getAddress();
 
         // Handles registration requests
         consumersMessageConsumer = vertx.eventBus().consumer(keyspaceHelper.getConsumersAddress(), this::handleRegistrationRequest);
@@ -96,6 +94,7 @@ public class QueueRegistryService {
         notifyConsumer = vertx.eventBus().consumer(keyspaceHelper.getVerticleNotifyConsumerKey(), this::handleNotifyConsumer);
 
         consumerLockTime = getConfiguration().getConsumerLockMultiplier() * getConfiguration().getRefreshPeriod(); // lock is kept twice as long as its refresh interval -> never expires as long as the consumer ('we') are alive
+        queueConsumerRunner = new QueueConsumerRunner(vertx, redisService, metrics, queueStatsService, keyspaceHelper, configurationProvider, exceptionFactory, queueStatisticsCollector);
         upperBoundParallel = new UpperBoundParallel(vertx, exceptionFactory);
 
         // the time we let an empty queue live before we deregister ourselves
@@ -108,7 +107,21 @@ public class QueueRegistryService {
                 // IMO we should 'fail()' here. But we don't, to keep backward compatibility.
             }
             log.debug("RedisQues got notification for queue '{}'", queue);
-            redisQues.consume(queue);
+            queueConsumerRunner.consume(queue);
+        });
+
+        queueConsumerRunner.setNoMoreItemHandelr(handlder -> {
+            if (stoppedHandler != null) {
+                unregisterConsumers(UnregisterConsumerType.GRACEFUL).onComplete(event -> {
+                    if (event.failed()) {
+                        log.warn("TODO error handling", exceptionFactory.newException(
+                                "unregisterConsumers() failed", event.cause()));
+                    }
+                    if (queueConsumerRunner.getMyQueues().isEmpty()) {
+                        stoppedHandler.handle(null);
+                    }
+                });
+            }
         });
 
         registerQueueCheck();
@@ -119,6 +132,9 @@ public class QueueRegistryService {
         this.periodicSkipScheduler = new PeriodicSkipScheduler(vertx);
     }
 
+    public QueueConsumerRunner getQueueConsumerRunner() {
+        return queueConsumerRunner;
+    }
 
     public Future<Void> unregisterAll(Collection<MessageConsumer<?>> consumers) {
         List<Future<?>> futures = consumers.stream()
@@ -187,8 +203,8 @@ public class QueueRegistryService {
                     if ("true".equalsIgnoreCase(value) ) {
                         // I am now the registered consumer for this queue.
                         log.debug("RedisQues Now registered for queue {}", queueName);
-                        redisQues.setMyQueuesState(queueName, QueueState.READY);
-                        redisQues.consume(queueName);
+                        queueConsumerRunner.setMyQueuesState(queueName, QueueState.READY);
+                        queueConsumerRunner.consume(queueName);
                     } else {
                         log.debug("RedisQues Missed registration for queue {}", queueName);
                         // Someone else just became the registered consumer. I
@@ -225,7 +241,7 @@ public class QueueRegistryService {
             @Override
             public void accept(Runnable onPeriodicDone) {
                 // Need a copy to prevent concurrent modification issuses.
-                iter = new HashMap<>(redisQues.myQueues).entrySet().iterator();
+                iter = new HashMap<>(queueConsumerRunner.getMyQueues()).entrySet().iterator();
                 // Trigger only a limited amount of requests in parallel.
                 upperBoundParallel.request(activeQueueRegRefreshReqQuota, iter, new UpperBoundParallel.Mentor<>() {
                     @Override
@@ -288,7 +304,7 @@ public class QueueRegistryService {
                         });
                     } else {
                         log.debug("RedisQues Removing queue {} from the list", queue);
-                        redisQues.myQueues.remove(queue);
+                        queueConsumerRunner.getMyQueues().remove(queue);
                         queueStatisticsCollector.resetQueueFailureStatistics(queue, onDone);
                     }
                 });
@@ -313,11 +329,11 @@ public class QueueRegistryService {
         });
     }
 
-    public Future<Void> unregisterConsumers(UnregisterConsumerType type) {
+    private Future<Void> unregisterConsumers(UnregisterConsumerType type) {
         final Promise<Void> result = Promise.promise();
         log.debug("RedisQues unregister consumers. type={}", type);
-        final List<Future> futureList = new ArrayList<>(redisQues.myQueues.size());
-        for (final Map.Entry<String, QueueProcessingState> entry : redisQues.myQueues.entrySet()) {
+        final List<Future> futureList = new ArrayList<>(queueConsumerRunner.getMyQueues().size());
+        for (final Map.Entry<String, QueueProcessingState> entry : queueConsumerRunner.getMyQueues().entrySet()) {
             final String queueName = entry.getKey();
             final QueueProcessingState state = entry.getValue();
             switch (type) {
@@ -374,7 +390,7 @@ public class QueueRegistryService {
                 log.trace("RedisQues unregister consumers get result: {}", consumer);
                 if (keyspaceHelper.getVerticleUid().equals(consumer)) {
                     log.debug("RedisQues remove consumer: {}", keyspaceHelper.getVerticleUid());
-                    redisQues.myQueues.remove(queueName);
+                    queueConsumerRunner.getMyQueues().remove(queueName);
                     redisService.del(Collections.singletonList(consumerKey)).onComplete(delResult -> {
                         if (delResult.failed()) {
                             log.warn("Failed to deregister myself from queue '{}'", consumerKey, exceptionFactory.newException(delResult.cause()));
@@ -582,7 +598,7 @@ public class QueueRegistryService {
      * @param queueName name of the queue
      * @param handler   (optional) To get informed when done.
      */
-    public void updateTimestamp(final String queueName, Handler<AsyncResult<Response>> handler) {
+    private void updateTimestamp(final String queueName, Handler<AsyncResult<Response>> handler) {
         long ts = System.currentTimeMillis();
         log.trace("RedisQues update timestamp for queue: {} to: {}", queueName, ts);
         redisService.zadd(keyspaceHelper.getQueuesKey(), queueName, String.valueOf(ts)).onSuccess(event -> {
@@ -637,13 +653,13 @@ public class QueueRegistryService {
                             "unregisterConsumers(false) failed", unregisterConsumersEvent.cause()));
                 }
 
-                redisQues.trimRequestConsumerUnregister(unregisterTrimEvent -> {
+                queueConsumerRunner.trimRequestConsumerUnregister(unregisterTrimEvent -> {
                     if (unregisterTrimEvent.failed()) {
                         log.warn("TODO error handling", exceptionFactory.newException(
                                 "unregister trimRequestConsumer failed", unregisterTrimEvent.cause()));
                     }
                     stoppedHandler = doneHandler;
-                    if (redisQues.myQueues.keySet().isEmpty()) {
+                    if (queueConsumerRunner.getMyQueues().keySet().isEmpty()) {
                         doneHandler.handle(null);
                     }
                 });
@@ -652,7 +668,7 @@ public class QueueRegistryService {
 
     }
 
-    public Future<Void> notifyConsumer(final String queueName) {
+    private Future<Void> notifyConsumer(final String queueName) {
         log.debug("RedisQues Notifying consumer of queue {}", queueName);
         final EventBus eb = vertx.eventBus();
         final Promise<Void> promise = Promise.promise();
@@ -714,7 +730,7 @@ public class QueueRegistryService {
                         log.trace(response.toString());
                     }
                 }
-                log.debug("{} not expired consumers keys found, {} keys in myQueues list", keys.size(), redisQues.myQueues.size());
+                log.debug("{} not expired consumers keys found, {} keys in myQueues list", keys.size(), queueConsumerRunner.getMyQueues().size());
             });
         });
     }
