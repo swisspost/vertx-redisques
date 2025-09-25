@@ -103,6 +103,22 @@ public class DefaultMemoryUsageProviderTest {
             "mem_fragmentation_ratio:0.95\n" +
             "mem_allocator:jemalloc-3.6.0\n";
 
+    private static final String REDIS_INFO_MAXMEMORY_50_PCT = "# Memory\n" +
+            "used_memory:1997802672\n" +
+            "used_memory_human:1.86G\n" +
+            "used_memory_rss:688272\n" +
+            "used_memory_rss_human:672.14K\n" +
+            "used_memory_peak:3765568\n" +
+            "used_memory_peak_human:3.59M\n" +
+            "used_memory_lua:34816\n" +
+            "used_memory_lua_human:34.00K\n" +
+            "maxmemory:3953926144\n" +
+            "maxmemory_human:3.68G\n" +
+            "maxmemory_policy:noeviction\n" +
+            "mem_fragmentation_ratio:0.95\n" +
+            "mem_allocator:jemalloc-3.6.0\n";
+
+
     @Before
     public void setup(TestContext context) {
         redisAPI = Mockito.mock(RedisAPI.class);
@@ -134,6 +150,17 @@ public class DefaultMemoryUsageProviderTest {
     public void testCurrentMemoryUsage50Pct(TestContext context){
         when(redisAPI.info(eq(Collections.singletonList("memory"))))
                 .thenReturn(Future.succeededFuture(BulkType.create(Buffer.buffer(REDIS_INFO_50_PCT), false)));
+        memoryUsageProvider = new DefaultMemoryUsageProvider(redisService, vertx, 2);
+
+        Optional<Integer> currentMemoryUsagePercentage = memoryUsageProvider.currentMemoryUsagePercentage();
+        context.assertTrue(currentMemoryUsagePercentage.isPresent());
+        context.assertEquals(51, currentMemoryUsagePercentage.get());
+    }
+
+    @Test
+    public void testCurrentMemoryUsage50PctWithMaxMemory(TestContext context){
+        when(redisAPI.info(eq(Collections.singletonList("memory"))))
+                .thenReturn(Future.succeededFuture(BulkType.create(Buffer.buffer(REDIS_INFO_MAXMEMORY_50_PCT), false)));
         memoryUsageProvider = new DefaultMemoryUsageProvider(redisService, vertx, 2);
 
         Optional<Integer> currentMemoryUsagePercentage = memoryUsageProvider.currentMemoryUsagePercentage();
