@@ -212,6 +212,7 @@ public class QueueStatsService {
                     queue.lastDequeueAttemptEpochMs = sharedDequeueStatisticCopy.getLastDequeueAttemptTimestamp();
                     queue.lastDequeueSuccessEpochMs = sharedDequeueStatisticCopy.getLastDequeueSuccessTimestamp();
                     queue.nextDequeueDueTimestampEpochMs = sharedDequeueStatisticCopy.getNextDequeueDueTimestamp();
+                    queue.failedReason = sharedDequeueStatisticCopy.getFailedReason();
                 }
             }
             onDone.accept(null, req);
@@ -242,6 +243,7 @@ public class QueueStatsService {
         private Long lastDequeueAttemptEpochMs;
         private Long lastDequeueSuccessEpochMs;
         private Long nextDequeueDueTimestampEpochMs;
+        private String failedReason;
 
         private Queue(String name, long size) {
             assert name != null;
@@ -267,6 +269,10 @@ public class QueueStatsService {
 
         public Long getNextDequeueDueTimestampEpochMs() {
             return nextDequeueDueTimestampEpochMs;
+        }
+
+        public String getFailedReason() {
+            return failedReason;
         }
     }
 
@@ -325,10 +331,10 @@ public class QueueStatsService {
         }
     }
 
-    public void dequeueStatisticSetNextDequeueDueTimestamp(String queue, @Nullable Long dueTimestamp) {
+    public void dequeueStatisticSetNextDequeueDueTimestamp(String queue, @Nullable Long dueTimestamp, @Nullable String reason) {
         if (dequeueStatisticEnabled) {
             dequeueStatistic.computeIfPresent(queue, (s, dequeueStatistic) -> {
-                dequeueStatistic.setNextDequeueDueTimestamp(dueTimestamp);
+                dequeueStatistic.setNextDequeueDueTimestamp(dueTimestamp, reason);
                 return dequeueStatistic;
             });
         }

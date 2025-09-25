@@ -1,5 +1,6 @@
 package org.swisspush.redisques.queue;
 
+import com.google.common.math.PairedStats;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
@@ -21,6 +22,7 @@ import org.swisspush.redisques.util.QueueStatisticsCollector;
 import org.swisspush.redisques.util.RedisQuesTimer;
 import org.swisspush.redisques.util.RedisquesConfigurationProvider;
 
+import java.util.AbstractMap;
 import java.util.Collections;
 import java.util.Date;
 import java.util.EnumMap;
@@ -204,12 +206,12 @@ public class QueueConsumerRunner {
                     if (response != null) {
                         queueStatsService.createDequeueStatisticIfMissing(queueName);
                         queueStatsService.dequeueStatisticSetLastDequeueAttemptTimestamp(queueName, System.currentTimeMillis());
-                        processMessageWithTimeout(queueName, response.toString(), success -> {
+                        processMessageWithTimeout(queueName, response.toString(), processResult -> {
 
                             // update the queue failure count and get a retry interval
-                            int retryInterval = updateQueueFailureCountAndGetRetryInterval(queueName, success);
+                            int retryInterval = updateQueueFailureCountAndGetRetryInterval(queueName, processResult.getKey());
 
-                            if (success) {
+                            if (processResult.getKey()) {
                                 // Remove the processed message from the queue
                                 log.trace("RedisQues read queue lpop: {}", queueKey);
                                 redisService.lpop(Collections.singletonList(queueKey)).onComplete(jsonAnswer -> {
@@ -255,7 +257,7 @@ public class QueueConsumerRunner {
                                 log.debug("RedisQues Processing failed for queue {}", queueName);
                                 // reschedule
                                 log.trace("RedisQues will re-send the message to queue '{}' in {} seconds", queueName, retryInterval);
-                                rescheduleSendMessageAfterFailure(queueName, retryInterval);
+                                rescheduleSendMessageAfterFailure(queueName, retryInterval, processResult.getValue());
                                 promise.complete();
                             }
                         });
@@ -294,11 +296,11 @@ public class QueueConsumerRunner {
         return promise.future();
     }
 
-    private void rescheduleSendMessageAfterFailure(final String queueName, int retryInSeconds) {
+    private void rescheduleSendMessageAfterFailure(final String queueName, int retryInSeconds, final String reason) {
         log.trace("RedsQues reschedule after failure for queue: {}", queueName);
 
         vertx.setTimer(retryInSeconds * 1000L, timerId -> {
-            queueStatsService.dequeueStatisticSetNextDequeueDueTimestamp(queueName, retryInSeconds * 1000L);
+            queueStatsService.dequeueStatisticSetNextDequeueDueTimestamp(queueName, System.currentTimeMillis() + retryInSeconds * 1000L, reason);
             if (log.isDebugEnabled()) {
                 log.debug("RedisQues re-notify the consumer of queue '{}' at {}", queueName, new Date(System.currentTimeMillis()));
             }
@@ -313,7 +315,7 @@ public class QueueConsumerRunner {
         });
     }
 
-    private void processMessageWithTimeout(final String queue, final String payload, final Handler<Boolean> handler) {
+    private void processMessageWithTimeout(final String queue, final String payload, final Handler<Map.Entry<Boolean, String>> handler) {
         long processorDelayMax = configurationProvider.configuration().getProcessorDelayMax();
         if (processorDelayMax > 0) {
             log.info("About to process message for queue {} with a maximum delay of {}ms", queue, processorDelayMax);
@@ -321,7 +323,7 @@ public class QueueConsumerRunner {
         timer.executeDelayedMax(processorDelayMax).onComplete(delayed -> {
             if (delayed.failed()) {
                 log.error("Delayed execution has failed.", exceptionFactory.newException(delayed.cause()));
-                // TODO: May we should call handler with failed state now.
+                handler.handle(new AbstractMap.SimpleEntry<>(false, "Delayed execution has failed."));
                 return;
             }
             String processorAddress = configurationProvider.configuration().getProcessorAddress();
@@ -335,20 +337,22 @@ public class QueueConsumerRunner {
             DeliveryOptions options = new DeliveryOptions().setSendTimeout(configurationProvider.configuration().getProcessorTimeout());
             eb.request(processorAddress, message, options, (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
                 boolean success;
+                String requestMsg = null;
                 if (reply.succeeded()) {
                     success = OK.equals(reply.result().body().getString(STATUS));
                     if (success) {
                         queueStatsService.dequeueStatisticSetLastDequeueSuccessTimestamp(queue,System.currentTimeMillis());
-                        queueStatsService.dequeueStatisticSetNextDequeueDueTimestamp(queue,null);
+                    } else {
+                        requestMsg = "Queue processor failed with status: " + reply.result().body().getString(STATUS);
                     }
                 } else {
                     log.info("RedisQues QUEUE_ERROR: Consumer failed {} queue: {}",
                             keyspaceHelper.getVerticleUid(), queue, exceptionFactory.newException(reply.cause()));
                     success = Boolean.FALSE;
+                    requestMsg = "Consumer " + keyspaceHelper.getVerticleUid() + " failed with reason: " + reply.cause().getMessage();
                 }
 
-
-                handler.handle(success);
+                handler.handle(new AbstractMap.SimpleEntry<>(success, requestMsg));
             });
             updateTimestamp(queue);
         });
