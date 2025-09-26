@@ -337,7 +337,7 @@ public class QueueConsumerRunner {
             DeliveryOptions options = new DeliveryOptions().setSendTimeout(configurationProvider.configuration().getProcessorTimeout());
             eb.request(processorAddress, message, options, (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
                 boolean success;
-                String requestMsg = null;
+                String requestMsg = "OK"; // default ok
                 if (reply.succeeded()) {
                     success = OK.equals(reply.result().body().getString(STATUS));
                     if (success) {
