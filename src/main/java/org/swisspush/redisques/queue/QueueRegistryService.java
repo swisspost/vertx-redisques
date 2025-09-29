@@ -228,7 +228,12 @@ public class QueueRegistryService {
         if (handler == null) {
             throw new RuntimeException("Handler must be set");
         } else {
-            redisService.expire(consumerKey, String.valueOf(consumerLockTime)).onComplete(handler);
+            vertx.executeBlocking(promise ->
+                    redisService.expire(consumerKey, String.valueOf(consumerLockTime)).
+                            onComplete(responseAsyncResult -> {
+                                handler.handle(responseAsyncResult);
+                                promise.complete();
+                            }));
         }
     }
 
