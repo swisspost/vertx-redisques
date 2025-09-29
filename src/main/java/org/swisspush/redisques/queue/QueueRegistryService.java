@@ -665,7 +665,7 @@ public class QueueRegistryService {
 
     }
 
-    private Future<Void> notifyConsumer(final String queueName) {
+    Future<Void> notifyConsumer(final String queueName) {
         log.debug("RedisQues Notifying consumer of queue {}", queueName);
         final EventBus eb = vertx.eventBus();
         final Promise<Void> promise = Promise.promise();
