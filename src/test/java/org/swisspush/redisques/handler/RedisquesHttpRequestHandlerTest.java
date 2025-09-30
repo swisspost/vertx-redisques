@@ -2056,6 +2056,10 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
                 // So will retry
                 return false;
             }
+            if (receivedJson.get("queues").get(i).get("statusInfo").asText().isEmpty()) {
+                // So will retry
+                return false;
+            }
         }
         return true;
     }

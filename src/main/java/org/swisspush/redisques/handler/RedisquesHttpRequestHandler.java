@@ -587,6 +587,7 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
                             queueJson.put("lastDequeueSuccess", epochMs == null ? "" : formatAsUIDate(epochMs));
                             epochMs = queue.getNextDequeueDueTimestampEpochMs();
                             queueJson.put("nextDequeueDueTimestamp", epochMs == null ? "" : formatAsUIDate(epochMs));
+                            queueJson.put("statusInfo", queue.getFailedReason() == null ? "OK" : queue.getFailedReason());
                             rsp.write(queueJson.encode());
                             continue;
                         }
