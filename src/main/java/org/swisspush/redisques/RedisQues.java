@@ -1,5 +1,6 @@
 package org.swisspush.redisques;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Strings;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.vertx.core.AbstractVerticle;
@@ -241,8 +242,19 @@ public class RedisQues extends AbstractVerticle {
         redisMonitor.start();
     }
 
+    @VisibleForTesting
     public QueueConsumerRunner getQueueConsumerRunner() {
         return queueRegistryService.getQueueConsumerRunner();
+    }
+
+    @VisibleForTesting
+    public QueueRegistryService getQueueRegistryService() {
+        return queueRegistryService;
+    }
+
+    @VisibleForTesting
+    public KeyspaceHelper getKeyspaceHelper() {
+        return keyspaceHelper;
     }
 
     @Override

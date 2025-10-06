@@ -670,7 +670,7 @@ public class QueueRegistryService {
 
     }
 
-    private Future<Void> notifyConsumer(final String queueName) {
+    Future<Void> notifyConsumer(final String queueName) {
         log.debug("RedisQues Notifying consumer of queue {}", queueName);
         final EventBus eb = vertx.eventBus();
         final Promise<Void> promise = Promise.promise();
@@ -696,6 +696,9 @@ public class QueueRegistryService {
                         log.warn("Failed to removed consumer '{}'", key, exceptionFactory.newException(result.cause()));
                     } else {
                         log.debug("{} consumer key removed", result.result().toLong());
+                        // need find a new consumer for this queue, let's make a peer become consumer
+                        log.debug("RedisQues Sending new registration request for queue {}", queueName);
+                        eb.send(keyspaceHelper.getConsumersAddress(), queueName);
                     }
                     promise.complete();
                 });
