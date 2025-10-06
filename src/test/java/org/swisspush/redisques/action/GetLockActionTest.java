@@ -31,8 +31,7 @@ public class GetLockActionTest extends AbstractQueueActionTest {
     @Override
     public void setup() {
         super.setup();
-        action = new GetLockAction(vertx, redisProvider,
-                "addr", "q-", "prefix-", "c-", "l-",
+        action = new GetLockAction(vertx, redisService, keyspaceHelper,
                 new ArrayList<>(), exceptionFactory, Mockito.mock(QueueStatisticsCollector.class), Mockito.mock(Logger.class));
     }
 
@@ -51,15 +50,10 @@ public class GetLockActionTest extends AbstractQueueActionTest {
     public void testGetLock(TestContext context){
         when(message.body()).thenReturn(buildGetLockOperation("q1"));
 
-        doAnswer(invocation -> {
-            var handler = createResponseHandler(invocation,2);
-            handler.handle(Future.succeededFuture(SimpleStringType.create(new JsonObject().put("requestedBy", "UNKNOWN").put("timestamp", 1719931433522L).encode())));
-            return null;
-        }).when(redisAPI).hget(anyString(), anyString(), any());
+        when(redisAPI.hget(anyString(), anyString())).thenReturn(Future.succeededFuture(SimpleStringType.create(new JsonObject().put("requestedBy", "UNKNOWN").put("timestamp", 1719931433522L).encode())));
 
         action.execute(message);
-
-        verify(redisAPI, times(1)).hget(anyString(), anyString(), any());
+        verify(redisAPI, times(1)).hget(anyString(), anyString());
         verify(message, times(1)).reply(eq(new JsonObject(Buffer.buffer("{\"status\":\"ok\"," +
                 "\"value\":\"{\\\"requestedBy\\\":\\\"UNKNOWN\\\",\\\"timestamp\\\":1719931433522}\"}"))));
     }
@@ -68,15 +62,11 @@ public class GetLockActionTest extends AbstractQueueActionTest {
     public void testGetLockNoSuchLock(TestContext context){
         when(message.body()).thenReturn(buildGetLockOperation("q1"));
 
-        doAnswer(invocation -> {
-            var handler = createResponseHandler(invocation,2);
-            handler.handle(Future.succeededFuture());
-            return null;
-        }).when(redisAPI).hget(anyString(), anyString(), any());
+        when(redisAPI.hget(anyString(), anyString())).thenReturn(Future.succeededFuture());
 
         action.execute(message);
 
-        verify(redisAPI, times(1)).hget(anyString(), anyString(), any());
+        verify(redisAPI, times(1)).hget(anyString(), anyString());
         verify(message, times(1)).reply(eq(new JsonObject(Buffer.buffer("{\"status\":\"No such lock\"}"))));
     }
 
@@ -84,15 +74,11 @@ public class GetLockActionTest extends AbstractQueueActionTest {
     public void testGetLockHGETFail(TestContext context){
         when(message.body()).thenReturn(buildGetLockOperation("q1"));
 
-        doAnswer(invocation -> {
-            var handler = createResponseHandler(invocation,2);
-            handler.handle(Future.failedFuture("booom"));
-            return null;
-        }).when(redisAPI).hget(anyString(), anyString(), any());
+        when(redisAPI.hget(anyString(), anyString())).thenReturn(Future.failedFuture("booom"));
 
         action.execute(message);
 
-        verify(redisAPI, times(1)).hget(anyString(), anyString(), any());
+        verify(redisAPI, times(1)).hget(anyString(), anyString());
         //verify(message, times(1)).fail(eq(0), eq("booom"));
         verify(message, times(1)).reply(isA(ReplyException.class));
     }

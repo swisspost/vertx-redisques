@@ -29,8 +29,7 @@ public class GetQueuesActionTest extends AbstractQueueActionTest {
     @Override
     public void setup() {
         super.setup();
-        action = new GetQueuesAction(vertx, redisProvider,
-                "addr", "q-", "prefix-", "c-", "l-",
+        action = new GetQueuesAction(vertx, redisService, keyspaceHelper,
                 new ArrayList<>(), exceptionFactory, Mockito.mock(QueueStatisticsCollector.class), Mockito.mock(Logger.class));
     }
 

@@ -6,9 +6,10 @@ import io.vertx.core.json.JsonObject;
 import org.slf4j.Logger;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.handler.GetQueuesHandler;
+import org.swisspush.redisques.queue.KeyspaceHelper;
+import org.swisspush.redisques.queue.RedisService;
 import org.swisspush.redisques.util.*;
 
-import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.regex.Pattern;
@@ -18,12 +19,11 @@ import static org.swisspush.redisques.util.RedisquesAPI.*;
 public class GetQueuesAction extends AbstractQueueAction {
 
     public GetQueuesAction(
-            Vertx vertx, RedisProvider redisProvider, String address, String queuesKey,
-            String queuesPrefix, String consumersPrefix, String locksKey,
+            Vertx vertx, RedisService redisService, KeyspaceHelper keyspaceHelper,
             List<QueueConfiguration> queueConfigurations, RedisQuesExceptionFactory exceptionFactory,
             QueueStatisticsCollector queueStatisticsCollector, Logger log
     ) {
-        super(vertx, redisProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey,
+        super(vertx, redisService, keyspaceHelper,
                 queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
     }
 
@@ -37,12 +37,8 @@ public class GetQueuesAction extends AbstractQueueAction {
         if (filterPatternResult.isErr()) {
             event.reply(createErrorReply().put(ERROR_TYPE, BAD_INPUT).put(MESSAGE, filterPatternResult.getErr()));
         } else {
-            var p = redisProvider.redis();
-            p.onSuccess(redisAPI -> redisAPI.zrangebyscore(
-                    Arrays.asList(queuesKey, String.valueOf(getMaxAgeTimestamp()), "+inf"),
-                    new GetQueuesHandler(event, filterPatternResult.getOk(), countOnly)));
-            p.onFailure(ex -> replyErrorMessageHandler(event).handle(ex));
+            redisService.zrangebyscore(keyspaceHelper.getQueuesKey(), String.valueOf(getMaxAgeTimestamp()), "+inf")
+                    .onComplete(response -> new GetQueuesHandler(event, filterPatternResult.getOk(), countOnly).handle(response));
         }
     }
-
 }

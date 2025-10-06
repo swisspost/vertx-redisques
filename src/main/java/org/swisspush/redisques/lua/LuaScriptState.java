@@ -1,16 +1,14 @@
 package org.swisspush.redisques.lua;
 
-import io.vertx.redis.client.RedisAPI;
 import org.apache.commons.codec.digest.DigestUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
-import org.swisspush.redisques.util.RedisProvider;
+import org.swisspush.redisques.queue.RedisService;
 
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.util.Arrays;
 
 /**
  * Created by webermarca on 01.07.2016.
@@ -30,19 +28,19 @@ public class LuaScriptState {
      */
     private String sha;
 
-    private RedisProvider redisProvider;
+    private RedisService redisService;
     private final RedisQuesExceptionFactory exceptionFactory;
 
     private Logger log = LoggerFactory.getLogger(LuaScriptState.class);
 
     public LuaScriptState(
         LuaScript luaScriptType,
-        RedisProvider redisProvider,
+        RedisService redisService,
         RedisQuesExceptionFactory exceptionFactory,
         boolean logoutput
     ) {
         this.luaScriptType = luaScriptType;
-        this.redisProvider = redisProvider;
+        this.redisService = redisService;
         this.exceptionFactory = exceptionFactory;
         this.logoutput = logoutput;
         this.composeLuaScript(luaScriptType);
@@ -95,17 +93,11 @@ public class LuaScriptState {
     public void loadLuaScript(final RedisCommand redisCommand, int executionCounter) {
         final int executionCounterIncr = ++executionCounter;
         // check first if the lua script already exists in the store
-        redisProvider.redis().onComplete(redisEv -> {
-            if (redisEv.failed()) {
-                log.error("stacktrace", exceptionFactory.newException(
-                    "redisProvider.redis() failed", redisEv.cause()));
-                return;
-            }
-            RedisAPI redisAPI = redisEv.result();
-            redisAPI.script(Arrays.asList("exists", sha), resultArray -> {
+
+            redisService.script("exists", sha).onComplete(resultArray -> {
                 if (resultArray.failed()) {
                     log.error("stacktrace", exceptionFactory.newException(
-                        "redisAPI.script(['exists', sha]) failed", resultArray.cause()));
+                            "redisAPI.script(['exists', sha]) failed", resultArray.cause()));
                     return;
                 }
                 Long exists = resultArray.result().get(0).toLong();
@@ -115,12 +107,12 @@ public class LuaScriptState {
                     redisCommand.exec(executionCounterIncr);
                 } else {
                     log.info("loading lua script for script type: {} log output: {}", luaScriptType, logoutput);
-                    redisAPI.script(Arrays.asList("load", script), stringAsyncResult -> {
+                    redisService.script("load", script).onComplete(stringAsyncResult -> {
                         String redisSha = stringAsyncResult.result().toString();
                         log.info("got sha from redis for lua script: {}: {}", luaScriptType, redisSha);
                         if (!redisSha.equals(sha)) {
-                        log.warn("the sha calculated by myself: {} doesn't match with the sha from redis: {}. " +
-                                "We use the sha from redis", sha, redisSha);
+                            log.warn("the sha calculated by myself: {} doesn't match with the sha from redis: {}. " +
+                                    "We use the sha from redis", sha, redisSha);
                         }
                         sha = redisSha;
                         log.info("execute redis command for script type: {} with new sha: {}", luaScriptType, sha);
@@ -128,7 +120,7 @@ public class LuaScriptState {
                     });
                 }
             });
-        });
+
     }
 
     public String getScript() {

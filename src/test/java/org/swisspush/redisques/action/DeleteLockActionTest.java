@@ -29,13 +29,12 @@ public class DeleteLockActionTest extends AbstractQueueActionTest {
     @Override
     public void setup() {
         super.setup();
-        action = new DeleteLockAction(vertx, redisProvider,
-                "addr", "q-", "prefix-", "c-", "l-",
+        action = new DeleteLockAction(vertx, redisService, keyspaceHelper,
                 new ArrayList<>(), exceptionFactory, Mockito.mock(QueueStatisticsCollector.class), Mockito.mock(Logger.class));
     }
 
     @Test
-    public void testDeleteLockWhenRedisIsNotReady(TestContext context){
+    public void testDeleteLockWhenRedisIsNotReady(TestContext context) {
         when(redisProvider.redis()).thenReturn(Future.failedFuture("not ready"));
         when(message.body()).thenReturn(buildDeleteLockOperation("testLock1"));
 
@@ -46,71 +45,44 @@ public class DeleteLockActionTest extends AbstractQueueActionTest {
     }
 
     @Test
-    public void testDeleteLock(TestContext context){
+    public void testDeleteLock(TestContext context) {
         when(message.body()).thenReturn(buildDeleteLockOperation("testLock1"));
 
-        doAnswer(invocation -> {
-            var handler = createResponseHandler(invocation,1);
-            handler.handle(Future.succeededFuture(SimpleStringType.create("0")));
-            return null;
-        }).when(redisAPI).exists(anyList(), any());
-
-        doAnswer(invocation -> {
-            var handler = createResponseHandler(invocation,1);
-            handler.handle(Future.succeededFuture());
-            return null;
-        }).when(redisAPI).hdel(anyList(), any());
+        when(redisAPI.exists(anyList())).thenReturn(Future.succeededFuture(SimpleStringType.create("0")));
+        when(redisAPI.hdel(anyList())).thenReturn(Future.succeededFuture());
 
         action.execute(message);
 
-        verify(redisAPI, times(1)).exists(anyList(), any());
-        verify(redisAPI, times(1)).hdel(anyList(), any());
+        verify(redisAPI, times(1)).exists(anyList());
+        verify(redisAPI, times(1)).hdel(anyList());
         verify(message, times(1)).reply(eq(STATUS_OK));
     }
 
     @Test
-    public void testDeleteLockExistsFail(TestContext context){
+    public void testDeleteLockExistsFail(TestContext context) {
         when(message.body()).thenReturn(buildDeleteLockOperation("testLock1"));
 
-        doAnswer(invocation -> {
-            var handler = createResponseHandler(invocation,1);
-            handler.handle(Future.failedFuture("booom"));
-            return null;
-        }).when(redisAPI).exists(anyList(), any());
-
-        doAnswer(invocation -> {
-            var handler = createResponseHandler(invocation,1);
-            handler.handle(Future.succeededFuture());
-            return null;
-        }).when(redisAPI).hdel(anyList(), any());
+        when(redisAPI.exists(anyList())).thenReturn(Future.failedFuture("booom"));
+        when(redisAPI.hdel(anyList())).thenReturn(Future.succeededFuture());
 
         action.execute(message);
 
-        verify(redisAPI, times(1)).exists(anyList(), any());
-        verify(redisAPI, times(1)).hdel(anyList(), any());
+        verify(redisAPI, times(1)).exists(anyList());
+        verify(redisAPI, times(1)).hdel(anyList());
         verify(message, times(1)).reply(eq(STATUS_OK));
     }
 
     @Test
-    public void testDeleteLockHDELFail(TestContext context){
+    public void testDeleteLockHDELFail(TestContext context) {
         when(message.body()).thenReturn(buildDeleteLockOperation("testLock1"));
 
-        doAnswer(invocation -> {
-            var handler = createResponseHandler(invocation,1);
-            handler.handle(Future.succeededFuture(SimpleStringType.create("0")));
-            return null;
-        }).when(redisAPI).exists(anyList(), any());
-
-        doAnswer(invocation -> {
-            var handler = createResponseHandler(invocation,1);
-            handler.handle(Future.failedFuture("booom"));
-            return null;
-        }).when(redisAPI).hdel(anyList(), any());
+        when(redisAPI.exists(anyList())).thenReturn(Future.succeededFuture(SimpleStringType.create("0")));
+        when(redisAPI.hdel(anyList())).thenReturn(Future.failedFuture("booom"));
 
         action.execute(message);
 
-        verify(redisAPI, times(1)).exists(anyList(), any());
-        verify(redisAPI, times(1)).hdel(anyList(), any());
+        verify(redisAPI, times(1)).exists(anyList());
+        verify(redisAPI, times(1)).hdel(anyList());
         verify(message, times(1)).reply(isA(ReplyException.class));
     }
 }

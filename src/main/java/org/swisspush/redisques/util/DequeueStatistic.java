@@ -7,7 +7,7 @@ public class DequeueStatistic implements Serializable {
     private Long lastDequeueSuccessTimestamp = null;
     private Long nextDequeueDueTimestamp = null;
     private Long lastUpdatedTimestamp = null;
-
+    private String failedReason = null;
     private boolean markForRemoval = false;
 
     private void updateLastUpdatedTimestamp() {
@@ -29,6 +29,8 @@ public class DequeueStatistic implements Serializable {
 
     public void setLastDequeueSuccessTimestamp(Long timestamp) {
         this.lastDequeueSuccessTimestamp = timestamp;
+        this.nextDequeueDueTimestamp = null;
+        this.failedReason = null;
         updateLastUpdatedTimestamp();
     }
 
@@ -36,8 +38,9 @@ public class DequeueStatistic implements Serializable {
         return this.lastDequeueSuccessTimestamp;
     }
 
-    public void setNextDequeueDueTimestamp(Long timestamp) {
+    public void setNextDequeueDueTimestamp(Long timestamp, String reason) {
         this.nextDequeueDueTimestamp = timestamp;
+        this.failedReason = reason;
         updateLastUpdatedTimestamp();
     }
 
@@ -47,6 +50,10 @@ public class DequeueStatistic implements Serializable {
 
     public Long getLastUpdatedTimestamp() {
         return lastUpdatedTimestamp;
+    }
+
+    public String getFailedReason() {
+        return failedReason;
     }
 
     public void setMarkedForRemoval() {

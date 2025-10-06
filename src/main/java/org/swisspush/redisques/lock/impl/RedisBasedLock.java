@@ -1,12 +1,7 @@
 package org.swisspush.redisques.lock.impl;
 
-import io.vertx.core.AsyncResult;
 import io.vertx.core.Future;
-import io.vertx.core.Handler;
 import io.vertx.core.Promise;
-import io.vertx.core.json.JsonArray;
-import io.vertx.redis.client.Command;
-import io.vertx.redis.client.Response;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
@@ -14,9 +9,7 @@ import org.swisspush.redisques.lock.Lock;
 import org.swisspush.redisques.lock.lua.LockLuaScripts;
 import org.swisspush.redisques.lua.LuaScriptState;
 import org.swisspush.redisques.lock.lua.ReleaseLockRedisCommand;
-import org.swisspush.redisques.util.FailedAsyncResult;
-import org.swisspush.redisques.util.RedisProvider;
-import org.swisspush.redisques.util.RedisUtils;
+import org.swisspush.redisques.queue.RedisService;
 
 import java.util.Collections;
 import java.util.List;
@@ -34,51 +27,23 @@ public class RedisBasedLock implements Lock {
     public static final String STORAGE_PREFIX = "gateleen.core-lock:";
 
     private final LuaScriptState releaseLockLuaScriptState;
-    private final RedisProvider redisProvider;
+    private final RedisService redisService;
     private final RedisQuesExceptionFactory exceptionFactory;
 
-    public RedisBasedLock(RedisProvider redisProvider, RedisQuesExceptionFactory exceptionFactory) {
-        this.redisProvider = redisProvider;
+    public RedisBasedLock(RedisService redisService, RedisQuesExceptionFactory exceptionFactory) {
+        this.redisService = redisService;
         this.exceptionFactory = exceptionFactory;
-        this.releaseLockLuaScriptState = new LuaScriptState(LockLuaScripts.LOCK_RELEASE, redisProvider, exceptionFactory, false);
+        this.releaseLockLuaScriptState = new LuaScriptState(LockLuaScripts.LOCK_RELEASE, redisService, exceptionFactory, false);
     }
 
-    private void redisSetWithOptions(String key, String value, boolean nx, long px, Handler<AsyncResult<Response>> handler) {
-        JsonArray options = new JsonArray();
-        options.add("PX").add(px);
-        if (nx) {
-            options.add("NX");
-        }
-        redisProvider.redis().onComplete( redisEv -> {
-            if( redisEv.failed() ){
-                Throwable ex = exceptionFactory.newException("redisProvider.redis() failed", redisEv.cause());
-                handler.handle(new FailedAsyncResult<>(ex));
-                return;
-            }
-            var redisAPI = redisEv.result();
-            String[] payload = RedisUtils.toPayload(key, value, options).toArray(EMPTY_STRING_ARRAY);
-            redisAPI.send(Command.SET, payload).onComplete(ev -> {
-                if (ev.failed()) {
-                    Throwable ex = exceptionFactory.newException("redisAPI.send() failed", ev.cause());
-                    handler.handle(new FailedAsyncResult<>(ex));
-                    return;
-                }
-                handler.handle(ev);
-            });
-        });
-    }
 
     @Override
     public Future<Boolean> acquireLock(String lock, String token, long lockExpiryMs) {
         Promise<Boolean> promise = Promise.promise();
         String lockKey = buildLockKey(lock);
-        redisSetWithOptions(lockKey, token, true, lockExpiryMs, event -> {
+        redisService.setNxPx(lockKey, token, true, lockExpiryMs).onComplete(event -> {
             if (event.succeeded()) {
-                if (event.result() != null) {
-                    promise.complete("OK".equalsIgnoreCase(event.result().toString()));
-                } else {
-                    promise.complete(false);
-                }
+                promise.complete(event.result());
             } else {
                 Throwable ex = exceptionFactory.newException(
                         "redisSetWithOptions(lockKey=\"" + lockKey + "\") failed", event.cause());
@@ -94,7 +59,7 @@ public class RedisBasedLock implements Lock {
         List<String> keys = Collections.singletonList(buildLockKey(lock));
         List<String> arguments = Collections.singletonList(token);
         ReleaseLockRedisCommand cmd = new ReleaseLockRedisCommand(releaseLockLuaScriptState,
-                keys, arguments, redisProvider, exceptionFactory, log, promise);
+                keys, arguments, redisService, exceptionFactory, log, promise);
         cmd.exec(0);
         return promise.future();
     }

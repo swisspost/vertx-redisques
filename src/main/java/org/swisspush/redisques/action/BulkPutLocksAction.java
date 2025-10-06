@@ -7,9 +7,10 @@ import io.vertx.core.json.JsonObject;
 import org.slf4j.Logger;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.handler.PutLockHandler;
+import org.swisspush.redisques.queue.KeyspaceHelper;
+import org.swisspush.redisques.queue.RedisService;
 import org.swisspush.redisques.util.QueueConfiguration;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
-import org.swisspush.redisques.util.RedisProvider;
 
 import java.util.List;
 
@@ -18,11 +19,10 @@ import static org.swisspush.redisques.util.RedisquesAPI.*;
 public class BulkPutLocksAction extends AbstractQueueAction {
 
     public BulkPutLocksAction(
-            Vertx vertx, RedisProvider redisProvider, String address, String queuesKey, String queuesPrefix,
-            String consumersPrefix, String locksKey, List<QueueConfiguration> queueConfigurations,
+            Vertx vertx, RedisService redisService, KeyspaceHelper keyspaceHelper, List<QueueConfiguration> queueConfigurations,
             RedisQuesExceptionFactory exceptionFactory, QueueStatisticsCollector queueStatisticsCollector, Logger log
     ) {
-        super(vertx, redisProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey,
+        super(vertx, redisService, keyspaceHelper,
                 queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
     }
 
@@ -44,10 +44,9 @@ public class BulkPutLocksAction extends AbstractQueueAction {
             event.reply(createErrorReply().put(ERROR_TYPE, BAD_INPUT).put(MESSAGE, "Locks must be string values"));
             return;
         }
-
-        var p = redisProvider.redis();
-        p.onSuccess(redisAPI -> redisAPI.hmset(buildLocksItems(locksKey, locks, lockInfo), new PutLockHandler(event, exceptionFactory)));
-        p.onFailure(ex -> replyErrorMessageHandler(event).handle(ex));
+        redisService.hmset(buildLocksItems(keyspaceHelper.getLocksKey(), locks, lockInfo)).onComplete(response ->
+                new PutLockHandler(event, exceptionFactory).handle(response))
+                .onFailure(ex -> replyErrorMessageHandler(event).handle(ex));
     }
 
 }

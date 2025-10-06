@@ -6,9 +6,10 @@ import io.vertx.core.json.JsonObject;
 import org.slf4j.Logger;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.handler.GetQueueItemsHandler;
+import org.swisspush.redisques.queue.KeyspaceHelper;
+import org.swisspush.redisques.queue.RedisService;
 import org.swisspush.redisques.util.QueueConfiguration;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
-import org.swisspush.redisques.util.RedisProvider;
 
 import java.util.List;
 
@@ -18,30 +19,28 @@ public class GetQueueItemsAction extends AbstractQueueAction {
 
     private static final int DEFAULT_MAX_QUEUEITEM_COUNT = 49;
 
-    public GetQueueItemsAction(Vertx vertx, RedisProvider redisProvider, String address, String queuesKey, String queuesPrefix,
-                               String consumersPrefix, String locksKey, List<QueueConfiguration> queueConfigurations,
+    public GetQueueItemsAction(Vertx vertx, RedisService redisService, KeyspaceHelper keyspaceHelper, List<QueueConfiguration> queueConfigurations,
                                RedisQuesExceptionFactory exceptionFactory, QueueStatisticsCollector queueStatisticsCollector, Logger log) {
-        super(vertx, redisProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey, queueConfigurations,
+        super(vertx, redisService, keyspaceHelper, queueConfigurations,
                 exceptionFactory, queueStatisticsCollector, log);
     }
 
     @Override
     public void execute(Message<JsonObject> event) {
         String queueName = event.body().getJsonObject(PAYLOAD).getString(QUEUENAME);
-        String keyListRange = queuesPrefix + queueName;
+        String keyListRange = keyspaceHelper.getQueuesPrefix() + queueName;
         int maxQueueItemCountIndex = getMaxQueueItemCountIndex(event.body().getJsonObject(PAYLOAD).getString(LIMIT));
 
-        redisProvider.redis().onSuccess(redisAPI -> redisAPI.llen(keyListRange).onSuccess(countReply -> {
+        redisService.llen(keyListRange).onSuccess(countReply -> {
             Long queueItemCount = countReply.toLong();
             if(queueItemCount != null) {
-                redisAPI.lrange(keyListRange, "0", String.valueOf(maxQueueItemCountIndex),
-                        new GetQueueItemsHandler(event, queueItemCount));
+                redisService.lrange(keyListRange, "0", String.valueOf(maxQueueItemCountIndex)).onComplete(response ->
+                        new GetQueueItemsHandler(event, queueItemCount).handle(response));
             } else {
                 event.reply(exceptionFactory.newReplyException(
                     "Operation getQueueItems failed to extract queueItemCount", null));
             }
-        }).onFailure(throwable -> handleFail(event, "Operation getQueueItems failed", throwable)))
-                .onFailure(throwable -> handleFail(event, "Operation getQueueItems failed", throwable));
+        }).onFailure(throwable -> handleFail(event, "Operation getQueueItems failed", throwable));
     }
 
     private int getMaxQueueItemCountIndex(String limit) {

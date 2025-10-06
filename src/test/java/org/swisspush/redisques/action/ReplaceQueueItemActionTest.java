@@ -30,8 +30,7 @@ public class ReplaceQueueItemActionTest extends AbstractQueueActionTest {
     @Override
     public void setup() {
         super.setup();
-        action = new ReplaceQueueItemAction(vertx, redisProvider,
-                "addr", "q-", "prefix-", "c-", "l-",
+        action = new ReplaceQueueItemAction(vertx, redisService, keyspaceHelper,
                 new ArrayList<>(), exceptionFactory, Mockito.mock(QueueStatisticsCollector.class), Mockito.mock(Logger.class));
     }
 
@@ -50,15 +49,11 @@ public class ReplaceQueueItemActionTest extends AbstractQueueActionTest {
     public void testReplaceQueueItem(TestContext context){
         when(message.body()).thenReturn(buildReplaceQueueItemOperation("q1", 0,"geronimo"));
 
-        doAnswer(invocation -> {
-            var handler = createResponseHandler(invocation,3);
-            handler.handle(Future.succeededFuture());
-            return null;
-        }).when(redisAPI).lset(anyString(), anyString(), anyString(), any());
+        when(redisAPI.lset(anyString(), anyString(), anyString())).thenReturn(Future.succeededFuture());
 
         action.execute(message);
 
-        verify(redisAPI, times(1)).lset(anyString(), anyString(), anyString(), any());
+        verify(redisAPI, times(1)).lset(anyString(), anyString(), anyString());
         verify(message, times(1)).reply(eq(new JsonObject(Buffer.buffer("{\"status\":\"ok\"}"))));
     }
 
@@ -66,15 +61,11 @@ public class ReplaceQueueItemActionTest extends AbstractQueueActionTest {
     public void testReplaceQueueItemWithLSETFail(TestContext context){
         when(message.body()).thenReturn(buildReplaceQueueItemOperation("q1", 0,"geronimo"));
 
-        doAnswer(invocation -> {
-            var handler = createResponseHandler(invocation,3);
-            handler.handle(Future.failedFuture("booom"));
-            return null;
-        }).when(redisAPI).lset(anyString(), anyString(), anyString(), any());
+        when(redisAPI.lset(anyString(), anyString(), anyString())).thenReturn(Future.failedFuture("booom"));
 
         action.execute(message);
 
-        verify(redisAPI, times(1)).lset(anyString(), anyString(), anyString(), any());
+        verify(redisAPI, times(1)).lset(anyString(), anyString(), anyString());
         verify(message, times(1)).reply(isA(ReplyException.class));
     }
 }

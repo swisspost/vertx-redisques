@@ -3,7 +3,10 @@ package org.swisspush.redisques.metrics;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.netty.util.internal.StringUtil;
-import io.vertx.core.*;
+import io.vertx.core.AsyncResult;
+import io.vertx.core.Future;
+import io.vertx.core.Handler;
+import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonArray;
@@ -13,17 +16,14 @@ import org.slf4j.LoggerFactory;
 import org.swisspush.redisques.QueueState;
 import org.swisspush.redisques.exception.NoStacktraceException;
 import org.swisspush.redisques.lock.Lock;
+import org.swisspush.redisques.queue.KeyspaceHelper;
 import org.swisspush.redisques.util.LockUtil;
 import org.swisspush.redisques.util.MetricMeter;
 import org.swisspush.redisques.util.MetricTags;
 
 import java.net.InetAddress;
 import java.net.UnknownHostException;
-import java.util.EnumMap;
-import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 
 import static org.swisspush.redisques.util.DebugInfo.__WHERE__;
 import static org.swisspush.redisques.util.RedisquesAPI.*;
@@ -32,9 +32,8 @@ public class MetricsCollector {
 
     private static final Logger log = LoggerFactory.getLogger(MetricsCollector.class);
     private final Vertx vertx;
-    private final String redisquesAddress;
     private final Lock lock;
-    private final String uid;
+    private final KeyspaceHelper keyspaceHelper;
     private final long metricCollectIntervalMs;
 
     private static final String DEFAULT_IDENTIFIER = "default";
@@ -47,13 +46,10 @@ public class MetricsCollector {
     private final AtomicLong queueStateReadyCount = new AtomicLong(0);
     private final AtomicLong queueStateConsumingCount = new AtomicLong(0);
 
-    public static final String QUEUE_STATE_COUNT_KEY = "queueStateCount";
-
-    public MetricsCollector(Vertx vertx, String uid, String redisquesAddress,
+    public MetricsCollector(Vertx vertx, KeyspaceHelper keyspaceHelper,
                             String identifier, MeterRegistry meterRegistry, Lock lock, long metricCollectIntervalSec) {
         this.vertx = vertx;
-        this.uid = uid;
-        this.redisquesAddress = redisquesAddress;
+        this.keyspaceHelper = keyspaceHelper;
         this.lock = lock;
         this.metricCollectIntervalMs = metricCollectIntervalSec * 1000;
 
@@ -105,7 +101,7 @@ public class MetricsCollector {
             }
             if(lockEvent.result()) {
                 log.info("About to update queues count with lock {}", UPDATE_ACTIVE_QUEUES_LOCK);
-                vertx.eventBus().request(redisquesAddress, buildGetQueuesCountOperation(), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
+                vertx.eventBus().request(keyspaceHelper.getAddress(), buildGetQueuesCountOperation(), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
                     if (reply.failed()) {
                         log.warn("TODO error handling", reply.cause());
                     } else if (reply.succeeded() && OK.equals(reply.result().body().getString(STATUS))) {
@@ -131,7 +127,7 @@ public class MetricsCollector {
             }
             if(lockEvent.result()) {
                 log.info("About to update max queue size with lock {}", UPDATE_MAX_QUEUE_SIZE_LOCK);
-                vertx.eventBus().request(redisquesAddress, buildMonitorOperation(true, 1), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
+                vertx.eventBus().request(keyspaceHelper.getAddress(), buildMonitorOperation(true, 1), (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
                     if (reply.failed()) {
                         log.warn("TODO error handling", reply.cause());
                     } else if (reply.succeeded() && OK.equals(reply.result().body().getString(STATUS))) {
@@ -157,7 +153,7 @@ public class MetricsCollector {
             }
             if(lockEvent.result()) {
                 log.info("About to queue state count with lock {}", UPDATE_QUEUE_STATE_COUNT_LOCK);
-                vertx.eventBus().request(getAddress(), null, (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
+                vertx.eventBus().request(keyspaceHelper.getMetricsCollectorAddress(), null, (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
                     if (reply.failed()) {
                         log.warn("TODO error handling", reply.cause());
                     } else {
@@ -222,10 +218,7 @@ public class MetricsCollector {
     }
 
     private String createToken(String appendix) {
-        return this.uid + "_" + System.currentTimeMillis() + "_" + appendix;
+        return keyspaceHelper.getVerticleUid() + "_" + System.currentTimeMillis() + "_" + appendix;
     }
 
-    public String getAddress() {
-        return redisquesAddress + "-" + uid + "-" + QUEUE_STATE_COUNT_KEY;
-    }
 }

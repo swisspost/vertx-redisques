@@ -14,6 +14,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mockito;
+import org.mockito.internal.util.Platform;
 import org.slf4j.Logger;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 
@@ -34,8 +35,7 @@ public class GetAllLocksActionTest extends AbstractQueueActionTest {
     @Override
     public void setup() {
         super.setup();
-        action = new GetAllLocksAction(vertx, redisProvider,
-                "addr", "q-", "prefix-", "c-", "l-",
+        action = new GetAllLocksAction(vertx, redisService, keyspaceHelper,
                 new ArrayList<>(), exceptionFactory, Mockito.mock(QueueStatisticsCollector.class), Mockito.mock(Logger.class));
     }
 
@@ -56,9 +56,16 @@ public class GetAllLocksActionTest extends AbstractQueueActionTest {
 
         action.execute(message);
 
-        verify(message, times(1)).reply(eq(new JsonObject(
-                Buffer.buffer("{\"status\":\"error\",\"errorType\":\"bad input\",\"message\":\"Error while compile" +
-                        " regex pattern. Cause: Unclosed group near index 6\\nxyz(.*\"}"))));
+        if (System.getProperty("os.name").startsWith("Windows")) {
+            verify(message, times(1)).reply(eq(new JsonObject(
+                    Buffer.buffer("{\"status\":\"error\",\"errorType\":\"bad input\",\"message\":\"Error while compile" +
+                            " regex pattern. Cause: Unclosed group near index 6\\r\\nxyz(.*\"}"))));
+        } else {
+            verify(message, times(1)).reply(eq(new JsonObject(
+                    Buffer.buffer("{\"status\":\"error\",\"errorType\":\"bad input\",\"message\":\"Error while compile" +
+                            " regex pattern. Cause: Unclosed group near index 6\\nxyz(.*\"}"))));
+        }
+
         verifyNoInteractions(redisAPI);
     }
 
@@ -66,15 +73,11 @@ public class GetAllLocksActionTest extends AbstractQueueActionTest {
     public void testGetAllLocksHKEYSFail(TestContext context){
         when(message.body()).thenReturn(buildGetAllLocksOperation());
 
-        doAnswer(invocation -> {
-            var handler = createResponseHandler(invocation, 1);
-            handler.handle(new FailedFuture("booom"));
-            return null;
-        }).when(redisAPI).hkeys(anyString(), any());
+        when(redisAPI.hkeys(anyString())).thenReturn(new FailedFuture("booom"));
 
         action.execute(message);
 
-        verify(redisAPI, times(1)).hkeys(anyString(), any());
+        verify(redisAPI, times(1)).hkeys(anyString());
         verify(message, times(1)).reply(eq(new JsonObject(Buffer.buffer("{\"status\":\"error\"}"))));
     }
 
@@ -82,18 +85,14 @@ public class GetAllLocksActionTest extends AbstractQueueActionTest {
     public void testGetAllLocks(TestContext context){
         when(message.body()).thenReturn(buildGetAllLocksOperation());
 
-        doAnswer(invocation -> {
-            var handler = createResponseHandler(invocation, 1);
-            MultiType response = MultiType.create(2, false);
-            response.add(SimpleStringType.create("foo"));
-            response.add(SimpleStringType.create("bar"));
-            handler.handle(new SucceededFuture<>(response));
-            return null;
-        }).when(redisAPI).hkeys(anyString(), any());
+        MultiType response = MultiType.create(2, false);
+        response.add(SimpleStringType.create("foo"));
+        response.add(SimpleStringType.create("bar"));
+        when(redisAPI.hkeys(anyString())).thenReturn(new SucceededFuture<>(response));
 
         action.execute(message);
 
-        verify(redisAPI, times(1)).hkeys(anyString(), any());
+        verify(redisAPI, times(1)).hkeys(anyString());
         verify(message, times(1)).reply(eq(new JsonObject(Buffer.buffer("{\"status\":\"ok\",\"value\":{\"locks\":[\"foo\",\"bar\"]}}"))));
     }
 }

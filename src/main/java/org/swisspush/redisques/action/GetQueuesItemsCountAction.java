@@ -6,6 +6,8 @@ import io.vertx.core.json.JsonObject;
 import org.slf4j.Logger;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.handler.GetQueuesItemsCountHandler;
+import org.swisspush.redisques.queue.KeyspaceHelper;
+import org.swisspush.redisques.queue.RedisService;
 import org.swisspush.redisques.util.*;
 
 import java.util.List;
@@ -25,19 +27,15 @@ public class GetQueuesItemsCountAction extends AbstractQueueAction {
 
     public GetQueuesItemsCountAction(
             Vertx vertx,
-            RedisProvider redisProvider,
-            String address,
-            String queuesKey,
-            String queuesPrefix,
-            String consumersPrefix,
-            String locksKey,
+            RedisService redisService,
+            KeyspaceHelper keyspaceHelper,
             List<QueueConfiguration> queueConfigurations,
             RedisQuesExceptionFactory exceptionFactory,
             Semaphore redisRequestQuota,
             QueueStatisticsCollector queueStatisticsCollector,
             Logger log
     ) {
-        super(vertx, redisProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey, queueConfigurations,
+        super(vertx, redisService, keyspaceHelper, queueConfigurations,
                 exceptionFactory, queueStatisticsCollector, log);
         this.exceptionFactory = exceptionFactory;
         this.redisRequestQuota = redisRequestQuota;
@@ -50,11 +48,10 @@ public class GetQueuesItemsCountAction extends AbstractQueueAction {
             event.reply(createErrorReply().put(ERROR_TYPE, BAD_INPUT)
                     .put(MESSAGE, filterPattern.getErr()));
         } else {
-            redisProvider.redis().onSuccess(redisAPI -> redisAPI.zrangebyscore(List.of(queuesKey,
-                                    String.valueOf(getMaxAgeTimestamp()), "+inf"),
-                            new GetQueuesItemsCountHandler(vertx, event, filterPattern.getOk(),
-                                    queuesPrefix, redisProvider, exceptionFactory, redisRequestQuota)))
-                    .onFailure(ex -> replyErrorMessageHandler(event).handle(ex));
+            redisService.zrangebyscore(keyspaceHelper.getQueuesKey(),
+                    String.valueOf(getMaxAgeTimestamp()), "+inf").onComplete(response ->
+                    new GetQueuesItemsCountHandler(vertx, event, filterPattern.getOk(),
+                            keyspaceHelper.getQueuesPrefix(), redisService, exceptionFactory, redisRequestQuota).handle(response));
         }
     }
 

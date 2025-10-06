@@ -7,9 +7,10 @@ import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonObject;
 import org.slf4j.Logger;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
+import org.swisspush.redisques.queue.KeyspaceHelper;
+import org.swisspush.redisques.queue.RedisService;
 import org.swisspush.redisques.util.*;
 
-import java.util.Arrays;
 import java.util.List;
 
 import static org.swisspush.redisques.util.RedisquesAPI.*;
@@ -22,12 +23,11 @@ public class EnqueueAction extends AbstractQueueAction {
     private Counter enqueueCounterFail;
 
     public EnqueueAction(
-            Vertx vertx, RedisProvider redisProvider, String address, String queuesKey, String queuesPrefix,
-            String consumersPrefix, String locksKey, List<QueueConfiguration> queueConfigurations,
+            Vertx vertx, RedisService redisService, KeyspaceHelper keyspaceHelper, List<QueueConfiguration> queueConfigurations,
             RedisQuesExceptionFactory exceptionFactory, QueueStatisticsCollector queueStatisticsCollector, Logger log,
             MemoryUsageProvider memoryUsageProvider, int memoryUsageLimitPercent, MeterRegistry meterRegistry, String metricsIdentifier
     ) {
-        super(vertx, redisProvider, address, queuesKey, queuesPrefix, consumersPrefix, locksKey,
+        super(vertx, redisService, keyspaceHelper,
                 queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
         this.memoryUsageProvider = memoryUsageProvider;
         this.memoryUsageLimitPercent = memoryUsageLimitPercent;
@@ -55,11 +55,10 @@ public class EnqueueAction extends AbstractQueueAction {
                 replyError(event, queueName, updateTimestampEvent.cause());
                 return;
             }
-            String keyEnqueue = queuesPrefix + queueName;
+            String keyEnqueue = keyspaceHelper.getQueuesPrefix() + queueName;
             String valueEnqueue = event.body().getString(MESSAGE);
 
-            var p = redisProvider.redis();
-            p.onSuccess(redisAPI -> redisAPI.rpush(Arrays.asList(keyEnqueue, valueEnqueue)).onComplete(enqueueEvent -> {
+            redisService.rpush(keyEnqueue, valueEnqueue).onComplete(enqueueEvent -> {
                 JsonObject reply = new JsonObject();
                 if (enqueueEvent.succeeded()) {
                     if (log.isDebugEnabled()) {
@@ -100,7 +99,7 @@ public class EnqueueAction extends AbstractQueueAction {
                 } else {
                     replyError(event, queueName, enqueueEvent.cause());
                 }
-            })).onFailure(ex -> replyError(event, queueName, ex));
+            });
         });
     }
 
