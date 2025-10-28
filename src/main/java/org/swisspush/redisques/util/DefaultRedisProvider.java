@@ -115,6 +115,12 @@ public class DefaultRedisProvider implements RedisProvider {
                     .setMaxWaitingHandlers(redisMaxPipelineWaitingSize)
                     .setType(config.getRedisClientType());
 
+            if (config.getRedisEnableTls()) {
+                redisOptions.setNetClientOptions(redisOptions.getNetClientOptions()
+                        .setSsl(true)
+                        .setHostnameVerificationAlgorithm("HTTPS"));
+            }
+
             createConnectStrings().forEach(redisOptions::addConnectionString);
 
             redis = Redis.createClient(vertx, redisOptions);
