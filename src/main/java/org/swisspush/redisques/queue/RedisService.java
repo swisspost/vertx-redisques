@@ -81,19 +81,16 @@ public class RedisService {
     }
 
     public Future<Boolean> setNxPx(String key, String value, boolean setNx, long durationMillis) {
-        Promise<Boolean> p = Promise.promise();
-        redis().compose((RedisAPI redisAPI) -> {
-                    Future<?> future;
-                    if (setNx) {
-                        future = redisAPI.send(Command.SET, key, value, "NX", "PX", String.valueOf(durationMillis));
-                    } else {
-                        future = redisAPI.send(Command.SET, key, value, "PX", String.valueOf(durationMillis));
-                    }
-                    return future.onSuccess(resp -> p.complete(resp != null && "OK".equals(resp.toString())))
-                            .onFailure(p::fail);
-                }
-        );
-        return p.future();
+        return redis().compose((RedisAPI redisAPI) -> {
+            String durationMillisStr = String.valueOf(durationMillis);
+            if (setNx) {
+                return redisAPI.send(Command.SET, key, value, "NX", "PX", durationMillisStr);
+            } else {
+                return redisAPI.send(Command.SET, key, value, "PX", durationMillisStr);
+            }
+        }).map((Response rsp) -> {
+            return rsp != null && "OK".equals(rsp.toString());
+        });
     }
 
     public Future<Response> zadd(String queuesKey, String queueName, String value) {
