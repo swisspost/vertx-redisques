@@ -1,6 +1,5 @@
 package org.swisspush.redisques.queue;
 
-import com.google.common.math.PairedStats;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
@@ -32,6 +31,8 @@ import java.util.Objects;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import static io.vertx.core.Future.failedFuture;
+import static io.vertx.core.Future.succeededFuture;
 import static java.lang.System.currentTimeMillis;
 import static org.swisspush.redisques.util.RedisquesAPI.OK;
 import static org.swisspush.redisques.util.RedisquesAPI.PAYLOAD;
@@ -359,16 +360,13 @@ public class QueueConsumerRunner {
     }
 
     private Future<Void> refreshRegistration(String queueName) {
-        Promise<Void> promise = Promise.promise();
-        vertx.eventBus().request(keyspaceHelper.getVerticleRefreshRegistrationKey(), queueName).onComplete(event -> {
-            if (event.succeeded()) {
-                promise.complete();
-                return;
+        String address = keyspaceHelper.getVerticleRefreshRegistrationKey();
+        return vertx.eventBus().request(address, queueName).transform(ev -> {
+            if (ev.failed()) {
+                log.error("RedisQues refresh registration failed", ev.cause());
             }
-            promise.fail(event.cause());
-            log.error("RedisQues refresh registration failed", event.cause());
+            return ev.succeeded() ? succeededFuture() : failedFuture(ev.cause());
         });
-        return promise.future();
     }
 
     private Future<Void> notifyConsumer(String queueName) {
@@ -422,15 +420,13 @@ public class QueueConsumerRunner {
             if (null == queueProcessingState) {
                 // not in our list yet
                 return new QueueProcessingState(state, 0);
+            } else if (queueProcessingState.getState() == QueueState.CONSUMING && state == QueueState.READY) {
+                // update the state and the timestamp when we change from CONSUMING to READY
+                return new QueueProcessingState(QueueState.READY, currentTimeMillis());
             } else {
-                if (queueProcessingState.getState() == QueueState.CONSUMING && state == QueueState.READY) {
-                    // update the state and the timestamp when we change from CONSUMING to READY
-                    return new QueueProcessingState(QueueState.READY, currentTimeMillis());
-                } else {
-                    // update the state but leave the timestamp unchanged
-                    queueProcessingState.setState(state);
-                    return queueProcessingState;
-                }
+                // update the state but leave the timestamp unchanged
+                queueProcessingState.setState(state);
+                return queueProcessingState;
             }
         });
     }
