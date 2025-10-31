@@ -14,7 +14,6 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mockito;
-import org.mockito.internal.util.Platform;
 import org.slf4j.Logger;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 
@@ -56,15 +55,14 @@ public class GetAllLocksActionTest extends AbstractQueueActionTest {
 
         action.execute(message);
 
-        if (System.getProperty("os.name").startsWith("Windows")) {
-            verify(message, times(1)).reply(eq(new JsonObject(
-                    Buffer.buffer("{\"status\":\"error\",\"errorType\":\"bad input\",\"message\":\"Error while compile" +
-                            " regex pattern. Cause: Unclosed group near index 6\\r\\nxyz(.*\"}"))));
-        } else {
-            verify(message, times(1)).reply(eq(new JsonObject(
-                    Buffer.buffer("{\"status\":\"error\",\"errorType\":\"bad input\",\"message\":\"Error while compile" +
-                            " regex pattern. Cause: Unclosed group near index 6\\nxyz(.*\"}"))));
-        }
+        String newlineEscaped = System.lineSeparator()
+                .replace("\n", "\\n").replace("\r", "\\r");
+        var expectedResult = new JsonObject(Buffer.buffer(""
+                + "{\"status\":\"error\",\"errorType\":\"bad input\",\"message\":"
+                + "\"Error while compile regex pattern. Cause: Unclosed group near index 6"
+                + newlineEscaped
+                + "xyz(.*\"}"));
+        verify(message, times(1)).reply(eq(expectedResult));
 
         verifyNoInteractions(redisAPI);
     }
