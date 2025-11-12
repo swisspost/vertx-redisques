@@ -85,8 +85,13 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
             if (modConfig.getHttpRequestHandlerPort() != null && modConfig.getHttpRequestHandlerUserHeader() != null) {
                 var handler = new RedisquesHttpRequestHandler(
                         vertx, modConfig, queueStatsService, exceptionFactory);
+
                 // in Vert.x 2x 100-continues was activated per default, in vert.x 3x it is off per default.
-                HttpServerOptions options = new HttpServerOptions().setHandle100ContinueAutomatically(true);
+                HttpServerOptions options = new HttpServerOptions()
+                        .setHandle100ContinueAutomatically(true)
+                        .setMaxHeaderSize(modConfig.getHttpRequestHandlerMaxHeaderSize())
+                        .setMaxInitialLineLength(modConfig.getHttpRequestHandlerMaxInitialLineLength());
+
                 vertx.createHttpServer(options).requestHandler(handler).listen(modConfig.getHttpRequestHandlerPort(), result -> {
                     if (result.succeeded()) {
                         log.info("Successfully started http request handler on port {}", modConfig.getHttpRequestHandlerPort());
