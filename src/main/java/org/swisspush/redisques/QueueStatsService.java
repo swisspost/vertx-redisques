@@ -207,12 +207,16 @@ public class QueueStatsService {
         dequeueStatisticCollector.getAllDequeueStatistics().onSuccess(event -> {
             for (Queue queue : req.queues) {
                 if (event.containsKey(queue.name)) {
-                    DequeueStatistic sharedDequeueStatisticCopy = DequeueStatistic.fromJson(event.get(queue.name));
-                    // Attach value of shared data
-                    queue.lastDequeueAttemptEpochMs = sharedDequeueStatisticCopy.getLastDequeueAttemptTimestamp();
-                    queue.lastDequeueSuccessEpochMs = sharedDequeueStatisticCopy.getLastDequeueSuccessTimestamp();
-                    queue.nextDequeueDueTimestampEpochMs = sharedDequeueStatisticCopy.getNextDequeueDueTimestamp();
-                    queue.failedReason = sharedDequeueStatisticCopy.getFailedReason();
+                    if (event.get(queue.name) instanceof JsonObject) {
+                        DequeueStatistic sharedDequeueStatisticCopy = DequeueStatistic.fromJson(event.get(queue.name));
+                        // Attach value of shared data
+                        queue.lastDequeueAttemptEpochMs = sharedDequeueStatisticCopy.getLastDequeueAttemptTimestamp();
+                        queue.lastDequeueSuccessEpochMs = sharedDequeueStatisticCopy.getLastDequeueSuccessTimestamp();
+                        queue.nextDequeueDueTimestampEpochMs = sharedDequeueStatisticCopy.getNextDequeueDueTimestamp();
+                        queue.failedReason = sharedDequeueStatisticCopy.getFailedReason();
+                    } else {
+                        log.warn("DequeueStatistics for {} have a wrong type, skip it for now.", queue.name);
+                    }
                 }
             }
             onDone.accept(null, req);
