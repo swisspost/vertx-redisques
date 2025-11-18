@@ -5,6 +5,7 @@ import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
+import io.vertx.core.json.JsonObject;
 import io.vertx.core.shareddata.AsyncMap;
 import io.vertx.core.shareddata.Lock;
 import io.vertx.core.shareddata.SharedData;
@@ -49,14 +50,14 @@ public class DequeueStatisticCollector {
                 promise.complete();
             };
 
-            sharedData.getAsyncMap(DEQUEUE_STATISTIC_DATA, (Handler<AsyncResult<AsyncMap<String, DequeueStatistic>>>) asyncResult -> {
+            sharedData.getAsyncMap(DEQUEUE_STATISTIC_DATA, (Handler<AsyncResult<AsyncMap<String, JsonObject>>>) asyncResult -> {
                 if (asyncResult.failed()) {
                     log.error("Failed to get shared dequeue statistic data map.", asyncResult.cause());
                     releaseAndCompleteHandler.handle(null);
                     return;
                 }
 
-                AsyncMap<String, DequeueStatistic> asyncMap = asyncResult.result();
+                AsyncMap<String, JsonObject> asyncMap = asyncResult.result();
                 asyncMap.size().onComplete(mapSizeResult -> {
                     log.debug("shared dequeue statistic map size: {}", mapSizeResult.result());
                     asyncMap.get(queueName).onComplete(dequeueStatisticAsyncResult -> {
@@ -66,9 +67,9 @@ public class DequeueStatisticCollector {
                             return;
                         }
 
-                        final DequeueStatistic sharedDequeueStatistic = dequeueStatisticAsyncResult.result();
+                        final DequeueStatistic sharedDequeueStatistic = DequeueStatistic.fromJson(dequeueStatisticAsyncResult.result());
                         if (sharedDequeueStatistic == null) {
-                            asyncMap.put(queueName, dequeueStatistic).onComplete(voidAsyncResult -> {
+                            asyncMap.put(queueName, dequeueStatistic.asJson()).onComplete(voidAsyncResult -> {
                                 if (voidAsyncResult.failed()) {
                                     log.error("shared dequeue statistic for queue {} failed to add.", queueName, voidAsyncResult.cause());
                                 } else {
@@ -89,7 +90,7 @@ public class DequeueStatisticCollector {
                                 });
                             } else {
                                 // update
-                                asyncMap.put(queueName, dequeueStatistic).onComplete(event -> {
+                                asyncMap.put(queueName, dequeueStatistic.asJson()).onComplete(event -> {
                                     if (event.failed()) {
                                         log.error("shared dequeue statistic for queue {} failed to update.", queueName, event.cause());
                                     } else {
@@ -109,24 +110,23 @@ public class DequeueStatisticCollector {
         return promise.future();
     }
 
-    public Future<Map<String, DequeueStatistic>> getAllDequeueStatistics() {
+    public Future<Map<String, JsonObject>> getAllDequeueStatistics() {
         // Check if dequeue statistics are enabled
         if (!dequeueStatisticEnabled) {
             return Future.succeededFuture(Collections.emptyMap()); // Return an empty map to avoid NullPointerExceptions
         }
-        Promise<Map<String, DequeueStatistic>> promise = Promise.promise();
-        sharedData.getAsyncMap(DEQUEUE_STATISTIC_DATA, (Handler<AsyncResult<AsyncMap<String, DequeueStatistic>>>) asyncResult -> {
+        Promise<Map<String, JsonObject>> promise = Promise.promise();
+        sharedData.getAsyncMap(DEQUEUE_STATISTIC_DATA, (Handler<AsyncResult<AsyncMap<String, JsonObject>>>) asyncResult -> {
             if (asyncResult.failed()) {
                 log.error("Failed to get dequeue statistic data map.", asyncResult.cause());
                 promise.fail(asyncResult.cause());
                 return;
             }
-            AsyncMap<String, DequeueStatistic> asyncMap = asyncResult.result();
+            AsyncMap<String, JsonObject> asyncMap = asyncResult.result();
             asyncMap.entries().onSuccess(promise::complete).onFailure(throwable -> {
                 log.error("Failed to get dequeue statistic map", throwable);
                 promise.fail(throwable);
             });
-
         });
         return promise.future();
     }
