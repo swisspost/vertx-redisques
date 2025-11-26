@@ -5,6 +5,7 @@ import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
+import io.vertx.core.json.JsonObject;
 import io.vertx.core.shareddata.AsyncMap;
 import io.vertx.core.shareddata.Lock;
 import io.vertx.core.shareddata.SharedData;
@@ -49,26 +50,44 @@ public class DequeueStatisticCollector {
                 promise.complete();
             };
 
-            sharedData.getAsyncMap(DEQUEUE_STATISTIC_DATA, (Handler<AsyncResult<AsyncMap<String, DequeueStatistic>>>) asyncResult -> {
+            sharedData.getAsyncMap(DEQUEUE_STATISTIC_DATA, (Handler<AsyncResult<AsyncMap<String, JsonObject>>>) asyncResult -> {
                 if (asyncResult.failed()) {
                     log.error("Failed to get shared dequeue statistic data map.", asyncResult.cause());
                     releaseAndCompleteHandler.handle(null);
                     return;
                 }
-
-                AsyncMap<String, DequeueStatistic> asyncMap = asyncResult.result();
+                AsyncMap<String, JsonObject> asyncMap = asyncResult.result();
                 asyncMap.size().onComplete(mapSizeResult -> {
                     log.debug("shared dequeue statistic map size: {}", mapSizeResult.result());
                     asyncMap.get(queueName).onComplete(dequeueStatisticAsyncResult -> {
                         if (dequeueStatisticAsyncResult.failed()) {
                             log.error("Failed to get shared dequeue statistic data for queue {}.", queueName, dequeueStatisticAsyncResult.cause());
-                            releaseAndCompleteHandler.handle(null);
+                            if (dequeueStatisticAsyncResult.cause().getClass().getName().contains("HazelcastSerializationException")) {
+                                asyncMap.remove(queueName).onComplete(new Handler<AsyncResult<JsonObject>>() {
+                                    @Override
+                                    public void handle(AsyncResult<JsonObject> event) {
+                                        if (event.failed()) {
+                                            log.error("failed to clean broken dequeue statistic data.", event.cause());
+                                        } else {
+                                            log.info("broken dequeue statistic for {} removed", queueName);
+                                        }
+                                        releaseAndCompleteHandler.handle(null);
+                                    }
+                                });
+                            } else {
+                                releaseAndCompleteHandler.handle(null);
+                            }
                             return;
                         }
 
-                        final DequeueStatistic sharedDequeueStatistic = dequeueStatisticAsyncResult.result();
+                        DequeueStatistic sharedDequeueStatistic = null;
+
+                        // check does it is a JsonObject, if not assume it in not exist.
+                        if (dequeueStatisticAsyncResult.result() instanceof JsonObject) {
+                            sharedDequeueStatistic = DequeueStatistic.fromJson(dequeueStatisticAsyncResult.result());
+                        }
                         if (sharedDequeueStatistic == null) {
-                            asyncMap.put(queueName, dequeueStatistic).onComplete(voidAsyncResult -> {
+                            asyncMap.put(queueName, dequeueStatistic.asJson()).onComplete(voidAsyncResult -> {
                                 if (voidAsyncResult.failed()) {
                                     log.error("shared dequeue statistic for queue {} failed to add.", queueName, voidAsyncResult.cause());
                                 } else {
@@ -89,7 +108,7 @@ public class DequeueStatisticCollector {
                                 });
                             } else {
                                 // update
-                                asyncMap.put(queueName, dequeueStatistic).onComplete(event -> {
+                                asyncMap.put(queueName, dequeueStatistic.asJson()).onComplete(event -> {
                                     if (event.failed()) {
                                         log.error("shared dequeue statistic for queue {} failed to update.", queueName, event.cause());
                                     } else {
@@ -109,25 +128,42 @@ public class DequeueStatisticCollector {
         return promise.future();
     }
 
-    public Future<Map<String, DequeueStatistic>> getAllDequeueStatistics() {
+    public Future<Map<String, JsonObject>> getAllDequeueStatistics() {
         // Check if dequeue statistics are enabled
         if (!dequeueStatisticEnabled) {
             return Future.succeededFuture(Collections.emptyMap()); // Return an empty map to avoid NullPointerExceptions
         }
-        Promise<Map<String, DequeueStatistic>> promise = Promise.promise();
-        sharedData.getAsyncMap(DEQUEUE_STATISTIC_DATA, (Handler<AsyncResult<AsyncMap<String, DequeueStatistic>>>) asyncResult -> {
+        Promise<Map<String, JsonObject>> promise = Promise.promise();
+        sharedData.getAsyncMap(DEQUEUE_STATISTIC_DATA, (Handler<AsyncResult<AsyncMap<String, JsonObject>>>) asyncResult -> {
             if (asyncResult.failed()) {
                 log.error("Failed to get dequeue statistic data map.", asyncResult.cause());
                 promise.fail(asyncResult.cause());
                 return;
             }
-            AsyncMap<String, DequeueStatistic> asyncMap = asyncResult.result();
+            AsyncMap<String, JsonObject> asyncMap = asyncResult.result();
             asyncMap.entries().onSuccess(promise::complete).onFailure(throwable -> {
                 log.error("Failed to get dequeue statistic map", throwable);
-                promise.fail(throwable);
+                cleanAsyncMapIfBroken(asyncMap, throwable).onComplete(e -> promise.fail(throwable));
             });
-
         });
+        return promise.future();
+    }
+
+    Future<Void> cleanAsyncMapIfBroken(AsyncMap<String, JsonObject> asyncMap, Throwable throwable) {
+        Promise<Void> promise = Promise.promise();
+        if (throwable.getClass().getName().contains("HazelcastSerializationException")) {
+            asyncMap.clear().onComplete(event -> {
+                        if (event.failed()) {
+                            log.error("failed to clean dequeue statistic map.", throwable);
+                        } else {
+                            log.info("Cleaned up broken dequeue statistic AsyncMap.");
+                        }
+                        promise.complete();
+                    }
+            );
+        } else {
+            promise.complete();
+        }
         return promise.future();
     }
 }
