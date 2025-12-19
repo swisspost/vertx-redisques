@@ -36,6 +36,7 @@ import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import static java.lang.System.currentTimeMillis;
@@ -63,7 +64,7 @@ public class QueueRegistryService {
     private final QueueStatsService queueStatsService;
     private Handler<Void> stoppedHandler = null;
     private PeriodicSkipScheduler periodicSkipScheduler;
-    private Map<String, Long> aliveConsumers = new ConcurrentHashMap<>();
+    protected Map<String, Long> aliveConsumers = new ConcurrentHashMap<>();
 
 
     public void stop() {
@@ -184,7 +185,7 @@ public class QueueRegistryService {
      * <p>Handler receiving registration requests when no consumer is registered
      * for a queue.</p>
      */
-    private void handleRegistrationRequest(Message<String> msg) {
+    void handleRegistrationRequest(Message<String> msg) {
         final String queueName = msg.body();
         if (queueName == null) {
             log.warn("Got message without queue name while handleRegistrationRequest.");
@@ -302,7 +303,7 @@ public class QueueRegistryService {
                                 return;
                             }
                             metrics.perQueueMetricsRefresh(queue);
-                            updateTimestamp(queue, ev3 -> {
+                            updateTimestamp(queue, false, ev3 -> {
                                 Throwable ex = ev3.succeeded() ? null : exceptionFactory.newException(
                                         "updateTimestamp(" + queue + ") failed", ev3.cause());
                                 onDone.accept(ex, null);
@@ -530,7 +531,7 @@ public class QueueRegistryService {
                             if (event.result().toLong() == 1) {
                                 log.trace("Updating queue timestamp for queue '{}'", queueName);
                                 // If not empty, update the queue timestamp to keep it in the sorted set.
-                                updateTimestamp(queueName, upTsResult -> {
+                                updateTimestamp(queueName, false, upTsResult -> {
                                     if (upTsResult.failed()) {
                                         log.warn("Failed to update timestamps for queue '{}'", queueName,
                                                 exceptionFactory.newException("updateTimestamp(" + queueName + ") failed",
@@ -601,19 +602,50 @@ public class QueueRegistryService {
      * @param queueName name of the queue
      * @param handler   (optional) To get informed when done.
      */
-    private void updateTimestamp(final String queueName, Handler<AsyncResult<Response>> handler) {
-        long ts = System.currentTimeMillis();
-        log.trace("RedisQues update timestamp for queue: {} to: {}", queueName, ts);
-        redisService.zadd(keyspaceHelper.getQueuesKey(), queueName, String.valueOf(ts)).onSuccess(event -> {
-            if (handler != null) {
-                handler.handle(Future.succeededFuture(event));
-            }
-        }).onFailure(throwable -> {
-            log.warn("Redis: Error in updateTimestamp", throwable);
-            if (handler != null) {
-                handler.handle(new FailedAsyncResult<>(throwable));
-            }
-        });
+    public void updateTimestamp(final String queueName, final boolean checkIAmConsumer, Handler<AsyncResult<Response>> handler) {
+
+        Function<String, Void> updateTimeStamp = queueName1 -> {
+            long ts = System.currentTimeMillis();
+            log.trace("RedisQues update timestamp for queue: {} to: {}", queueName1, ts);
+            redisService.zadd(keyspaceHelper.getQueuesKey(), queueName1, String.valueOf(ts)).onSuccess(event -> {
+                if (handler != null) {
+                    handler.handle(Future.succeededFuture(event));
+                }
+            }).onFailure(throwable -> {
+                log.warn("Redis: Error in updateTimestamp", throwable);
+                if (handler != null) {
+                    handler.handle(new FailedAsyncResult<>(throwable));
+                }
+            });
+            return null;
+        };
+
+        if (checkIAmConsumer) {
+
+
+            String key = keyspaceHelper.getConsumersPrefix() + queueName;
+            redisService.get(key).onComplete(event -> {
+                if (event.failed()) {
+                    log.warn("Failed to get consumer for queue '{}'", queueName, new Exception(event.cause()));
+                    // We should return here. See: "https://softwareengineering.stackexchange.com/a/190535"
+                }
+                String consumer = Objects.toString(event.result(), null);
+                log.trace("RedisQues got consumer: {}", consumer);
+                if (consumer == null) {
+                    updateTimeStamp.apply(queueName);
+                } else {
+                    if (this.keyspaceHelper.getVerticleUid().equals(consumer))
+                    {
+                        updateTimeStamp.apply(queueName);
+                    } else {
+                        log.debug("queue {}, is not belong to me, will not update timestamp", queueName);
+                        handler.handle(Future.succeededFuture());
+                    }
+                }
+            });
+        }else {
+            updateTimeStamp.apply(queueName);
+        }
     }
 
     /**
@@ -671,7 +703,7 @@ public class QueueRegistryService {
 
     }
 
-    Future<Void> notifyConsumer(final String queueName) {
+    public Future<Void> notifyConsumer(final String queueName) {
         log.debug("RedisQues Notifying consumer of queue {}", queueName);
         final EventBus eb = vertx.eventBus();
         final Promise<Void> promise = Promise.promise();
@@ -696,7 +728,7 @@ public class QueueRegistryService {
                     if (result.failed()) {
                         log.warn("Failed to removed consumer '{}'", key, exceptionFactory.newException(result.cause()));
                     } else {
-                        log.debug("{} consumer key removed", result.result().toLong());
+                        log.warn("{} consumer key removed", result.result().toLong());
                         // need find a new consumer for this queue, let's make a peer become consumer
                         log.debug("RedisQues Sending new registration request for queue {}", queueName);
                         eb.send(keyspaceHelper.getConsumersAddress(), queueName);

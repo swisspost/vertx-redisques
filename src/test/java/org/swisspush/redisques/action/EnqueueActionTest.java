@@ -14,6 +14,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mockito;
 import org.slf4j.Logger;
+import org.swisspush.redisques.queue.QueueRegistryService;
 import org.swisspush.redisques.util.MetricMeter;
 import org.swisspush.redisques.util.MetricTags;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
@@ -36,15 +37,17 @@ public class EnqueueActionTest extends AbstractQueueActionTest {
 
     private Counter enqueueCounterSuccess;
     private Counter enqueueCounterFail;
+    private QueueRegistryService registryService;
 
     @Before
     @Override
     public void setup() {
         super.setup();
+        registryService = Mockito.mock(QueueRegistryService.class);
         MeterRegistry meterRegistry = new SimpleMeterRegistry();
         enqueueCounterSuccess = meterRegistry.counter(MetricMeter.ENQUEUE_SUCCESS.getId(), MetricTags.IDENTIFIER.getId(), "foo");
         enqueueCounterFail = meterRegistry.counter(MetricMeter.ENQUEUE_FAIL.getId(), MetricTags.IDENTIFIER.getId(), "foo");
-        action = new EnqueueAction(vertx, redisService, keyspaceHelper,
+        action = new EnqueueAction(vertx, registryService, redisService, keyspaceHelper,
                 new ArrayList<>(), exceptionFactory, Mockito.mock(QueueStatisticsCollector.class),
                 Mockito.mock(Logger.class), memoryUsageProvider, 80, meterRegistry, "foo");
     }
@@ -101,7 +104,7 @@ public class EnqueueActionTest extends AbstractQueueActionTest {
         when(redisAPI.zadd(anyList()))
                 .thenReturn(Future.succeededFuture());
         when(redisAPI.rpush(anyList())).thenReturn(Future.succeededFuture(BulkType.create(Buffer.buffer("1"), false)));
-
+        when(registryService.notifyConsumer(any())).thenReturn(Future.succeededFuture());
         action.execute(message);
 
         verify(message, times(1)).reply(eq(new JsonObject(Buffer.buffer("{\"status\":\"ok\",\"message\":\"enqueued\"}"))));

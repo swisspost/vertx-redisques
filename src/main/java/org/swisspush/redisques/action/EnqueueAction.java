@@ -8,6 +8,7 @@ import io.vertx.core.json.JsonObject;
 import org.slf4j.Logger;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.queue.KeyspaceHelper;
+import org.swisspush.redisques.queue.QueueRegistryService;
 import org.swisspush.redisques.queue.RedisService;
 import org.swisspush.redisques.util.*;
 
@@ -18,12 +19,12 @@ import static org.swisspush.redisques.util.RedisquesAPI.*;
 public class EnqueueAction extends AbstractQueueAction {
 
     private final MemoryUsageProvider memoryUsageProvider;
+    private final QueueRegistryService queueRegistryService;
     private final int memoryUsageLimitPercent;
     private Counter enqueueCounterSuccess;
     private Counter enqueueCounterFail;
-
     public EnqueueAction(
-            Vertx vertx, RedisService redisService, KeyspaceHelper keyspaceHelper, List<QueueConfiguration> queueConfigurations,
+            Vertx vertx, QueueRegistryService queueRegistryService, RedisService redisService, KeyspaceHelper keyspaceHelper, List<QueueConfiguration> queueConfigurations,
             RedisQuesExceptionFactory exceptionFactory, QueueStatisticsCollector queueStatisticsCollector, Logger log,
             MemoryUsageProvider memoryUsageProvider, int memoryUsageLimitPercent, MeterRegistry meterRegistry, String metricsIdentifier
     ) {
@@ -31,6 +32,7 @@ public class EnqueueAction extends AbstractQueueAction {
                 queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
         this.memoryUsageProvider = memoryUsageProvider;
         this.memoryUsageLimitPercent = memoryUsageLimitPercent;
+        this.queueRegistryService = queueRegistryService;
 
         if (meterRegistry != null) {
             enqueueCounterSuccess = Counter.builder(MetricMeter.ENQUEUE_SUCCESS.getId()).description(MetricMeter.ENQUEUE_SUCCESS.getDescription())
@@ -50,7 +52,7 @@ public class EnqueueAction extends AbstractQueueAction {
             event.reply(createErrorReply().put(MESSAGE, MEMORY_FULL));
             return;
         }
-        updateTimestamp(queueName).onComplete(updateTimestampEvent -> {
+        queueRegistryService.updateTimestamp(queueName, true, updateTimestampEvent -> {
             if (updateTimestampEvent.failed()) {
                 replyError(event, queueName, updateTimestampEvent.cause());
                 return;
@@ -69,32 +71,37 @@ public class EnqueueAction extends AbstractQueueAction {
                             log.warn("Failed to do the trim for  {}", queueName);
                         }
                         long queueLength = enqueueEvent.result().toLong();
-                        notifyConsumer(queueName);
-                        reply.put(STATUS, OK);
-                        reply.put(MESSAGE, "enqueued");
+                        queueRegistryService.notifyConsumer(queueName).onComplete(asyncResult1 -> {
+                            if (asyncResult1.failed()) {
+                                replyError(event, queueName, enqueueEvent.cause());
+                                return;
+                            }
+                            reply.put(STATUS, OK);
+                            reply.put(MESSAGE, "enqueued");
 
-                        incrEnqueueSuccessCount();
+                            incrEnqueueSuccessCount();
 
-                        // feature EN-queue slow-down (the larger the queue the longer we delay "OK" response)
-                        long delayReplyMillis = 0;
-                        QueueConfiguration queueConfiguration = findQueueConfiguration(queueName);
-                        if (queueConfiguration != null) {
-                            float enqueueDelayFactorMillis = queueConfiguration.getEnqueueDelayFactorMillis();
-                            if (enqueueDelayFactorMillis > 0f) {
-                                // minus one as we need the queueLength _before_ our en-queue here
-                                delayReplyMillis = (long) ((queueLength - 1) * enqueueDelayFactorMillis);
-                                int max = queueConfiguration.getEnqueueMaxDelayMillis();
-                                if (max > 0 && delayReplyMillis > max) {
-                                    delayReplyMillis = max;
+                            // feature EN-queue slow-down (the larger the queue the longer we delay "OK" response)
+                            long delayReplyMillis = 0;
+                            QueueConfiguration queueConfiguration = findQueueConfiguration(queueName);
+                            if (queueConfiguration != null) {
+                                float enqueueDelayFactorMillis = queueConfiguration.getEnqueueDelayFactorMillis();
+                                if (enqueueDelayFactorMillis > 0f) {
+                                    // minus one as we need the queueLength _before_ our en-queue here
+                                    delayReplyMillis = (long) ((queueLength - 1) * enqueueDelayFactorMillis);
+                                    int max = queueConfiguration.getEnqueueMaxDelayMillis();
+                                    if (max > 0 && delayReplyMillis > max) {
+                                        delayReplyMillis = max;
+                                    }
                                 }
                             }
-                        }
-                        if (delayReplyMillis > 0) {
-                            vertx.setTimer(delayReplyMillis, timeIsUp -> event.reply(reply));
-                        } else {
-                            event.reply(reply);
-                        }
-                        queueStatisticsCollector.setQueueBackPressureTime(queueName, delayReplyMillis);
+                            if (delayReplyMillis > 0) {
+                                vertx.setTimer(delayReplyMillis, timeIsUp -> event.reply(reply));
+                            } else {
+                                event.reply(reply);
+                            }
+                            queueStatisticsCollector.setQueueBackPressureTime(queueName, delayReplyMillis);
+                        });
                     });
                 } else {
                     replyError(event, queueName, enqueueEvent.cause());

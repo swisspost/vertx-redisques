@@ -12,6 +12,7 @@ import io.vertx.redis.client.Response;
 import org.slf4j.Logger;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.queue.KeyspaceHelper;
+import org.swisspush.redisques.queue.QueueRegistryService;
 import org.swisspush.redisques.queue.RedisService;
 import org.swisspush.redisques.util.QueueConfiguration;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
@@ -33,6 +34,7 @@ public abstract class AbstractQueueAction implements QueueAction {
     protected final List<QueueConfiguration> queueConfigurations;
     protected final RedisQuesExceptionFactory exceptionFactory;
     protected final QueueStatisticsCollector queueStatisticsCollector;
+
 
     public AbstractQueueAction(Vertx vertx, RedisService redisService, KeyspaceHelper keyspaceHelper, List<QueueConfiguration> queueConfigurations,
                                RedisQuesExceptionFactory exceptionFactory, QueueStatisticsCollector queueStatisticsCollector, Logger log) {
@@ -146,45 +148,6 @@ public abstract class AbstractQueueAction implements QueueAction {
             }
         }
         return null;
-    }
-    protected Future<Response> updateTimestamp(final String queueName) {
-        long ts = System.currentTimeMillis();
-        if (log.isTraceEnabled()) {
-            log.trace("RedisQues update timestamp for queue: {} to: {}", queueName, ts);
-        }
-        return redisService.zadd(keyspaceHelper.getQueuesKey(), queueName, String.valueOf(ts));
-    }
-
-    protected void notifyConsumer(final String queueName) {
-        log.debug("RedisQues Notifying consumer of queue {}", queueName);
-        final EventBus eb = vertx.eventBus();
-
-        // Find the consumer to notify
-        String key = keyspaceHelper.getConsumersPrefix() + queueName;
-        if (log.isTraceEnabled()) {
-            log.trace("RedisQues notify consumer get: {}", key);
-        }
-        redisService.get(key).onComplete(event -> {
-            if (event.failed()) {
-                log.warn("Failed to get consumer for queue '{}'", queueName, event.cause());
-                // We should return here. See: "https://softwareengineering.stackexchange.com/a/190535"
-            }
-            String consumer = Objects.toString(event.result(), null);
-            if (log.isTraceEnabled()) {
-                log.trace("RedisQues got consumer: {}", consumer);
-            }
-            if (consumer == null) {
-                // No consumer for this queue, let's make a peer become consumer
-                if (log.isDebugEnabled()) {
-                    log.debug("RedisQues Sending registration request for queue {}", queueName);
-                }
-                eb.send(keyspaceHelper.getConsumersAddress(), queueName);
-            } else {
-                // Notify the registered consumer
-                log.debug("RedisQues Notifying consumer {} to consume queue {}", consumer, queueName);
-                eb.send(consumer, queueName);
-            }
-        });
     }
 
     /**
