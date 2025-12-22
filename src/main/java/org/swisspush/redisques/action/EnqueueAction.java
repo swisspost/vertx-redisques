@@ -52,7 +52,7 @@ public class EnqueueAction extends AbstractQueueAction {
             event.reply(createErrorReply().put(MESSAGE, MEMORY_FULL));
             return;
         }
-        queueRegistryService.updateTimestamp(queueName, true, updateTimestampEvent -> {
+        queueRegistryService.updateTimestamp(queueName).onComplete(updateTimestampEvent -> {
             if (updateTimestampEvent.failed()) {
                 replyError(event, queueName, updateTimestampEvent.cause());
                 return;
