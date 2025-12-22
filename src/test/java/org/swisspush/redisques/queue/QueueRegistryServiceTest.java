@@ -37,7 +37,6 @@ import static org.swisspush.redisques.util.RedisquesAPI.buildEnqueueOperation;
 public class QueueRegistryServiceTest extends AbstractTestCase {
     private RedisQues redisQues;
     private TestMemoryUsageProvider memoryUsageProvider;
-    private Message<JsonObject> message;
     private final String metricsIdentifier = "foo";
     protected AbstractQueueAction action;
     protected RedisQuesExceptionFactory exceptionFactory;
@@ -47,7 +46,6 @@ public class QueueRegistryServiceTest extends AbstractTestCase {
     @Before
     public void deployRedisques(TestContext context) {
         vertx = Vertx.vertx();
-        message = Mockito.mock(Message.class);
         JsonObject config = RedisquesConfiguration.with()
                 .processorAddress(PROCESSOR_ADDRESS)
                 .micrometerMetricsEnabled(true)
@@ -95,6 +93,76 @@ public class QueueRegistryServiceTest extends AbstractTestCase {
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }
+    }
+
+
+    @Test
+    public void testUpdateTimestampIgnoreConsumerCheck(TestContext context) {
+        Async async = context.async();
+        flushAll();
+        QueueRegistryService queueRegistryService = redisQues.getQueueRegistryService();
+        final String fakeConsumerId = UUID.randomUUID().toString();
+        final String queueNameForFakeConsumer = "queue-another-consumer-ts-test";
+
+        // register the queue item into fake consumer
+        jedis.set(redisQues.getKeyspaceHelper().getConsumersPrefix() + queueNameForFakeConsumer, fakeConsumerId);
+        long rangeStartTs = System.currentTimeMillis();
+        queueRegistryService.updateTimestamp(queueNameForFakeConsumer, false, event -> {
+            if (event.failed()) {
+                context.fail();
+            } else {
+                Set<String> queuesInRange = jedis.zrangeByScore(redisQues.getKeyspaceHelper().getQueuesKey(), rangeStartTs, rangeStartTs + 300);
+                // The queue belong to dead consumer should update the time stamp.
+                Assert.assertEquals(1, queuesInRange.size());
+                Assert.assertEquals(queueNameForFakeConsumer, queuesInRange.iterator().next());
+                wait500Ms();
+                queueRegistryService.updateTimestamp(queueNameForFakeConsumer, false, event1 -> {
+                    if (event1.failed()) {
+                        context.fail();
+                    } else {
+                        Set<String> queuesInRange1 = jedis.zrangeByScore(redisQues.getKeyspaceHelper().getQueuesKey(), rangeStartTs, rangeStartTs + 300);
+                        // The queue belong to dead consumer should update the time stamp.
+                        Assert.assertEquals(0, queuesInRange1.size());
+                        async.complete();
+                    }
+                });
+            }
+        });
+    }
+
+    @Test
+    public void testUpdateTimestampDoConsumerCheck(TestContext context) {
+        Async async = context.async();
+        flushAll();
+        QueueRegistryService queueRegistryService = redisQues.getQueueRegistryService();
+        final String fakeConsumerId = UUID.randomUUID().toString();
+        final String queueNameForFakeConsumer = "queue-another-consumer-ts-1-test";
+
+        // register the queue item into fake consumer
+        jedis.set(redisQues.getKeyspaceHelper().getConsumersPrefix() + queueNameForFakeConsumer, fakeConsumerId);
+        long rangeStartTs = System.currentTimeMillis();
+        // force update time stamp
+        queueRegistryService.updateTimestamp(queueNameForFakeConsumer, false, event -> {
+            if (event.failed()) {
+                context.fail();
+            } else {
+                Set<String> queuesInRange = jedis.zrangeByScore(redisQues.getKeyspaceHelper().getQueuesKey(), rangeStartTs, rangeStartTs + 300);
+                // The queue belong to dead consumer should update the time stamp.
+                Assert.assertEquals(1, queuesInRange.size());
+                Assert.assertEquals(queueNameForFakeConsumer, queuesInRange.iterator().next());
+                wait500Ms();
+                queueRegistryService.updateTimestamp(queueNameForFakeConsumer, true, event1 -> {
+                    if (event1.failed()) {
+                        context.fail();
+                    } else {
+                        Set<String> queuesInRange1 = jedis.zrangeByScore(redisQues.getKeyspaceHelper().getQueuesKey(), rangeStartTs, rangeStartTs + 300);
+                        // The queue belong to another consumer should not update the time stamp.
+                        Assert.assertEquals(1, queuesInRange1.size());
+                        async.complete();
+                    }
+                });
+            }
+        });
     }
 
     /**
@@ -299,10 +367,12 @@ public class QueueRegistryServiceTest extends AbstractTestCase {
             eventBusSend(buildAddQueueItemOperation("queue1-test", "message_1-2"), e2 -> {
                 eventBusSend(buildAddQueueItemOperation(queueNameForFakeConsumer, "message_2-1"), e3 -> {
                     eventBusSend(buildAddQueueItemOperation(queueNameForFakeConsumer, "message_2-2"), e4 -> {
-                        queueRegistryService.notifyConsumer(queueNameForFakeConsumer).onComplete(event -> {
-                            if (event.failed()) {
+                        //buildEnqueueOperation will trigger a notifyConsumer, but timestamp will not update
+                        eventBusSend(buildEnqueueOperation(queueNameForFakeConsumer, "message_2-3"), e5 -> {
+                            if (e5.failed()) {
                                 context.fail();
                             }
+
                             fakeConsumerPromise.future().onComplete(event2 -> {
                                 if (event2.failed()) {
                                     context.fail();
@@ -310,26 +380,32 @@ public class QueueRegistryServiceTest extends AbstractTestCase {
                                 wait500Ms();
                                 // this queue should not in real consumer
                                 Assert.assertFalse(queueRegistryService.getQueueConsumerRunner().getMyQueues().containsKey(queueNameForFakeConsumer));
-                                Set<String> queuesInRange = jedis.zrange(redisQues.getKeyspaceHelper().getQueuesKey(), 0, 1);
 
+                                Set<String> queuesInRange = jedis.zrange(redisQues.getKeyspaceHelper().getQueuesKey(), 0, 1);
                                 // The queue belong to dead consumer should not update the time stamp.
                                 Assert.assertEquals(1, queuesInRange.size());
                                 Assert.assertEquals(queueNameForFakeConsumer, queuesInRange.iterator().next());
 
                                 // remove the fake consumer from alive list
                                 queueRegistryService.aliveConsumers.remove(fakeConsumerId);
-
-                                eventBusSend(buildEnqueueOperation(queueNameForFakeConsumer, "message_2-3"), event1 -> {
-                                    if (event1.failed()) {
+                                queueRegistryService.checkQueues().onComplete(x -> {
+                                    wait500Ms();
+                                    // this queue should in real consumer now
+                                    Assert.assertTrue(queueRegistryService.getQueueConsumerRunner().getMyQueues().containsKey(queueNameForFakeConsumer));
+                                    long rangeStartTs = System.currentTimeMillis();
+                                    eventBusSend(buildEnqueueOperation(queueNameForFakeConsumer, "message_2-4"), event1 -> {
+                                        if (event1.failed()) {
                                             context.fail();
                                         }
                                         wait500Ms();
                                         // Now it should belong to me and updated
-                                        Assert.assertEquals(0, jedis.zrange(redisQues.getKeyspaceHelper().getQueuesKey(), 0, 1).size());
-                                        // this queue should not in real consumer
+                                        Set<String> queuesInRange1 = jedis.zrangeByScore(redisQues.getKeyspaceHelper().getQueuesKey(), rangeStartTs, rangeStartTs + 300);
+                                        Assert.assertEquals(0, queuesInRange1.size());
+                                        // this queue should still in real consumer now
                                         Assert.assertTrue(queueRegistryService.getQueueConsumerRunner().getMyQueues().containsKey(queueNameForFakeConsumer));
                                         async.complete();
                                     });
+                                });
                             });
                         });
                     });

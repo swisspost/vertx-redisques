@@ -621,8 +621,6 @@ public class QueueRegistryService {
         };
 
         if (checkIAmConsumer) {
-
-
             String key = keyspaceHelper.getConsumersPrefix() + queueName;
             redisService.get(key).onComplete(event -> {
                 if (event.failed()) {
@@ -631,16 +629,11 @@ public class QueueRegistryService {
                 }
                 String consumer = Objects.toString(event.result(), null);
                 log.trace("RedisQues got consumer: {}", consumer);
-                if (consumer == null) {
+                if (this.keyspaceHelper.getVerticleUid().equals(consumer)) {
                     updateTimeStamp.apply(queueName);
                 } else {
-                    if (this.keyspaceHelper.getVerticleUid().equals(consumer))
-                    {
-                        updateTimeStamp.apply(queueName);
-                    } else {
-                        log.debug("queue {}, is not belong to me, will not update timestamp", queueName);
-                        handler.handle(Future.succeededFuture());
-                    }
+                    log.debug("queue {}, is not belong to me, will not update timestamp", queueName);
+                    handler.handle(Future.succeededFuture());
                 }
             });
         }else {
