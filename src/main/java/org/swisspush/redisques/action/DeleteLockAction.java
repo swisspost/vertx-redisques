@@ -39,13 +39,14 @@ public class DeleteLockAction extends AbstractQueueAction {
             if (event1.failed()) {
                 log.warn("Concealed error", exceptionFactory.newException(event1.cause()));
             }
-            // delete lock first
-            redisService.hdel(Arrays.asList(keyspaceHelper.getLocksKey(), queueName)).onComplete(response -> new DeleteLockHandler(event, exceptionFactory).handle(response));
-
-            // notify consumer to continue
-            if (event1.succeeded() && event1.result() != null && event1.result().toInteger() == 1) {
-                queueRegistryService.notifyConsumer(queueName);
-            }
+            // delete lock first, to make sure the consumer can start process the queue right way.
+            redisService.hdel(Arrays.asList(keyspaceHelper.getLocksKey(), queueName)).onComplete(response -> {
+                new DeleteLockHandler(event, exceptionFactory).handle(response);
+                // notify consumer
+                if (event1.succeeded() && event1.result() != null && event1.result().toInteger() == 1) {
+                    queueRegistryService.notifyConsumer(queueName);
+                }
+            });
         });
     }
 }

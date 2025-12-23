@@ -34,7 +34,7 @@ public class RedisQues extends AbstractVerticle {
     private final String uid = UUID.randomUUID().toString();
 
     private RedisProvider redisProvider;
-    RedisService redisService;
+    private RedisService redisService;
     private KeyspaceHelper keyspaceHelper;
     private RedisquesConfigurationProvider configurationProvider;
 

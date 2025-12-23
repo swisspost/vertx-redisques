@@ -736,7 +736,7 @@ public class QueueRegistryService {
                 log.warn("RedisQues consumer {} of queue {} does not exist.", consumer, queueName);
                 redisService.del(Collections.singletonList(key)).onComplete(result -> {
                     if (result.failed()) {
-                        log.warn("Failed to removed consumer '{}'", key, exceptionFactory.newException(result.cause()));
+                        log.warn("Failed to remove consumer '{}'", key, exceptionFactory.newException(result.cause()));
                     } else {
                         log.warn("{} consumer key removed", result.result().toLong());
                         // need find a new consumer for this queue, let's make a peer become consumer
