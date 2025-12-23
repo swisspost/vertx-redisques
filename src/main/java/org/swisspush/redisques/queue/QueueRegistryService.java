@@ -738,7 +738,7 @@ public class QueueRegistryService {
                     if (result.failed()) {
                         log.warn("Failed to remove consumer '{}'", key, exceptionFactory.newException(result.cause()));
                     } else {
-                        log.warn("{} consumer key removed", result.result().toLong());
+                        log.warn("consumer key {} removed", key);
                         // need find a new consumer for this queue, let's make a peer become consumer
                         log.debug("RedisQues Sending new registration request for queue {}", queueName);
                         eb.send(keyspaceHelper.getConsumersAddress(), queueName);
