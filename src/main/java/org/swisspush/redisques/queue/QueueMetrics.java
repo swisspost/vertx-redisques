@@ -56,14 +56,13 @@ public class QueueMetrics {
     }
 
     private void createMetricForQueueIfNeeded(String queueName) {
-        if (!(configurationProvider.configuration().getMicrometerMetricsEnabled() &&
-                configurationProvider.configuration().getMicrometerPerQueueMetricEnabled())
-        ) {
+        var cfg = configurationProvider.configuration();
+        if (!(cfg.getMicrometerMetricsEnabled() && cfg.getMicrometerPerQueueMetricEnabled())) {
             return;
         }
         LongTaskTimer task = LongTaskTimer.builder(MetricMeter.QUEUE_CONSUMER_LIFE_CYCLE.getId())
                 .description(MetricMeter.QUEUE_CONSUMER_LIFE_CYCLE.getDescription())
-                .tag(MetricTags.IDENTIFIER.getId(), configurationProvider.configuration().getMicrometerMetricsIdentifier())
+                .tag(MetricTags.IDENTIFIER.getId(), cfg.getMicrometerMetricsIdentifier())
                 .tag(MetricTags.CONSUMER_UID.getId(), keyspaceHelper.getVerticleUid())
                 .tag(MetricTags.QUEUE_NAME.getId(), queueName)
                 .register(meterRegistry);
@@ -78,9 +77,8 @@ public class QueueMetrics {
      * @param queueName
      */
     void perQueueMetricsReg(String queueName) {
-        if (!(configurationProvider.configuration().getMicrometerMetricsEnabled() &&
-                configurationProvider.configuration().getMicrometerPerQueueMetricEnabled())
-        ) {
+        var cfg = configurationProvider.configuration();
+        if (!(cfg.getMicrometerMetricsEnabled() && cfg.getMicrometerPerQueueMetricEnabled())) {
             return;
         }
         createMetricForQueueIfNeeded(queueName);
@@ -92,9 +90,8 @@ public class QueueMetrics {
      * @param queueName
      */
     void perQueueMetricsRefresh(String queueName) {
-        if (!(configurationProvider.configuration().getMicrometerMetricsEnabled() &&
-                configurationProvider.configuration().getMicrometerPerQueueMetricEnabled())
-        ) {
+        var cfg = configurationProvider.configuration();
+        if (!(cfg.getMicrometerMetricsEnabled() && cfg.getMicrometerPerQueueMetricEnabled())) {
             return;
         }
         createMetricForQueueIfNeeded(queueName);
@@ -112,9 +109,8 @@ public class QueueMetrics {
      * @param queueName
      */
     void perQueueMetricsRemove(String queueName) {
-        if (!(configurationProvider.configuration().getMicrometerMetricsEnabled() &&
-                configurationProvider.configuration().getMicrometerPerQueueMetricEnabled())
-        ) {
+        var cfg = configurationProvider.configuration();
+        if (!(cfg.getMicrometerMetricsEnabled() && cfg.getMicrometerPerQueueMetricEnabled())) {
             return;
         }
         perQueueMetrics.computeIfPresent(queueName, (key, longTaskTimerSamplePair) -> {
@@ -126,21 +122,22 @@ public class QueueMetrics {
     }
 
     public void initMicrometerMetrics() {
-        if(configurationProvider.configuration().getMicrometerMetricsEnabled()) {
+        var cfg = configurationProvider.configuration();
+        if(cfg.getMicrometerMetricsEnabled()) {
             if (meterRegistry == null) {
                 meterRegistry = BackendRegistries.getDefaultNow();
             }
 
-            String metricsIdentifier = configurationProvider.configuration().getMicrometerMetricsIdentifier();
+            String metricsIdentifier = cfg.getMicrometerMetricsIdentifier();
             dequeueCounter = Counter.builder(MetricMeter.DEQUEUE.getId())
                     .description(MetricMeter.DEQUEUE.getDescription()).tag(MetricTags.IDENTIFIER.getId(), metricsIdentifier).register(meterRegistry);
 
             consumerCounter = Counter.builder(MetricMeter.QUEUE_CONSUMER_COUNT.getId())
                     .description(MetricMeter.QUEUE_CONSUMER_COUNT.getDescription()).tag(MetricTags.IDENTIFIER.getId(), metricsIdentifier).register(meterRegistry);
 
-            int metricRefreshPeriod = configurationProvider.configuration().getMetricRefreshPeriod();
+            int metricRefreshPeriod = cfg.getMetricRefreshPeriod();
             if (metricRefreshPeriod > 0) {
-                String identifier = configurationProvider.configuration().getMicrometerMetricsIdentifier();
+                String identifier = cfg.getMicrometerMetricsIdentifier();
                 metricsCollector = new MetricsCollector(vertx, keyspaceHelper, identifier, meterRegistry, lock, metricRefreshPeriod);
                 new MetricsCollectorScheduler(vertx, metricsCollector, metricRefreshPeriod);
             }
