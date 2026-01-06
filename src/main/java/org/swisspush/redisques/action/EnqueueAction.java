@@ -73,7 +73,7 @@ public class EnqueueAction extends AbstractQueueAction {
                         long queueLength = enqueueEvent.result().toLong();
                         queueRegistryService.notifyConsumer(queueName).onComplete(asyncResult1 -> {
                             if (asyncResult1.failed()) {
-                                replyError(event, queueName, enqueueEvent.cause());
+                                replyError(event, queueName, asyncResult1.cause());
                                 return;
                             }
                             reply.put(STATUS, OK);
