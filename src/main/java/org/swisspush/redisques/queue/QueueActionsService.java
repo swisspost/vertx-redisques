@@ -51,7 +51,7 @@ public class QueueActionsService {
     private final Map<RedisquesAPI.QueueOperation, QueueAction> queueActions = new HashMap<>();
     private final RedisQuesExceptionFactory exceptionFactory;
 
-    public QueueActionsService(Vertx vertx, RedisService redisService, KeyspaceHelper keyspaceHelper,
+    public QueueActionsService(Vertx vertx, QueueRegistryService queueRegistryService, RedisService redisService, KeyspaceHelper keyspaceHelper,
                                RedisquesConfigurationProvider configurationProvider,
                                RedisQuesExceptionFactory exceptionFactory, MemoryUsageProvider memoryUsageProvider,
                                QueueStatisticsCollector queueStatisticsCollector,
@@ -63,7 +63,8 @@ public class QueueActionsService {
         this.queueActionFactory = new QueueActionFactory(
                 redisService, vertx, client, log, keyspaceHelper,
                 memoryUsageProvider, queueStatisticsCollector, exceptionFactory,
-                configurationProvider, getQueuesItemsCountRedisRequestQuota, meterRegistry);
+                configurationProvider, getQueuesItemsCountRedisRequestQuota, meterRegistry,
+                queueRegistryService);
 
         queueActions.put(addQueueItem, queueActionFactory.buildQueueAction(addQueueItem));
         queueActions.put(deleteQueueItem, queueActionFactory.buildQueueAction(deleteQueueItem));

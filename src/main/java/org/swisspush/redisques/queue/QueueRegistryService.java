@@ -1,5 +1,6 @@
 package org.swisspush.redisques.queue;
 
+import io.micrometer.common.util.StringUtils;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.CompositeFuture;
 import io.vertx.core.Future;
@@ -17,7 +18,6 @@ import org.swisspush.redisques.QueueStatsService;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.performance.UpperBoundParallel;
 import org.swisspush.redisques.scheduling.PeriodicSkipScheduler;
-import org.swisspush.redisques.util.FailedAsyncResult;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 import org.swisspush.redisques.util.RedisquesConfiguration;
 import org.swisspush.redisques.util.RedisquesConfigurationProvider;
@@ -27,10 +27,12 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -63,7 +65,7 @@ public class QueueRegistryService {
     private final QueueStatsService queueStatsService;
     private Handler<Void> stoppedHandler = null;
     private PeriodicSkipScheduler periodicSkipScheduler;
-    private Map<String, Long> aliveConsumers = new ConcurrentHashMap<>();
+    protected Map<String, Long> aliveConsumers = new ConcurrentHashMap<>();
 
 
     public void stop() {
@@ -184,7 +186,7 @@ public class QueueRegistryService {
      * <p>Handler receiving registration requests when no consumer is registered
      * for a queue.</p>
      */
-    private void handleRegistrationRequest(Message<String> msg) {
+    void handleRegistrationRequest(Message<String> msg) {
         final String queueName = msg.body();
         if (queueName == null) {
             log.warn("Got message without queue name while handleRegistrationRequest.");
@@ -232,9 +234,7 @@ public class QueueRegistryService {
                 return redisService.expire(consumerKey, String.valueOf(consumerLockTime));
             }).compose((Future<Response> tooManyNestedFutures) -> {
                 return tooManyNestedFutures;
-            }).onComplete((AsyncResult<Response> ev) -> {
-                handler.handle(ev);
-            });
+            }).onComplete(handler);
         }
     }
 
@@ -302,7 +302,7 @@ public class QueueRegistryService {
                                 return;
                             }
                             metrics.perQueueMetricsRefresh(queue);
-                            updateTimestamp(queue, ev3 -> {
+                            updateTimestamp(queue).onComplete(ev3 -> {
                                 Throwable ex = ev3.succeeded() ? null : exceptionFactory.newException(
                                         "updateTimestamp(" + queue + ") failed", ev3.cause());
                                 onDone.accept(ex, null);
@@ -463,6 +463,51 @@ public class QueueRegistryService {
         });
     }
 
+    public Future<List<String>> getNotActiveQueues(long limit) {
+        Promise<List<String>> promise = Promise.promise();
+        final Set<String> queues = new HashSet<>();
+        // 1. find all non-active queue by zrangebyscore
+        redisService.zrangebyscore(keyspaceHelper.getQueuesKey(), "-inf", String.valueOf(limit)).onComplete(event -> {
+            if (event.failed()) {
+                log.error("failed to get non-active queues by zrangebyscore", event.cause());
+                promise.fail(event.cause());
+            }else {
+                event.result().iterator().forEachRemaining(response -> queues.add(response.toString()));
+                // 2. find all queues which no consumer
+                redisService.zrangebyscore(keyspaceHelper.getQueuesKey(), "-inf", "+inf").onComplete(event1 -> {
+                    if (event1.failed()) {
+                        log.error("failed to get all queues by zrangebyscore", event1.cause());
+                        promise.fail(event1.cause());
+                    }else {
+                        Set<String> allQueues = new HashSet<>();
+                        event1.result().iterator().forEachRemaining(response -> allQueues.add(response.toString()));
+                        List<Future> futures = new ArrayList<>();
+                        for (String queueName : allQueues) {
+                            Promise<Void> queuePromise = Promise.promise();
+                            redisService.get(keyspaceHelper.getConsumersPrefix() + queueName).onComplete(consumerKeyResults -> {
+                                if (consumerKeyResults.failed()) {
+                                    log.error("failed queue registration", consumerKeyResults.cause());
+                                    queuePromise.fail(consumerKeyResults.cause());
+                                }else {
+                                    String consumer = Objects.toString(consumerKeyResults.result(), "");
+                                    if (StringUtils.isEmpty(consumer) || !aliveConsumers.containsKey(consumer)) {
+                                        queues.add(queueName);
+                                    }
+                                    queuePromise.complete();
+                                }
+                            });
+                            futures.add(queuePromise.future());
+                        }
+                        CompositeFuture.all(futures)
+                                .onSuccess(v -> promise.complete(new ArrayList<>(queues)))
+                                .onFailure(promise::fail);
+                    }
+                });
+            }
+        });
+        return promise.future();
+    }
+
     /**
      * Notify not-active/not-empty queues to be processed (e.g. after a reboot).
      * Check timestamps of not-active/empty queues.
@@ -473,15 +518,15 @@ public class QueueRegistryService {
         final var ctx = new Object() {
             long limit;
             AtomicInteger counter;
-            Iterator<Response> iter;
+            Iterator<String> iter;
         };
 
         return Future.<Void>succeededFuture().compose((Void v) -> {
             log.debug("Checking queues timestamps");
             // List all queues that look inactive (i.e. that have not been updated since 3 periods).
             ctx.limit = currentTimeMillis() - 3L * configurationProvider.configuration().getRefreshPeriod() * 1000;
-            return redisService.zrangebyscore(keyspaceHelper.getQueuesKey(), "-inf", String.valueOf(ctx.limit));
-        }).compose((Response queues) -> {
+            return getNotActiveQueues(ctx.limit);
+        }).compose((List<String> queues) -> {
             if (log.isDebugEnabled()) {
                 log.debug("zrangebyscore time used is {} ms", System.currentTimeMillis() - startTs);
             }
@@ -496,9 +541,8 @@ public class QueueRegistryService {
                 public boolean runOneMore(BiConsumer<Throwable, Void> onDone, Void ctx_) {
                     if (ctx.iter.hasNext()) {
                         final long perQueueStartTs = System.currentTimeMillis();
-                        var queueObject = ctx.iter.next();
                         // Check if the inactive queue is not empty (i.e. the key exists)
-                        final String queueName = queueObject.toString();
+                        final String queueName = ctx.iter.next();
                         String key = keyspaceHelper.getQueuesPrefix() + queueName;
                         log.trace("RedisQues update queue: {}", key);
                         Handler<Void> refreshRegHandler = event -> {
@@ -530,7 +574,7 @@ public class QueueRegistryService {
                             if (event.result().toLong() == 1) {
                                 log.trace("Updating queue timestamp for queue '{}'", queueName);
                                 // If not empty, update the queue timestamp to keep it in the sorted set.
-                                updateTimestamp(queueName, upTsResult -> {
+                                updateTimestamp(queueName).onComplete(upTsResult -> {
                                     if (upTsResult.failed()) {
                                         log.warn("Failed to update timestamps for queue '{}'", queueName,
                                                 exceptionFactory.newException("updateTimestamp(" + queueName + ") failed",
@@ -599,21 +643,19 @@ public class QueueRegistryService {
      * Stores the queue name in a sorted set with the current date as score.
      *
      * @param queueName name of the queue
-     * @param handler   (optional) To get informed when done.
      */
-    private void updateTimestamp(final String queueName, Handler<AsyncResult<Response>> handler) {
+    public Future<Response> updateTimestamp(final String queueName) {
+        final Promise<Response> promise = Promise.promise();
+
         long ts = System.currentTimeMillis();
         log.trace("RedisQues update timestamp for queue: {} to: {}", queueName, ts);
-        redisService.zadd(keyspaceHelper.getQueuesKey(), queueName, String.valueOf(ts)).onSuccess(event -> {
-            if (handler != null) {
-                handler.handle(Future.succeededFuture(event));
-            }
-        }).onFailure(throwable -> {
-            log.warn("Redis: Error in updateTimestamp", throwable);
-            if (handler != null) {
-                handler.handle(new FailedAsyncResult<>(throwable));
-            }
-        });
+        redisService.zadd(keyspaceHelper.getQueuesKey(), queueName, String.valueOf(ts))
+                .onSuccess(promise::complete)
+                .onFailure(throwable -> {
+                    log.warn("Redis: Error in updateTimestamp", throwable);
+                    promise.fail(throwable);
+                });
+        return promise.future();
     }
 
     /**
@@ -671,7 +713,7 @@ public class QueueRegistryService {
 
     }
 
-    Future<Void> notifyConsumer(final String queueName) {
+    public Future<Void> notifyConsumer(final String queueName) {
         log.debug("RedisQues Notifying consumer of queue {}", queueName);
         final EventBus eb = vertx.eventBus();
         final Promise<Void> promise = Promise.promise();
@@ -694,9 +736,9 @@ public class QueueRegistryService {
                 log.warn("RedisQues consumer {} of queue {} does not exist.", consumer, queueName);
                 redisService.del(Collections.singletonList(key)).onComplete(result -> {
                     if (result.failed()) {
-                        log.warn("Failed to removed consumer '{}'", key, exceptionFactory.newException(result.cause()));
+                        log.warn("Failed to remove consumer '{}'", key, exceptionFactory.newException(result.cause()));
                     } else {
-                        log.debug("{} consumer key removed", result.result().toLong());
+                        log.warn("consumer key {} removed", key);
                         // need find a new consumer for this queue, let's make a peer become consumer
                         log.debug("RedisQues Sending new registration request for queue {}", queueName);
                         eb.send(keyspaceHelper.getConsumersAddress(), queueName);
