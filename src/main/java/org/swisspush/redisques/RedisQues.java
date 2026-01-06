@@ -170,11 +170,10 @@ public class RedisQues extends AbstractVerticle {
         }
         assert getQueuesItemsCountRedisRequestQuota != null;
 
-        this.queueActionsService = new QueueActionsService(vertx, redisService, keyspaceHelper, configurationProvider,
-                exceptionFactory, memoryUsageProvider, queueStatisticsCollector, getQueuesItemsCountRedisRequestQuota, meterRegistry);
-
         this.queueRegistryService = new QueueRegistryService(vertx, redisService, configurationProvider, exceptionFactory,
                 keyspaceHelper, queueMetrics, queueStatsService, queueStatisticsCollector , checkQueueRequestsQuota, activeQueueRegRefreshReqQuota);
+        this.queueActionsService = new QueueActionsService(vertx, queueRegistryService, redisService, keyspaceHelper, configurationProvider,
+                exceptionFactory, memoryUsageProvider, queueStatisticsCollector, getQueuesItemsCountRedisRequestQuota, meterRegistry);
 
         // Handles operations
         vertx.eventBus().consumer(keyspaceHelper.getAddress(), operationsHandler());
@@ -264,5 +263,9 @@ public class RedisQues extends AbstractVerticle {
             redisMonitor.stop();
             redisMonitor = null;
         }
+    }
+
+    public RedisService getRedisService() {
+        return redisService;
     }
 }

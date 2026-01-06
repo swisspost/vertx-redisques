@@ -34,12 +34,13 @@ import java.util.stream.Collectors;
 import static io.vertx.core.Future.failedFuture;
 import static io.vertx.core.Future.succeededFuture;
 import static java.lang.System.currentTimeMillis;
+import static org.swisspush.redisques.util.RedisquesAPI.MESSAGE;
 import static org.swisspush.redisques.util.RedisquesAPI.OK;
 import static org.swisspush.redisques.util.RedisquesAPI.PAYLOAD;
 import static org.swisspush.redisques.util.RedisquesAPI.STATUS;
 
 public class QueueConsumerRunner {
-    private static final Logger log = LoggerFactory.getLogger(QueueActionsService.class);
+    private static final Logger log = LoggerFactory.getLogger(QueueConsumerRunner.class);
     private final Vertx vertx;
     private final RedisService redisService;
     private final RedisQuesExceptionFactory exceptionFactory;
@@ -344,7 +345,11 @@ public class QueueConsumerRunner {
                     if (success) {
                         queueStatsService.dequeueStatisticSetLastDequeueSuccessTimestamp(queue,System.currentTimeMillis());
                     } else {
-                        requestMsg = "Queue processor failed with status: " + reply.result().body().getString(STATUS);
+                        StringBuilder sb = new StringBuilder("Queue processor failed with status: ");
+                        sb.append(reply.result().body().getString(STATUS));
+                        sb.append(", Message: ");
+                        sb.append(reply.result().body().getString(MESSAGE));
+                        requestMsg = sb.toString();
                     }
                 } else {
                     log.info("RedisQues QUEUE_ERROR: Consumer failed {} queue: {}",
