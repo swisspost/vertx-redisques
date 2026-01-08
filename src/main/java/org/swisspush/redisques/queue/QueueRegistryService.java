@@ -323,7 +323,7 @@ public class QueueRegistryService {
 
     private void registerKeepConsumerAlive() {
         // publish 2 heartbeat per refresh period
-        final long periodMs = getConfiguration().getRefreshPeriod() / 2 * 1000L;
+        final long periodMs = Math.max(getConfiguration().getRefreshPeriod() / 2 * 1000L, 1);
         // add self as non-expirable first
         aliveConsumers.put(keyspaceHelper.getVerticleUid(), Long.MAX_VALUE);
         vertx.setPeriodic(periodMs, event -> {
