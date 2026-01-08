@@ -126,8 +126,9 @@ public class QueueRegistryService {
             }
         });
 
-        registerQueueCheck();
+        // register my self into alive consumer first.
         registerKeepConsumerAlive();
+        registerQueueCheck();
         registerMyqueuesCleanup();
         registerActiveQueueRegistrationRefresh();
         registerNotExpiredQueueCheck();
@@ -178,6 +179,10 @@ public class QueueRegistryService {
     private void handleConsumerAlive(Message<String> msg) {
         final String consumerId = msg.body();
         final long periodMs = getConfiguration().getRefreshPeriod() * 1000L;
+        if (keyspaceHelper.getVerticleUid().equals(consumerId)) {
+            log.debug("RedisQues consumer {} is myself, skip", consumerId);
+            return;
+        }
         aliveConsumers.put(consumerId, currentTimeMillis() + (periodMs * 4));
         log.debug("RedisQues consumer {} keep alive renewed", consumerId);
     }
@@ -230,11 +235,9 @@ public class QueueRegistryService {
         if (handler == null) {
             throw new RuntimeException("Handler must be set");
         } else {
-            vertx.executeBlocking(() -> {
-                return redisService.expire(consumerKey, String.valueOf(consumerLockTime));
-            }).compose((Future<Response> tooManyNestedFutures) -> {
-                return tooManyNestedFutures;
-            }).onComplete(handler);
+            vertx.executeBlocking(() -> redisService.expire(consumerKey, String.valueOf(consumerLockTime)))
+                    .compose((Future<Response> tooManyNestedFutures) -> tooManyNestedFutures)
+                    .onComplete(handler);
         }
     }
 
@@ -319,8 +322,14 @@ public class QueueRegistryService {
     }
 
     private void registerKeepConsumerAlive() {
-        final long periodMs = getConfiguration().getRefreshPeriod() * 1000L;
-        vertx.setPeriodic(10, periodMs, event -> {
+        // publish 2 heartbeat per refresh period
+        final long periodMs = Math.max(getConfiguration().getRefreshPeriod() / 2 * 1000L, 1);
+        // add self as non-expirable first
+        aliveConsumers.put(keyspaceHelper.getVerticleUid(), Long.MAX_VALUE);
+        vertx.setPeriodic(periodMs, event -> {
+            vertx.eventBus().publish(keyspaceHelper.getConsumersAliveAddress(), keyspaceHelper.getVerticleUid());
+            log.debug("RedisQues consumer {} keep alive published", keyspaceHelper.getVerticleUid());
+
             Iterator<Map.Entry<String, Long>> iterator = aliveConsumers.entrySet().iterator();
             while (iterator.hasNext()) {
                 Map.Entry<String, Long> entry = iterator.next();
@@ -330,8 +339,6 @@ public class QueueRegistryService {
                     metrics.consumerCounterIncrement(-1);
                 }
             }
-            vertx.eventBus().publish(keyspaceHelper.getConsumersAliveAddress(), keyspaceHelper.getVerticleUid());
-            log.debug("RedisQues consumer {} keep alive published", keyspaceHelper.getVerticleUid());
         });
     }
 
@@ -733,15 +740,19 @@ public class QueueRegistryService {
                 eb.send(keyspaceHelper.getConsumersAddress(), queueName);
                 promise.complete();
             } else if (!aliveConsumers.containsKey(consumer)) {
-                log.warn("RedisQues consumer {} of queue {} does not exist.", consumer, queueName);
+                log.info("RedisQues consumer {} of queue {} does not exist.", consumer, queueName);
                 redisService.del(Collections.singletonList(key)).onComplete(result -> {
                     if (result.failed()) {
                         log.warn("Failed to remove consumer '{}'", key, exceptionFactory.newException(result.cause()));
                     } else {
-                        log.warn("consumer key {} removed", key);
-                        // need find a new consumer for this queue, let's make a peer become consumer
-                        log.debug("RedisQues Sending new registration request for queue {}", queueName);
-                        eb.send(keyspaceHelper.getConsumersAddress(), queueName);
+                        if (result.result() != null && result.result().toInteger() == 1){
+                            log.info("consumer key {} removed", key);
+                            // need find a new consumer for this queue, let's make a peer become consumer
+                            log.debug("RedisQues Sending new registration request for queue {}", queueName);
+                            eb.send(keyspaceHelper.getConsumersAddress(), queueName);
+                        } else {
+                            log.info("Can't delete consumer key {}, result {}, it may delete by another consumer, skip.", key, result.result().toInteger());
+                        }
                     }
                     promise.complete();
                 });
