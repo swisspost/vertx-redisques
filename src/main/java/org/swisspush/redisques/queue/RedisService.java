@@ -93,9 +93,29 @@ public class RedisService {
         });
     }
 
-    public Future<Response> zadd(String queuesKey, String queueName, String value) {
+    public Future<Response> zadd(String key, String value, String score) {
+        return zadd(key, List.of(), value, score);
+    }
+
+    public Future<Response> zadd(String key, List<String> params, String value, String score) {
+        return redis().compose((RedisAPI redisAPI) -> {
+                    if (params.isEmpty()) {
+                        return redisAPI.zadd(Arrays.asList(key, score, value));
+                    } else {
+                        List<String> cmdParams = new ArrayList<>();
+                        cmdParams.add(key);
+                        cmdParams.addAll(params);
+                        cmdParams.add(score);
+                        cmdParams.add(value);
+                        return redisAPI.zadd(cmdParams);
+                    }
+                }
+        );
+    }
+
+    public Future<Response> zrem(String key, String value) {
         return redis().compose((RedisAPI redisAPI) ->
-                redisAPI.zadd(Arrays.asList(queuesKey, value, queueName))
+                redisAPI.zrem(Arrays.asList(key, value))
         );
     }
 

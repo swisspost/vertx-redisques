@@ -1,31 +1,63 @@
 package org.swisspush.redisques.util;
 
+import com.google.common.collect.Lists;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.Promise;
-import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonObject;
-import io.vertx.core.shareddata.AsyncMap;
-import io.vertx.core.shareddata.Lock;
-import io.vertx.core.shareddata.SharedData;
+import io.vertx.redis.client.Response;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
+import org.swisspush.redisques.queue.KeyspaceHelper;
+import org.swisspush.redisques.queue.RedisService;
 
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
 
 public class DequeueStatisticCollector {
     private static final Logger log = LoggerFactory.getLogger(DequeueStatisticCollector.class);
-    private final static String DEQUEUE_STATISTIC_DATA = "dequeueStatisticData";
-    private final static String DEQUEUE_STATISTIC_LOCK_PREFIX = "dequeueStatisticLock.";
-    private final SharedData sharedData;
     private final boolean dequeueStatisticEnabled;
+    private final RedisService redisService;
+    private final KeyspaceHelper keyspaceHelper;
 
-    public DequeueStatisticCollector(Vertx vertx, boolean dequeueStatisticEnabled) {
-        this.sharedData = vertx.sharedData();
+    public DequeueStatisticCollector(boolean dequeueStatisticEnabled, RedisService redisService, KeyspaceHelper keyspaceHelper) {
         this.dequeueStatisticEnabled = dequeueStatisticEnabled;
+        this.redisService = redisService;
+        this.keyspaceHelper = keyspaceHelper;
     }
+
+
+    public Future<Map<String, DequeueStatistic>> getAllDequeueStatistics() {
+        // Check if dequeue statistics are enabled
+        if (!dequeueStatisticEnabled) {
+            return Future.succeededFuture(Collections.emptyMap()); // Return an empty map to avoid NullPointerExceptions
+        }
+        Promise<Map<String, DequeueStatistic>> promise = Promise.promise();
+
+        redisService.hvals(keyspaceHelper.getDequeueStatisticKey()).onComplete(statisticsSet -> {
+            if (statisticsSet == null || statisticsSet.failed()) {
+                promise.fail(new RuntimeException("Redis: dequeue statistics queue evaluation failed",
+                        statisticsSet == null ? null : statisticsSet.cause()));
+            } else {
+
+            }
+            Map<String, DequeueStatistic> result =  new HashMap<>();
+            for (Response response : statisticsSet.result()) {
+                JsonObject jsonObject = new JsonObject(response.toString());
+                DequeueStatistic dequeueStatistic = DequeueStatistic.fromJson(jsonObject);
+                if (dequeueStatistic != null) {
+                    result.put(dequeueStatistic.getQueueName(), dequeueStatistic);
+                }
+            }
+            promise.complete(result);
+        });
+        return promise.future();
+    }
+
 
     /**
      *
@@ -33,137 +65,55 @@ public class DequeueStatisticCollector {
      * @param dequeueStatistic
      * @return an always completed future
      */
-    public Future<Void> setDequeueStatistic(final String queueName, final DequeueStatistic dequeueStatistic) {
+    public Future<Void> setDequeueStatistic(String queueName, DequeueStatistic dequeueStatistic) {
+        if (dequeueStatistic.isMarkedForRemoval()) {
+            return removeDequeuStatistic(queueName);
+        } else {
+            return addOrUpdateDequeueStatistic(queueName, dequeueStatistic);
+        }
+    }
+
+
+    private Future<Void> removeDequeuStatistic(String queueName) {
         Promise<Void> promise = Promise.promise();
-        log.debug("Starting to sync dequeue statistic for {}", queueName);
-        sharedData.getLock(DEQUEUE_STATISTIC_LOCK_PREFIX.concat(queueName)).onComplete(lockAsyncResult -> {
-            if (lockAsyncResult.failed()) {
-                log.error("Failed to lock dequeue statistic data for queue {}.", queueName, lockAsyncResult.cause());
-                promise.complete();
-                return;
+        redisService.hdel(keyspaceHelper.getDequeueStatisticKey(), queueName).onComplete(event -> {
+            if (event.failed()) {
+                log.warn("failed to delete dequeueStatistic for {}.", queueName, event.cause().getMessage());
             }
-
-            final Lock lock = lockAsyncResult.result();
-            final Handler<Void> releaseAndCompleteHandler = event -> {
-                log.debug("Sync dequeue statistic for {} finished", queueName);
-                lock.release();
-                promise.complete();
-            };
-
-            sharedData.getAsyncMap(DEQUEUE_STATISTIC_DATA, (Handler<AsyncResult<AsyncMap<String, JsonObject>>>) asyncResult -> {
-                if (asyncResult.failed()) {
-                    log.error("Failed to get shared dequeue statistic data map.", asyncResult.cause());
-                    releaseAndCompleteHandler.handle(null);
-                    return;
+            redisService.zrem(keyspaceHelper.getDequeueStatisticTsKey(), queueName).onComplete(event1 -> {
+                if (event1.failed()) {
+                    log.warn("failed to delete dequeueStatistic timestamp for {}.", queueName, event1.cause().getMessage());
                 }
-                AsyncMap<String, JsonObject> asyncMap = asyncResult.result();
-                asyncMap.size().onComplete(mapSizeResult -> {
-                    log.debug("shared dequeue statistic map size: {}", mapSizeResult.result());
-                    asyncMap.get(queueName).onComplete(dequeueStatisticAsyncResult -> {
-                        if (dequeueStatisticAsyncResult.failed()) {
-                            log.error("Failed to get shared dequeue statistic data for queue {}.", queueName, dequeueStatisticAsyncResult.cause());
-                            if (dequeueStatisticAsyncResult.cause().getClass().getName().contains("HazelcastSerializationException")) {
-                                asyncMap.remove(queueName).onComplete(new Handler<AsyncResult<JsonObject>>() {
-                                    @Override
-                                    public void handle(AsyncResult<JsonObject> event) {
-                                        if (event.failed()) {
-                                            log.error("failed to clean broken dequeue statistic data.", event.cause());
-                                        } else {
-                                            log.info("broken dequeue statistic for {} removed", queueName);
-                                        }
-                                        releaseAndCompleteHandler.handle(null);
-                                    }
-                                });
-                            } else {
-                                releaseAndCompleteHandler.handle(null);
-                            }
-                            return;
-                        }
+                promise.complete();
+            });
+        });
+        return promise.future();
+    }
 
-                        DequeueStatistic sharedDequeueStatistic = null;
-
-                        // check does it is a JsonObject, if not assume it in not exist.
-                        if (dequeueStatisticAsyncResult.result() instanceof JsonObject) {
-                            sharedDequeueStatistic = DequeueStatistic.fromJson(dequeueStatisticAsyncResult.result());
-                        }
-                        if (sharedDequeueStatistic == null) {
-                            asyncMap.put(queueName, dequeueStatistic.asJson()).onComplete(voidAsyncResult -> {
-                                if (voidAsyncResult.failed()) {
-                                    log.error("shared dequeue statistic for queue {} failed to add.", queueName, voidAsyncResult.cause());
-                                } else {
-                                    log.debug("shared dequeue statistic for queue {} added.", queueName);
-                                }
-                                releaseAndCompleteHandler.handle(null);
-                            });
-                        } else if (sharedDequeueStatistic.getLastUpdatedTimestamp() < dequeueStatistic.getLastUpdatedTimestamp()) {
-                            if (dequeueStatistic.isMarkedForRemoval()) {
-                                // delete
-                                asyncMap.remove(queueName).onComplete(removeAsyncResult -> {
-                                    if (removeAsyncResult.failed()) {
-                                        log.error("failed to removed shared dequeue statistic for queue {}.", queueName, removeAsyncResult.cause());
-                                    } else {
-                                        log.debug("shared dequeue statistic for queue {} removed.", queueName);
-                                    }
-                                    releaseAndCompleteHandler.handle(null);
-                                });
-                            } else {
-                                // update
-                                asyncMap.put(queueName, dequeueStatistic.asJson()).onComplete(event -> {
-                                    if (event.failed()) {
-                                        log.error("shared dequeue statistic for queue {} failed to update.", queueName, event.cause());
-                                    } else {
-                                        log.debug("shared dequeue statistic for queue {} updated.", queueName);
-                                    }
-                                    releaseAndCompleteHandler.handle(null);
-                                });
-                            }
+    private Future<Void> addOrUpdateDequeueStatistic(String queueName, DequeueStatistic dequeueStatistic) {
+        Promise<Void> promise = Promise.promise();
+        redisService.zadd(keyspaceHelper.getDequeueStatisticTsKey(), Arrays.asList("GT", "CH"),
+                queueName,
+                dequeueStatistic.getLastUpdatedTimestamp().toString()).onComplete(zaddAsyncResult -> {
+            if (zaddAsyncResult.failed()) {
+                log.warn("Redis: Error in update DequeueStatistic Timestamp for queue {}", queueName, zaddAsyncResult.cause());
+                promise.complete();
+            } else {
+                if (zaddAsyncResult.result() != null && zaddAsyncResult.result().toInteger() == 1) {
+                    redisService.hset(keyspaceHelper.getDequeueStatisticKey(), queueName, dequeueStatistic.asJson().encode()).onComplete(hsetAsyncResult -> {
+                        if (hsetAsyncResult.failed()) {
+                            log.warn("Redis: Error in update DequeueStatistic for queue {}", queueName, hsetAsyncResult.cause());
+                            promise.complete();
                         } else {
-                            log.debug("shared dequeue statistic for queue {} has newer data, update skipped", queueName);
-                            releaseAndCompleteHandler.handle(null);
+                            promise.complete();
                         }
                     });
-                });
-            });
-        });
-        return promise.future();
-    }
-
-    public Future<Map<String, JsonObject>> getAllDequeueStatistics() {
-        // Check if dequeue statistics are enabled
-        if (!dequeueStatisticEnabled) {
-            return Future.succeededFuture(Collections.emptyMap()); // Return an empty map to avoid NullPointerExceptions
-        }
-        Promise<Map<String, JsonObject>> promise = Promise.promise();
-        sharedData.getAsyncMap(DEQUEUE_STATISTIC_DATA, (Handler<AsyncResult<AsyncMap<String, JsonObject>>>) asyncResult -> {
-            if (asyncResult.failed()) {
-                log.error("Failed to get dequeue statistic data map.", asyncResult.cause());
-                promise.fail(asyncResult.cause());
-                return;
+                } else {
+                    log.info("DequeueStatistic timestamp is newer compare to local one for queue {}, skip.", queueName);
+                    promise.complete();
+                }
             }
-            AsyncMap<String, JsonObject> asyncMap = asyncResult.result();
-            asyncMap.entries().onSuccess(promise::complete).onFailure(throwable -> {
-                log.error("Failed to get dequeue statistic map", throwable);
-                cleanAsyncMapIfBroken(asyncMap, throwable).onComplete(e -> promise.fail(throwable));
-            });
         });
-        return promise.future();
-    }
-
-    Future<Void> cleanAsyncMapIfBroken(AsyncMap<String, JsonObject> asyncMap, Throwable throwable) {
-        Promise<Void> promise = Promise.promise();
-        if (throwable.getClass().getName().contains("HazelcastSerializationException")) {
-            asyncMap.clear().onComplete(event -> {
-                        if (event.failed()) {
-                            log.error("failed to clean dequeue statistic map.", throwable);
-                        } else {
-                            log.info("Cleaned up broken dequeue statistic AsyncMap.");
-                        }
-                        promise.complete();
-                    }
-            );
-        } else {
-            promise.complete();
-        }
         return promise.future();
     }
 }
