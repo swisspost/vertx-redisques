@@ -322,8 +322,9 @@ public class QueueRegistryService {
     }
 
     private void registerKeepConsumerAlive() {
-        final long periodMs = getConfiguration().getRefreshPeriod() * 1000L / 2;
-        // add self first, as non-expirable first
+        // publish 2 heartbeat per refresh period
+        final long periodMs = getConfiguration().getRefreshPeriod() / 2 * 1000L;
+        // add self as non-expirable first
         aliveConsumers.put(keyspaceHelper.getVerticleUid(), Long.MAX_VALUE);
         vertx.setPeriodic(periodMs, event -> {
             vertx.eventBus().publish(keyspaceHelper.getConsumersAliveAddress(), keyspaceHelper.getVerticleUid());
@@ -750,7 +751,7 @@ public class QueueRegistryService {
                             log.debug("RedisQues Sending new registration request for queue {}", queueName);
                             eb.send(keyspaceHelper.getConsumersAddress(), queueName);
                         } else {
-                            log.info("Can't delete consumer key {}, result {} ", key, result.result().toInteger());
+                            log.info("Can't delete consumer key {}, result {}, it may delete by another consumer, skip.", key, result.result().toInteger());
                         }
                     }
                     promise.complete();
