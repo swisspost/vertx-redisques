@@ -126,6 +126,7 @@ public class QueueRegistryService {
             }
         });
 
+        // register my self into alive consumer first.
         registerKeepConsumerAlive();
         registerQueueCheck();
         registerMyqueuesCleanup();
@@ -178,6 +179,10 @@ public class QueueRegistryService {
     private void handleConsumerAlive(Message<String> msg) {
         final String consumerId = msg.body();
         final long periodMs = getConfiguration().getRefreshPeriod() * 1000L;
+        if (keyspaceHelper.getVerticleUid().equals(consumerId)) {
+            log.debug("RedisQues consumer {} is myself, skip", consumerId);
+            return;
+        }
         aliveConsumers.put(consumerId, currentTimeMillis() + (periodMs * 4));
         log.debug("RedisQues consumer {} keep alive renewed", consumerId);
     }
@@ -318,6 +323,8 @@ public class QueueRegistryService {
 
     private void registerKeepConsumerAlive() {
         final long periodMs = getConfiguration().getRefreshPeriod() * 1000L / 2;
+        // add self first, as non-expirable first
+        aliveConsumers.put(keyspaceHelper.getVerticleUid(), Long.MAX_VALUE);
         vertx.setPeriodic(periodMs, event -> {
             vertx.eventBus().publish(keyspaceHelper.getConsumersAliveAddress(), keyspaceHelper.getVerticleUid());
             log.debug("RedisQues consumer {} keep alive published", keyspaceHelper.getVerticleUid());
