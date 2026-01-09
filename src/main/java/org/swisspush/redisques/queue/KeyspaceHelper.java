@@ -27,7 +27,7 @@ public class KeyspaceHelper {
         queuesKey = configuration.getRedisPrefix() + "queues";
         queuesPrefix = configuration.getRedisPrefix() + "queues:";
         consumersPrefix = configuration.getRedisPrefix() + "consumers:";
-        dequeueStatisticKey =  configuration.getRedisPrefix() + "dequeuestatistic";
+        dequeueStatisticKey =  configuration.getRedisPrefix() + "dequeueStatistic";
         dequeueStatisticTsKey =  dequeueStatisticKey + ":ts";
         locksKey = configuration.getRedisPrefix() + "locks";
         queueCheckLastexecKey = configuration.getRedisPrefix() + "check:lastexec";

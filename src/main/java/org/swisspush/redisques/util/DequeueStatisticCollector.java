@@ -39,17 +39,16 @@ public class DequeueStatisticCollector {
                 promise.fail(new RuntimeException("Redis: dequeue statistics queue evaluation failed",
                         statisticsSet == null ? null : statisticsSet.cause()));
             } else {
-
-            }
-            Map<String, DequeueStatistic> result = new HashMap<>();
-            for (Response response : statisticsSet.result()) {
-                JsonObject jsonObject = new JsonObject(response.toString());
-                DequeueStatistic dequeueStatistic = DequeueStatistic.fromJson(jsonObject);
-                if (dequeueStatistic != null) {
-                    result.put(dequeueStatistic.getQueueName(), dequeueStatistic);
+                Map<String, DequeueStatistic> result = new HashMap<>();
+                for (Response response : statisticsSet.result()) {
+                    JsonObject jsonObject = new JsonObject(response.toString());
+                    DequeueStatistic dequeueStatistic = DequeueStatistic.fromJson(jsonObject);
+                    if (dequeueStatistic != null) {
+                        result.put(dequeueStatistic.getQueueName(), dequeueStatistic);
+                    }
                 }
+                promise.complete(result);
             }
-            promise.complete(result);
         });
         return promise.future();
     }
@@ -62,13 +61,13 @@ public class DequeueStatisticCollector {
      */
     public Future<Void> setDequeueStatistic(String queueName, DequeueStatistic dequeueStatistic) {
         if (dequeueStatistic.isMarkedForRemoval()) {
-            return removeDequeuStatistic(queueName);
+            return removeDequeueStatistic(queueName);
         } else {
             return addOrUpdateDequeueStatistic(queueName, dequeueStatistic);
         }
     }
 
-    private Future<Void> removeDequeuStatistic(String queueName) {
+    private Future<Void> removeDequeueStatistic(String queueName) {
         Promise<Void> promise = Promise.promise();
         redisService.hdel(keyspaceHelper.getDequeueStatisticKey(), queueName).onComplete(event -> {
             if (event.failed()) {
