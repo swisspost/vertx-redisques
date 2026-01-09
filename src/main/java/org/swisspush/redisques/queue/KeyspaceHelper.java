@@ -7,6 +7,8 @@ public class KeyspaceHelper {
     private final String queuesKey;
     private final String queuesPrefix;
     private final String consumersPrefix;
+    private final String dequeueStatisticKey;
+    private final String dequeueStatisticTsKey;
     private final String locksKey;
     private final String queueCheckLastexecKey;
 
@@ -25,6 +27,8 @@ public class KeyspaceHelper {
         queuesKey = configuration.getRedisPrefix() + "queues";
         queuesPrefix = configuration.getRedisPrefix() + "queues:";
         consumersPrefix = configuration.getRedisPrefix() + "consumers:";
+        dequeueStatisticKey =  configuration.getRedisPrefix() + "dequeueStatistic";
+        dequeueStatisticTsKey =  dequeueStatisticKey + ":ts";
         locksKey = configuration.getRedisPrefix() + "locks";
         queueCheckLastexecKey = configuration.getRedisPrefix() + "check:lastexec";
         verticleRefreshRegistrationKey = "refreshRegistration:" + verticleUid;
@@ -61,6 +65,14 @@ public class KeyspaceHelper {
 
     public String getConsumersPrefix() {
         return consumersPrefix;
+    }
+
+    public String getDequeueStatisticKey() {
+        return dequeueStatisticKey;
+    }
+
+    public String getDequeueStatisticTsKey() {
+        return dequeueStatisticTsKey;
     }
 
     public String getVerticleRefreshRegistrationKey() {

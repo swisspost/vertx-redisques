@@ -127,14 +127,10 @@ public class RedisQues extends AbstractVerticle {
         RedisquesConfiguration modConfig = configurationProvider.configuration();
         log.info("Starting Redisques module with configuration: {}", configurationProvider.configuration());
 
-        if (this.dequeueStatisticCollector == null) {
-            this.dequeueStatisticCollector = new DequeueStatisticCollector(vertx, modConfig.isDequeueStatsEnabled());
-        }
-
         if (redisProvider == null) {
             redisProvider = new DefaultRedisProvider(vertx, configurationProvider);
         }
-
+        this.keyspaceHelper = new KeyspaceHelper(modConfig, uid);
         redisProvider.redis().onComplete(event -> {
             if(event.succeeded()) {
                 initialize();
@@ -144,11 +140,13 @@ public class RedisQues extends AbstractVerticle {
             }
         });
         redisService = new RedisService(redisProvider);
+        if (this.dequeueStatisticCollector == null) {
+            this.dequeueStatisticCollector = new DequeueStatisticCollector(modConfig.isDequeueStatsEnabled(), redisService, keyspaceHelper);
+        }
     }
 
     private void initialize() {
         RedisquesConfiguration configuration = configurationProvider.configuration();
-        this.keyspaceHelper = new KeyspaceHelper(configuration, uid);
 
         this.queueStatisticsCollector = new QueueStatisticsCollector(
                 redisService, keyspaceHelper.getQueuesPrefix(), vertx, exceptionFactory, redisMonitoringReqQuota,
@@ -256,6 +254,11 @@ public class RedisQues extends AbstractVerticle {
         return keyspaceHelper;
     }
 
+    @VisibleForTesting
+    public RedisService getRedisService() {
+        return redisService;
+    }
+
     @Override
     public void stop() {
         queueRegistryService.stop();
@@ -263,9 +266,5 @@ public class RedisQues extends AbstractVerticle {
             redisMonitor.stop();
             redisMonitor = null;
         }
-    }
-
-    public RedisService getRedisService() {
-        return redisService;
     }
 }

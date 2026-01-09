@@ -14,19 +14,21 @@ public class DequeueStatisticTest {
 
     @Test
     public void testDefaultConstructor_initialState() {
-        DequeueStatistic stat = new DequeueStatistic();
+        DequeueStatistic stat = new DequeueStatistic("queueName");
 
         assertTrue(stat.isEmpty());
         assertNull(stat.getLastDequeueAttemptTimestamp());
         assertNull(stat.getLastDequeueSuccessTimestamp());
         assertNull(stat.getNextDequeueDueTimestamp());
-        assertNull(stat.getLastUpdatedTimestamp());
         assertNull(stat.getFailedReason());
         assertFalse(stat.isMarkedForRemoval());
+
+        assertNotNull(stat.getLastUpdatedTimestamp());
     }
 
     @Test
     public void testParameterizedConstructor_initializesFields() {
+        String queueName = "queueName";
         long lastAtt = 10L;
         long lastSuc = 20L;
         long nextDue = 30L;
@@ -35,9 +37,10 @@ public class DequeueStatisticTest {
         boolean mark = true;
 
         DequeueStatistic stat = new DequeueStatistic(
-                lastAtt, lastSuc, nextDue, lastUpd, reason, mark
+                queueName, lastAtt, lastSuc, nextDue, lastUpd, reason, mark
         );
 
+        assertEquals(queueName, stat.getQueueName());
         assertEquals(Long.valueOf(lastAtt), stat.getLastDequeueAttemptTimestamp());
         assertEquals(Long.valueOf(lastSuc), stat.getLastDequeueSuccessTimestamp());
         assertEquals(Long.valueOf(nextDue), stat.getNextDequeueDueTimestamp());
@@ -49,7 +52,7 @@ public class DequeueStatisticTest {
 
     @Test
     public void testIsEmpty_falseWhenAnyTimestampSet() {
-        DequeueStatistic stat = new DequeueStatistic();
+        DequeueStatistic stat = new DequeueStatistic("queueName");
         assertTrue(stat.isEmpty());
 
         stat.setLastDequeueAttemptTimestamp(123L);
@@ -58,7 +61,7 @@ public class DequeueStatisticTest {
 
     @Test
     public void testSetLastDequeueAttemptTimestamp_updatesFieldAndLastUpdated() throws Exception {
-        DequeueStatistic stat = new DequeueStatistic();
+        DequeueStatistic stat = new DequeueStatistic("queueName");
 
         long before = System.currentTimeMillis();
         stat.setLastDequeueAttemptTimestamp(100L);
@@ -70,7 +73,7 @@ public class DequeueStatisticTest {
 
     @Test
     public void testSetLastDequeueSuccessTimestamp_updatesFieldClearsNextDueAndReason() {
-        DequeueStatistic stat = new DequeueStatistic();
+        DequeueStatistic stat = new DequeueStatistic("queueName");
 
         stat.setNextDequeueDueTimestamp(200L, "backoff");
         assertEquals(Long.valueOf(200L), stat.getNextDequeueDueTimestamp());
@@ -86,7 +89,7 @@ public class DequeueStatisticTest {
 
     @Test
     public void testSetNextDequeueDueTimestamp_updatesFieldsAndLastUpdated() {
-        DequeueStatistic stat = new DequeueStatistic();
+        DequeueStatistic stat = new DequeueStatistic("queueName");
 
         long before = System.currentTimeMillis();
         stat.setNextDequeueDueTimestamp(400L, "rate-limit");
@@ -99,7 +102,7 @@ public class DequeueStatisticTest {
 
     @Test
     public void testSetMarkedForRemoval_setsFlagAndLastUpdated() {
-        DequeueStatistic stat = new DequeueStatistic();
+        DequeueStatistic stat = new DequeueStatistic("queueName");
 
         long before = System.currentTimeMillis();
         stat.setMarkedForRemoval();
@@ -111,24 +114,26 @@ public class DequeueStatisticTest {
 
     @Test
     public void testAsJson_onDefaultInstance_onlyContainsMarkForRemovalFalse() {
-        DequeueStatistic stat = new DequeueStatistic();
+        DequeueStatistic stat = new DequeueStatistic("queueName");
 
         JsonObject json = stat.asJson();
 
         // boolean always present
         assertTrue(json.containsKey(DequeueStatistic.KEY_MARK_FOR_REMOVAL));
         assertFalse(json.getBoolean(DequeueStatistic.KEY_MARK_FOR_REMOVAL));
+        assertTrue(json.containsKey(DequeueStatistic.KEY_QUEUENAME));
+        assertTrue(json.containsKey(DequeueStatistic.KEY_LAST_UPDATED_TS));
 
         // others should not be present because they are null
         assertFalse(json.containsKey(DequeueStatistic.KEY_LAST_DEQUEUE_ATTEMPT_TS));
         assertFalse(json.containsKey(DequeueStatistic.KEY_LAST_DEQUEUE_SUCCESS_TS));
         assertFalse(json.containsKey(DequeueStatistic.KEY_NEXT_DEQUEUE_DUE_TS));
-        assertFalse(json.containsKey(DequeueStatistic.KEY_LAST_UPDATED_TS));
         assertFalse(json.containsKey(DequeueStatistic.KEY_FAILED_REASON));
     }
 
     @Test
     public void testAsJson_includesNonNullFields() {
+        String queueName = "queueName";
         long lastAtt = 10L;
         long lastSuc = 20L;
         long nextDue = 30L;
@@ -137,7 +142,7 @@ public class DequeueStatisticTest {
         boolean mark = true;
 
         DequeueStatistic stat = new DequeueStatistic(
-                lastAtt, lastSuc, nextDue, lastUpd, reason, mark
+                queueName, lastAtt, lastSuc, nextDue, lastUpd, reason, mark
         );
 
         JsonObject json = stat.asJson();
@@ -147,12 +152,13 @@ public class DequeueStatisticTest {
         assertEquals(Long.valueOf(nextDue), json.getLong(DequeueStatistic.KEY_NEXT_DEQUEUE_DUE_TS));
         assertEquals(Long.valueOf(lastUpd), json.getLong(DequeueStatistic.KEY_LAST_UPDATED_TS));
         assertEquals(reason, json.getString(DequeueStatistic.KEY_FAILED_REASON));
+        assertEquals(queueName, json.getString(DequeueStatistic.KEY_QUEUENAME));
         assertTrue(json.getBoolean(DequeueStatistic.KEY_MARK_FOR_REMOVAL));
     }
 
     @Test
     public void testFromJson_roundTrip() {
-        DequeueStatistic original = new DequeueStatistic();
+        DequeueStatistic original = new DequeueStatistic("queueName");
         original.setLastDequeueAttemptTimestamp(111L);
         original.setNextDequeueDueTimestamp(222L, "some reason");
         original.setMarkedForRemoval(); // also updates lastUpdatedTimestamp
