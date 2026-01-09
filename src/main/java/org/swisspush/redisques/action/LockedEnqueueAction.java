@@ -7,6 +7,7 @@ import io.vertx.core.json.JsonObject;
 import org.slf4j.Logger;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.queue.KeyspaceHelper;
+import org.swisspush.redisques.queue.QueueRegistryService;
 import org.swisspush.redisques.queue.RedisService;
 import org.swisspush.redisques.util.MemoryUsageProvider;
 import org.swisspush.redisques.util.QueueConfiguration;
@@ -19,13 +20,13 @@ import static org.swisspush.redisques.util.RedisquesAPI.*;
 
 public class LockedEnqueueAction extends EnqueueAction {
 
-    public LockedEnqueueAction(Vertx vertx, RedisService redisService,
+    public LockedEnqueueAction(Vertx vertx, QueueRegistryService queueRegistryService, RedisService redisService,
                                KeyspaceHelper keyspaceHelper, List<QueueConfiguration> queueConfigurations,
                                RedisQuesExceptionFactory exceptionFactory,
                                QueueStatisticsCollector queueStatisticsCollector, Logger log,
                                MemoryUsageProvider memoryUsageProvider, int memoryUsageLimitPercent, MeterRegistry meterRegistry,
                                String metricsIdentifier) {
-        super(vertx, redisService, keyspaceHelper, queueConfigurations, exceptionFactory, queueStatisticsCollector, log, memoryUsageProvider,
+        super(vertx, queueRegistryService, redisService, keyspaceHelper, queueConfigurations, exceptionFactory, queueStatisticsCollector, log, memoryUsageProvider,
                 memoryUsageLimitPercent, meterRegistry, metricsIdentifier);
     }
 

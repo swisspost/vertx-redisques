@@ -33,6 +33,7 @@ import org.swisspush.redisques.action.SetConfigurationAction;
 import org.swisspush.redisques.action.UnsupportedAction;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.queue.KeyspaceHelper;
+import org.swisspush.redisques.queue.QueueRegistryService;
 import org.swisspush.redisques.queue.RedisService;
 
 import java.util.List;
@@ -55,6 +56,7 @@ public class QueueActionFactory {
 
     private final RedisquesConfigurationProvider configurationProvider;
     private final KeyspaceHelper keyspaceHelper;
+    private final QueueRegistryService queueRegistryService;
 
     public QueueActionFactory(
         RedisService redisService,
@@ -67,7 +69,8 @@ public class QueueActionFactory {
         RedisQuesExceptionFactory exceptionFactory,
         RedisquesConfigurationProvider configurationProvider,
         Semaphore getQueuesItemsCountRedisRequestQuota,
-        MeterRegistry meterRegistry
+        MeterRegistry meterRegistry,
+        QueueRegistryService queueRegistryService
     ) {
         this.redisService = redisService;
         this.vertx = vertx;
@@ -82,6 +85,7 @@ public class QueueActionFactory {
         this.memoryUsageLimitPercent = configurationProvider.configuration().getMemoryUsageLimitPercent();
         this.getQueuesItemsCountRedisRequestQuota = getQueuesItemsCountRedisRequestQuota;
         this.meterRegistry = meterRegistry;
+        this.queueRegistryService = queueRegistryService;
 
         metricsIdentifier = configurationProvider.configuration().getMicrometerMetricsIdentifier();
     }
@@ -112,10 +116,10 @@ public class QueueActionFactory {
                 return new GetQueuesItemsCountAction(vertx, redisService, keyspaceHelper, queueConfigurations, exceptionFactory,
                         getQueuesItemsCountRedisRequestQuota, queueStatisticsCollector, log);
             case enqueue:
-                return new EnqueueAction(vertx, redisService, keyspaceHelper, queueConfigurations, exceptionFactory, queueStatisticsCollector, log,
+                return new EnqueueAction(vertx, queueRegistryService, redisService, keyspaceHelper, queueConfigurations, exceptionFactory, queueStatisticsCollector, log,
                         memoryUsageProvider, memoryUsageLimitPercent, meterRegistry, metricsIdentifier);
             case lockedEnqueue:
-                return new LockedEnqueueAction(vertx, redisService, keyspaceHelper, queueConfigurations, exceptionFactory, queueStatisticsCollector, log,
+                return new LockedEnqueueAction(vertx, queueRegistryService, redisService, keyspaceHelper, queueConfigurations, exceptionFactory, queueStatisticsCollector, log,
                         memoryUsageProvider, memoryUsageLimitPercent, meterRegistry, metricsIdentifier);
             case getLock:
                 return new GetLockAction(vertx, redisService, keyspaceHelper, queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
@@ -126,7 +130,7 @@ public class QueueActionFactory {
             case getAllLocks:
                 return new GetAllLocksAction(vertx, redisService, keyspaceHelper, queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
             case deleteLock:
-                return new DeleteLockAction(vertx, redisService, keyspaceHelper, queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
+                return new DeleteLockAction(vertx, queueRegistryService, redisService, keyspaceHelper, queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
             case bulkDeleteLocks:
                 return new BulkDeleteLocksAction(vertx, redisService, keyspaceHelper, queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
             case deleteAllLocks:

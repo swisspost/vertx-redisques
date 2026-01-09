@@ -13,6 +13,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mockito;
 import org.slf4j.Logger;
+import org.swisspush.redisques.queue.QueueRegistryService;
 import org.swisspush.redisques.util.MetricMeter;
 import org.swisspush.redisques.util.MetricTags;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
@@ -32,15 +33,16 @@ public class LockedEnqueueActionTest extends AbstractQueueActionTest {
 
     private Counter enqueueCounterSuccess;
     private Counter enqueueCounterFail;
-
+    private QueueRegistryService registryService;
     @Before
     @Override
     public void setup() {
         super.setup();
+        registryService = Mockito.mock(QueueRegistryService.class);
         MeterRegistry meterRegistry = new SimpleMeterRegistry();
         enqueueCounterSuccess = meterRegistry.counter(MetricMeter.ENQUEUE_SUCCESS.getId(), MetricTags.IDENTIFIER.getId(), "foo");
         enqueueCounterFail = meterRegistry.counter(MetricMeter.ENQUEUE_FAIL.getId(), MetricTags.IDENTIFIER.getId(), "foo");
-        action = new LockedEnqueueAction(vertx, redisService, keyspaceHelper,
+        action = new LockedEnqueueAction(vertx, registryService, redisService, keyspaceHelper,
                 new ArrayList<>(), exceptionFactory, Mockito.mock(QueueStatisticsCollector.class),
                 Mockito.mock(Logger.class), memoryUsageProvider, 80, meterRegistry, "foo");
     }
