@@ -12,7 +12,8 @@ public class DequeueStatistic {
     public static final String KEY_LAST_UPDATED_TS = "lastUpdatedTimestamp";
     public static final String KEY_FAILED_REASON = "failedReason";
     public static final String KEY_MARK_FOR_REMOVAL = "markForRemoval";
-
+    public static final String KEY_QUEUENAME = "queueName";
+    private final String queueName;
     private Long lastDequeueAttemptTimestamp = null;
     private Long lastDequeueSuccessTimestamp = null;
     private Long nextDequeueDueTimestamp = null;
@@ -20,11 +21,14 @@ public class DequeueStatistic {
     private String failedReason = null;
     private boolean markForRemoval = false;
 
-    public DequeueStatistic() {
-        // default
+    public DequeueStatistic(String queueName) {
+        this.queueName = queueName;
+        // prevents last updates from null
+        updateLastUpdatedTimestamp();
     }
 
     public DequeueStatistic(
+            String queueName,
             Long lastDequeueAttemptTimestamp,
             Long lastDequeueSuccessTimestamp,
             Long nextDequeueDueTimestamp,
@@ -32,6 +36,7 @@ public class DequeueStatistic {
             String failedReason,
             boolean markForRemoval
     ) {
+        this.queueName = queueName;
         this.lastDequeueAttemptTimestamp = lastDequeueAttemptTimestamp;
         this.lastDequeueSuccessTimestamp = lastDequeueSuccessTimestamp;
         this.nextDequeueDueTimestamp = nextDequeueDueTimestamp;
@@ -46,6 +51,10 @@ public class DequeueStatistic {
 
     public boolean isEmpty() {
         return lastDequeueAttemptTimestamp == null && lastDequeueSuccessTimestamp == null && nextDequeueDueTimestamp == null;
+    }
+
+    public String getQueueName() {
+        return queueName;
     }
 
     public void setLastDequeueAttemptTimestamp(Long timestamp) {
@@ -111,7 +120,7 @@ public class DequeueStatistic {
         putIfNotNull(json, KEY_NEXT_DEQUEUE_DUE_TS, nextDequeueDueTimestamp);
         putIfNotNull(json, KEY_LAST_UPDATED_TS, lastUpdatedTimestamp);
         putIfNotNull(json, KEY_FAILED_REASON, failedReason);
-
+        putIfNotNull(json, KEY_QUEUENAME, queueName);
         // always include boolean
         json.put(KEY_MARK_FOR_REMOVAL, markForRemoval);
 
@@ -134,10 +143,11 @@ public class DequeueStatistic {
         Long nextDue = json.getLong(KEY_NEXT_DEQUEUE_DUE_TS);
         Long lastUpd = json.getLong(KEY_LAST_UPDATED_TS);
         String reason = json.getString(KEY_FAILED_REASON);
-
+        String queueName = json.getString(KEY_QUEUENAME);
         Boolean flag = json.getBoolean(KEY_MARK_FOR_REMOVAL, false);
 
         return new DequeueStatistic(
+                queueName,
                 lastAtt,
                 lastSuc,
                 nextDue,
