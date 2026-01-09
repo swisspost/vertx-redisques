@@ -1,21 +1,17 @@
 package org.swisspush.redisques.util;
 
-import com.google.common.collect.Lists;
-import io.vertx.core.AsyncResult;
 import io.vertx.core.Future;
-import io.vertx.core.Handler;
 import io.vertx.core.Promise;
 import io.vertx.core.json.JsonObject;
 import io.vertx.redis.client.Response;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.queue.KeyspaceHelper;
 import org.swisspush.redisques.queue.RedisService;
 
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 public class DequeueStatisticCollector {
@@ -45,7 +41,7 @@ public class DequeueStatisticCollector {
             } else {
 
             }
-            Map<String, DequeueStatistic> result =  new HashMap<>();
+            Map<String, DequeueStatistic> result = new HashMap<>();
             for (Response response : statisticsSet.result()) {
                 JsonObject jsonObject = new JsonObject(response.toString());
                 DequeueStatistic dequeueStatistic = DequeueStatistic.fromJson(jsonObject);
@@ -57,7 +53,6 @@ public class DequeueStatisticCollector {
         });
         return promise.future();
     }
-
 
     /**
      *
@@ -72,7 +67,6 @@ public class DequeueStatisticCollector {
             return addOrUpdateDequeueStatistic(queueName, dequeueStatistic);
         }
     }
-
 
     private Future<Void> removeDequeuStatistic(String queueName) {
         Promise<Void> promise = Promise.promise();
@@ -92,26 +86,37 @@ public class DequeueStatisticCollector {
 
     private Future<Void> addOrUpdateDequeueStatistic(String queueName, DequeueStatistic dequeueStatistic) {
         Promise<Void> promise = Promise.promise();
-        redisService.zadd(keyspaceHelper.getDequeueStatisticTsKey(), Arrays.asList("GT", "CH"),
-                queueName,
-                dequeueStatistic.getLastUpdatedTimestamp().toString()).onComplete(zaddAsyncResult -> {
-            if (zaddAsyncResult.failed()) {
-                log.warn("Redis: Error in update DequeueStatistic Timestamp for queue {}", queueName, zaddAsyncResult.cause());
+        //note: flag 'GT' is not supports in old Redis for ZADD, needed V >= 6.2.0
+        redisService.zscore(keyspaceHelper.getDequeueStatisticTsKey(), queueName).onComplete(result -> {
+            if (result.failed()) {
+                log.warn("failed to get score of dequeueStatistic for {}. follow operations will skip", queueName);
                 promise.complete();
-            } else {
-                if (zaddAsyncResult.result() != null && zaddAsyncResult.result().toInteger() == 1) {
-                    redisService.hset(keyspaceHelper.getDequeueStatisticKey(), queueName, dequeueStatistic.asJson().encode()).onComplete(hsetAsyncResult -> {
-                        if (hsetAsyncResult.failed()) {
-                            log.warn("Redis: Error in update DequeueStatistic for queue {}", queueName, hsetAsyncResult.cause());
-                            promise.complete();
+                return;
+            }
+            if (result.result() == null || dequeueStatistic.getLastUpdatedTimestamp() > result.result().toLong()) {
+                redisService.zadd(keyspaceHelper.getDequeueStatisticTsKey(), List.of("CH"),
+                        queueName,
+                        Double.toString(dequeueStatistic.getLastUpdatedTimestamp())).onComplete(zaddAsyncResult -> {
+                    if (zaddAsyncResult.failed()) {
+                        log.warn("Redis: Error in update DequeueStatistic Timestamp for queue {}", queueName, zaddAsyncResult.cause());
+                        promise.complete();
+                    } else {
+                        if (zaddAsyncResult.result() != null && zaddAsyncResult.result().toInteger() == 1) {
+                            redisService.hset(keyspaceHelper.getDequeueStatisticKey(), queueName, dequeueStatistic.asJson().encode()).onComplete(hsetAsyncResult -> {
+                                if (hsetAsyncResult.failed()) {
+                                    log.warn("Redis: Error in update DequeueStatistic for queue {}", queueName, hsetAsyncResult.cause());
+                                }
+                                promise.complete();
+                            });
                         } else {
+                            log.info("DequeueStatistic timestamp update failed {}, skip.", queueName);
                             promise.complete();
                         }
-                    });
-                } else {
-                    log.info("DequeueStatistic timestamp is newer compare to local one for queue {}, skip.", queueName);
-                    promise.complete();
-                }
+                    }
+                });
+            } else {
+                log.debug("a newer dequeueStatistic for {} already exists", queueName);
+                promise.complete();
             }
         });
         return promise.future();

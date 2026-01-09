@@ -255,6 +255,11 @@ public class RedisQues extends AbstractVerticle {
         return keyspaceHelper;
     }
 
+    @VisibleForTesting
+    public RedisService getRedisService() {
+        return redisService;
+    }
+
     @Override
     public void stop() {
         queueRegistryService.stop();

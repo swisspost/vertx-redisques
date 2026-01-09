@@ -113,6 +113,12 @@ public class RedisService {
         );
     }
 
+    public Future<Response> zscore(String key, String value) {
+        return redis().compose((RedisAPI redisAPI) ->
+                redisAPI.zscore(key, value)
+        );
+    }
+
     public Future<Response> zrem(String key, String value) {
         return redis().compose((RedisAPI redisAPI) ->
                 redisAPI.zrem(Arrays.asList(key, value))
