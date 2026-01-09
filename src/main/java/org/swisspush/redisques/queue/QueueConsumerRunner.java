@@ -341,14 +341,18 @@ public class QueueConsumerRunner {
                 boolean success;
                 String requestMsg = "OK"; // default ok
                 if (reply.succeeded()) {
-                    success = OK.equals(reply.result().body().getString(STATUS));
+                    JsonObject body = reply.result().body();
+                    String status = body.getString(STATUS);
+                    success = OK.equals(status);
                     if (success) {
                         queueStatsService.dequeueStatisticSetLastDequeueSuccessTimestamp(queue,System.currentTimeMillis());
                     } else {
-                        StringBuilder sb = new StringBuilder("Queue processor failed with status: ");
-                        sb.append(reply.result().body().getString(STATUS));
+                        String msg = body.getString(MESSAGE);
+                        StringBuilder sb = new StringBuilder(64 + status.length() + msg.length());
+                        sb.append("Queue processor failed with status: ");
+                        sb.append(status);
                         sb.append(", Message: ");
-                        sb.append(reply.result().body().getString(MESSAGE));
+                        sb.append(msg);
                         requestMsg = sb.toString();
                     }
                 } else {
