@@ -267,8 +267,4 @@ public class RedisQues extends AbstractVerticle {
             redisMonitor = null;
         }
     }
-
-    public RedisService getRedisService() {
-        return redisService;
-    }
 }
