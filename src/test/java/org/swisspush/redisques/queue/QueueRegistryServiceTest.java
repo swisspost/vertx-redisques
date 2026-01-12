@@ -144,7 +144,7 @@ public class QueueRegistryServiceTest extends AbstractTestCase {
         final String queueNameForFakeConsumer = "queue-another-consumer-1-test";
 
         // a fake consumer never expired
-        queueRegistryService.aliveConsumers.put(fakeConsumerId, Long.MAX_VALUE);
+        queueRegistryService.aliveConsumers.put(fakeConsumerId, fakeConsumerId);
         Promise<Void> fakeConsumerPromise = Promise.promise();
 
         vertx.eventBus().consumer(fakeConsumerId).handler(event -> fakeConsumerPromise.complete());
@@ -203,7 +203,7 @@ public class QueueRegistryServiceTest extends AbstractTestCase {
         QueueRegistryService queueRegistryService = redisQues.getQueueRegistryService();
         final String fakeConsumerId = UUID.randomUUID().toString();
         final String queueNameForFakeConsumer = "queue-another-consumer-2-test";
-        queueRegistryService.aliveConsumers.put(fakeConsumerId, Long.MAX_VALUE); // a fake consumer never expired
+        queueRegistryService.aliveConsumers.put(fakeConsumerId, fakeConsumerId); // a fake consumer never expired
 
         Promise<Void> fakeConsumerPromise = Promise.promise();
         vertx.eventBus().consumer(fakeConsumerId).handler(event -> fakeConsumerPromise.complete());
@@ -259,7 +259,7 @@ public class QueueRegistryServiceTest extends AbstractTestCase {
         QueueRegistryService queueRegistryService = redisQues.getQueueRegistryService();
         final String fakeConsumerId = UUID.randomUUID().toString();
         final String queueNameForFakeConsumer = "queue-another-consumer-3-test";
-        queueRegistryService.aliveConsumers.put(fakeConsumerId, Long.MAX_VALUE); // a fake consumer never expired
+        queueRegistryService.aliveConsumers.put(fakeConsumerId, fakeConsumerId); // a fake consumer never expired
 
         Promise<Void> fakeConsumerPromise = Promise.promise();
         vertx.eventBus().consumer(fakeConsumerId).handler(event -> fakeConsumerPromise.complete());
@@ -317,7 +317,7 @@ public class QueueRegistryServiceTest extends AbstractTestCase {
         QueueRegistryService queueRegistryService = redisQues.getQueueRegistryService();
         final String fakeConsumerId = UUID.randomUUID().toString();
         final String queueNameForFakeConsumer = "queue-another-consumer-4-test";
-        queueRegistryService.aliveConsumers.put(fakeConsumerId, Long.MAX_VALUE); // a fake consumer never expired
+        queueRegistryService.aliveConsumers.put(fakeConsumerId, fakeConsumerId); // a fake consumer never expired
         Promise<Void> fakeConsumerPromise = Promise.promise();
         vertx.eventBus().consumer(fakeConsumerId).handler(event -> fakeConsumerPromise.complete());
         wait500Ms();
@@ -385,7 +385,7 @@ public class QueueRegistryServiceTest extends AbstractTestCase {
         QueueRegistryService queueRegistryService = redisQues.getQueueRegistryService();
         final String fakeConsumerId = UUID.randomUUID().toString();
 
-        queueRegistryService.aliveConsumers.put(fakeConsumerId, Long.MAX_VALUE); // a fake consumer never expired
+        queueRegistryService.aliveConsumers.put(fakeConsumerId, fakeConsumerId); // a fake consumer never expired
         jedis.zadd(redisQues.getKeyspaceHelper().getQueuesKey(), Long.MAX_VALUE, "test-queue-1");
         jedis.zadd(redisQues.getKeyspaceHelper().getQueuesKey(), 2, "test-queue-2");
         jedis.zadd(redisQues.getKeyspaceHelper().getQueuesKey(), Long.MAX_VALUE, "test-queue-3");

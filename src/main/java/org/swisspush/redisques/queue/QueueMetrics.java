@@ -1,6 +1,7 @@
 package org.swisspush.redisques.queue;
 
 import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.LongTaskTimer;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.vertx.core.Vertx;
@@ -19,6 +20,8 @@ import org.swisspush.redisques.util.RedisquesConfigurationProvider;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class QueueMetrics {
     private static final Logger log = LoggerFactory.getLogger(QueueMetrics.class);
@@ -28,7 +31,8 @@ public class QueueMetrics {
     private final KeyspaceHelper keyspaceHelper;
     private MeterRegistry meterRegistry;
     private Counter dequeueCounter;
-    private Counter consumerCounter;
+    private Gauge consumerCounter;
+    private AtomicInteger consumerCounterValue = new AtomicInteger(0);
     MetricsCollector metricsCollector;
     private Lock lock;
 
@@ -39,11 +43,11 @@ public class QueueMetrics {
         dequeueCounter.increment();
     }
 
-    void consumerCounterIncrement(int num) {
+    void setConsumerCounter(int num) {
         if (consumerCounter == null) {
             return;
         }
-        consumerCounter.increment();
+        consumerCounterValue.set(num);
     }
 
     public QueueMetrics(Vertx vertx, KeyspaceHelper keyspaceHelper, RedisService redisService, MeterRegistry meterRegistry, RedisquesConfigurationProvider configurationProvider,
@@ -132,7 +136,7 @@ public class QueueMetrics {
             dequeueCounter = Counter.builder(MetricMeter.DEQUEUE.getId())
                     .description(MetricMeter.DEQUEUE.getDescription()).tag(MetricTags.IDENTIFIER.getId(), metricsIdentifier).register(meterRegistry);
 
-            consumerCounter = Counter.builder(MetricMeter.QUEUE_CONSUMER_COUNT.getId())
+            consumerCounter = Gauge.builder(MetricMeter.QUEUE_CONSUMER_COUNT.getId(), consumerCounterValue, AtomicInteger::get)
                     .description(MetricMeter.QUEUE_CONSUMER_COUNT.getDescription()).tag(MetricTags.IDENTIFIER.getId(), metricsIdentifier).register(meterRegistry);
 
             int metricRefreshPeriod = cfg.getMetricRefreshPeriod();

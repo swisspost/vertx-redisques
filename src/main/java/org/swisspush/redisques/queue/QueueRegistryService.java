@@ -47,7 +47,6 @@ public class QueueRegistryService {
     private final RedisService redisService;
     private final RedisquesConfigurationProvider configurationProvider;
     private final MessageConsumer<String> consumersMessageConsumer;
-    private final MessageConsumer<String> consumersAliveMessageConsumer;
     private final MessageConsumer<String> refreshRegistrationConsumer;
     private final MessageConsumer<String> notifyConsumer;
     private final MessageConsumer<String> uidMessageConsumer;
@@ -65,7 +64,7 @@ public class QueueRegistryService {
     private final QueueStatsService queueStatsService;
     private Handler<Void> stoppedHandler = null;
     private PeriodicSkipScheduler periodicSkipScheduler;
-    protected Map<String, Long> aliveConsumers = new ConcurrentHashMap<>();
+    protected Map<String, String> aliveConsumers = new ConcurrentHashMap<>();
 
 
     public void stop() {
@@ -91,7 +90,6 @@ public class QueueRegistryService {
 
         // Handles registration requests
         consumersMessageConsumer = vertx.eventBus().consumer(keyspaceHelper.getConsumersAddress(), this::handleRegistrationRequest);
-        consumersAliveMessageConsumer = vertx.eventBus().consumer(keyspaceHelper.getConsumersAliveAddress(), this::handleConsumerAlive);
         refreshRegistrationConsumer = vertx.eventBus().consumer(keyspaceHelper.getVerticleRefreshRegistrationKey(), this::handleRefreshRegistration);
         notifyConsumer = vertx.eventBus().consumer(keyspaceHelper.getVerticleNotifyConsumerKey(), this::handleNotifyConsumer);
 
@@ -176,16 +174,68 @@ public class QueueRegistryService {
         });
     }
 
-    private void handleConsumerAlive(Message<String> msg) {
-        final String consumerId = msg.body();
-        final long periodMs = getConfiguration().getRefreshPeriod() * 1000L;
-        if (keyspaceHelper.getVerticleUid().equals(consumerId)) {
-            log.debug("RedisQues consumer {} is myself, skip", consumerId);
-            return;
-        }
-        aliveConsumers.put(consumerId, currentTimeMillis() + (periodMs * 4));
-        log.debug("RedisQues consumer {} keep alive renewed", consumerId);
+    private Future<HashSet<String>> getAliveConsumers() {
+        final Promise<HashSet<String>> promise = Promise.promise();
+        final HashSet<String> consumerSet = new HashSet<>();
+        // add self first
+        consumerSet.add(keyspaceHelper.getVerticleUid());
+        // don't have many keys here, so get all at once
+        redisService.keys(keyspaceHelper.getAliveConsumersPrefix() + "*").onComplete(keysResult -> {
+            if (keysResult.failed()) {
+                log.warn("failed to get alive consumer list", keysResult.cause());
+            } else {
+                Response keys = keysResult.result();
+                if (keys == null || keys.size() == 0) {
+                    log.debug("No alive consumers found");
+                    promise.complete(consumerSet);
+                    return;
+                }
+                for (Response response : keys) {
+                    consumerSet.add(response.toString().replace(keyspaceHelper.getAliveConsumersPrefix(), ""));
+                }
+                metrics.setConsumerCounter(consumerSet.size());
+                log.debug("{} alive consumers found", consumerSet.size());
+                promise.complete(consumerSet);
+            }
+        });
+        return promise.future();
     }
+
+    private Future<Void> registerKeepConsumerAlive() {
+        Promise<Void> promise = Promise.promise();
+        // initial set
+        aliveConsumers.put(keyspaceHelper.getVerticleUid(), keyspaceHelper.getVerticleUid());
+        final String consumerKey = keyspaceHelper.getAliveConsumersPrefix() + keyspaceHelper.getVerticleUid();
+        redisService.setNxPx(consumerKey, keyspaceHelper.getVerticleUid(), false, getConfiguration().getRefreshPeriod());
+
+        // update 2 heartbeat timestamp per refresh period
+        final long periodMs = Math.max(getConfiguration().getRefreshPeriod() / 2 * 1000L, 1);
+
+        vertx.setPeriodic(periodMs, event -> {
+            redisService.setNxPx(consumerKey, keyspaceHelper.getVerticleUid(), false, getConfiguration().getRefreshPeriod());
+            log.debug("RedisQues consumer {} keep alive updated", keyspaceHelper.getVerticleUid());
+            getAliveConsumers().onComplete(event1 -> {
+                if (event1.failed()) {
+                    log.warn("failed to get alive consumer list", event1.cause());
+                    promise.complete();
+                    return;
+                }
+                HashSet<String> newlist = event1.result();
+                // add all first
+                for (String consumer : newlist) {
+                    aliveConsumers.put(consumer, consumer);
+                }
+                // remove older which not in new list
+                for (String consumer : aliveConsumers.keySet() ) {
+                    aliveConsumers.compute(consumer, (key, oldVal) ->
+                            newlist.contains(key) ? oldVal : null
+                    );
+                }
+            });
+        });
+        return promise.future();
+    }
+
 
     /**
      * <p>Handler receiving registration requests when no consumer is registered
@@ -206,7 +256,6 @@ public class QueueRegistryService {
                     metrics.perQueueMetricsReg(queueName);
                     boolean setDone = event.result() != null ? event.result() : false;
                     log.trace("RedisQues setxn result: {} for queue: {}", setDone, queueName);
-                    metrics.consumerCounterIncrement(1);
                     if (setDone) {
                         // I am now the registered consumer for this queue.
                         log.debug("RedisQues Now registered for queue {}", queueName);
@@ -317,27 +366,6 @@ public class QueueRegistryService {
                         queueStatisticsCollector.resetQueueFailureStatistics(queue, onDone);
                     }
                 });
-            }
-        });
-    }
-
-    private void registerKeepConsumerAlive() {
-        // publish 2 heartbeat per refresh period
-        final long periodMs = Math.max(getConfiguration().getRefreshPeriod() / 2 * 1000L, 1);
-        // add self as non-expirable first
-        aliveConsumers.put(keyspaceHelper.getVerticleUid(), Long.MAX_VALUE);
-        vertx.setPeriodic(periodMs, event -> {
-            vertx.eventBus().publish(keyspaceHelper.getConsumersAliveAddress(), keyspaceHelper.getVerticleUid());
-            log.debug("RedisQues consumer {} keep alive published", keyspaceHelper.getVerticleUid());
-
-            Iterator<Map.Entry<String, Long>> iterator = aliveConsumers.entrySet().iterator();
-            while (iterator.hasNext()) {
-                Map.Entry<String, Long> entry = iterator.next();
-                if (currentTimeMillis() > entry.getValue()) {
-                    log.info("RedisQues consumer with id {}' has expired", entry.getKey());
-                    iterator.remove();
-                    metrics.consumerCounterIncrement(-1);
-                }
             }
         });
     }
@@ -478,14 +506,14 @@ public class QueueRegistryService {
             if (event.failed()) {
                 log.error("failed to get non-active queues by zrangebyscore", event.cause());
                 promise.fail(event.cause());
-            }else {
+            } else {
                 event.result().iterator().forEachRemaining(response -> queues.add(response.toString()));
                 // 2. find all queues which no consumer
                 redisService.zrangebyscore(keyspaceHelper.getQueuesKey(), "-inf", "+inf").onComplete(event1 -> {
                     if (event1.failed()) {
                         log.error("failed to get all queues by zrangebyscore", event1.cause());
                         promise.fail(event1.cause());
-                    }else {
+                    } else {
                         Set<String> allQueues = new HashSet<>();
                         event1.result().iterator().forEachRemaining(response -> allQueues.add(response.toString()));
                         List<Future> futures = new ArrayList<>();
@@ -694,7 +722,7 @@ public class QueueRegistryService {
 
     public void gracefulStop(final Handler<Void> doneHandler) {
         unregisterAll(Arrays.asList(consumersMessageConsumer, uidMessageConsumer,
-                consumersAliveMessageConsumer, refreshRegistrationConsumer, notifyConsumer)).onComplete(event -> {
+                refreshRegistrationConsumer, notifyConsumer)).onComplete(event -> {
             if (event.failed()) {
                 log.warn("TODO error handling", exceptionFactory.newException(
                         "unregisterConsumers() failed", event.cause()));
@@ -745,7 +773,7 @@ public class QueueRegistryService {
                     if (result.failed()) {
                         log.warn("Failed to remove consumer '{}'", key, exceptionFactory.newException(result.cause()));
                     } else {
-                        if (result.result() != null && result.result().toInteger() == 1){
+                        if (result.result() != null && result.result().toInteger() == 1) {
                             log.info("consumer key {} removed", key);
                             // need find a new consumer for this queue, let's make a peer become consumer
                             log.debug("RedisQues Sending new registration request for queue {}", queueName);
