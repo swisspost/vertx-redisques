@@ -145,7 +145,7 @@ public class QueueRegistryServiceTest extends AbstractTestCase {
         final String fakeConsumerId = UUID.randomUUID().toString();
         final String queueNameForFakeConsumer = "queue-another-consumer-1-test";
 
-        queueRegistryService.aliveConsumers.put(fakeConsumerId, fakeConsumerId);
+        queueRegistryService.aliveConsumers.add(fakeConsumerId);
         Promise<Void> fakeConsumerPromise = Promise.promise();
 
         vertx.eventBus().consumer(fakeConsumerId).handler(event -> fakeConsumerPromise.complete());
@@ -204,7 +204,7 @@ public class QueueRegistryServiceTest extends AbstractTestCase {
         QueueRegistryService queueRegistryService = redisQues.getQueueRegistryService();
         final String fakeConsumerId = UUID.randomUUID().toString();
         final String queueNameForFakeConsumer = "queue-another-consumer-2-test";
-        queueRegistryService.aliveConsumers.put(fakeConsumerId, fakeConsumerId);
+        queueRegistryService.aliveConsumers.add(fakeConsumerId);
 
         Promise<Void> fakeConsumerPromise = Promise.promise();
         vertx.eventBus().consumer(fakeConsumerId).handler(event -> fakeConsumerPromise.complete());
@@ -260,7 +260,7 @@ public class QueueRegistryServiceTest extends AbstractTestCase {
         QueueRegistryService queueRegistryService = redisQues.getQueueRegistryService();
         final String fakeConsumerId = UUID.randomUUID().toString();
         final String queueNameForFakeConsumer = "queue-another-consumer-3-test";
-        queueRegistryService.aliveConsumers.put(fakeConsumerId, fakeConsumerId);
+        queueRegistryService.aliveConsumers.add(fakeConsumerId);
 
         Promise<Void> fakeConsumerPromise = Promise.promise();
         vertx.eventBus().consumer(fakeConsumerId).handler(event -> fakeConsumerPromise.complete());
@@ -318,7 +318,7 @@ public class QueueRegistryServiceTest extends AbstractTestCase {
         QueueRegistryService queueRegistryService = redisQues.getQueueRegistryService();
         final String fakeConsumerId = UUID.randomUUID().toString();
         final String queueNameForFakeConsumer = "queue-another-consumer-4-test";
-        queueRegistryService.aliveConsumers.put(fakeConsumerId, fakeConsumerId);
+        queueRegistryService.aliveConsumers.add(fakeConsumerId);
         Promise<Void> fakeConsumerPromise = Promise.promise();
         vertx.eventBus().consumer(fakeConsumerId).handler(event -> fakeConsumerPromise.complete());
         waitMillis(500);
@@ -386,7 +386,7 @@ public class QueueRegistryServiceTest extends AbstractTestCase {
         QueueRegistryService queueRegistryService = redisQues.getQueueRegistryService();
         final String fakeConsumerId = UUID.randomUUID().toString();
 
-        queueRegistryService.aliveConsumers.put(fakeConsumerId, fakeConsumerId);
+        queueRegistryService.aliveConsumers.add(fakeConsumerId);
         jedis.zadd(redisQues.getKeyspaceHelper().getQueuesKey(), Long.MAX_VALUE, "test-queue-1");
         jedis.zadd(redisQues.getKeyspaceHelper().getQueuesKey(), 2, "test-queue-2");
         jedis.zadd(redisQues.getKeyspaceHelper().getQueuesKey(), Long.MAX_VALUE, "test-queue-3");
@@ -435,7 +435,7 @@ public class QueueRegistryServiceTest extends AbstractTestCase {
         final String fakeConsumerId = UUID.randomUUID().toString();
         flushAll();
         QueueRegistryService queueRegistryService = redisQues.getQueueRegistryService();
-        queueRegistryService.aliveConsumers.put(fakeConsumerId, fakeConsumerId);
+        queueRegistryService.aliveConsumers.add(fakeConsumerId);
         Assert.assertEquals(2, queueRegistryService.aliveConsumers.size());
         waitMillis(5000);
         Assert.assertEquals(1, queueRegistryService.aliveConsumers.size());

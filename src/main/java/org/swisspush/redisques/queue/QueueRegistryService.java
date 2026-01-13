@@ -64,7 +64,7 @@ public class QueueRegistryService {
     private final QueueStatsService queueStatsService;
     private Handler<Void> stoppedHandler = null;
     private PeriodicSkipScheduler periodicSkipScheduler;
-    protected Map<String, String> aliveConsumers = new ConcurrentHashMap<>();
+    protected Set<String> aliveConsumers = ConcurrentHashMap.newKeySet();
 
 
     public void stop() {
@@ -203,12 +203,14 @@ public class QueueRegistryService {
 
     private Future<Void> registerKeepConsumerAlive() {
         Promise<Void> promise = Promise.promise();
-        // initial set
-        aliveConsumers.put(keyspaceHelper.getVerticleUid(), keyspaceHelper.getVerticleUid());
-        final String consumerKey = keyspaceHelper.getAliveConsumersPrefix() + keyspaceHelper.getVerticleUid();
+        // initial set, add self into local list first
+        aliveConsumers.add(keyspaceHelper.getVerticleUid());
 
         // keep key alive 2 times of refresh period
         final long keyLiveTime = getConfiguration().getRefreshPeriod() * 1000L * 2;
+
+        // add self into Redis with expiring time, without wait.
+        final String consumerKey = keyspaceHelper.getAliveConsumersPrefix() + keyspaceHelper.getVerticleUid();
         redisService.setNxPx(consumerKey, keyspaceHelper.getVerticleUid(), false, keyLiveTime);
 
         // update 2 heartbeat timestamp per refresh period
@@ -225,15 +227,9 @@ public class QueueRegistryService {
                 }
                 HashSet<String> newlist = event1.result();
                 // add all first
-                for (String consumer : newlist) {
-                    aliveConsumers.put(consumer, consumer);
-                }
+                aliveConsumers.addAll(newlist);
                 // remove older which not in new list
-                for (String consumer : aliveConsumers.keySet() ) {
-                    aliveConsumers.compute(consumer, (key, oldVal) ->
-                            newlist.contains(key) ? oldVal : null
-                    );
-                }
+                aliveConsumers.retainAll(newlist);
             });
         });
         return promise.future();
@@ -533,7 +529,7 @@ public class QueueRegistryService {
                                     queuePromise.fail(consumerKeyResults.cause());
                                 }else {
                                     String consumer = Objects.toString(consumerKeyResults.result(), "");
-                                    if (StringUtils.isEmpty(consumer) || !aliveConsumers.containsKey(consumer)) {
+                                    if (StringUtils.isEmpty(consumer) || !aliveConsumers.contains(consumer)) {
                                         queues.add(queueName);
                                     }
                                     queuePromise.complete();
@@ -775,7 +771,7 @@ public class QueueRegistryService {
                 log.debug("RedisQues Sending registration request for queue {}", queueName);
                 eb.send(keyspaceHelper.getConsumersAddress(), queueName);
                 promise.complete();
-            } else if (!aliveConsumers.containsKey(consumer)) {
+            } else if (!aliveConsumers.contains(consumer)) {
                 log.info("RedisQues consumer {} of queue {} does not exist.", consumer, queueName);
                 redisService.del(Collections.singletonList(key)).onComplete(result -> {
                     if (result.failed()) {
