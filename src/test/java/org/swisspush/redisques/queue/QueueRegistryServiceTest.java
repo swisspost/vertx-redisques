@@ -11,6 +11,7 @@ import io.vertx.ext.unit.TestContext;
 import io.vertx.ext.unit.junit.Timeout;
 import org.junit.Assert;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
 import org.swisspush.redisques.AbstractTestCase;
@@ -429,6 +430,7 @@ public class QueueRegistryServiceTest extends AbstractTestCase {
     }
 
     @Test
+    @Ignore // Can run at local only
     public void testAliveConsumerListUpdate(TestContext context) {
         final String fakeConsumerId = UUID.randomUUID().toString();
         flushAll();
