@@ -348,7 +348,7 @@ public class QueueConsumerRunner {
                         queueStatsService.dequeueStatisticSetLastDequeueSuccessTimestamp(queue,System.currentTimeMillis());
                     } else {
                         String msg = body.getString(MESSAGE);
-                        StringBuilder sb = new StringBuilder(64 + status.length() + (msg == null ? "null" : String.valueOf(msg.length())));
+                        StringBuilder sb = new StringBuilder(64 + status.length() + (msg == null ? 0 : msg.length()));
                         sb.append("Queue processor failed with status: ");
                         sb.append(status);
                         sb.append(", Message: ");
