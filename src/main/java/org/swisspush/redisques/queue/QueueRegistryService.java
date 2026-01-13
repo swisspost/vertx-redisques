@@ -220,7 +220,7 @@ public class QueueRegistryService {
             getAliveConsumers().onComplete(event1 -> {
                 if (event1.failed()) {
                     log.warn("failed to get alive consumer list", event1.cause());
-                    promise.complete();
+                    promise.fail(event1.cause());
                     return;
                 }
                 HashSet<String> newlist = event1.result();
