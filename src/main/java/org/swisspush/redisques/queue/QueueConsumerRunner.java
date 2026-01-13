@@ -501,4 +501,15 @@ public class QueueConsumerRunner {
             log.warn("Redis: Error in updateTimestamp", throwable);
         });
     }
+
+    /**
+     * Update the last queue register refreshed
+     * @param queueName
+     */
+    public void updateRefreshRegistrationTimeStamp(String queueName) {
+        getMyQueues().computeIfPresent(queueName, (s, queueProcessingState) -> {
+            queueProcessingState.setLastRegisterRefreshedMillis(System.currentTimeMillis());
+            return queueProcessingState;
+        });
+    }
 }
