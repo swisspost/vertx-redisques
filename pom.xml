@@ -2,7 +2,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>org.swisspush</groupId>
     <artifactId>redisques</artifactId>
-    <version>4.1.27-SNAPSHOT</version>
+    <version>4.1.27.05-SNAPSHOT</version>
     <name>redisques</name>
     <description>
         A highly scalable redis-persistent queuing system for vertx
@@ -129,6 +129,27 @@
             <version>${jedis.version}</version>
             <scope>test</scope>
         </dependency>
+        <!-- enabled those dependencies if want logs in test -->
+
+<!--        <dependency>-->
+<!--            <groupId>org.apache.logging.log4j</groupId>-->
+<!--            <artifactId>log4j-api</artifactId>-->
+<!--            <version>${log4j.version}</version>-->
+<!--            <scope>test</scope>-->
+<!--        </dependency>-->
+<!--        <dependency>-->
+<!--            <groupId>org.apache.logging.log4j</groupId>-->
+<!--            <artifactId>log4j-core</artifactId>-->
+<!--            <version>${log4j.version}</version>-->
+<!--            <scope>test</scope>-->
+<!--        </dependency>-->
+<!--        <dependency>-->
+<!--            <groupId>org.apache.logging.log4j</groupId>-->
+<!--            <artifactId>log4j-slf4j2-impl</artifactId>-->
+<!--            <version>${log4j.version}</version>-->
+<!--            <scope>test</scope>-->
+<!--        </dependency>-->
+
     </dependencies>
     <build>
         <pluginManagement>
@@ -372,6 +393,7 @@
         <vertx.version>4.5.2</vertx.version>
         <micrometer.version>1.15.2</micrometer.version>
         <slf4j.version>2.0.10</slf4j.version>
+        <log4j.version>2.20.0</log4j.version>
         <mockito.version>5.8.0</mockito.version>
         <junit.version>4.13.2</junit.version>
         <guava.version>33.1.0-jre</guava.version>

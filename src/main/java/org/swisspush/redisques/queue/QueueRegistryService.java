@@ -206,13 +206,16 @@ public class QueueRegistryService {
         // initial set
         aliveConsumers.put(keyspaceHelper.getVerticleUid(), keyspaceHelper.getVerticleUid());
         final String consumerKey = keyspaceHelper.getAliveConsumersPrefix() + keyspaceHelper.getVerticleUid();
-        redisService.setNxPx(consumerKey, keyspaceHelper.getVerticleUid(), false, getConfiguration().getRefreshPeriod());
+
+        // keep key alive 2 times of refresh period
+        final long keyLiveTime = getConfiguration().getRefreshPeriod() * 1000L * 2;
+        redisService.setNxPx(consumerKey, keyspaceHelper.getVerticleUid(), false, keyLiveTime);
 
         // update 2 heartbeat timestamp per refresh period
         final long periodMs = Math.max(getConfiguration().getRefreshPeriod() / 2 * 1000L, 1);
 
         vertx.setPeriodic(periodMs, event -> {
-            redisService.setNxPx(consumerKey, keyspaceHelper.getVerticleUid(), false, getConfiguration().getRefreshPeriod());
+            redisService.setNxPx(consumerKey, keyspaceHelper.getVerticleUid(), false, keyLiveTime);
             log.debug("RedisQues consumer {} keep alive updated", keyspaceHelper.getVerticleUid());
             getAliveConsumers().onComplete(event1 -> {
                 if (event1.failed()) {
@@ -247,6 +250,11 @@ public class QueueRegistryService {
             log.warn("Got message without queue name while handleRegistrationRequest.");
             // IMO we should 'fail()' here. But we don't, to keep backward compatibility.
         }
+
+        registerQueue(queueName);
+    }
+
+    void registerQueue(String queueName) {
         log.debug("RedisQues Got registration request for queue {} from consumer: {}", queueName, keyspaceHelper.getVerticleUid());
         // Try to register for this queue
         tryRegister(keyspaceHelper.getConsumersPrefix() + queueName, keyspaceHelper.getVerticleUid()).onComplete(new Handler<AsyncResult<Boolean>>() {
