@@ -230,6 +230,8 @@ public class QueueRegistryService {
                 aliveConsumers.addAll(newlist);
                 // remove older which not in new list
                 aliveConsumers.retainAll(newlist);
+                // ensure self is inside
+                aliveConsumers.add(keyspaceHelper.getVerticleUid());
             });
         });
         return promise.future();
