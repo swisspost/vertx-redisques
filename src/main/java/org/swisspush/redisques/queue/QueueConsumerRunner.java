@@ -364,7 +364,7 @@ public class QueueConsumerRunner {
 
                 handler.handle(new AbstractMap.SimpleEntry<>(success, requestMsg));
             });
-            updateTimestamp(queue);
+            updateLastQueueProcessTimeStamp(queue);
         });
     }
 
@@ -494,7 +494,7 @@ public class QueueConsumerRunner {
      *
      * @param queueName name of the queue
      */
-    private void updateTimestamp(final String queueName) {
+    private void updateLastQueueProcessTimeStamp(final String queueName) {
         long ts = System.currentTimeMillis();
         log.trace("RedisQues update timestamp for queue: {} to: {}", queueName, ts);
         redisService.zadd(keyspaceHelper.getQueuesKey(), queueName, String.valueOf(ts)).onFailure(throwable -> {
@@ -503,10 +503,10 @@ public class QueueConsumerRunner {
     }
 
     /**
-     * Update the last queue register refreshed
+     * Update the last queue register refreshed time
      * @param queueName
      */
-    public void updateRefreshRegistrationTimeStamp(String queueName) {
+    public void updateLastRefreshRegistrationTimeStamp(String queueName) {
         getMyQueues().computeIfPresent(queueName, (s, queueProcessingState) -> {
             queueProcessingState.setLastRegisterRefreshedMillis(System.currentTimeMillis());
             return queueProcessingState;
