@@ -371,6 +371,8 @@ public class QueueRegistryService {
                     } else {
                         log.debug("RedisQues Removing queue {} from the list", queue);
                         queueConsumerRunner.getMyQueues().remove(queue);
+                        // This queue is not owned by this instance; removing it from the local dequeue statistics cache.
+                        queueStatsService.dequeueStatisticRemoveFromLocal(queue);
                         queueStatisticsCollector.resetQueueFailureStatistics(queue, onDone);
                     }
                 });
@@ -440,6 +442,8 @@ public class QueueRegistryService {
                 if (keyspaceHelper.getVerticleUid().equals(consumer)) {
                     log.debug("RedisQues remove consumer: {}", keyspaceHelper.getVerticleUid());
                     queueConsumerRunner.getMyQueues().remove(queueName);
+                    // This queue is not owned by this instance; removing it from the local dequeue statistics cache.
+                    queueStatsService.dequeueStatisticRemoveFromLocal(queueName);
                     redisService.del(Collections.singletonList(consumerKey)).onComplete(delResult -> {
                         if (delResult.failed()) {
                             log.warn("Failed to deregister myself from queue '{}'", consumerKey, exceptionFactory.newException(delResult.cause()));
