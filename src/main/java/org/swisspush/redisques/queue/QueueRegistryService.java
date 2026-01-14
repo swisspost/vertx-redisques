@@ -201,8 +201,7 @@ public class QueueRegistryService {
         return promise.future();
     }
 
-    private Future<Void> registerKeepConsumerAlive() {
-        Promise<Void> promise = Promise.promise();
+    private void registerKeepConsumerAlive() {
         // initial set, add self into local list first
         aliveConsumers.add(keyspaceHelper.getVerticleUid());
 
@@ -211,32 +210,35 @@ public class QueueRegistryService {
 
         // add self into Redis with expiring time, without wait.
         final String consumerKey = keyspaceHelper.getAliveConsumersPrefix() + keyspaceHelper.getVerticleUid();
-        redisService.setNxPx(consumerKey, keyspaceHelper.getVerticleUid(), false, keyLiveTime);
+        redisService.setNxPx(consumerKey, keyspaceHelper.getVerticleUid(), false, keyLiveTime)
+                .onFailure(e -> log.warn("failed to set initial alive consumer live key for {}", keyspaceHelper.getVerticleUid(), e));
 
         // update 2 heartbeat timestamp per refresh period
         final long periodMs = Math.max(getConfiguration().getRefreshPeriod() / 2 * 1000L, 1);
 
         vertx.setPeriodic(periodMs, event -> {
-            redisService.setNxPx(consumerKey, keyspaceHelper.getVerticleUid(), false, keyLiveTime);
-            log.debug("RedisQues consumer {} keep alive updated", keyspaceHelper.getVerticleUid());
-            getAliveConsumers().onComplete(event1 -> {
-                if (event1.failed()) {
-                    log.warn("failed to get alive consumer list", event1.cause());
-                    promise.fail(event1.cause());
-                    return;
+            redisService.setNxPx(consumerKey, keyspaceHelper.getVerticleUid(), false, keyLiveTime).onComplete(event2 -> {
+                if (event2.failed()) {
+                    log.warn("failed to update alive consumer live key for {}", keyspaceHelper.getVerticleUid(), event2.cause());
+                } else {
+                    log.debug("RedisQues consumer {} keep alive updated", keyspaceHelper.getVerticleUid());
                 }
-                HashSet<String> newlist = event1.result();
-                // add all first
-                aliveConsumers.addAll(newlist);
-                // remove older which not in new list
-                aliveConsumers.retainAll(newlist);
-                // ensure self is inside
-                aliveConsumers.add(keyspaceHelper.getVerticleUid());
+                getAliveConsumers().onComplete(event1 -> {
+                    if (event1.failed()) {
+                        log.warn("failed to get alive consumer list", event1.cause());
+                        return;
+                    }
+                    HashSet<String> newlist = event1.result();
+                    // add all first
+                    aliveConsumers.addAll(newlist);
+                    // remove older which not in new list
+                    aliveConsumers.retainAll(newlist);
+                    // ensure self is inside
+                    aliveConsumers.add(keyspaceHelper.getVerticleUid());
+                });
             });
         });
-        return promise.future();
     }
-
 
     /**
      * <p>Handler receiving registration requests when no consumer is registered
