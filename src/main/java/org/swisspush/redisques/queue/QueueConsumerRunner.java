@@ -169,6 +169,8 @@ public class QueueConsumerRunner {
                     // Somehow registration changed. Let's renotify.
                     log.trace("Registration for queue {} has changed to {}", queueName, consumer);
                     myQueues.remove(queueName);
+                    // This queue is not owned by this instance; removing it from the local dequeue statistics cache.
+                    queueStatsService.dequeueStatisticRemoveFromLocal(queueName);
                     notifyConsumer(queueName).onComplete(notifyConsumerEvent -> {
                         if (notifyConsumerEvent.failed()) {
                             log.warn("TODO error handling", exceptionFactory.newException(

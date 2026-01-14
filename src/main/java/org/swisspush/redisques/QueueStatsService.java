@@ -353,6 +353,12 @@ public class QueueStatsService {
         }
     }
 
+    public void dequeueStatisticRemoveFromLocal(String queue) {
+        if (dequeueStatisticEnabled) {
+            dequeueStatistic.remove(queue);
+        }
+    }
+
     public void createDequeueStatisticIfMissing(String queueName) {
         if (dequeueStatisticEnabled) {
             dequeueStatistic.computeIfAbsent(queueName, s -> new DequeueStatistic(queueName));
