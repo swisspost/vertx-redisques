@@ -348,7 +348,7 @@ public class QueueConsumerRunner {
                         queueStatsService.dequeueStatisticSetLastDequeueSuccessTimestamp(queue,System.currentTimeMillis());
                     } else {
                         String msg = body.getString(MESSAGE);
-                        StringBuilder sb = new StringBuilder(64 + status.length() + msg.length());
+                        StringBuilder sb = new StringBuilder(64 + status.length() + (msg == null ? 0 : msg.length()));
                         sb.append("Queue processor failed with status: ");
                         sb.append(status);
                         sb.append(", Message: ");
@@ -364,7 +364,7 @@ public class QueueConsumerRunner {
 
                 handler.handle(new AbstractMap.SimpleEntry<>(success, requestMsg));
             });
-            updateTimestamp(queue);
+            updateLastQueueProcessTimeStamp(queue);
         });
     }
 
@@ -494,11 +494,22 @@ public class QueueConsumerRunner {
      *
      * @param queueName name of the queue
      */
-    private void updateTimestamp(final String queueName) {
+    private void updateLastQueueProcessTimeStamp(final String queueName) {
         long ts = System.currentTimeMillis();
         log.trace("RedisQues update timestamp for queue: {} to: {}", queueName, ts);
         redisService.zadd(keyspaceHelper.getQueuesKey(), queueName, String.valueOf(ts)).onFailure(throwable -> {
             log.warn("Redis: Error in updateTimestamp", throwable);
+        });
+    }
+
+    /**
+     * Update the last queue register refreshed time
+     * @param queueName
+     */
+    public void updateLastRefreshRegistrationTimeStamp(String queueName) {
+        getMyQueues().computeIfPresent(queueName, (s, queueProcessingState) -> {
+            queueProcessingState.setLastRegisterRefreshedMillis(System.currentTimeMillis());
+            return queueProcessingState;
         });
     }
 }

@@ -14,6 +14,7 @@ import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.swisspush.redisques.AbstractTestCase;
+import org.swisspush.redisques.QueueState;
 import org.swisspush.redisques.RedisQues;
 import org.swisspush.redisques.action.AbstractQueueAction;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
@@ -24,8 +25,10 @@ import org.swisspush.redisques.util.TestMemoryUsageProvider;
 import redis.clients.jedis.Jedis;
 
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -427,5 +430,33 @@ public class QueueRegistryServiceTest extends AbstractTestCase {
                 context.fail();
             }
         });
+    }
+
+    @Test
+    public void testMyQueuesSort(TestContext context) {
+        Map<String, QueueProcessingState> myQueues = new HashMap<>();
+        myQueues.put("queue-1", new QueueProcessingState(QueueState.READY, 500));
+        myQueues.put("queue-2", new QueueProcessingState(QueueState.READY, 400));
+        myQueues.put("queue-3", new QueueProcessingState(QueueState.READY, 300));
+        myQueues.put("queue-4", new QueueProcessingState(QueueState.READY, 200));
+        myQueues.put("queue-5", new QueueProcessingState(QueueState.READY, 100));
+        QueueRegistryService queueRegistryService = redisQues.getQueueRegistryService();
+        myQueues = queueRegistryService.getSortedMyQueueClone(myQueues);
+        Iterator<Map.Entry<String, QueueProcessingState>> inherit = myQueues.entrySet().iterator();
+        Map.Entry<String, QueueProcessingState> entry = inherit.next();
+        Assert.assertEquals("queue-5", entry.getKey());
+        Assert.assertEquals(100, entry.getValue().getLastRegisterRefreshedMillis());
+        entry = inherit.next();
+        Assert.assertEquals("queue-4", entry.getKey());
+        Assert.assertEquals(200, entry.getValue().getLastRegisterRefreshedMillis());
+        entry = inherit.next();
+        Assert.assertEquals("queue-3", entry.getKey());
+        Assert.assertEquals(300, entry.getValue().getLastRegisterRefreshedMillis());
+        entry = inherit.next();
+        Assert.assertEquals("queue-2", entry.getKey());
+        Assert.assertEquals(400, entry.getValue().getLastRegisterRefreshedMillis());
+        entry = inherit.next();
+        Assert.assertEquals("queue-1", entry.getKey());
+        Assert.assertEquals(500, entry.getValue().getLastRegisterRefreshedMillis());
     }
 }
