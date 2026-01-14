@@ -239,7 +239,7 @@ public class QueueRegistryService {
             vertx.executeBlocking(() -> redisService.expire(consumerKey, String.valueOf(consumerLockTime)))
                     .compose((Future<Response> tooManyNestedFutures) -> tooManyNestedFutures)
                     .onComplete(event -> {
-                        getQueueConsumerRunner().updateRefreshRegistrationTimeStamp(queueName);
+                        getQueueConsumerRunner().updateLastRefreshRegistrationTimeStamp(queueName);
                         handler.handle(event);
                     });
         }
