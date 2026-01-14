@@ -26,9 +26,10 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.HashMap;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -294,8 +295,29 @@ public class QueueRegistryService {
         } else {
             vertx.executeBlocking(() -> redisService.expire(consumerKey, String.valueOf(consumerLockTime)))
                     .compose((Future<Response> tooManyNestedFutures) -> tooManyNestedFutures)
-                    .onComplete(handler);
+                    .onComplete(event -> {
+                        getQueueConsumerRunner().updateLastRefreshRegistrationTimeStamp(queueName);
+                        handler.handle(event);
+                    });
         }
+    }
+
+    /**
+     * reorder the myqueues list, sorted by old to new by LastRegisterRefreshedMillis
+     *
+     * @return
+     */
+    Map<String, QueueProcessingState> getSortedMyQueueClone(Map<String, QueueProcessingState> myQueues) {
+        return
+                myQueues.entrySet()
+                        .stream()
+                        .sorted(Comparator.comparingLong(e -> e.getValue().getLastRegisterRefreshedMillis()))
+                        .collect(Collectors.toMap(
+                                Map.Entry::getKey,
+                                Map.Entry::getValue,
+                                (a, b) -> a,
+                                LinkedHashMap::new
+                        ));
     }
 
     private void registerActiveQueueRegistrationRefresh() {
@@ -307,7 +329,7 @@ public class QueueRegistryService {
             @Override
             public void accept(Runnable onPeriodicDone) {
                 // Need a copy to prevent concurrent modification issuses.
-                iter = new HashMap<>(queueConsumerRunner.getMyQueues()).entrySet().iterator();
+                iter = getSortedMyQueueClone(queueConsumerRunner.getMyQueues()).entrySet().iterator();
                 // Trigger only a limited amount of requests in parallel.
                 upperBoundParallel.request(activeQueueRegRefreshReqQuota, iter, new UpperBoundParallel.Mentor<>() {
                     @Override
