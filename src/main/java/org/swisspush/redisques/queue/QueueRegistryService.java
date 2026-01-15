@@ -354,11 +354,20 @@ public class QueueRegistryService {
             }
 
             void refreshConsumerRegistration(BiConsumer<Throwable, Void> onQueueDone) {
-                var entry = iter.next();
-                if (entry.getValue().getState() == QueueState.CONSUMING) {
+                while (iter.hasNext()) {
+                    var entry = iter.next();
+                    var state = entry.getValue().getState();
+                    if (state != QueueState.CONSUMING) {
+                        log.trace("nothing to be done for this entry because state is: {}", state);
+                        continue;
+                    }
+                    /* MUST only trigger *ONE* entry, with that call, we do exactly this. We
+                     * also delegate the `onDone()` callback to our callee, so we also are NOT
+                     * responsible to call that anymore ourself, therefore we're ready to return. */
                     checkIfImStillTheRegisteredConsumer(entry.getKey(), onQueueDone);
+                    return;
                 }
-                // go next
+                /* did NOT trigger any entry above. So we MUST signal the completion ourself. */
                 onQueueDone.accept(null, null);
             }
 
