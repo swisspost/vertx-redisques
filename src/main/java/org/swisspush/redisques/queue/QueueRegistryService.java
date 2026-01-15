@@ -532,51 +532,6 @@ public class QueueRegistryService {
         });
     }
 
-    public Future<List<String>> getNotActiveQueues(long limit) {
-        Promise<List<String>> promise = Promise.promise();
-        final Set<String> queues = new HashSet<>();
-        // 1. find all non-active queue by zrangebyscore
-        redisService.zrangebyscore(keyspaceHelper.getQueuesKey(), "-inf", String.valueOf(limit)).onComplete(event -> {
-            if (event.failed()) {
-                log.error("failed to get non-active queues by zrangebyscore", event.cause());
-                promise.fail(event.cause());
-            } else {
-                event.result().iterator().forEachRemaining(response -> queues.add(response.toString()));
-                // 2. find all queues which no consumer
-                redisService.zrangebyscore(keyspaceHelper.getQueuesKey(), "-inf", "+inf").onComplete(event1 -> {
-                    if (event1.failed()) {
-                        log.error("failed to get all queues by zrangebyscore", event1.cause());
-                        promise.fail(event1.cause());
-                    } else {
-                        Set<String> allQueues = new HashSet<>();
-                        event1.result().iterator().forEachRemaining(response -> allQueues.add(response.toString()));
-                        List<Future> futures = new ArrayList<>();
-                        for (String queueName : allQueues) {
-                            Promise<Void> queuePromise = Promise.promise();
-                            redisService.get(keyspaceHelper.getConsumersPrefix() + queueName).onComplete(consumerKeyResults -> {
-                                if (consumerKeyResults.failed()) {
-                                    log.error("failed queue registration", consumerKeyResults.cause());
-                                    queuePromise.fail(consumerKeyResults.cause());
-                                }else {
-                                    String consumer = Objects.toString(consumerKeyResults.result(), "");
-                                    if (StringUtils.isEmpty(consumer) || !aliveConsumers.contains(consumer)) {
-                                        queues.add(queueName);
-                                    }
-                                    queuePromise.complete();
-                                }
-                            });
-                            futures.add(queuePromise.future());
-                        }
-                        CompositeFuture.all(futures)
-                                .onSuccess(v -> promise.complete(new ArrayList<>(queues)))
-                                .onFailure(promise::fail);
-                    }
-                });
-            }
-        });
-        return promise.future();
-    }
-
     /**
      * Notify not-active/not-empty queues to be processed (e.g. after a reboot).
      * Check timestamps of not-active/empty queues.
@@ -587,15 +542,15 @@ public class QueueRegistryService {
         final var ctx = new Object() {
             long limit;
             AtomicInteger counter;
-            Iterator<String> iter;
+            Iterator<Response> iter;
         };
 
         return Future.<Void>succeededFuture().compose((Void v) -> {
             log.debug("Checking queues timestamps");
             // List all queues that look inactive (i.e. that have not been updated since 3 periods).
             ctx.limit = currentTimeMillis() - 3L * configurationProvider.configuration().getRefreshPeriod() * 1000;
-            return getNotActiveQueues(ctx.limit);
-        }).compose((List<String> queues) -> {
+            return redisService.zrangebyscore(keyspaceHelper.getQueuesKey(), "-inf", String.valueOf(ctx.limit));
+        }).compose((Response queues) -> {
             if (log.isDebugEnabled()) {
                 log.debug("zrangebyscore time used is {} ms", System.currentTimeMillis() - startTs);
             }
@@ -610,8 +565,9 @@ public class QueueRegistryService {
                 public boolean runOneMore(BiConsumer<Throwable, Void> onDone, Void ctx_) {
                     if (ctx.iter.hasNext()) {
                         final long perQueueStartTs = System.currentTimeMillis();
+                        var queueObject = ctx.iter.next();
                         // Check if the inactive queue is not empty (i.e. the key exists)
-                        final String queueName = ctx.iter.next();
+                        final String queueName = queueObject.toString();
                         String key = keyspaceHelper.getQueuesPrefix() + queueName;
                         log.trace("RedisQues update queue: {}", key);
                         Handler<Void> refreshRegHandler = event -> {
