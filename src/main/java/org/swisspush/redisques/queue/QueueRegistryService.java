@@ -342,7 +342,8 @@ public class QueueRegistryService {
                     public boolean onError(Throwable ex, Iterator<Map.Entry<String, QueueProcessingState>> iter) {
                         if (log.isWarnEnabled()) log.warn("TODO error handling", exceptionFactory.newException(ex));
                         onPeriodicDone.run();
-                        return false;
+                        // just continue to refresh next one
+                        return true;
                     }
 
                     @Override
@@ -353,13 +354,11 @@ public class QueueRegistryService {
             }
 
             void refreshConsumerRegistration(BiConsumer<Throwable, Void> onQueueDone) {
-                while (iter.hasNext()) {
-                    var entry = iter.next();
-                    if (entry.getValue().getState() != QueueState.CONSUMING) continue;
+                var entry = iter.next();
+                if (entry.getValue().getState() == QueueState.CONSUMING) {
                     checkIfImStillTheRegisteredConsumer(entry.getKey(), onQueueDone);
-                    return;
                 }
-                // no entry found. we're done.
+                // go next
                 onQueueDone.accept(null, null);
             }
 
