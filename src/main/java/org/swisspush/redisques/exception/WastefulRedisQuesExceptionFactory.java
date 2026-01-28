@@ -29,7 +29,13 @@ class WastefulRedisQuesExceptionFactory implements RedisQuesExceptionFactory {
     public ReplyException newReplyException(int failureCode, String msg, Throwable cause) {
         if (msg == null && cause != null) msg = cause.getMessage();
         ReplyException ex = new ReplyException(ReplyFailure.RECIPIENT_FAILURE, failureCode, msg);
-        if (cause != null) ex.initCause(cause);
+        if (cause != null) {
+            try {
+                ex.initCause(cause);
+            } catch (IllegalStateException e) {
+                // Cause already set, ignore
+            }
+        }
         return ex;
     }
 
