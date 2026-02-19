@@ -26,8 +26,9 @@ import org.swisspush.redisques.util.TestMemoryUsageProvider;
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.params.SetParams;
 
-import java.util.Collections;
+
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -148,7 +149,7 @@ public class QueueRegistryServiceTest extends AbstractTestCase {
         final String fakeConsumerId = UUID.randomUUID().toString();
         final String queueNameForFakeConsumer = "queue-another-consumer-1-test";
 
-        queueRegistryService.aliveConsumers.add(fakeConsumerId);
+        queueRegistryService.aliveConsumers.put(fakeConsumerId, -1L);
         Promise<Void> fakeConsumerPromise = Promise.promise();
 
         vertx.eventBus().consumer(fakeConsumerId).handler(event -> fakeConsumerPromise.complete());
@@ -207,7 +208,7 @@ public class QueueRegistryServiceTest extends AbstractTestCase {
         QueueRegistryService queueRegistryService = redisQues.getQueueRegistryService();
         final String fakeConsumerId = UUID.randomUUID().toString();
         final String queueNameForFakeConsumer = "queue-another-consumer-2-test";
-        queueRegistryService.aliveConsumers.add(fakeConsumerId);
+        queueRegistryService.aliveConsumers.put(fakeConsumerId, -1L);
 
         Promise<Void> fakeConsumerPromise = Promise.promise();
         vertx.eventBus().consumer(fakeConsumerId).handler(event -> fakeConsumerPromise.complete());
@@ -263,7 +264,7 @@ public class QueueRegistryServiceTest extends AbstractTestCase {
         QueueRegistryService queueRegistryService = redisQues.getQueueRegistryService();
         final String fakeConsumerId = UUID.randomUUID().toString();
         final String queueNameForFakeConsumer = "queue-another-consumer-3-test";
-        queueRegistryService.aliveConsumers.add(fakeConsumerId);
+        queueRegistryService.aliveConsumers.put(fakeConsumerId, -1L);
 
         Promise<Void> fakeConsumerPromise = Promise.promise();
         vertx.eventBus().consumer(fakeConsumerId).handler(event -> fakeConsumerPromise.complete());
@@ -338,12 +339,90 @@ public class QueueRegistryServiceTest extends AbstractTestCase {
     }
 
     @Test
+    public void testGetLoadScore_allQueuesAreEmpty(TestContext context) {
+        Async async = context.async();
+        flushAll();
+        QueueRegistryService queueRegistryService = redisQues.getQueueRegistryService();
+        Set<String> queueSet = new HashSet<>();
+        queueSet.add("queue-1");
+        queueSet.add("queue-2");
+        queueSet.add("queue-3");
+
+        queueRegistryService.getMyLoadScore(queueSet, 1, 3)
+                .onFailure(context::fail)
+                .onSuccess(event -> {
+                    // 3(3 queues) x 1 + 0(zero items) x 3
+                    Assert.assertEquals(3, event.intValue());
+                    async.complete();
+                });
+    }
+
+    @Test
+    public void testGetLoadScore_queueHaveItems(TestContext context) {
+        Async async = context.async();
+        flushAll();
+        QueueRegistryService queueRegistryService = redisQues.getQueueRegistryService();
+        Set<String> queueSet = new HashSet<>();
+        queueSet.add("queue-1");
+        queueSet.add("queue-2");
+        queueSet.add("queue-3");
+
+        eventBusSend(buildAddQueueItemOperation("queue-1", "message_1-1"), e1 -> {
+            eventBusSend(buildAddQueueItemOperation("queue-1", "message_1-2"), e2 -> {
+                eventBusSend(buildAddQueueItemOperation("queue-1", "message_1-3"), e3 -> {
+                    eventBusSend(buildAddQueueItemOperation("queue-3", "message_1-1"), e4 -> {
+
+                        queueRegistryService.getMyLoadScore(queueSet, 1, 3)
+                                .onFailure(context::fail)
+                                .onSuccess(event -> {
+                                    // 3(3 queues) x 1 + 4(4 items) x 3
+                                    Assert.assertEquals(15, event.intValue());
+                                    async.complete();
+                                });
+                    });
+                });
+            });
+        });
+    }
+
+    @Test
+    public void testFindRebalanceTarget_allConditions(TestContext context) {
+        QueueRegistryService queueRegistryService = redisQues.getQueueRegistryService();
+        Map<String, Long> scoreMap = new HashMap<>();
+
+        // no score in list
+        context.assertNull(queueRegistryService.findRebalanceTarget(scoreMap, "instance-0", 50, 10));
+
+        scoreMap.put("instance-0", 150L);
+        scoreMap.put("instance-1", 100L);
+        scoreMap.put("instance-2", 90L);
+        scoreMap.put("instance-3", 70L);
+        scoreMap.put("instance-4", 30L);
+        scoreMap.put("instance-5", 20L);
+
+        // I have the lowest score in the list: do noting
+        context.assertNull(queueRegistryService.findRebalanceTarget(scoreMap, "instance-5", 22, 10));
+
+        // my score is high, but not top one: send load to match one
+        context.assertEquals("instance-4", queueRegistryService.findRebalanceTarget(scoreMap, "instance-2", 90, 10));
+
+        // my score is top one
+        context.assertEquals("instance-5", queueRegistryService.findRebalanceTarget(scoreMap, "instance-0", 140, 10));
+
+        // my score is top one, with big margin
+        context.assertEquals("instance-5", queueRegistryService.findRebalanceTarget(scoreMap, "instance-0", 140, 30));
+
+        // my score is top one, with very big margin
+        context.assertNull(queueRegistryService.findRebalanceTarget(scoreMap, "instance-0", 140, 80));
+    }
+
+    @Test
     @Ignore // Can run at local only
     public void testAliveConsumerListUpdate(TestContext context) {
         final String fakeConsumerId = UUID.randomUUID().toString();
         flushAll();
         QueueRegistryService queueRegistryService = redisQues.getQueueRegistryService();
-        queueRegistryService.aliveConsumers.add(fakeConsumerId);
+        queueRegistryService.aliveConsumers.put(fakeConsumerId, -1L);
         Assert.assertEquals(2, queueRegistryService.aliveConsumers.size());
         waitMillis(5000);
         Assert.assertEquals(1, queueRegistryService.aliveConsumers.size());

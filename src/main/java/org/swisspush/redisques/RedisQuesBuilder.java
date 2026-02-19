@@ -10,11 +10,13 @@ import org.swisspush.redisques.util.RedisProvider;
 import org.swisspush.redisques.util.RedisquesConfigurationProvider;
 
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.swisspush.redisques.exception.RedisQuesExceptionFactory.newThriftyExceptionFactory;
 
 public class RedisQuesBuilder {
     private static final Logger log = LoggerFactory.getLogger(RedisQuesBuilder.class);
+    private static final AtomicInteger idx = new AtomicInteger();
     private MemoryUsageProvider memoryUsageProvider;
     private RedisquesConfigurationProvider configurationProvider;
     private RedisProvider redisProvider;
@@ -126,6 +128,6 @@ public class RedisQuesBuilder {
         }
         return new RedisQues(memoryUsageProvider, configurationProvider, redisProvider, exceptionFactory,
                 redisMonitoringReqQuota, activeQueueRegRefreshReqQuota, checkQueueRequestsQuota, queueStatsRequestQuota,
-                getQueuesItemsCountRedisRequestQuota, meterRegistry);
+                getQueuesItemsCountRedisRequestQuota, meterRegistry, idx.incrementAndGet());
     }
 }

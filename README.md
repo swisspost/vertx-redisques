@@ -83,6 +83,12 @@ The following configuration values are available:
 | publish-metrics-address                 |                                 | The EventBus address to send collected redis metrics to                                                                                                                                                          |
 | metric-storage-name                     | queue                           | The name of the storage used in the published metrics                                                                                                                                                            |
 | metric-refresh-period                   | 0                               | The frequency [s] of collecting metrics from redis database. Use **0** or **-1** to not periodically collect metrics                                                                                             |
+| isBalancerEnabled                       | false                           | Enable / disable loader balancer                                                                                                                                                                                 |
+| balancerLocalScoreUpdateIntervalSec     | 10                              | The interval [s] to calculate the load score                                                                                                                                                                     |
+| balancerQueueCountWeight                | 1                               | The weight value for a Queue                                                                                                                                                                                     |
+| balancerQueueItemCountWeight            | 5                               | The weight value for a Queue item                                                                                                                                                                                |
+| balancerWeightCompareMargin             | 20                              | The Margin use to compare load between instance, in percent 0 - 100                                                                                                                                              |
+| balancerMaxReassignQueueCountPerTime    | 5                               | The max queue will move to another instance at a time                                                                                                                                                            |
 
 ### Configuration util
 
@@ -1055,15 +1061,6 @@ is returned (eg. 60 seconds by default)
 }
 ```
 
-### Semaphore Config
-If you are running in a Hazelcast cluster, the semaphore default permit must set to **1**.
-https://github.com/vert-x3/vertx-hazelcast/blob/master/src/main/asciidoc/index.adoc#using-an-existing-hazelcast-cluster
-
-```java
-SemaphoreConfig semaphoreConfig = new SemaphoreConfig().setInitialPermits(1).setJDKCompatible(false).setName("__vertx.*");
-hazelcastConfig.getCPSubsystemConfig().addSemaphoreConfig(semaphoreConfig);
-```
-
 ## Metric collection
 Besides the API, redisques provides some key metrics collected by [micrometer.io](https://micrometer.io/).
 
@@ -1078,7 +1075,6 @@ The collected metrics include:
 | redisques_max_queue_size             | Amount of queue items of the biggest queue                  |
 | redisques_queue_state_ready_size     | Amount of queue in state ready                              |
 | redisques_queue_state_consuming_size | Amount of queue in state consuming                          |
-| redisques_queue_consumers            | Amount of consumer registered                               |
 | redisques_queue_consumers            | Amount of consumer registered                               |
 | redisques_queue_consumer_life_cycle  | A time line trace for each consumer                         |
 

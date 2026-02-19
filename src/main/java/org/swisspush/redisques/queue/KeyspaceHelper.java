@@ -19,11 +19,13 @@ public class KeyspaceHelper {
     private final String consumersAddress;
     private final String aliveConsumersPrefix;
     private final String metricsCollectorAddress;
+    private final int instanceIndex;
     public static final String QUEUE_STATE_COUNT_KEY = "queueStateCount";
 
-    public KeyspaceHelper(RedisquesConfiguration configuration, String verticleUid) {
+    public KeyspaceHelper(RedisquesConfiguration configuration, String verticleUid, int instanceIndex) {
         this.configuration = configuration;
         this.verticleUid = verticleUid;
+        this.instanceIndex = instanceIndex;
         queuesKey = configuration.getRedisPrefix() + "queues";
         queuesPrefix = configuration.getRedisPrefix() + "queues:";
         consumersPrefix = configuration.getRedisPrefix() + "consumers:";
@@ -45,6 +47,10 @@ public class KeyspaceHelper {
 
     public String getVerticleUid() {
         return verticleUid;
+    }
+
+    public int getInstanceIndex() {
+        return instanceIndex;
     }
 
     public String getQueueCheckLastExecKey() {
@@ -89,6 +95,14 @@ public class KeyspaceHelper {
 
     public String getConsumersAddress() {
         return consumersAddress;
+    }
+
+    public String getMyConsumersAddress() {
+        return getConsumersAddressByUid(verticleUid);
+    }
+
+    public String getConsumersAddressByUid(String uid) {
+        return consumersAddress + ":" + uid;
     }
 
     public String getAliveConsumersPrefix() {

@@ -32,6 +32,7 @@ public class RedisQues extends AbstractVerticle {
 
     // Identifies the consumer
     private final String uid = UUID.randomUUID().toString();
+    private final int instanceIndex;
 
     private RedisProvider redisProvider;
     private RedisService redisService;
@@ -59,9 +60,12 @@ public class RedisQues extends AbstractVerticle {
     private final Semaphore activeQueueRegRefreshReqQuota;
 
     public RedisQues() {
+        this(1);
+    }
+    public RedisQues(int index) {
         this(null, null, null, newThriftyExceptionFactory(), new Semaphore(Integer.MAX_VALUE),
                 new Semaphore(Integer.MAX_VALUE), new Semaphore(Integer.MAX_VALUE), new Semaphore(Integer.MAX_VALUE),
-                new Semaphore(Integer.MAX_VALUE));
+                new Semaphore(Integer.MAX_VALUE), index);
         log.warn("Fallback to legacy behavior and allow up to {} simultaneous requests to redis", Integer.MAX_VALUE);
     }
 
@@ -74,10 +78,11 @@ public class RedisQues extends AbstractVerticle {
             Semaphore activeQueueRegRefreshReqQuota,
             Semaphore checkQueueRequestsQuota,
             Semaphore queueStatsRequestQuota,
-            Semaphore getQueuesItemsCountRedisRequestQuota
+            Semaphore getQueuesItemsCountRedisRequestQuota,
+            int index
     ) {
         this(memoryUsageProvider, configurationProvider, redisProvider, exceptionFactory, redisMonitoringReqQuota,
-                activeQueueRegRefreshReqQuota, checkQueueRequestsQuota, queueStatsRequestQuota, getQueuesItemsCountRedisRequestQuota, null);
+                activeQueueRegRefreshReqQuota, checkQueueRequestsQuota, queueStatsRequestQuota, getQueuesItemsCountRedisRequestQuota, null, index);
     }
 
     public RedisQues(
@@ -90,7 +95,8 @@ public class RedisQues extends AbstractVerticle {
         Semaphore checkQueueRequestsQuota,
         Semaphore queueStatsRequestQuota,
         Semaphore getQueuesItemsCountRedisRequestQuota,
-        MeterRegistry meterRegistry
+        MeterRegistry meterRegistry,
+        int index
     ) {
         this.memoryUsageProvider = memoryUsageProvider;
         this.configurationProvider = configurationProvider;
@@ -102,6 +108,7 @@ public class RedisQues extends AbstractVerticle {
         this.queueStatsRequestQuota = queueStatsRequestQuota;
         this.getQueuesItemsCountRedisRequestQuota = getQueuesItemsCountRedisRequestQuota;
         this.meterRegistry = meterRegistry;
+        this.instanceIndex = index;
     }
 
     public static RedisQuesBuilder builder() {
@@ -130,7 +137,7 @@ public class RedisQues extends AbstractVerticle {
         if (redisProvider == null) {
             redisProvider = new DefaultRedisProvider(vertx, configurationProvider);
         }
-        this.keyspaceHelper = new KeyspaceHelper(modConfig, uid);
+        this.keyspaceHelper = new KeyspaceHelper(modConfig, uid, instanceIndex);
         redisProvider.redis().onComplete(event -> {
             if(event.succeeded()) {
                 initialize();
