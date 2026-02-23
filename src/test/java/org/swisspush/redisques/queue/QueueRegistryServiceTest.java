@@ -396,10 +396,19 @@ public class QueueRegistryServiceTest extends AbstractTestCase {
 
         scoreMap.put("instance-0", 150L);
         scoreMap.put("instance-1", 100L);
-        scoreMap.put("instance-2", 90L);
+        scoreMap.put("instance-2", LOAD_BALANCE_SCORE_NOT_VALID);
         scoreMap.put("instance-3", 70L);
+
+        // not all instance reported score
+        context.assertNull(queueRegistryService.findRebalanceTarget(scoreMap, "instance-0", 50, 10));
+
+        scoreMap.put("instance-2", 90L);
         scoreMap.put("instance-4", 30L);
         scoreMap.put("instance-5", 20L);
+
+        // self have invalid score
+
+        context.assertNull(queueRegistryService.findRebalanceTarget(scoreMap, "instance-0", LOAD_BALANCE_SCORE_NOT_VALID, 10));
 
         // I have the lowest score in the list: do noting
         context.assertNull(queueRegistryService.findRebalanceTarget(scoreMap, "instance-5", 22, 10));
@@ -415,6 +424,20 @@ public class QueueRegistryServiceTest extends AbstractTestCase {
 
         // my score is top one, with very big margin
         context.assertNull(queueRegistryService.findRebalanceTarget(scoreMap, "instance-0", 140, 80));
+    }
+
+    @Test
+    public void testMoveLoadToOtherInstanceIfNeeded_noScoreToCalculate(TestContext context) {
+        Async async = context.async();
+        flushAll();
+        QueueRegistryService queueRegistryService = redisQues.getQueueRegistryService();
+        queueRegistryService.moveLoadToOtherInstanceIfNeeded().onComplete(event -> {
+            if (event.failed()) {
+                context.fail(event.cause());
+            } else {
+                async.complete();
+            }
+        });
     }
 
     @Test

@@ -70,7 +70,7 @@ public class QueueRegistryService {
     private final QueueStatsService queueStatsService;
     private Handler<Void> stoppedHandler = null;
     private PeriodicSkipScheduler periodicSkipScheduler;
-    private Long lastLoadScore;
+    private Long lastLoadScore = LOAD_BALANCE_SCORE_NOT_VALID;
     protected Map<String, Long> aliveConsumers = new ConcurrentHashMap<>();
 
 
@@ -94,7 +94,6 @@ public class QueueRegistryService {
         this.checkQueueRequestsQuota = checkQueueRequestsQuota;
         this.activeQueueRegRefreshReqQuota = activeQueueRegRefreshReqQuota;
         String address = getConfiguration().getAddress();
-        lastLoadScore = null;
         // Handles registration requests
         consumersMessageConsumer = vertx.eventBus().consumer(keyspaceHelper.getConsumersAddress(), this::handleRegistrationRequest);
         consumersMyMessageConsumer = vertx.eventBus().consumer(keyspaceHelper.getMyConsumersAddress(), this::handleRegistrationRequest);
@@ -176,6 +175,12 @@ public class QueueRegistryService {
             log.debug("score list size is {}, not enough to continue", scoreList.size());
             return null;
         }
+
+        if (currentNodeLoadScore == LOAD_BALANCE_SCORE_NOT_VALID) {
+            log.debug("current node score is {}, not enough to continue", LOAD_BALANCE_SCORE_NOT_VALID);
+            return null;
+        }
+
         // update currentNodeLoad to the newest
         localScoreList.put(currentNodeId, currentNodeLoadScore);
         if (localScoreList.values().stream().anyMatch(v -> v < 0)) {
@@ -323,7 +328,7 @@ public class QueueRegistryService {
     }
 
     private long getLastScore() {
-        return lastLoadScore == null ? LOAD_BALANCE_SCORE_NOT_VALID : lastLoadScore;
+        return lastLoadScore;
     }
 
     private void registerKeepConsumerAlive() {
@@ -476,7 +481,7 @@ public class QueueRegistryService {
                         ));
     }
 
-    private Future<Void> moveLoadToOtherInstanceIfNeeded (){
+    Future<Void> moveLoadToOtherInstanceIfNeeded (){
         String targetUid = findRebalanceTarget(aliveConsumers, keyspaceHelper.getVerticleUid(), lastLoadScore, getConfiguration().getBalancerWeightCompareMargin());
         if (Strings.isNullOrEmpty(targetUid)) {
             log.debug("targetUid is null, reassign not needed");
@@ -1057,7 +1062,7 @@ public class QueueRegistryService {
             getMyLoadScore(queueConsumerRunner.getMyQueues().keySet(), queueSetCountWeight, queueItemCountWeight).onComplete(event1 -> {
                 if (event1.failed()) {
                     log.error("Failed to get load score");
-                    lastLoadScore = null;
+                    lastLoadScore = LOAD_BALANCE_SCORE_NOT_VALID;
                 } else {
                     log.debug("Load score: {}", event1.result());
                     lastLoadScore = event1.result();
