@@ -37,6 +37,7 @@ import java.util.Set;
 import java.util.UUID;
 
 import static org.swisspush.redisques.exception.RedisQuesExceptionFactory.newWastefulExceptionFactory;
+import static org.swisspush.redisques.queue.QueueRegistryService.LOAD_BALANCE_SCORE_NOT_VALID;
 import static org.swisspush.redisques.util.RedisquesAPI.buildAddQueueItemOperation;
 import static org.swisspush.redisques.util.RedisquesAPI.buildEnqueueOperation;
 
@@ -149,7 +150,7 @@ public class QueueRegistryServiceTest extends AbstractTestCase {
         final String fakeConsumerId = UUID.randomUUID().toString();
         final String queueNameForFakeConsumer = "queue-another-consumer-1-test";
 
-        queueRegistryService.aliveConsumers.put(fakeConsumerId, -1L);
+        queueRegistryService.aliveConsumers.put(fakeConsumerId, LOAD_BALANCE_SCORE_NOT_VALID);
         Promise<Void> fakeConsumerPromise = Promise.promise();
 
         vertx.eventBus().consumer(fakeConsumerId).handler(event -> fakeConsumerPromise.complete());
@@ -208,7 +209,7 @@ public class QueueRegistryServiceTest extends AbstractTestCase {
         QueueRegistryService queueRegistryService = redisQues.getQueueRegistryService();
         final String fakeConsumerId = UUID.randomUUID().toString();
         final String queueNameForFakeConsumer = "queue-another-consumer-2-test";
-        queueRegistryService.aliveConsumers.put(fakeConsumerId, -1L);
+        queueRegistryService.aliveConsumers.put(fakeConsumerId, LOAD_BALANCE_SCORE_NOT_VALID);
 
         Promise<Void> fakeConsumerPromise = Promise.promise();
         vertx.eventBus().consumer(fakeConsumerId).handler(event -> fakeConsumerPromise.complete());
@@ -264,7 +265,7 @@ public class QueueRegistryServiceTest extends AbstractTestCase {
         QueueRegistryService queueRegistryService = redisQues.getQueueRegistryService();
         final String fakeConsumerId = UUID.randomUUID().toString();
         final String queueNameForFakeConsumer = "queue-another-consumer-3-test";
-        queueRegistryService.aliveConsumers.put(fakeConsumerId, -1L);
+        queueRegistryService.aliveConsumers.put(fakeConsumerId, LOAD_BALANCE_SCORE_NOT_VALID);
 
         Promise<Void> fakeConsumerPromise = Promise.promise();
         vertx.eventBus().consumer(fakeConsumerId).handler(event -> fakeConsumerPromise.complete());
@@ -422,7 +423,7 @@ public class QueueRegistryServiceTest extends AbstractTestCase {
         final String fakeConsumerId = UUID.randomUUID().toString();
         flushAll();
         QueueRegistryService queueRegistryService = redisQues.getQueueRegistryService();
-        queueRegistryService.aliveConsumers.put(fakeConsumerId, -1L);
+        queueRegistryService.aliveConsumers.put(fakeConsumerId, LOAD_BALANCE_SCORE_NOT_VALID);
         Assert.assertEquals(2, queueRegistryService.aliveConsumers.size());
         waitMillis(5000);
         Assert.assertEquals(1, queueRegistryService.aliveConsumers.size());

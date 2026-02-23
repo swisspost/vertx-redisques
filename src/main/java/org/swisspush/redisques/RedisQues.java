@@ -29,7 +29,7 @@ import static org.swisspush.redisques.util.RedisquesAPI.*;
 
 public class RedisQues extends AbstractVerticle {
     private static final Logger log = LoggerFactory.getLogger(RedisQues.class);
-
+    static final int DEFAULT_INSTANCE_INDEX_BEGIN = 1;
     // Identifies the consumer
     private final String uid = UUID.randomUUID().toString();
     private final int instanceIndex;
@@ -60,12 +60,12 @@ public class RedisQues extends AbstractVerticle {
     private final Semaphore activeQueueRegRefreshReqQuota;
 
     public RedisQues() {
-        this(1);
+        this(DEFAULT_INSTANCE_INDEX_BEGIN);
     }
-    public RedisQues(int index) {
+    public RedisQues(int instanceIndex) {
         this(null, null, null, newThriftyExceptionFactory(), new Semaphore(Integer.MAX_VALUE),
                 new Semaphore(Integer.MAX_VALUE), new Semaphore(Integer.MAX_VALUE), new Semaphore(Integer.MAX_VALUE),
-                new Semaphore(Integer.MAX_VALUE), index);
+                new Semaphore(Integer.MAX_VALUE), instanceIndex);
         log.warn("Fallback to legacy behavior and allow up to {} simultaneous requests to redis", Integer.MAX_VALUE);
     }
 
@@ -79,10 +79,10 @@ public class RedisQues extends AbstractVerticle {
             Semaphore checkQueueRequestsQuota,
             Semaphore queueStatsRequestQuota,
             Semaphore getQueuesItemsCountRedisRequestQuota,
-            int index
+            int instanceIndex
     ) {
         this(memoryUsageProvider, configurationProvider, redisProvider, exceptionFactory, redisMonitoringReqQuota,
-                activeQueueRegRefreshReqQuota, checkQueueRequestsQuota, queueStatsRequestQuota, getQueuesItemsCountRedisRequestQuota, null, index);
+                activeQueueRegRefreshReqQuota, checkQueueRequestsQuota, queueStatsRequestQuota, getQueuesItemsCountRedisRequestQuota, null, instanceIndex);
     }
 
     public RedisQues(
@@ -96,7 +96,7 @@ public class RedisQues extends AbstractVerticle {
         Semaphore queueStatsRequestQuota,
         Semaphore getQueuesItemsCountRedisRequestQuota,
         MeterRegistry meterRegistry,
-        int index
+        int instanceIndex
     ) {
         this.memoryUsageProvider = memoryUsageProvider;
         this.configurationProvider = configurationProvider;
@@ -108,7 +108,7 @@ public class RedisQues extends AbstractVerticle {
         this.queueStatsRequestQuota = queueStatsRequestQuota;
         this.getQueuesItemsCountRedisRequestQuota = getQueuesItemsCountRedisRequestQuota;
         this.meterRegistry = meterRegistry;
-        this.instanceIndex = index;
+        this.instanceIndex = instanceIndex;
     }
 
     public static RedisQuesBuilder builder() {

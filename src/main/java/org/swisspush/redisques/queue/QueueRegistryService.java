@@ -48,7 +48,7 @@ import static java.lang.System.currentTimeMillis;
 
 public class QueueRegistryService {
     private static final Logger log = LoggerFactory.getLogger(QueueRegistryService.class);
-    private static final long LOAD_BALANCE_SCORE_NOT_VALID = -1L;
+    public static final long LOAD_BALANCE_SCORE_NOT_VALID = -1L;
     private final RedisService redisService;
     private final RedisquesConfigurationProvider configurationProvider;
     private final MessageConsumer<String> consumersMessageConsumer;
