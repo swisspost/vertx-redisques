@@ -134,7 +134,11 @@ public class RedisQues extends AbstractVerticle {
 
         redisProvider.redis().onComplete(event -> {
             if(event.succeeded()) {
-                QueueConfigurationProvider.provider(vertx, configurationProvider).get().onComplete(event1 -> {
+                redisService = new RedisService(redisProvider);
+                if (this.dequeueStatisticCollector == null) {
+                    this.dequeueStatisticCollector = new DequeueStatisticCollector(modConfig.isDequeueStatsEnabled(), redisService, keyspaceHelper);
+                }
+                QueueConfigurationProvider.provider(vertx, configurationProvider.configuration().getQueueConfigurations()).get().onComplete(event1 -> {
                     if(event1.succeeded()) {
                         RedisQues.this.queueConfigurationProvider = event1.result();
                         initialize();
@@ -148,10 +152,6 @@ public class RedisQues extends AbstractVerticle {
                 promise.fail(new Exception(event.cause()));
             }
         });
-        redisService = new RedisService(redisProvider);
-        if (this.dequeueStatisticCollector == null) {
-            this.dequeueStatisticCollector = new DequeueStatisticCollector(modConfig.isDequeueStatsEnabled(), redisService, keyspaceHelper);
-        }
     }
 
     private void initialize() {

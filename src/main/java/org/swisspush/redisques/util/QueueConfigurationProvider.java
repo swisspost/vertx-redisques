@@ -1,5 +1,6 @@
 package org.swisspush.redisques.util;
 
+import com.google.common.annotations.VisibleForTesting;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
@@ -8,6 +9,7 @@ import io.vertx.core.json.JsonObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -21,11 +23,11 @@ public class QueueConfigurationProvider {
     private final String QUEUE_CONFIG_SENDER_ID =  "queue_config_sender_id";
     private final Vertx vertx;
     private final Map<String, QueueConfiguration> queueConfigurations = new ConcurrentHashMap<>();
-    private final RedisquesConfigurationProvider configurationProvider;
+    public final List<QueueConfiguration> defaultQueueConfigurations;
 
-    private QueueConfigurationProvider(Vertx vertx, RedisquesConfigurationProvider configurationProvider) {
+    private QueueConfigurationProvider(Vertx vertx, List<QueueConfiguration> defaultQueueConfigurations) {
         this.vertx = vertx;
-        this.configurationProvider = configurationProvider;
+        this.defaultQueueConfigurations = defaultQueueConfigurations;
         loadStaticConfigs();
         vertx.eventBus().consumer(QUEUE_CONFIG_EVENTBUS_SYNC_KEY, (Handler<Message<JsonObject>>) event -> {
             if(!event.body().containsKey(QUEUE_CONFIG_SENDER_ID)){
@@ -41,11 +43,11 @@ public class QueueConfigurationProvider {
         });
     }
 
-    public static NodeLocalSingletonProvider<QueueConfigurationProvider> provider(Vertx vertx, RedisquesConfigurationProvider configurationProvider) {
+    public static NodeLocalSingletonProvider<QueueConfigurationProvider> provider(Vertx vertx, List<QueueConfiguration> defaultQueueConfigurations) {
         return new NodeLocalSingletonProvider<>(
                 vertx,
                 "per-queue-config",
-                () -> Future.succeededFuture(new QueueConfigurationProvider(vertx, configurationProvider)));
+                () -> Future.succeededFuture(new QueueConfigurationProvider(vertx, defaultQueueConfigurations)));
     }
 
     /**
@@ -131,9 +133,14 @@ public class QueueConfigurationProvider {
         }
     }
 
+    @VisibleForTesting
+    public static void reset() {
+       NodeLocalObjectRegistry.reset(QueueConfigurationProvider.class);
+    }
+
     private void loadStaticConfigs() {
-        if (configurationProvider.configuration() != null && configurationProvider.configuration().getQueueConfigurations() != null) {
-            configurationProvider.configuration().getQueueConfigurations().forEach(queueConfiguration ->
+        if (defaultQueueConfigurations != null) {
+            defaultQueueConfigurations.forEach(queueConfiguration ->
                     queueConfigurations.put(queueConfiguration.getPattern(), queueConfiguration));
         }
     }

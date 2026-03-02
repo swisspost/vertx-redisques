@@ -8,7 +8,8 @@ import io.vertx.ext.unit.TestContext;
 import io.vertx.ext.unit.junit.VertxUnitRunner;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.Mockito;
+
+import java.util.List;
 
 @RunWith(VertxUnitRunner.class)
 public class QueueConfigurationProviderTest {
@@ -16,11 +17,10 @@ public class QueueConfigurationProviderTest {
     public void testQueueConfigurationProviderCreation(TestContext context) {
         Async async = context.async();
         Vertx vertx = Vertx.vertx();
-        RedisquesConfigurationProvider redisquesConfigurationProvider = Mockito.mock(RedisquesConfigurationProvider.class);
-        QueueConfigurationProvider.provider(vertx, redisquesConfigurationProvider).get().onComplete(event -> {
+        QueueConfigurationProvider.provider(vertx, List.of()).get().onComplete(event -> {
             QueueConfigurationProvider provider1 = event.result();
             vertx.executeBlocking(promise -> {
-                QueueConfigurationProvider.provider(vertx, redisquesConfigurationProvider).get().onComplete(event1 -> {
+                QueueConfigurationProvider.provider(vertx, List.of()).get().onComplete(event1 -> {
                     context.assertEquals(provider1, event1.result());
                     context.assertEquals(provider1.getUid(), event1.result().getUid());
                     async.complete();
@@ -33,8 +33,7 @@ public class QueueConfigurationProviderTest {
     public void testQueueConfigUpdate(TestContext context) {
         Async async = context.async();
         Vertx vertx = Vertx.vertx();
-        RedisquesConfigurationProvider redisquesConfigurationProvider = Mockito.mock(RedisquesConfigurationProvider.class);
-        QueueConfigurationProvider.provider(vertx, redisquesConfigurationProvider).get().onComplete(event -> {
+        QueueConfigurationProvider.provider(vertx, List.of()).get().onComplete(event -> {
             QueueConfigurationProvider provider = event.result();
             context.assertNull(provider.findQueueConfiguration("mytestqueue"));
             JsonObject jsonObject = new JsonObject();
