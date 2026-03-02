@@ -36,7 +36,7 @@ public class QueueConfigurationProvider {
                 log.debug("publish msg from my self, drop it.");
             }
             if (body.containsKey(RedisquesAPI.PAYLOAD) && body.containsKey(RedisquesAPI.FILTER)) {
-                addQueueConfiguration(body.getString(RedisquesAPI.FILTER), body.getJsonObject(RedisquesAPI.PAYLOAD), false);
+                updateQueueConfigurationInternal(body.getString(RedisquesAPI.FILTER), body.getJsonObject(RedisquesAPI.PAYLOAD));
             }
         });
     }
@@ -87,9 +87,19 @@ public class QueueConfigurationProvider {
      * @param pattern a string of pattern use for search
      * @param jsonObject json object witch contains the setting value
      */
-    public void addQueueConfiguration(String pattern, JsonObject jsonObject, boolean needPublish) {
-        QueueConfiguration queueConfiguration = getQueueConfiguration(pattern);
+    public void updateQueueConfiguration(String pattern, JsonObject jsonObject) {
 
+        updateQueueConfigurationInternal(pattern, jsonObject);
+        // publish to other instances in the cluster.
+        JsonObject payload = new JsonObject();
+        payload.put(QUEUE_CONFIG_SENDER_ID, uid);
+        payload.put(RedisquesAPI.PAYLOAD, jsonObject);
+        payload.put(RedisquesAPI.FILTER, pattern);
+        vertx.eventBus().publish(QUEUE_CONFIG_SENDER_ID, payload);
+    }
+
+    private void updateQueueConfigurationInternal(String pattern, JsonObject jsonObject) {
+        QueueConfiguration queueConfiguration = getQueueConfiguration(pattern);
 
         boolean isNew = false;
         if  (queueConfiguration == null) {
@@ -110,26 +120,19 @@ public class QueueConfigurationProvider {
         }
         if (jsonObject.containsKey(RedisquesAPI.PER_QUEUE_CONFIG_RETRY_INTERVALS))
         {
-            queueConfiguration.withRetryIntervals(jsonObject.getInteger(RedisquesAPI.PER_QUEUE_CONFIG_RETRY_INTERVALS));
+            queueConfiguration.withRetryIntervals(jsonObject.getJsonArray(RedisquesAPI.PER_QUEUE_CONFIG_RETRY_INTERVALS).stream()
+                    .mapToInt(v -> ((Number)v).intValue())
+                    .toArray());
         }
 
         // exists one is updates by reference
         if (isNew) {
             queueConfigurations.put(queueConfiguration.getPattern(), queueConfiguration);
         }
-
-        if (needPublish) {
-            // publish to other instances in the cluster.
-            JsonObject payload = new JsonObject();
-            payload.put(QUEUE_CONFIG_SENDER_ID, uid);
-            payload.put(RedisquesAPI.PAYLOAD, jsonObject);
-            payload.put(RedisquesAPI.FILTER, pattern);
-            vertx.eventBus().publish(QUEUE_CONFIG_SENDER_ID, payload);
-        }
     }
 
     private void loadStaticConfigs() {
-        if (configurationProvider.configuration().getQueueConfigurations() != null) {
+        if (configurationProvider.configuration() != null && configurationProvider.configuration().getQueueConfigurations() != null) {
             configurationProvider.configuration().getQueueConfigurations().forEach(queueConfiguration ->
                     queueConfigurations.put(queueConfiguration.getPattern(), queueConfiguration));
         }

@@ -1,11 +1,9 @@
 package org.swisspush.redisques.action;
 
 import io.netty.util.internal.StringUtil;
-import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonObject;
 import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.swisspush.redisques.util.QueueConfigurationProvider;
 
 import static org.swisspush.redisques.util.RedisquesAPI.FILTER;
@@ -34,7 +32,7 @@ public class SetPerQueueConfigurationAction implements QueueAction {
             event.reply(createOkReply());
             return;
         }
-        configurationProvider.addQueueConfiguration(pattern, configurationValues, true);
+        configurationProvider.updateQueueConfiguration(pattern, configurationValues);
         event.reply(createOkReply());
     }
 }
