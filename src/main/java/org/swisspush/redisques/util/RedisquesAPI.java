@@ -336,9 +336,7 @@ public class RedisquesAPI {
         if (payload == null) {
             throw new IllegalArgumentException("payload cannot be null");
         }
-        JsonObject jsonObject = new JsonObject().put(FILTER, filterPattern);
-        jsonObject.put(PAYLOAD, payload);
-        return buildOperation(QueueOperation.setPerQueueConfiguration, jsonObject);
+        payload.put(FILTER, filterPattern);
+        return buildOperation(QueueOperation.setPerQueueConfiguration, payload);
     }
-
 }

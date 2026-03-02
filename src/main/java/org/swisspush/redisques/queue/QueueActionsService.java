@@ -45,6 +45,7 @@ import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.monitor;
 import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.putLock;
 import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.replaceQueueItem;
 import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.setConfiguration;
+import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.setPerQueueConfiguration;
 
 public class QueueActionsService {
     private static final Logger log = LoggerFactory.getLogger(QueueActionsService.class);
@@ -94,6 +95,7 @@ public class QueueActionsService {
         queueActions.put(setConfiguration, queueActionFactory.buildQueueAction(setConfiguration));
         queueActions.put(getConfiguration, queueActionFactory.buildQueueAction(getConfiguration));
         queueActions.put(monitor, queueActionFactory.buildQueueAction(monitor));
+        queueActions.put(setPerQueueConfiguration, queueActionFactory.buildQueueAction(setPerQueueConfiguration));
 
     }
 

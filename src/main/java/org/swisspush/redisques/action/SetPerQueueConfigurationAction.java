@@ -22,7 +22,7 @@ public class SetPerQueueConfigurationAction implements QueueAction {
     @Override
     public void execute(Message<JsonObject> event) {
         final JsonObject configurationValues = event.body().getJsonObject(PAYLOAD);
-        final String pattern =event.body().getString(FILTER);
+        final String pattern = configurationValues.getString(FILTER);
         if (StringUtil.isNullOrEmpty(pattern)) {
             event.reply(createErrorReply().put(MESSAGE, "Pattern is required"));
             return;
