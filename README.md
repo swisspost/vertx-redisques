@@ -675,6 +675,29 @@ Response Data
 }
 ```
 
+#### setPerQueueConfiguration
+
+Request Data
+```
+{
+    "operation": "setPerQueueConfiguration",
+    "payload": {
+        "filter": <str regex pattern to apply to queues (request)>,
+        "retryIntervals": <de queue retry intervals array (optional)>,
+        "maxQueueEntries": <max queue items will keep (optional)>,
+        "enqueueDelayFactorMillis": <max enqueue delay factor (optional)>,
+        "enqueueMaxDelayMillis": <max enqueue delay in millis (optional)>
+    }
+}
+```
+
+Response Data
+```
+{
+    "status": "ok" / "error"
+}
+```
+
 ## RedisQues HTTP API
 RedisQues provides a HTTP API to modify queues, queue items and get information about queue counts and queue item counts.
 
