@@ -13,6 +13,7 @@ import io.vertx.ext.unit.Async;
 import io.vertx.ext.unit.TestContext;
 import io.vertx.ext.unit.junit.Timeout;
 import org.junit.*;
+import org.swisspush.redisques.util.QueueConfigurationProvider;
 import org.swisspush.redisques.util.RedisquesConfiguration;
 import redis.clients.jedis.Jedis;
 
@@ -66,6 +67,7 @@ public class RedisQuesProcessorTest extends AbstractTestCase {
 
     protected void deployRedisques(TestContext context) {
         vertx = Vertx.vertx();
+        QueueConfigurationProvider.reset();
         JsonObject config = RedisquesConfiguration.with()
                 .address(getRedisquesAddress())
                 .redisPrefix(CUSTOM_REDIS_KEY_PREFIX)
