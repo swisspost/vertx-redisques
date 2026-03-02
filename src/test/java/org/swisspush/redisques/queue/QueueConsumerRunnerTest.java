@@ -7,6 +7,7 @@ import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonObject;
 import io.vertx.ext.unit.TestContext;
 import io.vertx.ext.unit.junit.Timeout;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -29,6 +30,11 @@ public class QueueConsumerRunnerTest extends AbstractTestCase {
 
     @Rule
     public Timeout rule = Timeout.seconds(50);
+
+    @After
+    public void tearDown(TestContext context) {
+        vertx.close(context.asyncAssertSuccess());
+    }
 
     @Before
     public void deployRedisques(TestContext context) {
