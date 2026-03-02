@@ -88,10 +88,12 @@ public class RedisQuesProcessorTest extends AbstractTestCase {
     }
 
     @Test
-    public void test10Queues(TestContext context) {
+    public void test10Queues(TestContext context) throws InterruptedException {
         final Map<String, MessageDigest> signatures = new HashMap<>();
         Async async = context.async();
         flushAll();
+        Thread.sleep(500);
+        assertKeyCount(context, 0);
         queueProcessor.handler(message -> {
             final String queue = message.body().getString("queue");
             final String payload = message.body().getString("payload");
@@ -120,7 +122,6 @@ public class RedisQuesProcessorTest extends AbstractTestCase {
             });
         });
 
-        assertKeyCount(context, 0);
         for (int i = 0; i < NUM_QUEUES; i++) {
             log.info("create new sender for queue: queue_{}", i);
             new Sender(context, async, "queue_" + i).send(null);
