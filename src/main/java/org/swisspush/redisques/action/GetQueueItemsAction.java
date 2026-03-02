@@ -8,10 +8,9 @@ import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.handler.GetQueueItemsHandler;
 import org.swisspush.redisques.queue.KeyspaceHelper;
 import org.swisspush.redisques.queue.RedisService;
-import org.swisspush.redisques.util.QueueConfiguration;
+import org.swisspush.redisques.util.QueueConfigurationProvider;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 
-import java.util.List;
 
 import static org.swisspush.redisques.util.RedisquesAPI.*;
 
@@ -19,9 +18,9 @@ public class GetQueueItemsAction extends AbstractQueueAction {
 
     private static final int DEFAULT_MAX_QUEUEITEM_COUNT = 49;
 
-    public GetQueueItemsAction(Vertx vertx, RedisService redisService, KeyspaceHelper keyspaceHelper, List<QueueConfiguration> queueConfigurations,
+    public GetQueueItemsAction(Vertx vertx, RedisService redisService, KeyspaceHelper keyspaceHelper, QueueConfigurationProvider queueConfigurationProvider,
                                RedisQuesExceptionFactory exceptionFactory, QueueStatisticsCollector queueStatisticsCollector, Logger log) {
-        super(vertx, redisService, keyspaceHelper, queueConfigurations,
+        super(vertx, redisService, keyspaceHelper, queueConfigurationProvider,
                 exceptionFactory, queueStatisticsCollector, log);
     }
 

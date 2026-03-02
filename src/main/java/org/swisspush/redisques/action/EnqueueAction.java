@@ -12,8 +12,6 @@ import org.swisspush.redisques.queue.QueueRegistryService;
 import org.swisspush.redisques.queue.RedisService;
 import org.swisspush.redisques.util.*;
 
-import java.util.List;
-
 import static org.swisspush.redisques.util.RedisquesAPI.*;
 
 public class EnqueueAction extends AbstractQueueAction {
@@ -24,12 +22,12 @@ public class EnqueueAction extends AbstractQueueAction {
     private Counter enqueueCounterSuccess;
     private Counter enqueueCounterFail;
     public EnqueueAction(
-            Vertx vertx, QueueRegistryService queueRegistryService, RedisService redisService, KeyspaceHelper keyspaceHelper, List<QueueConfiguration> queueConfigurations,
+            Vertx vertx, QueueRegistryService queueRegistryService, RedisService redisService, KeyspaceHelper keyspaceHelper, QueueConfigurationProvider queueConfigurationProvider,
             RedisQuesExceptionFactory exceptionFactory, QueueStatisticsCollector queueStatisticsCollector, Logger log,
             MemoryUsageProvider memoryUsageProvider, int memoryUsageLimitPercent, MeterRegistry meterRegistry, String metricsIdentifier
     ) {
         super(vertx, redisService, keyspaceHelper,
-                queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
+                queueConfigurationProvider, exceptionFactory, queueStatisticsCollector, log);
         this.memoryUsageProvider = memoryUsageProvider;
         this.memoryUsageLimitPercent = memoryUsageLimitPercent;
         this.queueRegistryService = queueRegistryService;

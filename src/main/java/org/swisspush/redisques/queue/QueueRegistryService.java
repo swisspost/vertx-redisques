@@ -18,6 +18,7 @@ import org.swisspush.redisques.QueueStatsService;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.performance.UpperBoundParallel;
 import org.swisspush.redisques.scheduling.PeriodicSkipScheduler;
+import org.swisspush.redisques.util.QueueConfigurationProvider;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 import org.swisspush.redisques.util.RedisquesConfiguration;
 import org.swisspush.redisques.util.RedisquesConfigurationProvider;
@@ -63,6 +64,7 @@ public class QueueRegistryService {
     private final Semaphore activeQueueRegRefreshReqQuota;
     private final int emptyQueueLiveTimeMillis;
     private final QueueStatsService queueStatsService;
+    private final QueueConfigurationProvider queueConfigurationProvider;
     private Handler<Void> stoppedHandler = null;
     private PeriodicSkipScheduler periodicSkipScheduler;
     protected Set<String> aliveConsumers = ConcurrentHashMap.newKeySet();
@@ -75,7 +77,8 @@ public class QueueRegistryService {
     public QueueRegistryService(Vertx vertx, RedisService redisService, RedisquesConfigurationProvider configurationProvider,
                                 RedisQuesExceptionFactory exceptionFactory, KeyspaceHelper keyspaceHelper, QueueMetrics metrics,
                                 QueueStatsService queueStatsService, QueueStatisticsCollector queueStatisticsCollector,
-                                Semaphore checkQueueRequestsQuota, Semaphore activeQueueRegRefreshReqQuota) {
+                                Semaphore checkQueueRequestsQuota, Semaphore activeQueueRegRefreshReqQuota,
+                                QueueConfigurationProvider queueConfigurationProvider) {
         this.vertx = vertx;
         this.redisService = redisService;
         this.configurationProvider = configurationProvider;
@@ -87,6 +90,7 @@ public class QueueRegistryService {
         this.queueStatisticsCollector = queueStatisticsCollector;
         this.checkQueueRequestsQuota = checkQueueRequestsQuota;
         this.activeQueueRegRefreshReqQuota = activeQueueRegRefreshReqQuota;
+        this.queueConfigurationProvider = queueConfigurationProvider;
         String address = getConfiguration().getAddress();
 
         // Handles registration requests
@@ -95,7 +99,7 @@ public class QueueRegistryService {
         notifyConsumer = vertx.eventBus().consumer(keyspaceHelper.getVerticleNotifyConsumerKey(), this::handleNotifyConsumer);
 
         consumerLockTime = getConfiguration().getConsumerLockMultiplier() * getConfiguration().getRefreshPeriod(); // lock is kept twice as long as its refresh interval -> never expires as long as the consumer ('we') are alive
-        queueConsumerRunner = new QueueConsumerRunner(vertx, redisService, metrics, queueStatsService, keyspaceHelper, configurationProvider, exceptionFactory, queueStatisticsCollector);
+        queueConsumerRunner = new QueueConsumerRunner(vertx, redisService, metrics, queueStatsService, keyspaceHelper, configurationProvider, exceptionFactory, queueStatisticsCollector, queueConfigurationProvider);
         upperBoundParallel = new UpperBoundParallel(vertx, exceptionFactory);
 
         // the time we let an empty queue live before we deregister ourselves

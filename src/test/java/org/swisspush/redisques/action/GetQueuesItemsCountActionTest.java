@@ -11,6 +11,7 @@ import org.junit.runner.RunWith;
 import org.mockito.Mockito;
 import org.slf4j.Logger;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
+import org.swisspush.redisques.util.QueueConfigurationProvider;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 
 import java.util.ArrayList;
@@ -26,13 +27,14 @@ import static org.swisspush.redisques.util.RedisquesAPI.buildGetQueuesItemsCount
  */
 @RunWith(VertxUnitRunner.class)
 public class GetQueuesItemsCountActionTest extends AbstractQueueActionTest {
+    private QueueConfigurationProvider queueConfigurationProvider = Mockito.mock(QueueConfigurationProvider.class);
 
     @Before
     @Override
     public void setup() {
         super.setup();
         action = new GetQueuesItemsCountAction(vertx, redisService, keyspaceHelper,
-                new ArrayList<>(), Mockito.mock(RedisQuesExceptionFactory.class), Mockito.mock(Semaphore.class),
+                queueConfigurationProvider, Mockito.mock(RedisQuesExceptionFactory.class), Mockito.mock(Semaphore.class),
                 Mockito.mock(QueueStatisticsCollector.class), Mockito.mock(Logger.class));
     }
 

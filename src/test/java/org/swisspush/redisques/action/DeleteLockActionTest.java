@@ -5,12 +5,14 @@ import io.vertx.core.eventbus.ReplyException;
 import io.vertx.ext.unit.TestContext;
 import io.vertx.ext.unit.junit.VertxUnitRunner;
 import io.vertx.redis.client.impl.types.SimpleStringType;
+import org.checkerframework.checker.units.qual.C;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mockito;
 import org.slf4j.Logger;
 import org.swisspush.redisques.queue.QueueRegistryService;
+import org.swisspush.redisques.util.QueueConfigurationProvider;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 
 import java.util.ArrayList;
@@ -26,13 +28,14 @@ import static org.swisspush.redisques.util.RedisquesAPI.buildDeleteLockOperation
 @RunWith(VertxUnitRunner.class)
 public class DeleteLockActionTest extends AbstractQueueActionTest {
     private QueueRegistryService registryService;
+    private QueueConfigurationProvider queueConfigurationProvider = Mockito.mock(QueueConfigurationProvider.class);
     @Before
     @Override
     public void setup() {
         super.setup();
         registryService = Mockito.mock(QueueRegistryService.class);
         action = new DeleteLockAction(vertx, registryService, redisService, keyspaceHelper,
-                new ArrayList<>(), exceptionFactory, Mockito.mock(QueueStatisticsCollector.class), Mockito.mock(Logger.class));
+                queueConfigurationProvider, exceptionFactory, Mockito.mock(QueueStatisticsCollector.class), Mockito.mock(Logger.class));
     }
 
     @Test

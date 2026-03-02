@@ -16,6 +16,7 @@ import org.slf4j.Logger;
 import org.swisspush.redisques.queue.QueueRegistryService;
 import org.swisspush.redisques.util.MetricMeter;
 import org.swisspush.redisques.util.MetricTags;
+import org.swisspush.redisques.util.QueueConfigurationProvider;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 
 import java.util.ArrayList;
@@ -30,6 +31,7 @@ import static org.swisspush.redisques.util.RedisquesAPI.buildLockedEnqueueOperat
  */
 @RunWith(VertxUnitRunner.class)
 public class LockedEnqueueActionTest extends AbstractQueueActionTest {
+    private QueueConfigurationProvider queueConfigurationProvider = Mockito.mock(QueueConfigurationProvider.class);
 
     private Counter enqueueCounterSuccess;
     private Counter enqueueCounterFail;
@@ -43,7 +45,7 @@ public class LockedEnqueueActionTest extends AbstractQueueActionTest {
         enqueueCounterSuccess = meterRegistry.counter(MetricMeter.ENQUEUE_SUCCESS.getId(), MetricTags.IDENTIFIER.getId(), "foo");
         enqueueCounterFail = meterRegistry.counter(MetricMeter.ENQUEUE_FAIL.getId(), MetricTags.IDENTIFIER.getId(), "foo");
         action = new LockedEnqueueAction(vertx, registryService, redisService, keyspaceHelper,
-                new ArrayList<>(), exceptionFactory, Mockito.mock(QueueStatisticsCollector.class),
+                queueConfigurationProvider, exceptionFactory, Mockito.mock(QueueStatisticsCollector.class),
                 Mockito.mock(Logger.class), memoryUsageProvider, 80, meterRegistry, "foo");
     }
 

@@ -72,7 +72,6 @@ public class QueueConsumerRunnerTest extends AbstractTestCase {
             log.info("vert.x Deploy - {} was successful.", redisQues.getClass().getSimpleName());
             jedis = new Jedis("localhost", 6379, 5000);
         }));
-        
     }
     @Test
     public void getQueueRescheduleRefreshPeriodWhileFailureCountIncreasedUntilExceedMaxRetryInterval(TestContext context) {

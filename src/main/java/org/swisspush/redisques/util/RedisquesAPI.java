@@ -48,6 +48,12 @@ public class RedisquesAPI {
     public static final String STATISTIC_QUEUE_SPEED = "speed";
     public static final String STATISTIC_QUEUE_SPEED_INTERVAL_UNIT = "unitSec";
 
+    public static final String PER_QUEUE_CONFIG_RETRY_INTERVALS =  "retryIntervals";
+    public static final String PER_QUEUE_CONFIG_ENQUEUE_DELAY_FACTOR_MILLIS =  "enqueueDelayFactorMillis";
+    public static final String PER_QUEUE_CONFIG_ENQUEUE_MAX_DELAY_MILLIS =  "enqueueMaxDelayMillis";
+    public static final String PER_QUEUE_CONFIG_MAX_QUEUE_ENTRIES =  "maxQueueEntries";
+
+
     private static final Logger log = LoggerFactory.getLogger(RedisquesAPI.class);
 
     public enum QueueOperation {
@@ -78,7 +84,8 @@ public class RedisquesAPI {
         getQueuesItemsCount(null),
         getQueuesStatistics(null),
         getQueuesSpeed(null),
-        monitor(null);
+        monitor(null),
+        setPerQueueConfiguration(null);
 
         private final String legacyName;
 
@@ -311,5 +318,27 @@ public class RedisquesAPI {
         return buildGetQueuesSpeedOperation();
     }
 
+    /**
+     * set queue config by given payload with follow predefined keys
+     *  PER_QUEUE_CONFIG_RETRY_INTERVALS
+     *  PER_QUEUE_CONFIG_ENQUEUE_DELAY_FACTOR_MILLIS
+     *  PER_QUEUE_CONFIG_ENQUEUE_MAX_DELAY_MILLI
+     *  PER_QUEUE_CONFIG_MAX_QUEUE_ENTRIES
+     *
+     * @param filterPattern The queues filter for which we would like to get the total speed
+     *                      Filter pattern. Method handles {@code null} gracefully.
+     * @param payload  the configuration
+     */
+    public static JsonObject buildSetPerQueueConfiguration(String filterPattern, JsonObject payload) {
+        if (filterPattern == null) {
+           throw new IllegalArgumentException("filterPattern cannot be null");
+        }
+        if (payload == null) {
+            throw new IllegalArgumentException("payload cannot be null");
+        }
+        JsonObject jsonObject = new JsonObject().put(FILTER, filterPattern);
+        jsonObject.put(PAYLOAD, payload);
+        return buildOperation(QueueOperation.setPerQueueConfiguration, jsonObject);
+    }
 
 }

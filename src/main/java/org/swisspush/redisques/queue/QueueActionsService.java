@@ -11,6 +11,7 @@ import org.swisspush.redisques.action.QueueAction;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.util.MemoryUsageProvider;
 import org.swisspush.redisques.util.QueueActionFactory;
+import org.swisspush.redisques.util.QueueConfigurationProvider;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 import org.swisspush.redisques.util.RedisquesAPI;
 import org.swisspush.redisques.util.RedisquesConfigurationProvider;
@@ -50,21 +51,23 @@ public class QueueActionsService {
     private final QueueActionFactory queueActionFactory;
     private final Map<RedisquesAPI.QueueOperation, QueueAction> queueActions = new HashMap<>();
     private final RedisQuesExceptionFactory exceptionFactory;
+    private final QueueConfigurationProvider queueConfigurationProvider;
 
     public QueueActionsService(Vertx vertx, QueueRegistryService queueRegistryService, RedisService redisService, KeyspaceHelper keyspaceHelper,
                                RedisquesConfigurationProvider configurationProvider,
                                RedisQuesExceptionFactory exceptionFactory, MemoryUsageProvider memoryUsageProvider,
                                QueueStatisticsCollector queueStatisticsCollector,
                                Semaphore getQueuesItemsCountRedisRequestQuota,
-                               MeterRegistry meterRegistry) {
+                               MeterRegistry meterRegistry, QueueConfigurationProvider queueConfigurationProvider) {
         this.exceptionFactory = exceptionFactory;
+        this.queueConfigurationProvider = queueConfigurationProvider;
         HttpClient client = vertx.createHttpClient();
 
         this.queueActionFactory = new QueueActionFactory(
                 redisService, vertx, client, log, keyspaceHelper,
                 memoryUsageProvider, queueStatisticsCollector, exceptionFactory,
                 configurationProvider, getQueuesItemsCountRedisRequestQuota, meterRegistry,
-                queueRegistryService);
+                queueRegistryService, queueConfigurationProvider);
 
         queueActions.put(addQueueItem, queueActionFactory.buildQueueAction(addQueueItem));
         queueActions.put(deleteQueueItem, queueActionFactory.buildQueueAction(deleteQueueItem));

@@ -48,7 +48,7 @@ public class RedisQues extends AbstractVerticle {
     private QueueRegistryService queueRegistryService;
     private QueueActionsService queueActionsService;
     private QueueStatsService queueStatsService;
-
+    private QueueConfigurationProvider queueConfigurationProvider;
 
     private final RedisQuesExceptionFactory exceptionFactory;
     private PeriodicSkipScheduler periodicSkipScheduler;
@@ -131,10 +131,19 @@ public class RedisQues extends AbstractVerticle {
             redisProvider = new DefaultRedisProvider(vertx, configurationProvider);
         }
         this.keyspaceHelper = new KeyspaceHelper(modConfig, uid);
+
         redisProvider.redis().onComplete(event -> {
             if(event.succeeded()) {
-                initialize();
-                promise.complete();
+                QueueConfigurationProvider.provider(vertx, configurationProvider).get().onComplete(event1 -> {
+                    if(event1.succeeded()) {
+                        RedisQues.this.queueConfigurationProvider = event1.result();
+                        initialize();
+                        promise.complete();
+                    }else{
+                        log.error("Failed to start Redisques module with configuration: {}", event1.cause().getMessage());
+                        promise.fail(new Exception(event1.cause()));
+                    }
+                });
             } else {
                 promise.fail(new Exception(event.cause()));
             }
@@ -169,9 +178,9 @@ public class RedisQues extends AbstractVerticle {
         assert getQueuesItemsCountRedisRequestQuota != null;
 
         this.queueRegistryService = new QueueRegistryService(vertx, redisService, configurationProvider, exceptionFactory,
-                keyspaceHelper, queueMetrics, queueStatsService, queueStatisticsCollector , checkQueueRequestsQuota, activeQueueRegRefreshReqQuota);
+                keyspaceHelper, queueMetrics, queueStatsService, queueStatisticsCollector , checkQueueRequestsQuota, activeQueueRegRefreshReqQuota, queueConfigurationProvider);
         this.queueActionsService = new QueueActionsService(vertx, queueRegistryService, redisService, keyspaceHelper, configurationProvider,
-                exceptionFactory, memoryUsageProvider, queueStatisticsCollector, getQueuesItemsCountRedisRequestQuota, meterRegistry);
+                exceptionFactory, memoryUsageProvider, queueStatisticsCollector, getQueuesItemsCountRedisRequestQuota, meterRegistry, queueConfigurationProvider);
 
         // Handles operations
         vertx.eventBus().consumer(keyspaceHelper.getAddress(), operationsHandler());

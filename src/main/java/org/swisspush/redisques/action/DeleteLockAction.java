@@ -9,12 +9,11 @@ import org.swisspush.redisques.handler.DeleteLockHandler;
 import org.swisspush.redisques.queue.KeyspaceHelper;
 import org.swisspush.redisques.queue.QueueRegistryService;
 import org.swisspush.redisques.queue.RedisService;
-import org.swisspush.redisques.util.QueueConfiguration;
+import org.swisspush.redisques.util.QueueConfigurationProvider;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.List;
 
 import static org.swisspush.redisques.util.RedisquesAPI.PAYLOAD;
 import static org.swisspush.redisques.util.RedisquesAPI.QUEUENAME;
@@ -24,11 +23,11 @@ public class DeleteLockAction extends AbstractQueueAction {
     private final QueueRegistryService queueRegistryService;
 
     public DeleteLockAction(
-            Vertx vertx, QueueRegistryService queueRegistryService, RedisService redisService, KeyspaceHelper keyspaceHelper, List<QueueConfiguration> queueConfigurations,
+            Vertx vertx, QueueRegistryService queueRegistryService, RedisService redisService, KeyspaceHelper keyspaceHelper, QueueConfigurationProvider queueConfigurationProvider,
             RedisQuesExceptionFactory exceptionFactory, QueueStatisticsCollector queueStatisticsCollector, Logger log
     ) {
         super(vertx, redisService, keyspaceHelper,
-                queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
+                queueConfigurationProvider, exceptionFactory, queueStatisticsCollector, log);
         this.queueRegistryService = queueRegistryService;
     }
 
