@@ -7,6 +7,7 @@ import io.vertx.core.json.JsonObject;
 import io.vertx.ext.unit.Async;
 import io.vertx.ext.unit.TestContext;
 import io.vertx.ext.unit.junit.Timeout;
+import org.junit.After;
 import org.junit.BeforeClass;
 import org.junit.Rule;
 import org.junit.Test;
@@ -33,6 +34,11 @@ public class RedisQuesProcessorRedeployTest extends AbstractTestCase {
     @BeforeClass
     public static void deployRedisques(TestContext context) {
         deployRedisques(context, 2);
+    }
+
+    @After
+    public void tearDown(TestContext context) {
+        vertx.close(context.asyncAssertSuccess());
     }
 
     protected static void deployRedisques(TestContext context, int refreshPeriod) {

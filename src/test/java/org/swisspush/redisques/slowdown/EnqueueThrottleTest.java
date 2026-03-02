@@ -9,6 +9,7 @@ import io.vertx.ext.unit.Async;
 import io.vertx.ext.unit.TestContext;
 import io.vertx.ext.unit.junit.RunTestOnContext;
 import io.vertx.ext.unit.junit.VertxUnitRunner;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.ClassRule;
 import org.junit.Test;
@@ -30,14 +31,20 @@ public class EnqueueThrottleTest {
     private static final String REDISQUES_ADDRESS = "EnqueueThrottleTest-RedisQues";
     private static final String PROCESSOR_ADDRESS = "EnqueueThrottleTest-Processor";
     private static final String QUEUE_NAME = "EnqueueThrottleTest-q1";
+    private Vertx vertx;
 
     @ClassRule
     public static RunTestOnContext RULE = new RunTestOnContext(new VertxOptions().setBlockedThreadCheckInterval(10_000));
 
+    @After
+    public void tearDown(TestContext context) {
+        vertx.close(context.asyncAssertSuccess());
+    }
+
     @Before
     public void deployRedisQuesAndRegisterProcessor(TestContext testContext) {
         Async async = testContext.async();
-        Vertx vertx = RULE.vertx();
+        vertx = RULE.vertx();
 
         QueueConfigurationProvider.reset();
         RedisquesConfiguration redisquesConfig = RedisquesConfiguration.with()
