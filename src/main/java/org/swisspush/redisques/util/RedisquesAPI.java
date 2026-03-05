@@ -15,6 +15,7 @@ public class RedisquesAPI {
     public static final String INFO = "info";
     public static final String INDEX = "index";
     public static final String LIMIT = "limit";
+    public static final String SIZE_ONLY = "sizeOnly";
     public static final String EMPTY_QUEUES = "emptyQueues";
     public static final String VALUE = "value";
     public static final String ERROR = "error";
