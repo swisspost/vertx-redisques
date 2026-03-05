@@ -36,6 +36,7 @@ public class QueueConfigurationProvider {
             JsonObject body = event.body();
             if(uid.equals(body.getString(QUEUE_CONFIG_SENDER_ID))) {
                 log.debug("publish msg from my self, drop it.");
+                return;
             }
             if (body.containsKey(RedisquesAPI.PAYLOAD) && body.containsKey(RedisquesAPI.FILTER)) {
                 updateQueueConfigurationInternal(body.getString(RedisquesAPI.FILTER), body.getJsonObject(RedisquesAPI.PAYLOAD));
