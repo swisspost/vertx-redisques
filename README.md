@@ -334,7 +334,7 @@ Request Data
     "payload": {
         "emptyQueues": <boolean value to define whether to include empty queues or not>,
         "limit": <limit the amount of queues to return>
-        "sizeOnly": <set to true to excludes dequeues stats info>
+        "excludeDequeueStates": <set to true to excludes dequeues stats info>
     }
 }
 ```

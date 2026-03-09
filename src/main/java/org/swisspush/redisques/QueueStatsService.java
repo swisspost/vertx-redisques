@@ -77,7 +77,7 @@ public class QueueStatsService {
         }
     }
 
-    public <CTX> void getQueueStats(CTX mCtx, GetQueueStatsMentor<CTX> mentor, boolean includeSizeOnly) {
+    public <CTX> void getQueueStats(CTX mCtx, GetQueueStatsMentor<CTX> mentor, boolean excludeDequeueStates) {
         if (!incomingRequestQuota.tryAcquire()) {
             Throwable ex = exceptionFactory.newReplyException(429,
                     "Server too busy to handle yet-another-queue-stats-request now", null);
@@ -98,7 +98,7 @@ public class QueueStatsService {
             };
             req0.mCtx = mCtx;
             req0.mentor = mentor;
-            req0.skipDequeueStats = includeSizeOnly;
+            req0.skipDequeueStats = excludeDequeueStates;
             fetchQueueNamesAndSize(req0, (ex1, req1) -> {
                 if (ex1 != null) {
                     onDone.accept(ex1, null);
