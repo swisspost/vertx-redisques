@@ -43,7 +43,7 @@ public class GetQueuesStatisticsHandler implements Handler<AsyncResult<Response>
         if (handleQueues.succeeded()) {
             List<String> queues = HandlerUtil
                     .filterByPattern(handleQueues.result(), filterPattern);
-            queueStatisticsCollector.getQueueStatistics(queues)
+            queueStatisticsCollector.getQueueStatistics(queues, false)
                     .onFailure(ex -> {
                         log.error("", ex);
                         event.reply(new JsonObject().put(STATUS, ERROR));

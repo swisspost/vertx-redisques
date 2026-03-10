@@ -459,10 +459,10 @@ public class QueueStatisticsCollector {
      * registered). Therefore this method must be used with care and not be called too often!
      *
      * @param queues The queues for which we are interested in the statistics
+     * @param skipQueueSize Skip fetch queue item size
      * @return A Future
      */
-
-    public Future<JsonObject> getQueueStatistics(final List<String> queues) {
+    public Future<JsonObject> getQueueStatistics(final List<String> queues, final boolean skipQueueSize) {
         final Promise<JsonObject> promise = Promise.promise();
         if (queues == null || queues.isEmpty()) {
             log.debug("Queue statistics evaluation with empty queues, returning empty result");
@@ -470,7 +470,9 @@ public class QueueStatisticsCollector {
             return promise.future();
         }
         var ctx = new RequestCtx();
+        ctx.skipQueueLength = skipQueueSize;
         ctx.queueNames = queues;
+
         step1(ctx).compose(
                 nothing2 -> step2(ctx).compose(
                         nothing3 -> step3(ctx).compose(
@@ -484,6 +486,9 @@ public class QueueStatisticsCollector {
      * <p>Query queue lengths.</p>
      */
     Future<Void> step1(RequestCtx ctx) {
+        if (ctx.skipQueueLength){
+            return Future.succeededFuture();
+        }
         int numQueues = ctx.queueNames.size();
         log.debug("About to perform {} requests to redis just for monitoring", numQueues);
         long begRedisRequestsEpochMs = currentTimeMillis();
@@ -557,12 +562,16 @@ public class QueueStatisticsCollector {
      * <p>init queue statistics.</p>
      */
     Future<Void> step2(RequestCtx ctx) {
-        assert ctx.queueLengthList != null;
+        if (!ctx.skipQueueLength) {
+            assert ctx.queueLengthList != null;
+        }
         // populate the list of queue statistics in a Hashmap for later fast merging
         ctx.statistics = new HashMap<>(ctx.queueNames.size());
         for (int i = 0; i < ctx.queueNames.size(); i++) {
             QueueStatistic qs = new QueueStatistic(ctx.queueNames.get(i));
-            qs.setSize(ctx.queueLengthList.get(i).toLong());
+            if (!ctx.skipQueueLength) {
+                qs.setSize(ctx.queueLengthList.get(i).toLong());
+            }
             qs.setMessageSpeed(getQueueSpeed(qs.queueName));
             ctx.statistics.put(qs.queueName, qs);
         }
@@ -650,6 +659,7 @@ public class QueueStatisticsCollector {
     private static class RequestCtx {
         private List<String> queueNames; // Requested queues to analyze
         private List<NumberType> queueLengthList;
+        private Boolean skipQueueLength;
         private HashMap<String, QueueStatistic> statistics; // Stats we're going to populate
         private Response redisFailStats; // failure stats we got from redis.
     }
