@@ -66,6 +66,11 @@ public class DefaultRedisProvider implements RedisProvider {
         });
     }
 
+    @Override
+    public Future<RedisConnection> redisConnection() {
+        return redis().compose(redisAPI -> Future.succeededFuture(client));
+    }
+
     private boolean reconnectEnabled() {
         return configurationProvider.configuration().getRedisReconnectAttempts() != 0;
     }

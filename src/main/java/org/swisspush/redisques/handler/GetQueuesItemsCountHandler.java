@@ -8,6 +8,8 @@ import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
+import io.vertx.redis.client.Command;
+import io.vertx.redis.client.Request;
 import io.vertx.redis.client.Response;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,6 +17,7 @@ import org.swisspush.redisques.performance.UpperBoundParallel;
 import org.swisspush.redisques.queue.RedisService;
 import org.swisspush.redisques.util.HandlerUtil;
 
+import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Optional;
@@ -96,14 +99,29 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
             upperBoundParallel.request(redisRequestQuota, null, new UpperBoundParallel.Mentor<Void>() {
                 @Override
                 public boolean runOneMore(BiConsumer<Throwable, Void> onLLenDone, Void unused) {
-                    if (ctx.iter.hasNext()) {
-                        String queue = ctx.iter.next();
-                        int iNum = ctx.iNumberResult++;
-                        redisService.llen(queuesPrefix + queue).onSuccess((Response rsp) -> {
-                            ctx.queueLengths[iNum] = rsp.toInteger();
-                            onLLenDone.accept(null, null);
-                        }).onFailure((Throwable ex) -> onLLenDone.accept(ex, null));
+                    if (!ctx.iter.hasNext()) {
+                        return false;
                     }
+                    List<Request> batch = new ArrayList<>(RedisService.MAX_COMMANDS_IN_BATCH);
+                    List<Integer> resultIndexes = new ArrayList<>(RedisService.MAX_COMMANDS_IN_BATCH);
+                    int count = 0;
+                    while (ctx.iter.hasNext() && count < RedisService.MAX_COMMANDS_IN_BATCH) {
+                        String queue = ctx.iter.next();
+                        int index = ctx.iNumberResult++;
+                        batch.add(Request.cmd(Command.LLEN).arg(queuesPrefix + queue));
+                        resultIndexes.add(index);
+                        count++;
+                    }
+                    redisService.batch(batch)
+                            .onSuccess(responses -> {
+                                for (int i = 0; i < responses.size(); i++) {
+                                    ctx.queueLengths[resultIndexes.get(i)] =
+                                            responses.get(i).toInteger();
+                                }
+                                onLLenDone.accept(null, null);
+
+                            })
+                            .onFailure(ex -> onLLenDone.accept(ex, null));
                     return ctx.iter.hasNext();
                 }
 
