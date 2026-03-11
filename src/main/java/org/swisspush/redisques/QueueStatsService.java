@@ -185,7 +185,7 @@ public class QueueStatsService {
     private <CTX> void fetchRetryDetails(GetQueueStatsRequest<CTX> req, BiConsumer<Throwable, GetQueueStatsRequest<CTX>> onDone) {
         long begGetQueueStatsMs = currentTimeMillis();
         assert req.queueNames != null;
-        queueStatisticsCollector.getQueueStatistics(req.queueNames).onComplete(ev -> {
+        queueStatisticsCollector.getQueueStatistics(req.queueNames, false).onComplete(ev -> {
             req.queueNames = null; // <- no longer needed
             long durGetQueueStatsMs = currentTimeMillis() - begGetQueueStatsMs;
             log.debug("queueStatisticsCollector.getQueueStatistics() took {}ms", durGetQueueStatsMs);
