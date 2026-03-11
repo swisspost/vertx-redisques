@@ -6,6 +6,8 @@ import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
+import io.vertx.redis.client.Command;
+import io.vertx.redis.client.Request;
 import io.vertx.redis.client.Response;
 import io.vertx.redis.client.impl.types.NumberType;
 import org.slf4j.Logger;
@@ -501,22 +503,30 @@ public class QueueStatisticsCollector {
 
             @Override
             public boolean runOneMore(BiConsumer<Throwable, Void> onDone, RequestCtx ctx) {
-                if (queueNamesIter.hasNext()) {
+                if (!queueNamesIter.hasNext()) {
+                    return false;
+                }
+                List<Request> batch = new ArrayList<>(RedisService.MAX_COMMANDS_IN_BATCH);
+
+                int count = 0;
+                while (queueNamesIter.hasNext() && count < RedisService.MAX_COMMANDS_IN_BATCH) {
                     String queueName = queueNamesIter.next();
-                    /* [TODO](https://github.com/swisspost/vertx-redisques/issues/198) */
-                    vertx.executeBlocking(() ->
-                                    redisService.llen(queuePrefix + queueName))
-                            .compose((Future<Response> rspWrappedInsideAFuture) ->
-                                    rspWrappedInsideAFuture).<Void>compose((Response rsp) ->
-                            {
+                    batch.add(Request.cmd(Command.LLEN).arg(queuePrefix + queueName));
+                    count++;
+                }
+
+                redisService.batch(batch)
+                        .compose(responses -> {
+                            for (Response rsp : responses) {
                                 NumberType num = (NumberType) rsp;
                                 ctx.queueLengthList.add(num);
-                                onDone.accept(null, null);
-                                return succeededFuture();
-                            }).onFailure((Throwable ex) -> {
-                                onDone.accept(exceptionFactory.newException(ex), null);
-                            });
-                }
+                            }
+                            onDone.accept(null, null);
+                            return succeededFuture();
+                        })
+                        .onFailure(ex ->
+                                onDone.accept(exceptionFactory.newException(ex), null)
+                        );
                 return queueNamesIter.hasNext();
             }
 
