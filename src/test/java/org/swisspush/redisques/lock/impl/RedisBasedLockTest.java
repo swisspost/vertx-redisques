@@ -10,6 +10,7 @@ import io.vertx.ext.unit.junit.Timeout;
 import io.vertx.ext.unit.junit.VertxUnitRunner;
 import io.vertx.redis.client.PoolOptions;
 import io.vertx.redis.client.RedisAPI;
+import io.vertx.redis.client.RedisConnection;
 import io.vertx.redis.client.RedisStandaloneConnectOptions;
 import io.vertx.redis.client.impl.RedisClient;
 import org.junit.After;
@@ -18,6 +19,7 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.swisspush.redisques.queue.RedisService;
+import org.swisspush.redisques.util.RedisProvider;
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.exceptions.JedisConnectionException;
 
@@ -48,11 +50,21 @@ public class RedisBasedLockTest {
     @BeforeClass
     public static void setupLock() {
         vertx = Vertx.vertx();
-        RedisAPI redisAPI = RedisAPI.api(new RedisClient(vertx, new NetClientOptions(), new PoolOptions(),
-                new RedisStandaloneConnectOptions(), TracingPolicy.IGNORE));
+        RedisClient client = new RedisClient(vertx, new NetClientOptions(), new PoolOptions(),
+                new RedisStandaloneConnectOptions(), TracingPolicy.IGNORE);
+        RedisAPI redisAPI = RedisAPI.api(client);
+        RedisProvider redisProvider = new RedisProvider() {
+            @Override
+            public Future<RedisAPI> redis() {
+                return Future.succeededFuture(redisAPI);
+            }
 
-        redisBasedLock = new RedisBasedLock(new RedisService(() -> Future.succeededFuture(redisAPI)),
-                newWastefulExceptionFactory());
+            @Override
+            public Future<RedisConnection> redisConnection() {
+                return client.connect();
+            }
+        };
+        redisBasedLock = new RedisBasedLock(new RedisService(redisProvider), newWastefulExceptionFactory());
     }
 
     @Before

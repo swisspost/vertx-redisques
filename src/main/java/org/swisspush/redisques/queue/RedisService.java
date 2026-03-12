@@ -1,18 +1,16 @@
 package org.swisspush.redisques.queue;
 
 import io.vertx.core.Future;
-import io.vertx.core.Promise;
-import io.vertx.core.json.JsonArray;
 import io.vertx.redis.client.Command;
 import io.vertx.redis.client.RedisAPI;
+import io.vertx.redis.client.RedisConnection;
+import io.vertx.redis.client.Request;
 import io.vertx.redis.client.Response;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.swisspush.redisques.util.RedisProvider;
-import org.swisspush.redisques.util.RedisUtils;
 
 import javax.annotation.Nullable;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -28,6 +26,7 @@ import java.util.List;
 public class RedisService {
     private final RedisProvider redisProvider;
     private static final Logger log = LoggerFactory.getLogger(RedisService.class);
+    public static final int MAX_COMMANDS_IN_BATCH = 100;
 
     public RedisService(RedisProvider redisProvider) {
         this.redisProvider = redisProvider;
@@ -504,6 +503,20 @@ public class RedisService {
         }
         return redis().compose((RedisAPI redisAPI) ->
                 redisAPI.scan(args)
+        );
+    }
+
+    /**
+     * execute a list of command in pipeline
+     * @param batchCmd redis commands will execute
+     * @return a list of responses
+     */
+    public Future<List<Response>> batch(List<Request> batchCmd) {
+        if (batchCmd.size() > MAX_COMMANDS_IN_BATCH) {
+            throw new IllegalArgumentException("batchCmd exceeds max commands in batch");
+        }
+        return redisProvider.redisConnection().compose((RedisConnection connection) ->
+                connection.batch(batchCmd)
         );
     }
 }

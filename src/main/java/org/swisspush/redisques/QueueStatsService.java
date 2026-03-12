@@ -77,7 +77,7 @@ public class QueueStatsService {
         }
     }
 
-    public <CTX> void getQueueStats(CTX mCtx, GetQueueStatsMentor<CTX> mentor) {
+    public <CTX> void getQueueStats(CTX mCtx, GetQueueStatsMentor<CTX> mentor, boolean excludeDequeueStates) {
         if (!incomingRequestQuota.tryAcquire()) {
             Throwable ex = exceptionFactory.newReplyException(429,
                     "Server too busy to handle yet-another-queue-stats-request now", null);
@@ -98,6 +98,7 @@ public class QueueStatsService {
             };
             req0.mCtx = mCtx;
             req0.mentor = mentor;
+            req0.skipDequeueStats = excludeDequeueStates;
             fetchQueueNamesAndSize(req0, (ex1, req1) -> {
                 if (ex1 != null) {
                     onDone.accept(ex1, null);
@@ -109,6 +110,10 @@ public class QueueStatsService {
                 fetchRetryDetails(req1, (ex2, req2) -> {
                     if (ex2 != null) {
                         onDone.accept(ex2, null);
+                        return;
+                    }
+                    if (req2.skipDequeueStats) {
+                        onDone.accept(null, req2.queues);
                         return;
                     }
                     attachDequeueStats(req2, (ex3, req3) -> {
@@ -180,7 +185,7 @@ public class QueueStatsService {
     private <CTX> void fetchRetryDetails(GetQueueStatsRequest<CTX> req, BiConsumer<Throwable, GetQueueStatsRequest<CTX>> onDone) {
         long begGetQueueStatsMs = currentTimeMillis();
         assert req.queueNames != null;
-        queueStatisticsCollector.getQueueStatistics(req.queueNames).onComplete(ev -> {
+        queueStatisticsCollector.getQueueStatistics(req.queueNames, false).onComplete(ev -> {
             req.queueNames = null; // <- no longer needed
             long durGetQueueStatsMs = currentTimeMillis() - begGetQueueStatsMs;
             log.debug("queueStatisticsCollector.getQueueStatistics() took {}ms", durGetQueueStatsMs);
@@ -238,6 +243,7 @@ public class QueueStatsService {
         /* TODO: Why is 'queuesJsonArr' never accessed? Isn't this the reason of our class in the first place? */
         private JsonArray queuesJsonArr;
         private List<Queue> queues;
+        private boolean skipDequeueStats = false;
     }
 
 
