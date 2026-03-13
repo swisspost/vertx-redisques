@@ -1,6 +1,6 @@
 package org.swisspush.redisques.queue;
 
-import io.micrometer.common.util.StringUtils;
+import com.google.common.base.Strings;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.CompositeFuture;
 import io.vertx.core.Future;
@@ -10,6 +10,7 @@ import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.EventBus;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.eventbus.MessageConsumer;
+import io.vertx.core.json.JsonObject;
 import io.vertx.redis.client.Response;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,11 +23,13 @@ import org.swisspush.redisques.util.QueueStatisticsCollector;
 import org.swisspush.redisques.util.RedisquesConfiguration;
 import org.swisspush.redisques.util.RedisquesConfigurationProvider;
 
+import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -45,9 +48,11 @@ import static java.lang.System.currentTimeMillis;
 
 public class QueueRegistryService {
     private static final Logger log = LoggerFactory.getLogger(QueueRegistryService.class);
+    public static final long LOAD_BALANCE_SCORE_NOT_VALID = -1L;
     private final RedisService redisService;
     private final RedisquesConfigurationProvider configurationProvider;
     private final MessageConsumer<String> consumersMessageConsumer;
+    private final MessageConsumer<String> consumersMyMessageConsumer;
     private final MessageConsumer<String> refreshRegistrationConsumer;
     private final MessageConsumer<String> notifyConsumer;
     private final MessageConsumer<String> uidMessageConsumer;
@@ -65,7 +70,8 @@ public class QueueRegistryService {
     private final QueueStatsService queueStatsService;
     private Handler<Void> stoppedHandler = null;
     private PeriodicSkipScheduler periodicSkipScheduler;
-    protected Set<String> aliveConsumers = ConcurrentHashMap.newKeySet();
+    private Long lastLoadScore = LOAD_BALANCE_SCORE_NOT_VALID;
+    protected Map<String, Long> aliveConsumers = new ConcurrentHashMap<>();
 
 
     public void stop() {
@@ -88,9 +94,9 @@ public class QueueRegistryService {
         this.checkQueueRequestsQuota = checkQueueRequestsQuota;
         this.activeQueueRegRefreshReqQuota = activeQueueRegRefreshReqQuota;
         String address = getConfiguration().getAddress();
-
         // Handles registration requests
         consumersMessageConsumer = vertx.eventBus().consumer(keyspaceHelper.getConsumersAddress(), this::handleRegistrationRequest);
+        consumersMyMessageConsumer = vertx.eventBus().consumer(keyspaceHelper.getMyConsumersAddress(), this::handleRegistrationRequest);
         refreshRegistrationConsumer = vertx.eventBus().consumer(keyspaceHelper.getVerticleRefreshRegistrationKey(), this::handleRefreshRegistration);
         notifyConsumer = vertx.eventBus().consumer(keyspaceHelper.getVerticleNotifyConsumerKey(), this::handleNotifyConsumer);
 
@@ -131,6 +137,7 @@ public class QueueRegistryService {
         registerMyqueuesCleanup();
         registerActiveQueueRegistrationRefresh();
         registerNotExpiredQueueCheck();
+        registerCalculateLoadScore();
         this.periodicSkipScheduler = new PeriodicSkipScheduler(vertx);
     }
 
@@ -147,6 +154,120 @@ public class QueueRegistryService {
 
         if (futures.isEmpty()) return Future.succeededFuture();
         return Future.join(futures).mapEmpty();
+    }
+
+    /**
+     * get a target if we need forward load to it
+     * @param scoreList current load score of all instances
+     * @param currentNodeId id of current node
+     * @param allowedMargin margin to keep load not swap between load too often, in range of 0-100
+     * @return a UUID of instance, if forward is needed, null means no matched target
+     */
+    @Nullable
+    String findRebalanceTarget(
+            Map<String, Long> scoreList, String currentNodeId, long currentNodeLoadScore, int allowedMargin) {
+        Map<String, Long> localScoreList = new HashMap<>(scoreList);
+        if (allowedMargin > 100 || allowedMargin < 0){
+            throw new IllegalArgumentException("Margin must in range of 0-100");
+        }
+
+        if (scoreList.size() <= 1) {
+            log.debug("score list size is {}, not enough to continue", scoreList.size());
+            return null;
+        }
+
+        if (currentNodeLoadScore == LOAD_BALANCE_SCORE_NOT_VALID) {
+            log.debug("current node score is {}, not enough to continue", LOAD_BALANCE_SCORE_NOT_VALID);
+            return null;
+        }
+
+        // update currentNodeLoad to the newest
+        localScoreList.put(currentNodeId, currentNodeLoadScore);
+        if (localScoreList.values().stream().anyMatch(v -> v < 0)) {
+            log.info("not all instances reported his score, skips");
+            return null;
+        }
+
+        long totalScore = 0;
+        for (long w : localScoreList.values()) totalScore += w;
+
+        final double avgScore = (double) totalScore / localScoreList.size();
+        final double marginPercent = (double) allowedMargin / 100D;
+        final double margin = avgScore * marginPercent;
+
+        final long currentNodeLoad = localScoreList.getOrDefault(currentNodeId, 0L);
+
+        if (currentNodeLoad <= avgScore + margin) {
+            log.debug("current is not overloaded, skip");
+            return null;
+        }
+
+        String bestNode = null;
+        double bestScore = Double.MAX_VALUE;
+        for (Map.Entry<String, Long> e : localScoreList.entrySet()) {
+            String node = e.getKey();
+            final long load = e.getValue();
+
+            if (node.equals(currentNodeId)) {
+                continue;
+            }
+            if (load >= avgScore - margin) {
+                continue;
+            }
+            double futureLoad = (load + currentNodeLoad) / 2.0;
+            double score = Math.abs(futureLoad - avgScore);
+
+            if (score < bestScore) {
+                bestScore = score;
+                bestNode = node;
+            }
+        }
+
+        return bestNode;
+    }
+
+    /**
+     * Get a weight score base on queue count and total queue items
+     * @param queueNameSet a list of queue name will use to calculates the weight score
+     * @param queueSetCountWeight per queue weight
+     * @param queueItemCountWeight per item weight
+     * @return
+     */
+    Future<Long> getMyLoadScore(Set<String> queueNameSet, long queueSetCountWeight, long queueItemCountWeight) {
+        Promise<Long> promise = Promise.promise();
+
+        List<Future<Long>> futures = new ArrayList<>();
+        queueNameSet.forEach(key -> {
+            Promise<Long> llenPomise = Promise.promise();
+            redisService.llen(keyspaceHelper.getQueuesPrefix() + key).onComplete(asyncResult -> {
+                if (asyncResult.succeeded()) {
+                    llenPomise.complete(asyncResult.result().toLong());
+                } else {
+                    llenPomise.fail(asyncResult.cause());
+                }
+            });
+
+            futures.add(llenPomise.future());
+        });
+
+        final int queueSize = queueNameSet.size();
+        Future.all(futures)
+                .map(cf -> {
+                    long sum = 0;
+                    for (int i = 0; i < cf.size(); i++) {
+                        sum += (long)cf.resultAt(i);
+                    }
+                    return sum;
+                })
+                .onComplete(asyncResult -> {
+            if (asyncResult.failed()) {
+                log.warn("failed to get total items size from myQueue");
+                promise.fail(asyncResult.cause());
+            } else {
+               promise.complete(queueSetCountWeight * queueSize + queueItemCountWeight * asyncResult.result());
+            }
+        });
+        return promise.future();
     }
 
     private RedisquesConfiguration getConfiguration() {
@@ -202,23 +323,30 @@ public class QueueRegistryService {
         return promise.future();
     }
 
+    private String getVerticleUidWithScore() {
+        return keyspaceHelper.getVerticleUid() + ":" + getLastScore();
+    }
+
+    private long getLastScore() {
+        return lastLoadScore;
+    }
+
     private void registerKeepConsumerAlive() {
         // initial set, add self into local list first
-        aliveConsumers.add(keyspaceHelper.getVerticleUid());
-
+        aliveConsumers.put(keyspaceHelper.getVerticleUid(), getLastScore());
         // keep key alive 2 times of refresh period
         final long keyLiveTime = getConfiguration().getRefreshPeriod() * 1000L * 2;
 
         // add self into Redis with expiring time, without wait.
         final String consumerKey = keyspaceHelper.getAliveConsumersPrefix() + keyspaceHelper.getVerticleUid();
-        redisService.setNxPx(consumerKey, keyspaceHelper.getVerticleUid(), false, keyLiveTime)
+        redisService.setNxPx(consumerKey, getVerticleUidWithScore(), false, keyLiveTime)
                 .onFailure(e -> log.warn("failed to set initial alive consumer live key for {}", keyspaceHelper.getVerticleUid(), e));
 
         // update 2 heartbeat timestamp per refresh period
         final long periodMs = Math.max(getConfiguration().getRefreshPeriod() / 2 * 1000L, 1);
 
         vertx.setPeriodic(periodMs, event -> {
-            redisService.setNxPx(consumerKey, keyspaceHelper.getVerticleUid(), false, keyLiveTime).onComplete(event2 -> {
+            redisService.setNxPx(consumerKey, getVerticleUidWithScore(), false, keyLiveTime).onComplete(event2 -> {
                 if (event2.failed()) {
                     log.warn("failed to update alive consumer live key for {}", keyspaceHelper.getVerticleUid(), event2.cause());
                 } else {
@@ -230,12 +358,45 @@ public class QueueRegistryService {
                         return;
                     }
                     HashSet<String> newlist = event1.result();
-                    // add all first
-                    aliveConsumers.addAll(newlist);
-                    // remove older which not in new list
-                    aliveConsumers.retainAll(newlist);
-                    // ensure self is inside
-                    aliveConsumers.add(keyspaceHelper.getVerticleUid());
+                    List<String> keyList = new ArrayList<>();
+                    List<Future<String>> futures = new ArrayList<>();
+
+                    newlist.forEach(key -> {
+                        Promise<String> perKeyPromise = Promise.promise();
+                        futures.add(perKeyPromise.future());
+                        redisService.get(keyspaceHelper.getAliveConsumersPrefix() + key).onComplete(event3 -> {
+                            if (event3.failed()) {
+                                log.error("Unable to get consumer key for queue {}", key, event3.cause());
+                                perKeyPromise.fail(event3.cause());
+                                return;
+                            }
+                            String consumerKey1 = Objects.toString(event3.result(), null);
+                            perKeyPromise.complete(consumerKey1);
+                        });
+                    });
+
+                    Future.all(futures).onComplete(new Handler<AsyncResult<CompositeFuture>>() {
+                        @Override
+                        public void handle(AsyncResult<CompositeFuture> keysResult) {
+                            // add all with LOAD_BALANCE_SCORE_NOT_VALID first
+                            newlist.forEach(k -> aliveConsumers.put(k, LOAD_BALANCE_SCORE_NOT_VALID));
+                            if (keysResult.failed()) {
+                                log.warn("failed to get value of keys: {}", String.join(",", keyList), keysResult.cause());
+                            } else {
+                                keysResult.result().list().forEach(valueResponse -> {
+                                    if (valueResponse != null){
+                                        final String[] keyValue = valueResponse.toString().split(":");
+                                        aliveConsumers.put(keyValue[0], keyValue.length > 1 ? Integer.parseInt(keyValue[1]) : LOAD_BALANCE_SCORE_NOT_VALID);
+                                    }
+                                });
+                            }
+                            // remove older which not in new list
+                            aliveConsumers.keySet().retainAll(newlist);
+                            // ensure self is inside
+                            aliveConsumers.put(keyspaceHelper.getVerticleUid(), getLastScore());
+                        }
+                    });
+
                 });
             });
         });
@@ -320,6 +481,60 @@ public class QueueRegistryService {
                         ));
     }
 
+    Future<Void> moveLoadToOtherInstanceIfNeeded (){
+        String targetUid = findRebalanceTarget(aliveConsumers, keyspaceHelper.getVerticleUid(), lastLoadScore, getConfiguration().getBalancerWeightCompareMargin());
+        if (Strings.isNullOrEmpty(targetUid)) {
+            log.debug("targetUid is null, reassign not needed");
+            return Future.succeededFuture();
+        }
+        final int maxAllowToMove = getConfiguration().getBalancerMaxReassignQueueCountPerTime();
+        final EventBus eb = vertx.eventBus();
+        List<Future<String>> futures = new ArrayList<>();
+        final Set<Map.Entry<String, QueueProcessingState>> localCopy = new HashSet<>(queueConsumerRunner.getMyQueues().entrySet());
+        for (Map.Entry<String, QueueProcessingState> entry : localCopy) {
+            String queueName = entry.getKey();
+            QueueProcessingState state = entry.getValue();
+            if(state.getState() == QueueState.CONSUMING){
+                log.debug("Queue {} is consuming, will not try to forward", queueName);
+                continue;
+            }
+            if (futures.size() >= maxAllowToMove) {
+                log.debug("Already have {} will forward", futures.size());
+                break;
+            }
+            Promise<String> byQueuePromise = Promise.promise();
+            futures.add(byQueuePromise.future());
+            // remove queue from myqueue list
+            queueConsumerRunner.getMyQueues().remove(queueName);
+            // unregister queue
+            unregisterQueue(queueName).onComplete(event -> {
+                if (event.succeeded()) {
+                    // send to new consumer
+                    eb.send(keyspaceHelper.getConsumersAddressByUid(targetUid), queueName);
+                    log.info("load balancer moved the queue {}, from {} to {}", queueName, keyspaceHelper.getVerticleUid(), targetUid);
+                    byQueuePromise.complete(queueName);
+                } else {
+                    // unregisterQueue never fail.
+                    log.warn("Failed to move queue {} to {}. You should not see this!", queueName, state.getState(), event.cause());
+                    // just complete unused promise
+                    byQueuePromise.complete();
+                }
+            });
+        }
+
+        Promise<Void> promise = Promise.promise();
+        Future.all(futures)
+                .onComplete(asyncResult -> {
+                    if (asyncResult.failed()) {
+                        log.warn("failed to balancing the load, will try again later", asyncResult.cause());
+                        promise.complete();
+                    } else {
+                        promise.complete();
+                    }
+                });
+        return promise.future();
+    }
+
     private void registerActiveQueueRegistrationRefresh() {
         // Periodic refresh of my registrations on active queues.
         var periodMs = getConfiguration().getRefreshPeriod() * 1000L;
@@ -328,28 +543,29 @@ public class QueueRegistryService {
 
             @Override
             public void accept(Runnable onPeriodicDone) {
-                // Need a copy to prevent concurrent modification issuses.
-                iter = getSortedMyQueueClone(queueConsumerRunner.getMyQueues()).entrySet().iterator();
-                // Trigger only a limited amount of requests in parallel.
-                upperBoundParallel.request(activeQueueRegRefreshReqQuota, iter, new UpperBoundParallel.Mentor<>() {
-                    @Override
-                    public boolean runOneMore(BiConsumer<Throwable, Void> onQueueDone, Iterator<Map.Entry<String, QueueProcessingState>> iter) {
-                        refreshConsumerRegistration(onQueueDone);
-                        return iter.hasNext();
-                    }
+                moveLoadToOtherInstanceIfNeeded().onComplete(event -> {
+                    // Need a copy to prevent concurrent modification issues.
+                    iter = getSortedMyQueueClone(queueConsumerRunner.getMyQueues()).entrySet().iterator();
+                    // Trigger only a limited amount of requests in parallel.
+                    upperBoundParallel.request(activeQueueRegRefreshReqQuota, iter, new UpperBoundParallel.Mentor<>() {
+                        @Override
+                        public boolean runOneMore(BiConsumer<Throwable, Void> onQueueDone, Iterator<Map.Entry<String, QueueProcessingState>> iter) {
+                            refreshConsumerRegistration(onQueueDone);
+                            return iter.hasNext();
+                        }
 
-                    @Override
-                    public boolean onError(Throwable ex, Iterator<Map.Entry<String, QueueProcessingState>> iter) {
-                        if (log.isWarnEnabled()) log.warn("TODO error handling", exceptionFactory.newException(ex));
-                        onPeriodicDone.run();
-                        // just continue to refresh next one
-                        return true;
-                    }
+                        @Override
+                        public boolean onError(Throwable ex, Iterator<Map.Entry<String, QueueProcessingState>> iter) {
+                            if (log.isWarnEnabled()) log.warn("TODO error handling", exceptionFactory.newException(ex));
+                            // just continue to refresh next one
+                            return true;
+                        }
 
-                    @Override
-                    public void onDone(Iterator<Map.Entry<String, QueueProcessingState>> iter) {
-                        onPeriodicDone.run();
-                    }
+                        @Override
+                        public void onDone(Iterator<Map.Entry<String, QueueProcessingState>> iter) {
+                            onPeriodicDone.run();
+                        }
+                    });
                 });
             }
 
@@ -578,6 +794,18 @@ public class QueueRegistryService {
                         final String queueName = queueObject.toString();
                         String key = keyspaceHelper.getQueuesPrefix() + queueName;
                         log.trace("RedisQues update queue: {}", key);
+
+                        Handler<Void> checkNextHandler = event -> {
+                            final int checkDelayMs = getConfiguration().getQueueCheckDelayTimeMs();
+                            if (checkDelayMs > 0) {
+                                vertx.setTimer(checkDelayMs, timerId -> {
+                                    onDone.accept(null, null);
+                                });
+                            } else {
+                                onDone.accept(null, null);
+                            }
+                        };
+
                         Handler<Void> refreshRegHandler = event -> {
                             // Make sure its TTL is correctly set (replaces the previous orphan detection mechanism).
                             refreshRegistration(queueName, refreshRegistrationEvent -> {
@@ -593,15 +821,16 @@ public class QueueRegistryService {
                                     if (log.isTraceEnabled()) {
                                         log.trace("refreshRegistration for queue {} time used is {} ms", queueName, System.currentTimeMillis() - perQueueStartTs);
                                     }
-                                    onDone.accept(null, null);
+                                    checkNextHandler.handle(null);
                                 });
                             });
                         };
+
                         redisService.exists(Collections.singletonList(key)).onComplete(event -> {
                             if (event.failed() || event.result() == null) {
                                 log.error("RedisQues is unable to check existence of queue {}", queueName,
                                         exceptionFactory.newException("redisAPI.exists(" + key + ") failed", event.cause()));
-                                onDone.accept(null, null);
+                                checkNextHandler.handle(null);
                                 return;
                             }
                             if (event.result().toLong() == 1) {
@@ -719,7 +948,7 @@ public class QueueRegistryService {
     }
 
     public void gracefulStop(final Handler<Void> doneHandler) {
-        unregisterAll(Arrays.asList(consumersMessageConsumer, uidMessageConsumer,
+        unregisterAll(Arrays.asList(consumersMessageConsumer, consumersMyMessageConsumer, uidMessageConsumer,
                 refreshRegistrationConsumer, notifyConsumer)).onComplete(event -> {
             if (event.failed()) {
                 log.warn("TODO error handling", exceptionFactory.newException(
@@ -765,7 +994,7 @@ public class QueueRegistryService {
                 log.debug("RedisQues Sending registration request for queue {}", queueName);
                 eb.send(keyspaceHelper.getConsumersAddress(), queueName);
                 promise.complete();
-            } else if (!aliveConsumers.contains(consumer)) {
+            } else if (!aliveConsumers.keySet().contains(consumer)) {
                 log.info("RedisQues consumer {} of queue {} does not exist.", consumer, queueName);
                 redisService.del(Collections.singletonList(key)).onComplete(result -> {
                     if (result.failed()) {
@@ -816,6 +1045,38 @@ public class QueueRegistryService {
                     }
                 }
                 log.debug("{} not expired consumers keys found, {} keys in myQueues list", keys.size(), queueConsumerRunner.getMyQueues().size());
+            });
+        });
+    }
+
+    /**
+     * calculate current instance's load weight score
+     */
+    private void registerCalculateLoadScore() {
+        final long queueSetCountWeight = getConfiguration().getBalancerQueueCountWeight();
+        final long queueItemCountWeight = getConfiguration().getBalancerQueueItemCountWeight();
+        vertx.setPeriodic(getConfiguration().getBalancerLocalScoreUpdateIntervalSec() * 1000L, event -> {
+            if (!getConfiguration().isBalancerEnabled()) {
+                return;
+            }
+            getMyLoadScore(queueConsumerRunner.getMyQueues().keySet(), queueSetCountWeight, queueItemCountWeight).onComplete(event1 -> {
+                if (event1.failed()) {
+                    log.error("Failed to get load score");
+                    lastLoadScore = LOAD_BALANCE_SCORE_NOT_VALID;
+                } else {
+                    log.debug("Load score: {}", event1.result());
+                    lastLoadScore = event1.result();
+                    final String metricsAddress = getConfiguration().getPublishMetricsAddress();
+                    if (Strings.isNullOrEmpty(metricsAddress)) {
+                        return;
+                    }
+                    vertx.eventBus().send(
+                            metricsAddress,
+                            new JsonObject()
+                                    .put("name", "redisques.balancer.instance." + keyspaceHelper.getInstanceIndex() + ".score")
+                                    .put("action", "set")
+                                    .put("n", lastLoadScore));
+                }
             });
         });
     }

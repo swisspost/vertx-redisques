@@ -64,6 +64,14 @@ public class RedisquesConfiguration {
     private final int redisPoolRecycleTimeoutMs;
     private final int dequeueStatisticReportIntervalSec;
     private final int emptyQueueLiveTimeMs;
+    private final int queueCheckDelayTimeMs;
+    private final boolean isBalancerEnabled;
+    private final int balancerLocalScoreUpdateIntervalSec;
+    private final long balancerQueueCountWeight;
+    private final long balancerQueueItemCountWeight;
+    private final int balancerWeightCompareMargin;
+    private final int balancerMaxReassignQueueCountPerTime;
+
 
     private static final int DEFAULT_HTTP_REQUEST_HANDLER_MAX_HEADER_SIZE = 8192;
     private static final int DEFAULT_HTTP_REQUEST_HANDLER_MAX_INITIAL_LINE_LENGTH = 4096;
@@ -91,6 +99,15 @@ public class RedisquesConfiguration {
     private static final int DEFAULT_MEMORY_USAGE_CHECK_INTERVAL_SEC = 60;
     private static final int DEFAULT_DEQUEUE_STATISTIC_REPORT_INTERVAL_SEC = -1;
     private static final int DEFAULT_REDIS_READY_CHECK_INTERVAL_MS = -1;
+    private static final int DEFAULT_QUEUE_CHECK_DELAY_TIME_MS = -1;
+
+    //balancer
+    private static final boolean DEFAULT_BALANCER_IS_ENABLED = false;
+    private static final int DEFAULT_BALANCER_LOCAL_SCORE_UPDATE_INTERVAL_SEC = 10;
+    private static final int DEFAULT_BALANCER_MAX_REASSIGN_COUNTER_PER_TIME = 2;
+    private static final long DEFAULT_BALANCER_QUEUE_COUNT_WEIGHT = 1;
+    private static final long DEFAULT_BALANCER_QUEUE_ITEM_COUNT_WEIGHT = 5;
+    private static final int DEFAULT_BALANCER_WEIGHT_COMPARE_MARGIN = 30;
 
     public static final String PROP_ADDRESS = "address";
     public static final String PROP_CONFIGURATION_UPDATED_ADDRESS = "configuration-updated-address";
@@ -144,6 +161,13 @@ public class RedisquesConfiguration {
     public static final String PROP_REDIS_READY_CHECK_INTERVAL_MS = "redisReadyCheckIntervalMs";
     public static final String PROP_DEQUEUE_STATISTIC_REPORT_INTERVAL_SEC = "dequeueStatisticReportIntervalSec";
     public static final String PROP_EMPTY_QUEUE_LIVE_TIME_MS = "emptyQueueLiveTimeMs";
+    public static final String PROP_QUEUE_CHECK_DELAY_TIME_MS = "queueCheckDelayTimeMs";
+    public static final String PROP_BALANCER_IS_ENABLED = "isBalancerEnabled";
+    public static final String PROP_BALANCER_LOCAL_SCORE_UPDATE_INTERVAL_SEC = "balancerLocalScoreUpdateIntervalSec";
+    public static final String PROP_BALANCER_MAX_REASSIGN_COUNTER_PER_TIME = "balancerMaxReassignQueueCountPerTime";
+    public static final String PROP_BALANCER_QUEUE_COUNT_WEIGHT = "balancerQueueCountWeight";
+    public static final String PROP_BALANCER_QUEUE_ITEM_COUNT_WEIGHT = "balancerQueueItemCountWeight";
+    public static final String PROP_BALANCER_WEIGHT_COMPARE_MARGIN = "balancerWeightCompareMargin";
 
     /**
      * Constructor with default values. Use the {@link RedisquesConfigurationBuilder} class
@@ -181,7 +205,9 @@ public class RedisquesConfiguration {
                 DEFAULT_REDIS_MAX_PIPELINE_WAIT_SIZE, DEFAULT_QUEUE_SPEED_INTERVAL_SEC, DEFAULT_MEMORY_USAGE_LIMIT_PCT,
                 DEFAULT_MEMORY_USAGE_CHECK_INTERVAL_SEC, DEFAULT_REDIS_RECONNECT_ATTEMPTS, DEFAULT_REDIS_RECONNECT_DELAY_SEC,
                 DEFAULT_REDIS_POOL_RECYCLE_TIMEOUT_MS, DEFAULT_DEQUEUE_STATISTIC_REPORT_INTERVAL_SEC,
-                DEFAULT_REDIS_READY_CHECK_INTERVAL_MS, DEFAULT_EMPTY_QUEUE_LIVE_TIME_MS);
+                DEFAULT_REDIS_READY_CHECK_INTERVAL_MS, DEFAULT_EMPTY_QUEUE_LIVE_TIME_MS, DEFAULT_QUEUE_CHECK_DELAY_TIME_MS, DEFAULT_BALANCER_IS_ENABLED,
+                DEFAULT_BALANCER_LOCAL_SCORE_UPDATE_INTERVAL_SEC, DEFAULT_BALANCER_QUEUE_COUNT_WEIGHT,
+                DEFAULT_BALANCER_QUEUE_ITEM_COUNT_WEIGHT, DEFAULT_BALANCER_WEIGHT_COMPARE_MARGIN, DEFAULT_BALANCER_MAX_REASSIGN_COUNTER_PER_TIME);
     }
 
     /**
@@ -210,7 +236,9 @@ public class RedisquesConfiguration {
                 DEFAULT_REDIS_MAX_PIPELINE_WAIT_SIZE, DEFAULT_QUEUE_SPEED_INTERVAL_SEC, DEFAULT_MEMORY_USAGE_LIMIT_PCT,
                 DEFAULT_MEMORY_USAGE_CHECK_INTERVAL_SEC, DEFAULT_REDIS_RECONNECT_ATTEMPTS, DEFAULT_REDIS_RECONNECT_DELAY_SEC,
                 DEFAULT_REDIS_POOL_RECYCLE_TIMEOUT_MS, DEFAULT_DEQUEUE_STATISTIC_REPORT_INTERVAL_SEC,
-                DEFAULT_REDIS_READY_CHECK_INTERVAL_MS, DEFAULT_EMPTY_QUEUE_LIVE_TIME_MS);
+                DEFAULT_REDIS_READY_CHECK_INTERVAL_MS, DEFAULT_EMPTY_QUEUE_LIVE_TIME_MS, DEFAULT_QUEUE_CHECK_DELAY_TIME_MS, DEFAULT_BALANCER_IS_ENABLED,
+                DEFAULT_BALANCER_LOCAL_SCORE_UPDATE_INTERVAL_SEC, DEFAULT_BALANCER_QUEUE_COUNT_WEIGHT,
+                DEFAULT_BALANCER_QUEUE_ITEM_COUNT_WEIGHT, DEFAULT_BALANCER_WEIGHT_COMPARE_MARGIN, DEFAULT_BALANCER_MAX_REASSIGN_COUNTER_PER_TIME);
     }
 
     /**
@@ -238,7 +266,9 @@ public class RedisquesConfiguration {
                 DEFAULT_REDIS_MAX_PIPELINE_WAIT_SIZE, DEFAULT_QUEUE_SPEED_INTERVAL_SEC, DEFAULT_MEMORY_USAGE_LIMIT_PCT,
                 DEFAULT_MEMORY_USAGE_CHECK_INTERVAL_SEC, DEFAULT_REDIS_RECONNECT_ATTEMPTS, DEFAULT_REDIS_RECONNECT_DELAY_SEC,
                 DEFAULT_REDIS_POOL_RECYCLE_TIMEOUT_MS, DEFAULT_DEQUEUE_STATISTIC_REPORT_INTERVAL_SEC,
-                DEFAULT_REDIS_READY_CHECK_INTERVAL_MS, DEFAULT_EMPTY_QUEUE_LIVE_TIME_MS);
+                DEFAULT_REDIS_READY_CHECK_INTERVAL_MS, DEFAULT_EMPTY_QUEUE_LIVE_TIME_MS, DEFAULT_QUEUE_CHECK_DELAY_TIME_MS, DEFAULT_BALANCER_IS_ENABLED,
+                DEFAULT_BALANCER_LOCAL_SCORE_UPDATE_INTERVAL_SEC, DEFAULT_BALANCER_QUEUE_COUNT_WEIGHT,
+                DEFAULT_BALANCER_QUEUE_ITEM_COUNT_WEIGHT, DEFAULT_BALANCER_WEIGHT_COMPARE_MARGIN, DEFAULT_BALANCER_MAX_REASSIGN_COUNTER_PER_TIME);
     }
 
     /**
@@ -266,7 +296,9 @@ public class RedisquesConfiguration {
                 DEFAULT_REDIS_MAX_PIPELINE_WAIT_SIZE, DEFAULT_QUEUE_SPEED_INTERVAL_SEC, DEFAULT_MEMORY_USAGE_LIMIT_PCT,
                 DEFAULT_MEMORY_USAGE_CHECK_INTERVAL_SEC, DEFAULT_REDIS_RECONNECT_ATTEMPTS, DEFAULT_REDIS_RECONNECT_DELAY_SEC,
                 DEFAULT_REDIS_POOL_RECYCLE_TIMEOUT_MS, DEFAULT_DEQUEUE_STATISTIC_REPORT_INTERVAL_SEC,
-                DEFAULT_REDIS_READY_CHECK_INTERVAL_MS, DEFAULT_EMPTY_QUEUE_LIVE_TIME_MS);
+                DEFAULT_REDIS_READY_CHECK_INTERVAL_MS, DEFAULT_EMPTY_QUEUE_LIVE_TIME_MS, DEFAULT_QUEUE_CHECK_DELAY_TIME_MS, DEFAULT_BALANCER_IS_ENABLED,
+                DEFAULT_BALANCER_LOCAL_SCORE_UPDATE_INTERVAL_SEC, DEFAULT_BALANCER_QUEUE_COUNT_WEIGHT,
+                DEFAULT_BALANCER_QUEUE_ITEM_COUNT_WEIGHT, DEFAULT_BALANCER_WEIGHT_COMPARE_MARGIN, DEFAULT_BALANCER_MAX_REASSIGN_COUNTER_PER_TIME);
     }
 
     private RedisquesConfiguration(String address, String configurationUpdatedAddress, String redisPrefix, String processorAddress,
@@ -284,7 +316,9 @@ public class RedisquesConfiguration {
                                    int maxPoolSize, int maxPoolWaitSize, int maxPipelineWaitSize,
                                    int queueSpeedIntervalSec, int memoryUsageLimitPercent, int memoryUsageCheckIntervalSec,
                                    int redisReconnectAttempts, int redisReconnectDelaySec, int redisPoolRecycleTimeoutMs,
-                                   int dequeueStatisticReportIntervalSec, int redisReadyCheckIntervalMs, int emptyQueueLiveTimeMs) {
+                                   int dequeueStatisticReportIntervalSec, int redisReadyCheckIntervalMs, int emptyQueueLiveTimeMs, int queueCheckDelayTimeMs,
+                                   boolean isBalancerEnabled, int balancerLocalScoreUpdateIntervalSec, long balancerQueueCountWeight,
+                                   long balancerQueueItemCountWeight, int balancerWeightCompareMargin, int balancerMaxReassignQueueCountPerTime) {
         this.address = address;
         this.configurationUpdatedAddress = configurationUpdatedAddress;
         this.redisPrefix = redisPrefix;
@@ -400,6 +434,15 @@ public class RedisquesConfiguration {
         this.dequeueStatisticReportIntervalSec = dequeueStatisticReportIntervalSec;
         this.redisReadyCheckIntervalMs = redisReadyCheckIntervalMs;
         this.emptyQueueLiveTimeMs = emptyQueueLiveTimeMs;
+        this.queueCheckDelayTimeMs = queueCheckDelayTimeMs;
+
+        this.isBalancerEnabled = isBalancerEnabled;
+        this.balancerLocalScoreUpdateIntervalSec = balancerLocalScoreUpdateIntervalSec;
+        this.balancerQueueCountWeight = balancerQueueCountWeight;
+        this.balancerQueueItemCountWeight = balancerQueueItemCountWeight;
+        this.balancerWeightCompareMargin = balancerWeightCompareMargin;
+        this.balancerMaxReassignQueueCountPerTime = balancerMaxReassignQueueCountPerTime;
+
     }
 
     public static RedisquesConfigurationBuilder with() {
@@ -431,7 +474,14 @@ public class RedisquesConfiguration {
                 builder.redisPoolRecycleTimeoutMs,
                 builder.dequeueStatisticReportIntervalSec,
                 builder.redisReadyCheckIntervalMs,
-                builder.emptyQueueLiveTimeMs);
+                builder.emptyQueueLiveTimeMs,
+                builder.queueCheckDelayTimeMs,
+                builder.isBalancerEnabled,
+                builder.balancerLocalScoreUpdateIntervalSec,
+                builder.balancerQueueCountWeight,
+                builder.balancerQueueItemCountWeight,
+                builder.balancerWeightCompareMargin,
+                builder.balancerMaxReassignQueueCountPerTime);
     }
 
     public JsonObject asJsonObject() {
@@ -484,6 +534,13 @@ public class RedisquesConfiguration {
         obj.put(PROP_REDIS_READY_CHECK_INTERVAL_MS, getRedisReadyCheckIntervalMs());
         obj.put(PROP_DEQUEUE_STATISTIC_REPORT_INTERVAL_SEC, getDequeueStatisticReportIntervalSec());
         obj.put(PROP_EMPTY_QUEUE_LIVE_TIME_MS, getEmptyQueueLiveTimeMillis());
+        obj.put(PROP_QUEUE_CHECK_DELAY_TIME_MS, getQueueCheckDelayTimeMs());
+        obj.put(PROP_BALANCER_IS_ENABLED, isBalancerEnabled());
+        obj.put(PROP_BALANCER_QUEUE_COUNT_WEIGHT, getBalancerQueueCountWeight());
+        obj.put(PROP_BALANCER_QUEUE_ITEM_COUNT_WEIGHT, getBalancerQueueItemCountWeight());
+        obj.put(PROP_BALANCER_WEIGHT_COMPARE_MARGIN, getBalancerWeightCompareMargin());
+        obj.put(PROP_BALANCER_LOCAL_SCORE_UPDATE_INTERVAL_SEC, getBalancerLocalScoreUpdateIntervalSec());
+        obj.put(PROP_BALANCER_MAX_REASSIGN_COUNTER_PER_TIME, getBalancerMaxReassignQueueCountPerTime());
         return obj;
     }
 
@@ -635,6 +692,27 @@ public class RedisquesConfiguration {
         }
         if (json.containsKey(PROP_EMPTY_QUEUE_LIVE_TIME_MS)) {
             builder.emptyQueueLiveTimeMs(json.getInteger(PROP_EMPTY_QUEUE_LIVE_TIME_MS));
+        }
+        if(json.containsKey(PROP_QUEUE_CHECK_DELAY_TIME_MS)) {
+            builder.queueCheckDelayTimeMs(json.getInteger(PROP_QUEUE_CHECK_DELAY_TIME_MS));
+        }
+        if (json.containsKey(PROP_BALANCER_IS_ENABLED)) {
+            builder.setBalancerEnabled(json.getBoolean(PROP_BALANCER_IS_ENABLED));
+        }
+        if (json.containsKey(PROP_BALANCER_LOCAL_SCORE_UPDATE_INTERVAL_SEC)) {
+            builder.balancerLocalScoreUpdateIntervalSec(json.getInteger(PROP_BALANCER_LOCAL_SCORE_UPDATE_INTERVAL_SEC));
+        }
+        if (json.containsKey(PROP_BALANCER_MAX_REASSIGN_COUNTER_PER_TIME)) {
+            builder.balancerMaxReassignQueueCountPerTime(json.getInteger(PROP_BALANCER_MAX_REASSIGN_COUNTER_PER_TIME));
+        }
+        if (json.containsKey(PROP_BALANCER_WEIGHT_COMPARE_MARGIN)) {
+            builder.balancerWeightCompareMargin(json.getInteger(PROP_BALANCER_WEIGHT_COMPARE_MARGIN));
+        }
+        if (json.containsKey(PROP_BALANCER_QUEUE_COUNT_WEIGHT)) {
+            builder.balancerQueueCountWeight(json.getLong(PROP_BALANCER_QUEUE_COUNT_WEIGHT));
+        }
+        if (json.containsKey(PROP_BALANCER_QUEUE_ITEM_COUNT_WEIGHT)) {
+            builder.balancerQueueItemCountWeight(json.getLong(PROP_BALANCER_QUEUE_ITEM_COUNT_WEIGHT));
         }
         return builder.build();
     }
@@ -864,6 +942,34 @@ public class RedisquesConfiguration {
         return emptyQueueLiveTimeMs;
     }
 
+    public int getQueueCheckDelayTimeMs() {
+        return queueCheckDelayTimeMs;
+    }
+
+    public boolean isBalancerEnabled() {
+        return isBalancerEnabled;
+    }
+
+    public int getBalancerLocalScoreUpdateIntervalSec() {
+        return balancerLocalScoreUpdateIntervalSec;
+    }
+
+    public long getBalancerQueueCountWeight() {
+        return balancerQueueCountWeight;
+    }
+
+    public long getBalancerQueueItemCountWeight() {
+        return balancerQueueItemCountWeight;
+    }
+
+    public int getBalancerWeightCompareMargin() {
+        return balancerWeightCompareMargin;
+    }
+
+    public int getBalancerMaxReassignQueueCountPerTime() {
+        return balancerMaxReassignQueueCountPerTime;
+    }
+
 
     /**
      * RedisquesConfigurationBuilder class for simplified configuration.
@@ -924,6 +1030,14 @@ public class RedisquesConfiguration {
         private int redisReadyCheckIntervalMs;
         private int emptyQueueLiveTimeMs;
         private boolean micrometerPerQueueMetricsEnabled;
+        private int queueCheckDelayTimeMs;
+
+        private boolean isBalancerEnabled;
+        private int balancerLocalScoreUpdateIntervalSec;
+        private int balancerMaxReassignQueueCountPerTime;
+        private long balancerQueueCountWeight;
+        private long balancerQueueItemCountWeight;
+        private int balancerWeightCompareMargin;
 
         public RedisquesConfigurationBuilder() {
             this.address = "redisques";
@@ -966,6 +1080,13 @@ public class RedisquesConfiguration {
             this.dequeueStatisticReportIntervalSec = DEFAULT_DEQUEUE_STATISTIC_REPORT_INTERVAL_SEC;
             this.redisReadyCheckIntervalMs = DEFAULT_REDIS_READY_CHECK_INTERVAL_MS;
             this.emptyQueueLiveTimeMs = DEFAULT_EMPTY_QUEUE_LIVE_TIME_MS;
+            this.queueCheckDelayTimeMs = DEFAULT_QUEUE_CHECK_DELAY_TIME_MS;
+            this.isBalancerEnabled = DEFAULT_BALANCER_IS_ENABLED;
+            this.balancerLocalScoreUpdateIntervalSec = DEFAULT_BALANCER_LOCAL_SCORE_UPDATE_INTERVAL_SEC;
+            this.balancerMaxReassignQueueCountPerTime = DEFAULT_BALANCER_MAX_REASSIGN_COUNTER_PER_TIME;
+            this.balancerQueueCountWeight = DEFAULT_BALANCER_QUEUE_COUNT_WEIGHT;
+            this.balancerQueueItemCountWeight = DEFAULT_BALANCER_QUEUE_ITEM_COUNT_WEIGHT;
+            this.balancerWeightCompareMargin = DEFAULT_BALANCER_WEIGHT_COMPARE_MARGIN;
         }
 
         public RedisquesConfigurationBuilder address(String address) {
@@ -1206,6 +1327,41 @@ public class RedisquesConfiguration {
 
         public RedisquesConfigurationBuilder emptyQueueLiveTimeMs(int emptyQueueLiveTimeMs) {
             this.emptyQueueLiveTimeMs = emptyQueueLiveTimeMs;
+            return this;
+        }
+
+        public RedisquesConfigurationBuilder queueCheckDelayTimeMs(int queueCheckDelayTimeMs) {
+            this.queueCheckDelayTimeMs = queueCheckDelayTimeMs;
+            return this;
+        }
+
+        public RedisquesConfigurationBuilder setBalancerEnabled(boolean isBalancerEnabled) {
+            this.isBalancerEnabled = isBalancerEnabled;
+            return this;
+        }
+
+        public RedisquesConfigurationBuilder balancerWeightCompareMargin(int balancerWeightCompareMargin) {
+            this.balancerWeightCompareMargin = balancerWeightCompareMargin;
+            return this;
+        }
+
+        public RedisquesConfigurationBuilder balancerQueueCountWeight(long balancerQueueCountWeight) {
+            this.balancerQueueCountWeight = balancerQueueCountWeight;
+            return this;
+        }
+
+        public RedisquesConfigurationBuilder balancerQueueItemCountWeight(long balancerQueueItemCountWeight) {
+            this.balancerQueueItemCountWeight = balancerQueueItemCountWeight;
+            return this;
+        }
+
+        public RedisquesConfigurationBuilder balancerLocalScoreUpdateIntervalSec(int balancerLocalScoreUpdateIntervalSec) {
+            this.balancerLocalScoreUpdateIntervalSec = balancerLocalScoreUpdateIntervalSec;
+            return this;
+        }
+
+        public RedisquesConfigurationBuilder balancerMaxReassignQueueCountPerTime(int balancerMaxReassignQueueCountPerTime) {
+            this.balancerMaxReassignQueueCountPerTime = balancerMaxReassignQueueCountPerTime;
             return this;
         }
 

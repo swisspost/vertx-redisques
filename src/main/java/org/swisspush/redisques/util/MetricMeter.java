@@ -10,7 +10,8 @@ public enum MetricMeter {
     QUEUE_STATE_READY_SIZE("redisques.queue.state.ready.size", "Amount of queue in state ready"),
     QUEUE_STATE_CONSUMING_SIZE("redisques.queue.state.consuming.size", "Amount of queue in state consuming"),
     QUEUE_CONSUMER_COUNT("redisques.queue.consumers", "Count of consumer registered and alive for a redisques instance"),
-    QUEUE_CONSUMER_LIFE_CYCLE("redisques.queue.consumer.life.cycle", "Count of consumer registered and alive for a redisques instance");
+    QUEUE_CONSUMER_LIFE_CYCLE("redisques.queue.consumer.life.cycle", "Count of consumer registered and alive for a redisques instance"),
+    QUEUE_QUEUE_LOAD_WEIGHT_SCORE("redisques.queue.load.weight.score", "A weight score for queue load of current instance");
     private final String id;
     private final String description;
 

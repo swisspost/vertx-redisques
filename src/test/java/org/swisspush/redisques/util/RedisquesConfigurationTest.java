@@ -58,6 +58,13 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getMetricStorageName(), "queue");
         testContext.assertNull(config.getPublishMetricsAddress());
         testContext.assertEquals(config.getEmptyQueueLiveTimeMillis(), -1);
+        testContext.assertEquals(config.getQueueCheckDelayTimeMs(), -1);
+        testContext.assertFalse(config.isBalancerEnabled());
+        testContext.assertEquals(config.getBalancerQueueCountWeight(), 1L);
+        testContext.assertEquals(config.getBalancerQueueItemCountWeight(), 5L);
+        testContext.assertEquals(config.getBalancerWeightCompareMargin(), 30);
+        testContext.assertEquals(config.getBalancerLocalScoreUpdateIntervalSec(), 10);
+        testContext.assertEquals(config.getBalancerMaxReassignQueueCountPerTime(), 2);
     }
 
     @Test
@@ -95,6 +102,13 @@ public class RedisquesConfigurationTest {
                 .publishMetricsAddress("eventbus-addr-1")
                 .metricStorageName("queue")
                 .emptyQueueLiveTimeMs(9000)
+                .queueCheckDelayTimeMs(100)
+                .setBalancerEnabled(true)
+                .balancerMaxReassignQueueCountPerTime(99)
+                .balancerLocalScoreUpdateIntervalSec(100)
+                .balancerQueueCountWeight(9)
+                .balancerQueueItemCountWeight(7)
+                .balancerWeightCompareMargin(22)
                 .build();
 
         // default values
@@ -133,6 +147,13 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getMetricStorageName(), "queue");
         testContext.assertEquals(config.getConsumerLockMultiplier(), 9);
         testContext.assertEquals(config.getEmptyQueueLiveTimeMillis(), 9000);
+        testContext.assertEquals(config.getQueueCheckDelayTimeMs(), 100);
+        testContext.assertTrue(config.isBalancerEnabled());
+        testContext.assertEquals(config.getBalancerMaxReassignQueueCountPerTime(), 99);
+        testContext.assertEquals(config.getBalancerLocalScoreUpdateIntervalSec(), 100);
+        testContext.assertEquals(config.getBalancerQueueCountWeight(), 9L);
+        testContext.assertEquals(config.getBalancerQueueItemCountWeight(), 7L);
+        testContext.assertEquals(config.getBalancerWeightCompareMargin(), 22);
         // queue configurations
         testContext.assertEquals(config.getQueueConfigurations().size(), 1);
         QueueConfiguration queueConfiguration = config.getQueueConfigurations().get(0);
@@ -181,6 +202,13 @@ public class RedisquesConfigurationTest {
         testContext.assertNull(json.getString(PROP_PUBLISH_METRICS_ADDRESS));
         testContext.assertEquals(json.getString(PROP_METRIC_STORAGE_NAME), "queue");
         testContext.assertEquals(json.getInteger(PROP_EMPTY_QUEUE_LIVE_TIME_MS), -1);
+        testContext.assertEquals(json.getInteger(PROP_QUEUE_CHECK_DELAY_TIME_MS), -1);
+        testContext.assertFalse(json.getBoolean(PROP_BALANCER_IS_ENABLED));
+        testContext.assertEquals(json.getInteger(PROP_BALANCER_MAX_REASSIGN_COUNTER_PER_TIME), 2);
+        testContext.assertEquals(json.getLong(PROP_BALANCER_QUEUE_COUNT_WEIGHT), 1L);
+        testContext.assertEquals(json.getLong(PROP_BALANCER_QUEUE_ITEM_COUNT_WEIGHT), 5L);
+        testContext.assertEquals(json.getInteger(PROP_BALANCER_LOCAL_SCORE_UPDATE_INTERVAL_SEC), 10);
+        testContext.assertEquals(json.getInteger(PROP_BALANCER_WEIGHT_COMPARE_MARGIN), 30);
     }
 
     @Test
@@ -217,6 +245,13 @@ public class RedisquesConfigurationTest {
                 .publishMetricsAddress("eventbus-addr-1")
                 .metricStorageName("queue")
                 .emptyQueueLiveTimeMs(8000)
+                .queueCheckDelayTimeMs(200)
+                .setBalancerEnabled(true)
+                .balancerMaxReassignQueueCountPerTime(99)
+                .balancerLocalScoreUpdateIntervalSec(100)
+                .balancerQueueCountWeight(9)
+                .balancerQueueItemCountWeight(7)
+                .balancerWeightCompareMargin(22)
                 .build();
 
         JsonObject json = config.asJsonObject();
@@ -259,6 +294,13 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(json.getString(PROP_METRIC_STORAGE_NAME), "queue");
         testContext.assertEquals(json.getInteger(PROP_CONSUMER_LOCK_MULTIPLIER), 3);
         testContext.assertEquals(json.getInteger(PROP_EMPTY_QUEUE_LIVE_TIME_MS), 8000);
+        testContext.assertEquals(json.getInteger(PROP_QUEUE_CHECK_DELAY_TIME_MS), 200);
+        testContext.assertTrue(json.getBoolean(PROP_BALANCER_IS_ENABLED));
+        testContext.assertEquals(json.getInteger(PROP_BALANCER_MAX_REASSIGN_COUNTER_PER_TIME), 99);
+        testContext.assertEquals(json.getLong(PROP_BALANCER_QUEUE_COUNT_WEIGHT), 9L);
+        testContext.assertEquals(json.getLong(PROP_BALANCER_QUEUE_ITEM_COUNT_WEIGHT), 7L);
+        testContext.assertEquals(json.getInteger(PROP_BALANCER_LOCAL_SCORE_UPDATE_INTERVAL_SEC), 100);
+        testContext.assertEquals(json.getInteger(PROP_BALANCER_WEIGHT_COMPARE_MARGIN), 22);
         // queue configurations
         JsonArray queueConfigurationsJsonArray = json.getJsonArray(PROP_QUEUE_CONFIGURATIONS);
         List<JsonObject> queueConfigurationJsonObjects = queueConfigurationsJsonArray.getList();
@@ -309,6 +351,13 @@ public class RedisquesConfigurationTest {
         testContext.assertNull(config.getPublishMetricsAddress());
         testContext.assertEquals(config.getMetricStorageName(), "queue");
         testContext.assertEquals(config.getEmptyQueueLiveTimeMillis(), -1);
+        testContext.assertEquals(config.getQueueCheckDelayTimeMs(), -1);
+        testContext.assertFalse(config.isBalancerEnabled());
+        testContext.assertEquals(config.getBalancerMaxReassignQueueCountPerTime(), 2);
+        testContext.assertEquals(config.getBalancerLocalScoreUpdateIntervalSec(), 10);
+        testContext.assertEquals(config.getBalancerQueueCountWeight(), 1L);
+        testContext.assertEquals(config.getBalancerQueueItemCountWeight(), 5L);
+        testContext.assertEquals(config.getBalancerWeightCompareMargin(), 30);
     }
 
     @Test
@@ -354,6 +403,13 @@ public class RedisquesConfigurationTest {
                         .withRetryIntervals(10, 20, 30, 60)
                         .asJsonObject()
         )));
+        json.put(PROP_QUEUE_CHECK_DELAY_TIME_MS, 99);
+        json.put(PROP_BALANCER_IS_ENABLED, true);
+        json.put(PROP_BALANCER_MAX_REASSIGN_COUNTER_PER_TIME, 99);
+        json.put(PROP_BALANCER_QUEUE_COUNT_WEIGHT, 9);
+        json.put(PROP_BALANCER_QUEUE_ITEM_COUNT_WEIGHT, 7);
+        json.put(PROP_BALANCER_LOCAL_SCORE_UPDATE_INTERVAL_SEC, 100);
+        json.put(PROP_BALANCER_WEIGHT_COMPARE_MARGIN, 22);
 
         RedisquesConfiguration config = fromJsonObject(json);
         testContext.assertEquals(config.getAddress(), "new_address");
@@ -390,6 +446,13 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getPublishMetricsAddress(), "eventbus-addr-1");
         testContext.assertEquals(config.getMetricStorageName(), "queue");
         testContext.assertEquals(config.getEmptyQueueLiveTimeMillis(), 1500);
+        testContext.assertEquals(config.getQueueCheckDelayTimeMs(), 99);
+        testContext.assertTrue(config.isBalancerEnabled());
+        testContext.assertEquals(config.getBalancerMaxReassignQueueCountPerTime(), 99);
+        testContext.assertEquals(config.getBalancerLocalScoreUpdateIntervalSec(), 100);
+        testContext.assertEquals(config.getBalancerQueueCountWeight(), 9L);
+        testContext.assertEquals(config.getBalancerQueueItemCountWeight(), 7L);
+        testContext.assertEquals(config.getBalancerWeightCompareMargin(), 22);
 
         // queue configurations
         testContext.assertEquals(config.getQueueConfigurations().size(), 1);

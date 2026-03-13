@@ -29,9 +29,10 @@ import static org.swisspush.redisques.util.RedisquesAPI.*;
 
 public class RedisQues extends AbstractVerticle {
     private static final Logger log = LoggerFactory.getLogger(RedisQues.class);
-
+    static final int DEFAULT_INSTANCE_INDEX_BEGIN = 1;
     // Identifies the consumer
     private final String uid = UUID.randomUUID().toString();
+    private final int instanceIndex;
 
     private RedisProvider redisProvider;
     private RedisService redisService;
@@ -59,9 +60,12 @@ public class RedisQues extends AbstractVerticle {
     private final Semaphore activeQueueRegRefreshReqQuota;
 
     public RedisQues() {
+        this(DEFAULT_INSTANCE_INDEX_BEGIN);
+    }
+    public RedisQues(int instanceIndex) {
         this(null, null, null, newThriftyExceptionFactory(), new Semaphore(Integer.MAX_VALUE),
                 new Semaphore(Integer.MAX_VALUE), new Semaphore(Integer.MAX_VALUE), new Semaphore(Integer.MAX_VALUE),
-                new Semaphore(Integer.MAX_VALUE));
+                new Semaphore(Integer.MAX_VALUE), instanceIndex);
         log.warn("Fallback to legacy behavior and allow up to {} simultaneous requests to redis", Integer.MAX_VALUE);
     }
 
@@ -74,10 +78,11 @@ public class RedisQues extends AbstractVerticle {
             Semaphore activeQueueRegRefreshReqQuota,
             Semaphore checkQueueRequestsQuota,
             Semaphore queueStatsRequestQuota,
-            Semaphore getQueuesItemsCountRedisRequestQuota
+            Semaphore getQueuesItemsCountRedisRequestQuota,
+            int instanceIndex
     ) {
         this(memoryUsageProvider, configurationProvider, redisProvider, exceptionFactory, redisMonitoringReqQuota,
-                activeQueueRegRefreshReqQuota, checkQueueRequestsQuota, queueStatsRequestQuota, getQueuesItemsCountRedisRequestQuota, null);
+                activeQueueRegRefreshReqQuota, checkQueueRequestsQuota, queueStatsRequestQuota, getQueuesItemsCountRedisRequestQuota, null, instanceIndex);
     }
 
     public RedisQues(
@@ -90,7 +95,8 @@ public class RedisQues extends AbstractVerticle {
         Semaphore checkQueueRequestsQuota,
         Semaphore queueStatsRequestQuota,
         Semaphore getQueuesItemsCountRedisRequestQuota,
-        MeterRegistry meterRegistry
+        MeterRegistry meterRegistry,
+        int instanceIndex
     ) {
         this.memoryUsageProvider = memoryUsageProvider;
         this.configurationProvider = configurationProvider;
@@ -102,6 +108,7 @@ public class RedisQues extends AbstractVerticle {
         this.queueStatsRequestQuota = queueStatsRequestQuota;
         this.getQueuesItemsCountRedisRequestQuota = getQueuesItemsCountRedisRequestQuota;
         this.meterRegistry = meterRegistry;
+        this.instanceIndex = instanceIndex;
     }
 
     public static RedisQuesBuilder builder() {
@@ -130,7 +137,7 @@ public class RedisQues extends AbstractVerticle {
         if (redisProvider == null) {
             redisProvider = new DefaultRedisProvider(vertx, configurationProvider);
         }
-        this.keyspaceHelper = new KeyspaceHelper(modConfig, uid);
+        this.keyspaceHelper = new KeyspaceHelper(modConfig, uid, instanceIndex);
         redisProvider.redis().onComplete(event -> {
             if(event.succeeded()) {
                 initialize();
