@@ -12,9 +12,10 @@ import io.vertx.redis.client.Response;
 import org.slf4j.Logger;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.queue.KeyspaceHelper;
-import org.swisspush.redisques.queue.QueueRegistryService;
 import org.swisspush.redisques.queue.RedisService;
+
 import org.swisspush.redisques.util.QueueConfiguration;
+import org.swisspush.redisques.util.QueueConfigurationProvider;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 
 import java.util.ArrayList;
@@ -31,17 +32,17 @@ public abstract class AbstractQueueAction implements QueueAction {
     protected final Vertx vertx;
     protected final Logger log;
     protected final KeyspaceHelper keyspaceHelper;
-    protected final List<QueueConfiguration> queueConfigurations;
+    protected final QueueConfigurationProvider queueConfigurationProvider;
     protected final RedisQuesExceptionFactory exceptionFactory;
     protected final QueueStatisticsCollector queueStatisticsCollector;
 
 
-    public AbstractQueueAction(Vertx vertx, RedisService redisService, KeyspaceHelper keyspaceHelper, List<QueueConfiguration> queueConfigurations,
+    public AbstractQueueAction(Vertx vertx, RedisService redisService, KeyspaceHelper keyspaceHelper, QueueConfigurationProvider queueConfigurationProvider,
                                RedisQuesExceptionFactory exceptionFactory, QueueStatisticsCollector queueStatisticsCollector, Logger log) {
         this.vertx = vertx;
         this.redisService = redisService;
         this.keyspaceHelper = keyspaceHelper;
-        this.queueConfigurations = queueConfigurations;
+        this.queueConfigurationProvider = queueConfigurationProvider;
         this.exceptionFactory = exceptionFactory;
         this.queueStatisticsCollector = queueStatisticsCollector;
         this.log = log;
@@ -134,20 +135,8 @@ public abstract class AbstractQueueAction implements QueueAction {
         });
     }
 
-
-    /**
-     * find first matching Queue-Configuration
-     *
-     * @param queueName search first configuration for that queue-name
-     * @return null when no queueConfiguration's RegEx matches given queueName - else the QueueConfiguration
-     */
     protected QueueConfiguration findQueueConfiguration(String queueName) {
-        for (QueueConfiguration queueConfiguration : queueConfigurations) {
-            if (queueConfiguration.compiledPattern().matcher(queueName).matches()) {
-                return queueConfiguration;
-            }
-        }
-        return null;
+        return queueConfigurationProvider.findQueueConfiguration(queueName);
     }
 
     /**

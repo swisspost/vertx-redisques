@@ -9,22 +9,22 @@ import org.slf4j.Logger;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.queue.KeyspaceHelper;
 import org.swisspush.redisques.queue.RedisService;
-import org.swisspush.redisques.util.QueueConfiguration;
+
+import org.swisspush.redisques.util.QueueConfigurationProvider;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 
 import java.util.Collections;
-import java.util.List;
 
 import static org.swisspush.redisques.util.RedisquesAPI.*;
 
 public class DeleteAllQueueItemsAction extends AbstractQueueAction {
 
     public DeleteAllQueueItemsAction(
-            Vertx vertx, RedisService redisService, KeyspaceHelper keyspaceHelper, List<QueueConfiguration> queueConfigurations,
+            Vertx vertx, RedisService redisService, KeyspaceHelper keyspaceHelper, QueueConfigurationProvider queueConfigurationProvider,
             RedisQuesExceptionFactory exceptionFactory, QueueStatisticsCollector queueStatisticsCollector, Logger log
     ) {
         super(vertx, redisService, keyspaceHelper,
-                queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
+                queueConfigurationProvider, exceptionFactory, queueStatisticsCollector, log);
     }
 
     @Override

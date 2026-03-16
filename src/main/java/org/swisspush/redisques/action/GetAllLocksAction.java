@@ -10,7 +10,6 @@ import org.swisspush.redisques.queue.KeyspaceHelper;
 import org.swisspush.redisques.queue.RedisService;
 import org.swisspush.redisques.util.*;
 
-import java.util.List;
 import java.util.Optional;
 import java.util.regex.Pattern;
 
@@ -20,11 +19,11 @@ public class GetAllLocksAction extends AbstractQueueAction {
 
     public GetAllLocksAction(
             Vertx vertx, RedisService redisService, KeyspaceHelper keyspaceHelper,
-            List<QueueConfiguration> queueConfigurations, RedisQuesExceptionFactory exceptionFactory,
+            QueueConfigurationProvider queueConfigurationProvider, RedisQuesExceptionFactory exceptionFactory,
             QueueStatisticsCollector queueStatisticsCollector, Logger log
     ) {
         super(vertx, redisService, keyspaceHelper,
-                queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
+                queueConfigurationProvider, exceptionFactory, queueStatisticsCollector, log);
     }
 
     @Override

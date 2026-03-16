@@ -11,18 +11,17 @@ import org.slf4j.Logger;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.queue.KeyspaceHelper;
 import org.swisspush.redisques.queue.RedisService;
-import org.swisspush.redisques.util.QueueConfiguration;
+import org.swisspush.redisques.util.QueueConfigurationProvider;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 
-import java.util.List;
 
 import static org.swisspush.redisques.util.RedisquesAPI.*;
 
 public class BulkDeleteLocksAction extends AbstractQueueAction {
 
-    public BulkDeleteLocksAction(Vertx vertx, RedisService redisService, KeyspaceHelper keyspaceHelper, List<QueueConfiguration> queueConfigurations,
+    public BulkDeleteLocksAction(Vertx vertx, RedisService redisService, KeyspaceHelper keyspaceHelper, QueueConfigurationProvider queueConfigurationProvider,
                                  RedisQuesExceptionFactory exceptionFactory, QueueStatisticsCollector queueStatisticsCollector, Logger log) {
-        super(vertx, redisService, keyspaceHelper, queueConfigurations,
+        super(vertx, redisService, keyspaceHelper, queueConfigurationProvider,
                 exceptionFactory, queueStatisticsCollector, log);
     }
 

@@ -10,6 +10,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mockito;
 import org.slf4j.Logger;
+import org.swisspush.redisques.util.QueueConfigurationProvider;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 
 import java.util.ArrayList;
@@ -24,13 +25,14 @@ import static org.swisspush.redisques.util.RedisquesAPI.buildGetQueuesStatistics
  */
 @RunWith(VertxUnitRunner.class)
 public class GetQueuesStatisticsActionTest extends AbstractQueueActionTest {
+    private QueueConfigurationProvider queueConfigurationProvider = Mockito.mock(QueueConfigurationProvider.class);
 
     @Before
     @Override
     public void setup() {
         super.setup();
         action = new GetQueuesStatisticsAction(vertx, redisService, keyspaceHelper,
-                new ArrayList<>(), exceptionFactory, Mockito.mock(QueueStatisticsCollector.class), Mockito.mock(Logger.class));
+                queueConfigurationProvider, exceptionFactory, Mockito.mock(QueueStatisticsCollector.class), Mockito.mock(Logger.class));
     }
 
     @Test
