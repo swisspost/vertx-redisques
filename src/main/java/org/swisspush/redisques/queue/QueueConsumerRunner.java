@@ -10,6 +10,8 @@ import io.vertx.core.eventbus.EventBus;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.eventbus.MessageConsumer;
 import io.vertx.core.json.JsonObject;
+import io.vertx.redis.client.Command;
+import io.vertx.redis.client.Request;
 import io.vertx.redis.client.Response;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,17 +25,17 @@ import org.swisspush.redisques.util.RedisQuesTimer;
 import org.swisspush.redisques.util.RedisquesConfigurationProvider;
 
 import java.util.AbstractMap;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
 import java.util.EnumMap;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-import static io.vertx.core.Future.failedFuture;
-import static io.vertx.core.Future.succeededFuture;
 import static java.lang.System.currentTimeMillis;
 import static org.swisspush.redisques.util.RedisquesAPI.MESSAGE;
 import static org.swisspush.redisques.util.RedisquesAPI.OK;
@@ -51,6 +53,7 @@ public class QueueConsumerRunner {
     private final RedisquesConfigurationProvider configurationProvider;
     private final QueueStatisticsCollector queueStatisticsCollector;
     private final RedisQuesTimer timer;
+    private final int consumerLockTime;
     private final QueueConfigurationProvider queueConfigurationProvider;
     private MessageConsumer<String> trimRequestConsumer;
     private Handler<Void> noQueueMoreItemHandler = null;
@@ -70,6 +73,7 @@ public class QueueConsumerRunner {
         this.keyspaceHelper = keyspaceHelper;
         this.configurationProvider = configurationProvider;
         this.queueStatisticsCollector = queueStatisticsCollector;
+        consumerLockTime = configurationProvider.configuration().getConsumerLockMultiplier() * configurationProvider.configuration().getRefreshPeriod(); // lock is kept twice as long as its refresh interval -> never expires as long as the consumer ('we') are alive
         this.queueConfigurationProvider = queueConfigurationProvider;
 
         // handles trim request
@@ -117,20 +121,13 @@ public class QueueConsumerRunner {
     public Future<Void> consume(final String queueName) {
         final Promise<Void> promise = Promise.promise();
         log.debug("RedisQues Requested to consume queue {}", queueName);
-        refreshRegistration(queueName).onComplete(event -> {
-            if (event.failed()) {
-                log.warn("Failed to refresh registration for queue '{}'.", queueName, event.cause());
-                // We should return here. See: "https://softwareengineering.stackexchange.com/a/190535"
-            }
-            metrics.perQueueMetricsRefresh(queueName);
-            // Make sure that I am still the registered consumer
-            final String consumerKey = keyspaceHelper.getConsumersPrefix() + queueName;
-            log.trace("RedisQues consume get: {}", consumerKey);
-            redisService.get(consumerKey).onComplete(event1 -> {
+        // Make sure that I am still the registered consumer
+        refreshRegistrationAndGet(queueName).onComplete(event1 -> {
                 if (event1.failed()) {
                     log.error("Unable to get consumer for queue {}", queueName, event1.cause());
                     return;
                 }
+                metrics.perQueueMetricsRefresh(queueName);
                 String consumer = Objects.toString(event1.result(), "");
                 log.trace("RedisQues refresh registration consumer: {}", consumer);
                 if (keyspaceHelper.getVerticleUid().equals(consumer)) {
@@ -183,12 +180,11 @@ public class QueueConsumerRunner {
                     });
                 }
             });
-        });
         return promise.future();
     }
 
     public void setNoMoreItemHandelr(Handler<Void> handler){
-
+        noQueueMoreItemHandler = handler;
     }
 
     private Future<Void> readQueue(final String queueName) {
@@ -235,13 +231,21 @@ public class QueueConsumerRunner {
                                         // Issue notification to consume next message if any
                                         log.trace("RedisQues read queue: {}", queueKey);
                                         redisService.llen(queueKey).onComplete(answer1 -> {
-                                            if (answer1.succeeded() && answer1.result() != null && answer1.result().toInteger() > 0) {
-                                                notifyConsumer(queueName).onComplete(event1 -> {
-                                                    if (event1.failed())
-                                                        log.warn("TODO error handling", exceptionFactory.newException(
-                                                                "notifyConsumer(" + queueName + ") failed", event1.cause()));
+                                            if (answer1.succeeded() && answer1.result() != null) {
+                                                if ( answer1.result().toInteger() > 0) {
+                                                    notifyConsumer(queueName).onComplete(event1 -> {
+                                                        if (event1.failed())
+                                                            log.warn("TODO error handling", exceptionFactory.newException(
+                                                                    "notifyConsumer(" + queueName + ") failed", event1.cause()));
+                                                        promise.complete();
+                                                    });
+                                                } else {
+                                                    // Notify that we are stopped in case it was the last active consumer
+                                                    if (noQueueMoreItemHandler != null) {
+                                                        noQueueMoreItemHandler.handle(null);
+                                                    }
                                                     promise.complete();
-                                                });
+                                                }
                                             } else {
                                                 if (answer1.failed() && log.isWarnEnabled()) {
                                                     log.warn("TODO error handling", exceptionFactory.newException(
@@ -251,12 +255,6 @@ public class QueueConsumerRunner {
                                             }
                                         });
                                     };
-
-                                    // Notify that we are stopped in case it was the last active consumer
-                                    if (noQueueMoreItemHandler != null) {
-                                        noQueueMoreItemHandler.handle(null);
-                                        return;
-                                    }
                                     nextMsgHandler.handle(null);
                                 });
                             } else {
@@ -373,14 +371,25 @@ public class QueueConsumerRunner {
         });
     }
 
-    private Future<Void> refreshRegistration(String queueName) {
-        String address = keyspaceHelper.getVerticleRefreshRegistrationKey();
-        return vertx.eventBus().request(address, queueName).transform(ev -> {
-            if (ev.failed()) {
-                log.error("RedisQues refresh registration failed", ev.cause());
+    private Future<String> refreshRegistrationAndGet(String queueName) {
+        log.debug("RedisQues Refreshing registration of queue consumer {}, expire in {} s", queueName, consumerLockTime);
+        Promise<String> promise = Promise.promise();
+        final String consumerKey = keyspaceHelper.getConsumersPrefix() + queueName;
+
+        List<Request> batch = new ArrayList<>(2);
+        batch.add(Request.cmd(Command.EXPIRE).arg(consumerKey).arg(String.valueOf(consumerLockTime)));
+        batch.add(Request.cmd(Command.GET).arg(consumerKey));
+        redisService.batch(batch).onComplete(res -> {
+            if (res.failed() || res.result().size() != 2){
+                log.warn("refreshRegistrationAndGet faild with queue: {}", queueName, res.cause());
+                promise.fail(res.cause().getMessage());
+            } else {
+                List<Response> responses = res.result();
+                updateLastRefreshRegistrationTimeStamp(queueName);
+                promise.complete(responses.get(1).toString());
             }
-            return ev.succeeded() ? succeededFuture() : failedFuture(ev.cause());
         });
+        return promise.future();
     }
 
     private Future<Void> notifyConsumer(String queueName) {

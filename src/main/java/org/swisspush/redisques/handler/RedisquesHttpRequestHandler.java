@@ -527,7 +527,8 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
     }
 
     private void getMonitorInformation(RoutingContext ctx) {
-        queueStatsService.getQueueStats(ctx, queueStatsMentor);
+        final boolean excludeDequeueStates = extractExcludeDequeueStates(ctx);
+        queueStatsService.getQueueStats(ctx, queueStatsMentor, excludeDequeueStates);
     }
 
     private class MyQueueStatsMentor implements GetQueueStatsMentor<RoutingContext> {
@@ -563,14 +564,15 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
                     rsp.putHeader(CONTENT_TYPE, APPLICATION_JSON);
                     rsp.setChunked(true);
                     rsp.write("{\"queues\": [");
-                    resumeJsonWriting();
+                    final boolean excludeDequeueStates = extractExcludeDequeueStates(ctx);
+                    resumeJsonWriting(excludeDequeueStates);
                 }
 
-                void resumeJsonWriting() {
+                void resumeJsonWriting(boolean excludeDequeueStates) {
                     while (true) {
                         if (rsp.writeQueueFull()) {
                             // Destination not ready. Apply backpressure, resume when there's space again.
-                            rsp.drainHandler(v -> resumeJsonWriting());
+                            rsp.drainHandler(v -> resumeJsonWriting(excludeDequeueStates));
                             return;
                         }
                         if (queueSrc.hasNext()) {
@@ -580,19 +582,21 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
                             queueJson.clear();
                             queueJson.put(MONITOR_QUEUE_NAME, queue.getName());
                             queueJson.put(MONITOR_QUEUE_SIZE, queue.getSize());
-                            // TODO old impl did bloat result with empty strings for whatever undocumented
-                            //      reason. Those fields should be set to 'null' (or we could even skip them
-                            //      entirely in JSON), as obviously the information is not available. But
-                            //      we'll add the same bloat as we don't know if any downstream code now
-                            //      relies on this behavior.
-                            Long epochMs;
-                            epochMs = queue.getLastDequeueAttemptEpochMs();
-                            queueJson.put("lastDequeueAttempt", epochMs == null ? "" : formatAsUIDate(epochMs));
-                            epochMs = queue.getLastDequeueSuccessEpochMs();
-                            queueJson.put("lastDequeueSuccess", epochMs == null ? "" : formatAsUIDate(epochMs));
-                            epochMs = queue.getNextDequeueDueTimestampEpochMs();
-                            queueJson.put("nextDequeueDueTimestamp", epochMs == null ? "" : formatAsUIDate(epochMs));
-                            queueJson.put("statusInfo", queue.getFailedReason() == null ? "OK" : queue.getFailedReason());
+                            if (!excludeDequeueStates) {
+                                // TODO old impl did bloat result with empty strings for whatever undocumented
+                                //      reason. Those fields should be set to 'null' (or we could even skip them
+                                //      entirely in JSON), as obviously the information is not available. But
+                                //      we'll add the same bloat as we don't know if any downstream code now
+                                //      relies on this behavior.
+                                Long epochMs;
+                                epochMs = queue.getLastDequeueAttemptEpochMs();
+                                queueJson.put("lastDequeueAttempt", epochMs == null ? "" : formatAsUIDate(epochMs));
+                                epochMs = queue.getLastDequeueSuccessEpochMs();
+                                queueJson.put("lastDequeueSuccess", epochMs == null ? "" : formatAsUIDate(epochMs));
+                                epochMs = queue.getNextDequeueDueTimestampEpochMs();
+                                queueJson.put("nextDequeueDueTimestamp", epochMs == null ? "" : formatAsUIDate(epochMs));
+                                queueJson.put("statusInfo", queue.getFailedReason() == null ? "OK" : queue.getFailedReason());
+                            }
                             rsp.write(queueJson.encode());
                             continue;
                         }
@@ -972,6 +976,10 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
             }
             return Integer.MAX_VALUE;
         }
+    }
+
+    private boolean extractExcludeDequeueStates(RoutingContext ctx) {
+        return Boolean.parseBoolean(ctx.request().params().get(EXCLUDE_DEQUEUE_STATES));
     }
 
     private List<JsonObject> sortJsonQueueArrayBySize(List<JsonObject> queueList) {

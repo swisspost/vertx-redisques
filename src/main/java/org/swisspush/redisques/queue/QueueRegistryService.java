@@ -1,6 +1,5 @@
 package org.swisspush.redisques.queue;
 
-import io.micrometer.common.util.StringUtils;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.CompositeFuture;
 import io.vertx.core.Future;
@@ -49,7 +48,6 @@ public class QueueRegistryService {
     private final RedisService redisService;
     private final RedisquesConfigurationProvider configurationProvider;
     private final MessageConsumer<String> consumersMessageConsumer;
-    private final MessageConsumer<String> refreshRegistrationConsumer;
     private final MessageConsumer<String> notifyConsumer;
     private final MessageConsumer<String> uidMessageConsumer;
     private final KeyspaceHelper keyspaceHelper;
@@ -95,7 +93,6 @@ public class QueueRegistryService {
 
         // Handles registration requests
         consumersMessageConsumer = vertx.eventBus().consumer(keyspaceHelper.getConsumersAddress(), this::handleRegistrationRequest);
-        refreshRegistrationConsumer = vertx.eventBus().consumer(keyspaceHelper.getVerticleRefreshRegistrationKey(), this::handleRefreshRegistration);
         notifyConsumer = vertx.eventBus().consumer(keyspaceHelper.getVerticleNotifyConsumerKey(), this::handleNotifyConsumer);
 
         consumerLockTime = getConfiguration().getConsumerLockMultiplier() * getConfiguration().getRefreshPeriod(); // lock is kept twice as long as its refresh interval -> never expires as long as the consumer ('we') are alive
@@ -155,17 +152,6 @@ public class QueueRegistryService {
 
     private RedisquesConfiguration getConfiguration() {
         return configurationProvider.configuration();
-    }
-
-    private void handleRefreshRegistration(Message<String> msg) {
-        final String queueName = msg.body();
-        refreshRegistration(queueName, event -> {
-            if (event.succeeded()) {
-                msg.reply(null);
-            } else {
-                msg.fail(0, event.cause().getMessage());
-            }
-        });
     }
 
     private void handleNotifyConsumer(Message<String> msg) {
@@ -723,8 +709,8 @@ public class QueueRegistryService {
     }
 
     public void gracefulStop(final Handler<Void> doneHandler) {
-        unregisterAll(Arrays.asList(consumersMessageConsumer, uidMessageConsumer,
-                refreshRegistrationConsumer, notifyConsumer)).onComplete(event -> {
+        unregisterAll(Arrays.asList(consumersMessageConsumer, uidMessageConsumer, notifyConsumer))
+                .onComplete(event -> {
             if (event.failed()) {
                 log.warn("TODO error handling", exceptionFactory.newException(
                         "unregisterConsumers() failed", event.cause()));
@@ -747,7 +733,6 @@ public class QueueRegistryService {
                 });
             });
         });
-
     }
 
     public Future<Void> notifyConsumer(final String queueName) {
