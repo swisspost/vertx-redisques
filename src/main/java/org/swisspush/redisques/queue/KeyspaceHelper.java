@@ -13,7 +13,6 @@ public class KeyspaceHelper {
     private final String queueCheckLastexecKey;
 
     private final String verticleUid;
-    private final String verticleRefreshRegistrationKey;
     private final String verticleNotifyConsumerKey;
     private final String trimRequestKey;
     private final String consumersAddress;
@@ -31,7 +30,6 @@ public class KeyspaceHelper {
         dequeueStatisticTsKey =  dequeueStatisticKey + ":ts";
         locksKey = configuration.getRedisPrefix() + "locks";
         queueCheckLastexecKey = configuration.getRedisPrefix() + "check:lastexec";
-        verticleRefreshRegistrationKey = "refreshRegistration:" + verticleUid;
         verticleNotifyConsumerKey = "notifyConsumer:" + verticleUid;
         trimRequestKey = "trim_request:" + verticleUid;
         consumersAddress = configuration.getAddress() + "-consumers";
@@ -73,10 +71,6 @@ public class KeyspaceHelper {
 
     public String getDequeueStatisticTsKey() {
         return dequeueStatisticTsKey;
-    }
-
-    public String getVerticleRefreshRegistrationKey() {
-        return verticleRefreshRegistrationKey;
     }
 
     public String getVerticleNotifyConsumerKey() {
