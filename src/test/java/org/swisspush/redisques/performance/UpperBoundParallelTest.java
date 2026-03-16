@@ -97,26 +97,52 @@ public class UpperBoundParallelTest {
     @Test
     public void worksIfHandlerThrows(TestContext testContext) {
         Async async = testContext.async();
-        RuntimeException myFancyTestException = new RuntimeException(){};
-        int availTokens = limit.availablePermits();
-        target.request(limit, 0, null, new UpperBoundParallel.Mentor<Void>() {
-            Iterator<String> iter = List.<String>of("the-lonely-elem").iterator();
-            @Override public boolean runOneMore(BiConsumer<Throwable, Void> onDone, Void unused) {
-                if(iter.hasNext()){
-                    iter.next();
-                    throw myFancyTestException;
+        RuntimeException myFancyTestException = new RuntimeException() {};
+        final int totalPermits = 10;
+        final int permitsUsedByOther = 2;
+        Semaphore limiter = new Semaphore(totalPermits);
+
+        // took 2 permits, simulator permits used by other
+        try {
+            limiter.acquire(permitsUsedByOther);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+        int availTokens = limiter.availablePermits();
+        target.request(limiter, 0, null, new UpperBoundParallel.Mentor<Void>() {
+            Iterator<String> iter = List.<String>of("the-lonely-elem-1", "the-lonely-elem-2", "the-lonely-elem-3", "the-lonely-elem-4", "the-lonely-elem-5").iterator();
+
+            @Override
+            public boolean runOneMore(BiConsumer<Throwable, Void> onDone, Void unused) {
+                if (iter.hasNext()) {
+                    String value = iter.next();
+                    if ("the-lonely-elem-4".equals(value)) {
+                        throw myFancyTestException;
+                    } else {
+                        vertx.runOnContext((Void v) -> { // <- Just imagine some async operation here
+                            onDone.accept(null, null);
+                        });
+                    }
+                } else {
+                    onDone.accept(null, null);
                 }
                 return iter.hasNext();
             }
-            @Override public boolean onError(Throwable ex, Void ctx) {
+
+            @Override
+            public boolean onError(Throwable ex, Void ctx) {
                 testContext.assertEquals(myFancyTestException, ex);
-                vertx.setTimer(1, nonsense -> {
-                    testContext.assertEquals(availTokens, limit.availablePermits());
+                vertx.setTimer(10, nonsense -> {
+                    // all permits I took should be released, but permits from other will not
+                    testContext.assertEquals(totalPermits - permitsUsedByOther, limiter.availablePermits());
+                    testContext.assertEquals(availTokens, limiter.availablePermits());
                     async.complete();
                 });
                 return false;
             }
-            @Override public void onDone(Void ctx) {
+
+            @Override
+            public void onDone(Void ctx) {
                 testContext.fail();
             }
         });
@@ -233,6 +259,60 @@ public class UpperBoundParallelTest {
                 testContext.assertEquals(totalTasks, completedTasks.get(), "Number of completed tasks should match total tasks.");
                 testContext.assertEquals(semaphoreLimit, limiter.availablePermits(), "All semaphore permits should be released.");
                 async.complete();
+            }
+        });
+    }
+
+
+    @Test
+    public void worksIfHandlerThrowsAndContinue(TestContext testContext) {
+        Async async = testContext.async();
+        RuntimeException myFancyTestException = new RuntimeException() {};
+        final int totalPermits = 10;
+        final int permitsUsedByOther = 2;
+        Semaphore limiter = new Semaphore(totalPermits);
+
+        // took 2 permits, simulator permits used by other
+        try {
+            limiter.acquire(permitsUsedByOther);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+        int availTokens = limiter.availablePermits();
+        target.request(limiter, 0, null, new UpperBoundParallel.Mentor<Void>() {
+            Iterator<String> iter = List.<String>of("the-lonely-elem-1", "the-lonely-elem-2", "the-lonely-elem-3", "the-lonely-elem-4", "the-lonely-elem-5").iterator();
+
+            @Override
+            public boolean runOneMore(BiConsumer<Throwable, Void> onDone, Void unused) {
+                if (iter.hasNext()) {
+                    String value = iter.next();
+                    if ("the-lonely-elem-4".equals(value)) {
+                        throw myFancyTestException;
+                    } else {
+                        vertx.runOnContext((Void v) -> { // <- Just imagine some async operation here
+                            onDone.accept(null, null);
+                        });
+                    }
+                } else {
+                    onDone.accept(null, null);
+                }
+                return iter.hasNext();
+            }
+
+            @Override
+            public boolean onError(Throwable ex, Void ctx) {
+                testContext.assertEquals(myFancyTestException, ex);
+                return true;
+            }
+
+            @Override
+            public void onDone(Void ctx) {
+                vertx.setTimer(10, nonsense -> {
+                    // all permits I took should be released, but permits from other will not
+                    testContext.assertEquals(totalPermits - permitsUsedByOther, limiter.availablePermits());
+                    testContext.assertEquals(availTokens, limiter.availablePermits());
+                    async.complete();
+                });
             }
         });
     }

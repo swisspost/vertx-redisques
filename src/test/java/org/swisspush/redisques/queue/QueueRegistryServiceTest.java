@@ -2,9 +2,12 @@ package org.swisspush.redisques.queue;
 
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import io.vertx.core.AsyncResult;
 import io.vertx.core.DeploymentOptions;
+import io.vertx.core.Handler;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
+import io.vertx.core.eventbus.MessageConsumer;
 import io.vertx.core.json.JsonObject;
 import io.vertx.ext.unit.Async;
 import io.vertx.ext.unit.TestContext;
@@ -27,7 +30,7 @@ import org.swisspush.redisques.util.TestMemoryUsageProvider;
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.params.SetParams;
 
-import java.util.Collections;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -341,6 +344,42 @@ public class QueueRegistryServiceTest extends AbstractTestCase {
         entry = inherit.next();
         Assert.assertEquals("queue-1", entry.getKey());
         Assert.assertEquals(500, entry.getValue().getLastRegisterRefreshedMillis());
+    }
+
+    @Test
+    public void testUnregisterConsumers(TestContext context) {
+        Async async = context.async();
+        QueueRegistryService queueRegistryService = redisQues.getQueueRegistryService();
+        List<MessageConsumer<?>> consumers = new ArrayList<>();
+        consumers.add(vertx.eventBus().consumer("Test_Consumer_1", e -> {
+            context.fail();
+        }));
+        consumers.add(vertx.eventBus().consumer("Test_Consumer_2", e -> {
+            context.fail();
+        }));
+
+        queueRegistryService.unregisterAll(consumers).onComplete(event -> {
+            vertx.eventBus().send("Test_Consumer_1", "");
+            vertx.eventBus().send("Test_Consumer_2", "");
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+            async.complete();
+        });
+    }
+
+    @Test
+    public void testGracefulStop(TestContext context) {
+        Async async = context.async();
+        QueueRegistryService queueRegistryService = redisQues.getQueueRegistryService();
+        queueRegistryService.gracefulStop(new Handler<Void>() {
+            @Override
+            public void handle(Void event) {
+                async.complete();
+            }
+        });
     }
 
     @Test
