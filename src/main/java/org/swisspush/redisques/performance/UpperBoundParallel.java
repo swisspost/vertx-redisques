@@ -197,21 +197,25 @@ public class UpperBoundParallel {
             log.trace("onOneDone({})  {} remaining", ex != null ? "ex" : "null", req.numInProgress);
             assert req.numInProgress >= 0 : req.numInProgress + " >= 0  (BTW: mentor MUST call 'onDone' EXACTLY once)";
             boolean isFatalError = true;
-            if (ex != null) try {
-                // Unlock, to prevent thread stalls as we don't know for how long mentor
-                // is going to block.
-                req.lock.unlock();
-                if (log.isDebugEnabled()) {
-                    log.debug("mentor.onError({}: {})", ex.getClass().getName(), ex.getMessage());
-                }
-                isFatalError = !req.mentor.onError(ex, req.ctx);
-            } finally {
-                req.lock.lock(); // Need our lock back.
-                req.isFatalError = isFatalError;
-                // Need to release our token now. As we won't do it later anymore.
-                if (isFatalError) {
-                    req.numTokensAvailForOurself -= 1;
-                    req.limit.release();
+            if (ex != null) {
+                try {
+                    // Unlock, to prevent thread stalls as we don't know for how long mentor
+                    // is going to block.
+                    req.lock.unlock();
+                    if (log.isDebugEnabled()) {
+                        log.debug("mentor.onError({}: {})", ex.getClass().getName(), ex.getMessage());
+                    }
+                    isFatalError = !req.mentor.onError(ex, req.ctx);
+                } finally {
+                    req.lock.lock(); // Need our lock back.
+                    req.isFatalError = isFatalError;
+                    // Need to release our token now. As we won't do it later anymore.
+                    if (isFatalError) {
+                        // release all tokens we used here, because stops here
+                        req.limit.release(req.numTokensAvailForOurself);
+                        // set usage to 0
+                        req.numTokensAvailForOurself = 0;
+                    }
                 }
             }
         } finally {
