@@ -35,7 +35,7 @@ public class GetAllLocksActionTest extends AbstractQueueActionTest {
     public void setup() {
         super.setup();
         action = new GetAllLocksAction(vertx, redisService, keyspaceHelper,
-                new ArrayList<>(), exceptionFactory, Mockito.mock(QueueStatisticsCollector.class), Mockito.mock(Logger.class));
+                getConfigurationProvider(), exceptionFactory, Mockito.mock(QueueStatisticsCollector.class), Mockito.mock(Logger.class));
     }
 
     @Test

@@ -30,7 +30,7 @@ public class DeleteAllLocksActionTest extends AbstractQueueActionTest {
     public void setup() {
         super.setup();
         action = new DeleteAllLocksAction(vertx, redisService, keyspaceHelper,
-                new ArrayList<>(), exceptionFactory, Mockito.mock(QueueStatisticsCollector.class), Mockito.mock(Logger.class));
+                getConfigurationProvider(), exceptionFactory, Mockito.mock(QueueStatisticsCollector.class), Mockito.mock(Logger.class));
     }
 
     @Test

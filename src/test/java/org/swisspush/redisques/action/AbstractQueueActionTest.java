@@ -17,7 +17,11 @@ import org.swisspush.redisques.queue.KeyspaceHelper;
 import org.swisspush.redisques.queue.RedisService;
 import org.swisspush.redisques.util.MemoryUsageProvider;
 import org.swisspush.redisques.util.RedisProvider;
+import org.swisspush.redisques.util.RedisquesConfiguration;
+import org.swisspush.redisques.util.RedisquesConfigurationProvider;
 
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Optional;
 
 import static org.mockito.Mockito.*;
@@ -30,20 +34,22 @@ public abstract class AbstractQueueActionTest {
     protected RedisService redisService;
     protected RedisQuesExceptionFactory exceptionFactory;
     protected KeyspaceHelper keyspaceHelper;
-
+    protected RedisquesConfigurationProvider redisquesConfigurationProvider;
     protected Vertx vertx;
 
     protected MemoryUsageProvider memoryUsageProvider;
 
     protected Message<JsonObject> message;
     protected AbstractQueueAction action;
+    protected RedisquesConfiguration redisquesConfiguration;
 
     protected static final JsonObject STATUS_OK = new JsonObject(Buffer.buffer("{\"status\":\"ok\"}"));
     protected static final JsonObject STATUS_ERROR = new JsonObject(Buffer.buffer("{\"status\":\"error\"}"));
     @Before
     public void setup() {
         redisAPI = Mockito.mock(RedisAPI.class);
-
+        redisquesConfigurationProvider = mock(RedisquesConfigurationProvider.class);
+        redisquesConfiguration = mock(RedisquesConfiguration.class);
         redisProvider = Mockito.mock(RedisProvider.class);
         when(redisProvider.redis()).thenReturn(Future.succeededFuture(redisAPI));
 
@@ -61,9 +67,17 @@ public abstract class AbstractQueueActionTest {
         vertx = Vertx.vertx();
 
         message = Mockito.mock(Message.class);
+        when(redisquesConfiguration.getQueueConfigurations()).thenReturn(new ArrayList<>());
+        when(redisquesConfiguration.getMicrometerMetricsIdentifier()).thenReturn("foo");
+        when(redisquesConfiguration.getMemoryUsageLimitPercent()).thenReturn(80);
+        when(redisquesConfigurationProvider.configuration()).thenReturn(redisquesConfiguration);
     }
 
     protected Handler<AsyncResult<Response>> createResponseHandler(InvocationOnMock invocation, int handlerIndex) {
         return (Handler<AsyncResult<Response>>) invocation.getArguments()[handlerIndex];
+    }
+
+    RedisquesConfigurationProvider getConfigurationProvider() {
+        return redisquesConfigurationProvider;
     }
 }

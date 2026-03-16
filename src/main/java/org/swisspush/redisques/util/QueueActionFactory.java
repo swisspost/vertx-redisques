@@ -45,11 +45,11 @@ public class QueueActionFactory {
     private final Vertx vertx;
     private final HttpClient client;
     private final Logger log;
-    private final List<QueueConfiguration> queueConfigurations;
+ //   private final List<QueueConfiguration> queueConfigurations;
     private final QueueStatisticsCollector queueStatisticsCollector;
-    private final int memoryUsageLimitPercent;
+  //  private final int memoryUsageLimitPercent;
     private final MeterRegistry meterRegistry;
-    private final String metricsIdentifier;
+  //  private final String metricsIdentifier;
     private final MemoryUsageProvider memoryUsageProvider;
     private final RedisQuesExceptionFactory exceptionFactory;
     private final Semaphore getQueuesItemsCountRedisRequestQuota;
@@ -81,64 +81,64 @@ public class QueueActionFactory {
         this.queueStatisticsCollector = queueStatisticsCollector;
         this.exceptionFactory = exceptionFactory;
         this.configurationProvider = configurationProvider;
-        this.queueConfigurations = configurationProvider.configuration().getQueueConfigurations();
-        this.memoryUsageLimitPercent = configurationProvider.configuration().getMemoryUsageLimitPercent();
+       // this.queueConfigurations = configurationProvider.configuration().getQueueConfigurations();
+       // this.memoryUsageLimitPercent = configurationProvider.configuration().getMemoryUsageLimitPercent();
         this.getQueuesItemsCountRedisRequestQuota = getQueuesItemsCountRedisRequestQuota;
         this.meterRegistry = meterRegistry;
         this.queueRegistryService = queueRegistryService;
 
-        metricsIdentifier = configurationProvider.configuration().getMicrometerMetricsIdentifier();
+       // metricsIdentifier = configurationProvider.configuration().getMicrometerMetricsIdentifier();
     }
 
     public QueueAction buildQueueAction(RedisquesAPI.QueueOperation queueOperation){
         switch (queueOperation){
             case addQueueItem:
-                return new AddQueueItemAction(vertx, redisService, keyspaceHelper, queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
+                return new AddQueueItemAction(vertx, redisService, keyspaceHelper, configurationProvider, exceptionFactory, queueStatisticsCollector, log);
             case deleteQueueItem:
-                return new DeleteQueueItemAction(vertx, redisService, keyspaceHelper, queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
+                return new DeleteQueueItemAction(vertx, redisService, keyspaceHelper, configurationProvider, exceptionFactory, queueStatisticsCollector, log);
             case deleteAllQueueItems:
-                return new DeleteAllQueueItemsAction(vertx, redisService, keyspaceHelper, queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
+                return new DeleteAllQueueItemsAction(vertx, redisService, keyspaceHelper, configurationProvider, exceptionFactory, queueStatisticsCollector, log);
             case bulkDeleteQueues:
-                return new BulkDeleteQueuesAction(vertx, redisService, keyspaceHelper, queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
+                return new BulkDeleteQueuesAction(vertx, redisService, keyspaceHelper, configurationProvider, exceptionFactory, queueStatisticsCollector, log);
             case replaceQueueItem:
-                return new ReplaceQueueItemAction(vertx, redisService, keyspaceHelper, queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
+                return new ReplaceQueueItemAction(vertx, redisService, keyspaceHelper, configurationProvider, exceptionFactory, queueStatisticsCollector, log);
             case getQueueItem:
-                return new GetQueueItemAction(vertx, redisService, keyspaceHelper, queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
+                return new GetQueueItemAction(vertx, redisService, keyspaceHelper, configurationProvider, exceptionFactory, queueStatisticsCollector, log);
             case getQueueItems:
-                return new GetQueueItemsAction(vertx, redisService, keyspaceHelper, queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
+                return new GetQueueItemsAction(vertx, redisService, keyspaceHelper, configurationProvider, exceptionFactory, queueStatisticsCollector, log);
             case getQueues:
-                return new GetQueuesAction(vertx, redisService, keyspaceHelper, queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
+                return new GetQueuesAction(vertx, redisService, keyspaceHelper, configurationProvider, exceptionFactory, queueStatisticsCollector, log);
             case getQueuesCount:
-                return new GetQueuesCountAction(vertx, redisService, keyspaceHelper, queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
+                return new GetQueuesCountAction(vertx, redisService, keyspaceHelper, configurationProvider, exceptionFactory, queueStatisticsCollector, log);
             case getQueueItemsCount:
-                return new GetQueueItemsCountAction(vertx, redisService, keyspaceHelper, queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
+                return new GetQueueItemsCountAction(vertx, redisService, keyspaceHelper, configurationProvider, exceptionFactory, queueStatisticsCollector, log);
             case getQueuesItemsCount:
-                return new GetQueuesItemsCountAction(vertx, redisService, keyspaceHelper, queueConfigurations, exceptionFactory,
+                return new GetQueuesItemsCountAction(vertx, redisService, keyspaceHelper, configurationProvider, exceptionFactory,
                         getQueuesItemsCountRedisRequestQuota, queueStatisticsCollector, log);
             case enqueue:
-                return new EnqueueAction(vertx, queueRegistryService, redisService, keyspaceHelper, queueConfigurations, exceptionFactory, queueStatisticsCollector, log,
-                        memoryUsageProvider, memoryUsageLimitPercent, meterRegistry, metricsIdentifier);
+                return new EnqueueAction(vertx, queueRegistryService, redisService, keyspaceHelper, configurationProvider, exceptionFactory, queueStatisticsCollector, log,
+                        memoryUsageProvider, meterRegistry);
             case lockedEnqueue:
-                return new LockedEnqueueAction(vertx, queueRegistryService, redisService, keyspaceHelper, queueConfigurations, exceptionFactory, queueStatisticsCollector, log,
-                        memoryUsageProvider, memoryUsageLimitPercent, meterRegistry, metricsIdentifier);
+                return new LockedEnqueueAction(vertx, queueRegistryService, redisService, keyspaceHelper, configurationProvider, exceptionFactory, queueStatisticsCollector, log,
+                        memoryUsageProvider, meterRegistry);
             case getLock:
-                return new GetLockAction(vertx, redisService, keyspaceHelper, queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
+                return new GetLockAction(vertx, redisService, keyspaceHelper, configurationProvider, exceptionFactory, queueStatisticsCollector, log);
             case putLock:
-                return new PutLockAction(vertx, redisService, keyspaceHelper, queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
+                return new PutLockAction(vertx, redisService, keyspaceHelper, configurationProvider, exceptionFactory, queueStatisticsCollector, log);
             case bulkPutLocks:
-                return new BulkPutLocksAction(vertx, redisService, keyspaceHelper, queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
+                return new BulkPutLocksAction(vertx, redisService, keyspaceHelper, configurationProvider, exceptionFactory, queueStatisticsCollector, log);
             case getAllLocks:
-                return new GetAllLocksAction(vertx, redisService, keyspaceHelper, queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
+                return new GetAllLocksAction(vertx, redisService, keyspaceHelper, configurationProvider, exceptionFactory, queueStatisticsCollector, log);
             case deleteLock:
-                return new DeleteLockAction(vertx, queueRegistryService, redisService, keyspaceHelper, queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
+                return new DeleteLockAction(vertx, queueRegistryService, redisService, keyspaceHelper, configurationProvider, exceptionFactory, queueStatisticsCollector, log);
             case bulkDeleteLocks:
-                return new BulkDeleteLocksAction(vertx, redisService, keyspaceHelper, queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
+                return new BulkDeleteLocksAction(vertx, redisService, keyspaceHelper, configurationProvider, exceptionFactory, queueStatisticsCollector, log);
             case deleteAllLocks:
-                return new DeleteAllLocksAction(vertx, redisService, keyspaceHelper, queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
+                return new DeleteAllLocksAction(vertx, redisService, keyspaceHelper, configurationProvider, exceptionFactory, queueStatisticsCollector, log);
             case getQueuesSpeed:
-                return new GetQueuesSpeedAction(vertx, redisService, keyspaceHelper, queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
+                return new GetQueuesSpeedAction(vertx, redisService, keyspaceHelper, configurationProvider, exceptionFactory, queueStatisticsCollector, log);
             case getQueuesStatistics:
-                return new GetQueuesStatisticsAction(vertx, redisService, keyspaceHelper, queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
+                return new GetQueuesStatisticsAction(vertx, redisService, keyspaceHelper, configurationProvider, exceptionFactory, queueStatisticsCollector, log);
             case setConfiguration:
                 return new SetConfigurationAction(configurationProvider, log);
             case getConfiguration:

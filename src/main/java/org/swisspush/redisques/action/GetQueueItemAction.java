@@ -10,6 +10,7 @@ import org.swisspush.redisques.queue.KeyspaceHelper;
 import org.swisspush.redisques.queue.RedisService;
 import org.swisspush.redisques.util.QueueConfiguration;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
+import org.swisspush.redisques.util.RedisquesConfigurationProvider;
 
 import java.util.List;
 
@@ -20,7 +21,7 @@ public class GetQueueItemAction extends AbstractQueueAction {
 
     public GetQueueItemAction(
             Vertx vertx, RedisService redisService, KeyspaceHelper keyspaceHelper,
-            List<QueueConfiguration> queueConfigurations, RedisQuesExceptionFactory exceptionFactory,
+            RedisquesConfigurationProvider queueConfigurations, RedisQuesExceptionFactory exceptionFactory,
             QueueStatisticsCollector queueStatisticsCollector, Logger log
     ) {
         super(vertx, redisService, keyspaceHelper,

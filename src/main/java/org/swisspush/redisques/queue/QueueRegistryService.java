@@ -1,6 +1,6 @@
 package org.swisspush.redisques.queue;
 
-import io.micrometer.common.util.StringUtils;
+
 import io.vertx.core.AsyncResult;
 import io.vertx.core.CompositeFuture;
 import io.vertx.core.Future;
@@ -322,7 +322,8 @@ public class QueueRegistryService {
 
     private void registerActiveQueueRegistrationRefresh() {
         // Periodic refresh of my registrations on active queues.
-        var periodMs = getConfiguration().getRefreshPeriod() * 1000L;
+        final long periodMs = getConfiguration().getRefreshPeriod() * 1000L;
+        final int activeQueueRegRefreshReqQuotaTimeout = getConfiguration().getActiveQueueRegRefreshReqQuotaAcquireTimeoutMs();
         periodicSkipScheduler.setPeriodic(periodMs, "registerActiveQueueRegistrationRefresh", new Consumer<Runnable>() {
             Iterator<Map.Entry<String, QueueProcessingState>> iter;
 
@@ -331,7 +332,7 @@ public class QueueRegistryService {
                 // Need a copy to prevent concurrent modification issuses.
                 iter = getSortedMyQueueClone(queueConsumerRunner.getMyQueues()).entrySet().iterator();
                 // Trigger only a limited amount of requests in parallel.
-                upperBoundParallel.request(activeQueueRegRefreshReqQuota, iter, new UpperBoundParallel.Mentor<>() {
+                upperBoundParallel.request(activeQueueRegRefreshReqQuota, activeQueueRegRefreshReqQuotaTimeout, iter, new UpperBoundParallel.Mentor<>() {
                     @Override
                     public boolean runOneMore(BiConsumer<Throwable, Void> onQueueDone, Iterator<Map.Entry<String, QueueProcessingState>> iter) {
                         refreshConsumerRegistration(onQueueDone);
@@ -547,6 +548,7 @@ public class QueueRegistryService {
      */
     public Future<Void> checkQueues() {
         final long startTs = System.currentTimeMillis();
+        final int checkQueueRequestsQuotaAcquireTimeout = configurationProvider.configuration().getCheckQueueRequestsQuotaAcquireTimeoutMs();
         final var ctx = new Object() {
             long limit;
             AtomicInteger counter;
@@ -568,7 +570,7 @@ public class QueueRegistryService {
             ctx.iter = queues.iterator();
             log.trace("RedisQues update queues: {}", ctx.counter);
             var p = Promise.<Void>promise();
-            upperBoundParallel.request(checkQueueRequestsQuota, null, new UpperBoundParallel.Mentor<Void>() {
+            upperBoundParallel.request(checkQueueRequestsQuota, checkQueueRequestsQuotaAcquireTimeout, null, new UpperBoundParallel.Mentor<Void>() {
                 @Override
                 public boolean runOneMore(BiConsumer<Throwable, Void> onDone, Void ctx_) {
                     if (ctx.iter.hasNext()) {

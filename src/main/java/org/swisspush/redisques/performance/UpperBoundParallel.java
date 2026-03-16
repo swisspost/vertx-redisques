@@ -5,6 +5,7 @@ import org.slf4j.Logger;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
@@ -55,8 +56,8 @@ public class UpperBoundParallel {
         this.exceptionFactory = exceptionFactory;
     }
 
-    public <Ctx> void request(Semaphore limit, Ctx ctx, Mentor<Ctx> mentor) {
-        var req = new Request<>(ctx, mentor, limit);
+    public <Ctx> void request(Semaphore limit, int acquireTimeout, Ctx ctx, Mentor<Ctx> mentor) {
+        var req = new Request<>(ctx, mentor, limit, acquireTimeout);
         resume(req);
     }
 
@@ -111,7 +112,7 @@ public class UpperBoundParallel {
                     // We still have a token reserved for ourself. Use those first before acquiring
                     // new ones. Explanation see comment in 'onOneDone()'.
                     req.numTokensAvailForOurself -= 1;
-                } else if (!req.limit.tryAcquire()) {
+                } else if (req.acquireTimeout > 0 ? !req.limit.tryAcquire(req.acquireTimeout, TimeUnit.MILLISECONDS) : !req.limit.tryAcquire()) {
                     log.debug("redis request limit reached. Need to pause now.");
                     break; // Go to end of loop to schedule a run later.
                 }
@@ -131,7 +132,9 @@ public class UpperBoundParallel {
                     hasMore = req.mentor.runOneMore(new BiConsumer<>() {
                         // this boolean is just for paranoia, in case mentor tries to call back too often.
                         final AtomicBoolean isCalled = new AtomicBoolean();
-                        @Override public void accept(Throwable ex, Void ret) {
+
+                        @Override
+                        public void accept(Throwable ex, Void ret) {
                             if (!isCalled.compareAndSet(false, true)) {
                                 boolean d = log.isDebugEnabled();
                                 log.error("This callback MUST NOT be called multiple times!! Make sure caller only calls it ONCE!{}",
@@ -169,6 +172,8 @@ public class UpperBoundParallel {
                     vertx.setTimer(4000, nonsense -> resume(req));
                 }
             }
+        } catch (Exception e) {
+           log.error("an exception happened while in loop", e);
         } finally {
             req.worker = null;
             req.lock.unlock();
@@ -225,6 +230,7 @@ public class UpperBoundParallel {
         private final Mentor<Ctx> mentor;
         private final Lock lock = new ReentrantLock();
         private final Semaphore limit;
+        public int acquireTimeout;
         private Thread worker = null;
         private int numInProgress = 0;
         private int numTokensAvailForOurself = 0;
@@ -233,10 +239,11 @@ public class UpperBoundParallel {
         private boolean isFatalError = false;
         private boolean isDoneCalled = false;
 
-        private Request(Ctx ctx, Mentor<Ctx> mentor, Semaphore limit) {
+        private Request(Ctx ctx, Mentor<Ctx> mentor, Semaphore limit, int acquireTimeout) {
             this.ctx = ctx;
             this.mentor = mentor;
             this.limit = limit;
+            this.acquireTimeout = acquireTimeout;
         }
     }
 

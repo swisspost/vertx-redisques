@@ -24,16 +24,15 @@ public class EnqueueAction extends AbstractQueueAction {
     private Counter enqueueCounterSuccess;
     private Counter enqueueCounterFail;
     public EnqueueAction(
-            Vertx vertx, QueueRegistryService queueRegistryService, RedisService redisService, KeyspaceHelper keyspaceHelper, List<QueueConfiguration> queueConfigurations,
+            Vertx vertx, QueueRegistryService queueRegistryService, RedisService redisService, KeyspaceHelper keyspaceHelper, RedisquesConfigurationProvider queueConfigurations,
             RedisQuesExceptionFactory exceptionFactory, QueueStatisticsCollector queueStatisticsCollector, Logger log,
-            MemoryUsageProvider memoryUsageProvider, int memoryUsageLimitPercent, MeterRegistry meterRegistry, String metricsIdentifier
-    ) {
+            MemoryUsageProvider memoryUsageProvider, MeterRegistry meterRegistry) {
         super(vertx, redisService, keyspaceHelper,
                 queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
         this.memoryUsageProvider = memoryUsageProvider;
-        this.memoryUsageLimitPercent = memoryUsageLimitPercent;
+        this.memoryUsageLimitPercent = configurationProvider.configuration().getMemoryUsageLimitPercent();
         this.queueRegistryService = queueRegistryService;
-
+        String metricsIdentifier = configurationProvider.configuration().getMicrometerMetricsIdentifier();
         if (meterRegistry != null) {
             enqueueCounterSuccess = Counter.builder(MetricMeter.ENQUEUE_SUCCESS.getId()).description(MetricMeter.ENQUEUE_SUCCESS.getDescription())
                     .tag(MetricTags.IDENTIFIER.getId(), metricsIdentifier).register(meterRegistry);

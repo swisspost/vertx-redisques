@@ -36,7 +36,7 @@ public class UpperBoundParallelTest {
     public void justASimpleSmokeTest(TestContext testContext) {
         Async async = testContext.async();
         final int availTokens = limit.availablePermits();
-        target.request(limit, null, new UpperBoundParallel.Mentor<Void>() {
+        target.request(limit, 0, null, new UpperBoundParallel.Mentor<Void>() {
             Iterator<String> iter = List.of("input-one", "input-two", "input-three").iterator();
             @Override public boolean runOneMore(BiConsumer<Throwable, Void> onDone, Void unused) {
                 if(iter.hasNext()){
@@ -67,7 +67,7 @@ public class UpperBoundParallelTest {
     public void worksForZeroElements(TestContext testContext) {
         Async async = testContext.async();
         int availTokens = limit.availablePermits();
-        target.request(limit, null, new UpperBoundParallel.Mentor<Void>() {
+        target.request(limit, 0, null, new UpperBoundParallel.Mentor<Void>() {
             Iterator<String> iter = List.<String>of().iterator();
             @Override public boolean runOneMore(BiConsumer<Throwable, Void> onDone, Void unused) {
                 if(iter.hasNext()){
@@ -99,7 +99,7 @@ public class UpperBoundParallelTest {
         Async async = testContext.async();
         RuntimeException myFancyTestException = new RuntimeException(){};
         int availTokens = limit.availablePermits();
-        target.request(limit, null, new UpperBoundParallel.Mentor<Void>() {
+        target.request(limit, 0, null, new UpperBoundParallel.Mentor<Void>() {
             Iterator<String> iter = List.<String>of("the-lonely-elem").iterator();
             @Override public boolean runOneMore(BiConsumer<Throwable, Void> onDone, Void unused) {
                 if(iter.hasNext()){
@@ -127,7 +127,7 @@ public class UpperBoundParallelTest {
         Async async = testContext.async();
         Throwable myFancyTestException = new Throwable(){};
         int availTokens = limit.availablePermits();
-        target.request(limit, null, new UpperBoundParallel.Mentor<Void>() {
+        target.request(limit, 0, null, new UpperBoundParallel.Mentor<Void>() {
             Iterator<String> iter = List.<String>of("the-lonely-elem").iterator();
             @Override public boolean runOneMore(BiConsumer<Throwable, Void> onDone, Void unused) {
                 if(iter.hasNext()){
@@ -153,7 +153,7 @@ public class UpperBoundParallelTest {
     @Test
     public void mustNotContinueIfDoneNotReported(TestContext testContext) {
         Async async = testContext.async();
-        target.request(limit, null, new UpperBoundParallel.Mentor<Void>() {
+        target.request(limit, 0, null, new UpperBoundParallel.Mentor<Void>() {
             @Override public boolean runOneMore(BiConsumer<Throwable, Void> onDone, Void unused) {
                 // onDone() call missing by intent.
                 return false;
@@ -173,7 +173,7 @@ public class UpperBoundParallelTest {
     public void reportsErrorIfNoTokensLeft(TestContext testContext) {
         Async async = testContext.async();
         limit.drainPermits(); // <- Whops, no tokens left for code under test.
-        target.request(limit, null, new UpperBoundParallel.Mentor<Void>() {
+        target.request(limit, 0, null, new UpperBoundParallel.Mentor<Void>() {
             Iterator<String> iter = List.<String>of("the-lonely-elem").iterator();
             @Override public boolean runOneMore(BiConsumer<Throwable, Void> onDone, Void unused) {
                 testContext.fail();
@@ -202,7 +202,7 @@ public class UpperBoundParallelTest {
         Semaphore limiter = new Semaphore(semaphoreLimit);
         AtomicInteger completedTasks = new AtomicInteger(0);
         UpperBoundParallel parallel = new UpperBoundParallel(vertx, newWastefulExceptionFactory());
-        parallel.request(limiter, null, new UpperBoundParallel.Mentor<>() {
+        parallel.request(limiter, 0, null, new UpperBoundParallel.Mentor<>() {
             private final AtomicInteger taskCounter = new AtomicInteger(0);
 
             @Override
@@ -233,6 +233,43 @@ public class UpperBoundParallelTest {
                 testContext.assertEquals(totalTasks, completedTasks.get(), "Number of completed tasks should match total tasks.");
                 testContext.assertEquals(semaphoreLimit, limiter.availablePermits(), "All semaphore permits should be released.");
                 async.complete();
+            }
+        });
+    }
+
+    @Test
+    public void simpleSmokeTestsWithTimeout(TestContext testContext) {
+        Async async = testContext.async();
+        final int availTokens = limit.availablePermits();
+        final long startTime = System.currentTimeMillis();
+        final List<String> list = List.of("input-one", "input-two", "input-three", "input-four", "input-five");
+        final int acquireTimeoutMs = 500;
+        target.request(limit, acquireTimeoutMs, null, new UpperBoundParallel.Mentor<Void>() {
+            Iterator<String> iter = list.iterator();
+            @Override public boolean runOneMore(BiConsumer<Throwable, Void> onDone, Void unused) {
+                if(iter.hasNext()){
+                    String elem = iter.next();
+                    vertx.runOnContext((Void v) -> { // <- Just imagine some async operation here
+                        onDone.accept(null, null);
+                    });
+                }else{
+                    onDone.accept(null, null);
+                }
+                return iter.hasNext();
+            }
+            @Override public boolean onError(Throwable ex, Void ctx) {
+                testContext.fail(ex);
+                return false;
+            }
+            @Override public void onDone(Void ctx) {
+                testContext.assertTrue(!iter.hasNext());
+                vertx.setTimer(1, nonsense -> {
+                    long duration = System.currentTimeMillis() - startTime;
+                    // no wait for availTokens, so duration is timeout time X items need to wait
+                    testContext.assertTrue(duration >= acquireTimeoutMs * (list.size() - availTokens));
+                    testContext.assertEquals(availTokens, limit.availablePermits());
+                    async.complete();
+                });
             }
         });
     }

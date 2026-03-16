@@ -23,7 +23,7 @@ public class GetQueuesSpeedAction extends AbstractQueueAction {
 
     public GetQueuesSpeedAction(
             Vertx vertx, RedisService redisService, KeyspaceHelper keyspaceHelper,
-            List<QueueConfiguration> queueConfigurations, RedisQuesExceptionFactory exceptionFactory,
+            RedisquesConfigurationProvider queueConfigurations, RedisQuesExceptionFactory exceptionFactory,
             QueueStatisticsCollector queueStatisticsCollector, Logger log
     ) {
         super(vertx, redisService, keyspaceHelper,

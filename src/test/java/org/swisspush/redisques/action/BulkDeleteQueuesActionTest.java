@@ -35,7 +35,7 @@ public class BulkDeleteQueuesActionTest extends AbstractQueueActionTest {
     public void setup() {
         super.setup();
         action = new BulkDeleteQueuesAction(vertx, redisService, keyspaceHelper,
-                new ArrayList<>(), exceptionFactory, Mockito.mock(QueueStatisticsCollector.class), Mockito.mock(Logger.class));
+                getConfigurationProvider(), exceptionFactory, Mockito.mock(QueueStatisticsCollector.class), Mockito.mock(Logger.class));
     }
 
     @Test

@@ -20,7 +20,7 @@ public class GetQueuesCountAction extends GetQueuesAction {
 
     public GetQueuesCountAction(
             Vertx vertx, RedisService redisService, KeyspaceHelper keyspaceHelper,
-            List<QueueConfiguration> queueConfigurations, RedisQuesExceptionFactory exceptionFactory,
+            RedisquesConfigurationProvider queueConfigurations, RedisQuesExceptionFactory exceptionFactory,
             QueueStatisticsCollector queueStatisticsCollector, Logger log
     ) {
         super(vertx, redisService, keyspaceHelper,

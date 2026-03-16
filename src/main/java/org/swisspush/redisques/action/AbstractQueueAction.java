@@ -12,10 +12,10 @@ import io.vertx.redis.client.Response;
 import org.slf4j.Logger;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.queue.KeyspaceHelper;
-import org.swisspush.redisques.queue.QueueRegistryService;
 import org.swisspush.redisques.queue.RedisService;
 import org.swisspush.redisques.util.QueueConfiguration;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
+import org.swisspush.redisques.util.RedisquesConfigurationProvider;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -31,19 +31,21 @@ public abstract class AbstractQueueAction implements QueueAction {
     protected final Vertx vertx;
     protected final Logger log;
     protected final KeyspaceHelper keyspaceHelper;
+    protected final RedisquesConfigurationProvider configurationProvider;
     protected final List<QueueConfiguration> queueConfigurations;
     protected final RedisQuesExceptionFactory exceptionFactory;
     protected final QueueStatisticsCollector queueStatisticsCollector;
 
 
-    public AbstractQueueAction(Vertx vertx, RedisService redisService, KeyspaceHelper keyspaceHelper, List<QueueConfiguration> queueConfigurations,
+    public AbstractQueueAction(Vertx vertx, RedisService redisService, KeyspaceHelper keyspaceHelper, RedisquesConfigurationProvider configurationProvider,
                                RedisQuesExceptionFactory exceptionFactory, QueueStatisticsCollector queueStatisticsCollector, Logger log) {
         this.vertx = vertx;
         this.redisService = redisService;
         this.keyspaceHelper = keyspaceHelper;
-        this.queueConfigurations = queueConfigurations;
+        this.configurationProvider = configurationProvider;
         this.exceptionFactory = exceptionFactory;
         this.queueStatisticsCollector = queueStatisticsCollector;
+        this.queueConfigurations = configurationProvider.configuration().getQueueConfigurations();
         this.log = log;
     }
 

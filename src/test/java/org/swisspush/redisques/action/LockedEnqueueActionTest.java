@@ -43,8 +43,8 @@ public class LockedEnqueueActionTest extends AbstractQueueActionTest {
         enqueueCounterSuccess = meterRegistry.counter(MetricMeter.ENQUEUE_SUCCESS.getId(), MetricTags.IDENTIFIER.getId(), "foo");
         enqueueCounterFail = meterRegistry.counter(MetricMeter.ENQUEUE_FAIL.getId(), MetricTags.IDENTIFIER.getId(), "foo");
         action = new LockedEnqueueAction(vertx, registryService, redisService, keyspaceHelper,
-                new ArrayList<>(), exceptionFactory, Mockito.mock(QueueStatisticsCollector.class),
-                Mockito.mock(Logger.class), memoryUsageProvider, 80, meterRegistry, "foo");
+                getConfigurationProvider(), exceptionFactory, Mockito.mock(QueueStatisticsCollector.class),
+                Mockito.mock(Logger.class), memoryUsageProvider, meterRegistry);
     }
 
     @Test

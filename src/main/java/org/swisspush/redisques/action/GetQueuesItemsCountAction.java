@@ -29,7 +29,7 @@ public class GetQueuesItemsCountAction extends AbstractQueueAction {
             Vertx vertx,
             RedisService redisService,
             KeyspaceHelper keyspaceHelper,
-            List<QueueConfiguration> queueConfigurations,
+            RedisquesConfigurationProvider queueConfigurations,
             RedisQuesExceptionFactory exceptionFactory,
             Semaphore redisRequestQuota,
             QueueStatisticsCollector queueStatisticsCollector,
@@ -51,7 +51,8 @@ public class GetQueuesItemsCountAction extends AbstractQueueAction {
             redisService.zrangebyscore(keyspaceHelper.getQueuesKey(),
                     String.valueOf(getMaxAgeTimestamp()), "+inf").onComplete(response ->
                     new GetQueuesItemsCountHandler(vertx, event, filterPattern.getOk(),
-                            keyspaceHelper.getQueuesPrefix(), redisService, exceptionFactory, redisRequestQuota).handle(response));
+                            keyspaceHelper.getQueuesPrefix(), redisService, exceptionFactory, redisRequestQuota,
+                            configurationProvider.configuration().getQueuesItemsCountRedisRequestQuotaAcquireTimeoutMs()).handle(response));
         }
     }
 
