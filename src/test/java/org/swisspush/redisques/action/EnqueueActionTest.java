@@ -17,9 +17,9 @@ import org.slf4j.Logger;
 import org.swisspush.redisques.queue.QueueRegistryService;
 import org.swisspush.redisques.util.MetricMeter;
 import org.swisspush.redisques.util.MetricTags;
+import org.swisspush.redisques.util.QueueConfigurationProvider;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Optional;
 
@@ -37,6 +37,7 @@ public class EnqueueActionTest extends AbstractQueueActionTest {
     private Counter enqueueCounterSuccess;
     private Counter enqueueCounterFail;
     private QueueRegistryService registryService;
+    private QueueConfigurationProvider queueConfigurationProvider = Mockito.mock(QueueConfigurationProvider.class);
 
     @Before
     @Override
@@ -47,13 +48,13 @@ public class EnqueueActionTest extends AbstractQueueActionTest {
         enqueueCounterSuccess = meterRegistry.counter(MetricMeter.ENQUEUE_SUCCESS.getId(), MetricTags.IDENTIFIER.getId(), "foo");
         enqueueCounterFail = meterRegistry.counter(MetricMeter.ENQUEUE_FAIL.getId(), MetricTags.IDENTIFIER.getId(), "foo");
         action = new EnqueueAction(vertx, registryService, redisService, keyspaceHelper,
-                getConfigurationProvider(), exceptionFactory, Mockito.mock(QueueStatisticsCollector.class),
+                queueConfigurationProvider, getConfigurationProvider(), exceptionFactory, Mockito.mock(QueueStatisticsCollector.class),
                 Mockito.mock(Logger.class), memoryUsageProvider, meterRegistry);
 
     }
 
     @Test
-    public void testEnqueueWhenRedisIsNotReady(TestContext context){
+    public void testEnqueueWhenRedisIsNotReady(TestContext context) {
         when(redisProvider.redis()).thenReturn(Future.failedFuture("not ready"));
         when(message.body()).thenReturn(new JsonObject(Buffer.buffer("{\"operation\":\"enqueue\",\"payload\":{\"queuename\":\"someQueue\"},\"message\":\"hello\"}")));
         when(registryService.updateTimestamp(anyString())).thenReturn(Future.succeededFuture(null));
@@ -62,12 +63,12 @@ public class EnqueueActionTest extends AbstractQueueActionTest {
         verify(message, times(1)).reply(eq(new JsonObject(Buffer.buffer("{\"status\":\"error\",\"message\":\"RedisQues QUEUE_ERROR: Error while enqueueing message into queue someQueue\"}"))));
         verifyNoInteractions(redisAPI);
 
-        assertEnqueueCounts(context,0.0, 1.0);
+        assertEnqueueCounts(context, 0.0, 1.0);
     }
 
 
     @Test
-    public void testDontEnqueueWhenMemoryUsageLimitIsReached(TestContext context){
+    public void testDontEnqueueWhenMemoryUsageLimitIsReached(TestContext context) {
         when(message.body()).thenReturn(new JsonObject(Buffer.buffer("{\"operation\":\"enqueue\",\"payload\":{\"queuename\":\"someQueue\"},\"message\":\"hello\"}")));
         when(memoryUsageProvider.currentMemoryUsagePercentage()).thenReturn(Optional.of(85));
         when(registryService.updateTimestamp(anyString())).thenReturn(Future.succeededFuture(null));
@@ -76,11 +77,11 @@ public class EnqueueActionTest extends AbstractQueueActionTest {
         verify(message, times(1)).reply(eq(new JsonObject(Buffer.buffer("{\"status\":\"error\",\"message\":\"memory usage limit reached\"}"))));
         verifyNoInteractions(redisAPI);
 
-        assertEnqueueCounts(context,0.0, 1.0);
+        assertEnqueueCounts(context, 0.0, 1.0);
     }
 
     @Test
-    public void testDontEnqueueWhenUpdateTimestampFails(TestContext context){
+    public void testDontEnqueueWhenUpdateTimestampFails(TestContext context) {
         when(message.body()).thenReturn(new JsonObject(Buffer.buffer("{\"operation\":\"enqueue\",\"payload\":{\"queuename\":\"updateTimestampFail\"},\"message\":\"hello\"}")));
         when(registryService.notifyConsumer(anyString())).thenReturn(Future.succeededFuture());
         when(registryService.updateTimestamp(anyString())).thenReturn(Future.failedFuture("Booom"));
@@ -91,11 +92,11 @@ public class EnqueueActionTest extends AbstractQueueActionTest {
                 "queue updateTimestampFail\"}"))));
         verify(redisAPI, never()).rpush(anyList());
 
-        assertEnqueueCounts(context,0.0, 1.0);
+        assertEnqueueCounts(context, 0.0, 1.0);
     }
 
     @Test
-    public void testEnqueueWhenUpdateTimestampSucceeds(TestContext context){
+    public void testEnqueueWhenUpdateTimestampSucceeds(TestContext context) {
         when(keyspaceHelper.getConsumersAddress()).thenReturn("addrsss" + "-consumers");
         when(message.body()).thenReturn(new JsonObject(Buffer.buffer("{\"operation\":\"enqueue\",\"payload\":{\"queuename\":\"someQueue\"},\"message\":\"hello\"}")));
         when(redisAPI.get(any()))
@@ -110,10 +111,10 @@ public class EnqueueActionTest extends AbstractQueueActionTest {
         verify(message, times(1)).reply(eq(new JsonObject(Buffer.buffer("{\"status\":\"ok\",\"message\":\"enqueued\"}"))));
         verify(redisAPI, times(1)).rpush(eq(Arrays.asList("prefix-someQueue", "hello")));
 
-        assertEnqueueCounts(context,1.0, 0.0);
+        assertEnqueueCounts(context, 1.0, 0.0);
     }
 
-    private void assertEnqueueCounts(TestContext context, double successCount, double failCount){
+    private void assertEnqueueCounts(TestContext context, double successCount, double failCount) {
         context.assertEquals(successCount, enqueueCounterSuccess.count(), "Success enqueue count is wrong");
         context.assertEquals(failCount, enqueueCounterFail.count(), "Failed enqueue count is wrong");
     }

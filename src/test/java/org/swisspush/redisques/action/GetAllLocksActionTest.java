@@ -15,9 +15,8 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mockito;
 import org.slf4j.Logger;
+import org.swisspush.redisques.util.QueueConfigurationProvider;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
-
-import java.util.ArrayList;
 
 import static org.mockito.Mockito.*;
 import static org.swisspush.redisques.util.RedisquesAPI.buildGetAllLocksOperation;
@@ -29,17 +28,18 @@ import static org.swisspush.redisques.util.RedisquesAPI.buildGetAllLocksOperatio
  */
 @RunWith(VertxUnitRunner.class)
 public class GetAllLocksActionTest extends AbstractQueueActionTest {
+    private QueueConfigurationProvider queueConfigurationProvider = Mockito.mock(QueueConfigurationProvider.class);
 
     @Before
     @Override
     public void setup() {
         super.setup();
         action = new GetAllLocksAction(vertx, redisService, keyspaceHelper,
-                getConfigurationProvider(), exceptionFactory, Mockito.mock(QueueStatisticsCollector.class), Mockito.mock(Logger.class));
+                queueConfigurationProvider, getConfigurationProvider(), exceptionFactory, Mockito.mock(QueueStatisticsCollector.class), Mockito.mock(Logger.class));
     }
 
     @Test
-    public void testGetAllLocksWhenRedisIsNotReady(TestContext context){
+    public void testGetAllLocksWhenRedisIsNotReady(TestContext context) {
         when(redisProvider.redis()).thenReturn(Future.failedFuture("not ready"));
         when(message.body()).thenReturn(buildGetAllLocksOperation());
 
@@ -50,7 +50,7 @@ public class GetAllLocksActionTest extends AbstractQueueActionTest {
     }
 
     @Test
-    public void testGetAllLocksInvalidFilter(TestContext context){
+    public void testGetAllLocksInvalidFilter(TestContext context) {
         when(message.body()).thenReturn(buildGetAllLocksOperation("xyz(.*"));
 
         action.execute(message);
@@ -68,7 +68,7 @@ public class GetAllLocksActionTest extends AbstractQueueActionTest {
     }
 
     @Test
-    public void testGetAllLocksHKEYSFail(TestContext context){
+    public void testGetAllLocksHKEYSFail(TestContext context) {
         when(message.body()).thenReturn(buildGetAllLocksOperation());
 
         when(redisAPI.hkeys(anyString())).thenReturn(new FailedFuture("booom"));
@@ -80,7 +80,7 @@ public class GetAllLocksActionTest extends AbstractQueueActionTest {
     }
 
     @Test
-    public void testGetAllLocks(TestContext context){
+    public void testGetAllLocks(TestContext context) {
         when(message.body()).thenReturn(buildGetAllLocksOperation());
 
         MultiType response = MultiType.create(2, false);

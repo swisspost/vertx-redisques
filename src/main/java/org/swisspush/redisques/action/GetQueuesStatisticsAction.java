@@ -22,11 +22,12 @@ public class GetQueuesStatisticsAction extends AbstractQueueAction {
 
     public GetQueuesStatisticsAction(
             Vertx vertx, RedisService redisService, KeyspaceHelper keyspaceHelper,
-            RedisquesConfigurationProvider configurationProvider, RedisQuesExceptionFactory exceptionFactory,
+            QueueConfigurationProvider queueConfigurationProvider,
+            RedisquesConfigurationProvider redisquesConfigurationProvider, RedisQuesExceptionFactory exceptionFactory,
             QueueStatisticsCollector queueStatisticsCollector, Logger log
     ) {
         super(vertx, redisService, keyspaceHelper,
-                configurationProvider, exceptionFactory, queueStatisticsCollector, log);
+                queueConfigurationProvider, redisquesConfigurationProvider, exceptionFactory, queueStatisticsCollector, log);
     }
 
     @Override

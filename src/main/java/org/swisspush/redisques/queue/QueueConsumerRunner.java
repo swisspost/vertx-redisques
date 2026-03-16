@@ -19,6 +19,7 @@ import org.swisspush.redisques.QueueState;
 import org.swisspush.redisques.QueueStatsService;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.util.QueueConfiguration;
+import org.swisspush.redisques.util.QueueConfigurationProvider;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 import org.swisspush.redisques.util.RedisQuesTimer;
 import org.swisspush.redisques.util.RedisquesConfigurationProvider;
@@ -53,6 +54,7 @@ public class QueueConsumerRunner {
     private final QueueStatisticsCollector queueStatisticsCollector;
     private final RedisQuesTimer timer;
     private final int consumerLockTime;
+    private final QueueConfigurationProvider queueConfigurationProvider;
     private MessageConsumer<String> trimRequestConsumer;
     private Handler<Void> noQueueMoreItemHandler = null;
 
@@ -62,7 +64,7 @@ public class QueueConsumerRunner {
     public QueueConsumerRunner(Vertx vertx, RedisService redisService, QueueMetrics metrics, QueueStatsService queueStatsService,
                                KeyspaceHelper keyspaceHelper,
                                RedisquesConfigurationProvider configurationProvider, RedisQuesExceptionFactory exceptionFactory,
-                               QueueStatisticsCollector queueStatisticsCollector) {
+                               QueueStatisticsCollector queueStatisticsCollector, QueueConfigurationProvider queueConfigurationProvider) {
         this.vertx = vertx;
         this.redisService = redisService;
         this.exceptionFactory = exceptionFactory;
@@ -72,6 +74,8 @@ public class QueueConsumerRunner {
         this.configurationProvider = configurationProvider;
         this.queueStatisticsCollector = queueStatisticsCollector;
         consumerLockTime = configurationProvider.configuration().getConsumerLockMultiplier() * configurationProvider.configuration().getRefreshPeriod(); // lock is kept twice as long as its refresh interval -> never expires as long as the consumer ('we') are alive
+        this.queueConfigurationProvider = queueConfigurationProvider;
+
         // handles trim request
         trimRequestConsumer = vertx.eventBus().consumer(keyspaceHelper.getTrimRequestKey(), event -> {
             final String queueName = event.body();
@@ -450,19 +454,8 @@ public class QueueConsumerRunner {
         });
     }
 
-    /**
-     * find first matching Queue-Configuration
-     *
-     * @param queueName search first configuration for that queue-name
-     * @return null when no queueConfiguration's RegEx matches given queueName - else the QueueConfiguration
-     */
-    private QueueConfiguration findQueueConfiguration(String queueName) {
-        for (QueueConfiguration queueConfiguration : configurationProvider.configuration().getQueueConfigurations()) {
-            if (queueConfiguration.compiledPattern().matcher(queueName).matches()) {
-                return queueConfiguration;
-            }
-        }
-        return null;
+    protected QueueConfiguration findQueueConfiguration(String queueName) {
+        return queueConfigurationProvider.findQueueConfiguration(queueName);
     }
 
     int updateQueueFailureCountAndGetRetryInterval(final String queueName, boolean sendSuccess) {

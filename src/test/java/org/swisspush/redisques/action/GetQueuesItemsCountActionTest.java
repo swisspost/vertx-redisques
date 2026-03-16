@@ -11,9 +11,9 @@ import org.junit.runner.RunWith;
 import org.mockito.Mockito;
 import org.slf4j.Logger;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
+import org.swisspush.redisques.util.QueueConfigurationProvider;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 
-import java.util.ArrayList;
 import java.util.concurrent.Semaphore;
 
 import static org.mockito.Mockito.*;
@@ -26,18 +26,19 @@ import static org.swisspush.redisques.util.RedisquesAPI.buildGetQueuesItemsCount
  */
 @RunWith(VertxUnitRunner.class)
 public class GetQueuesItemsCountActionTest extends AbstractQueueActionTest {
+    private QueueConfigurationProvider queueConfigurationProvider = Mockito.mock(QueueConfigurationProvider.class);
 
     @Before
     @Override
     public void setup() {
         super.setup();
         action = new GetQueuesItemsCountAction(vertx, redisService, keyspaceHelper,
-                getConfigurationProvider(), Mockito.mock(RedisQuesExceptionFactory.class), Mockito.mock(Semaphore.class),
+                queueConfigurationProvider, getConfigurationProvider(), Mockito.mock(RedisQuesExceptionFactory.class), Mockito.mock(Semaphore.class),
                 Mockito.mock(QueueStatisticsCollector.class), Mockito.mock(Logger.class));
     }
 
     @Test
-    public void testGetQueuesItemsCountWhenRedisIsNotReady(TestContext context){
+    public void testGetQueuesItemsCountWhenRedisIsNotReady(TestContext context) {
         when(redisProvider.redis()).thenReturn(Future.failedFuture("not ready"));
         when(message.body()).thenReturn(buildGetQueuesItemsCountOperation(null));
 

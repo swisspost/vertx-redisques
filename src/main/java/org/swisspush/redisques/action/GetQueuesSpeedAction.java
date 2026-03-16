@@ -10,7 +10,6 @@ import org.swisspush.redisques.queue.KeyspaceHelper;
 import org.swisspush.redisques.queue.RedisService;
 import org.swisspush.redisques.util.*;
 
-import java.util.List;
 import java.util.Optional;
 import java.util.regex.Pattern;
 
@@ -23,11 +22,13 @@ public class GetQueuesSpeedAction extends AbstractQueueAction {
 
     public GetQueuesSpeedAction(
             Vertx vertx, RedisService redisService, KeyspaceHelper keyspaceHelper,
-            RedisquesConfigurationProvider queueConfigurations, RedisQuesExceptionFactory exceptionFactory,
+            QueueConfigurationProvider queueConfigurationProvider,
+            RedisquesConfigurationProvider redisquesConfigurationProvider,
+            RedisQuesExceptionFactory exceptionFactory,
             QueueStatisticsCollector queueStatisticsCollector, Logger log
     ) {
         super(vertx, redisService, keyspaceHelper,
-                queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
+                queueConfigurationProvider, redisquesConfigurationProvider, exceptionFactory, queueStatisticsCollector, log);
     }
 
     @Override

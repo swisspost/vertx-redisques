@@ -52,8 +52,9 @@ public class RedisQuesTest extends AbstractTestCase {
     @Before
     public void deployRedisques(TestContext context) {
         vertx = Vertx.vertx();
-
-        JsonObject config = RedisquesConfiguration.with()
+        Async async = context.async();
+        QueueConfigurationProvider.reset();
+        RedisquesConfiguration rqConfig =  RedisquesConfiguration.with()
                 .processorAddress(PROCESSOR_ADDRESS)
                 .micrometerMetricsEnabled(true)
                 .micrometerPerQueueMetricsEnabled(true)
@@ -74,8 +75,7 @@ public class RedisQuesTest extends AbstractTestCase {
                                 .withPattern("limited-queue-4.*")
                                 .withMaxQueueEntries(4))
                 )
-                .build()
-                .asJsonObject();
+                .build();
 
         MeterRegistry meterRegistry = new SimpleMeterRegistry();
         enqueueCounterSuccess = meterRegistry.counter(MetricMeter.ENQUEUE_SUCCESS.getId(), MetricTags.IDENTIFIER.getId(), metricsIdentifier);
@@ -85,13 +85,14 @@ public class RedisQuesTest extends AbstractTestCase {
         memoryUsageProvider = new TestMemoryUsageProvider(Optional.of(50));
         redisQues = RedisQues.builder()
                 .withMemoryUsageProvider(memoryUsageProvider)
-                .withRedisquesRedisquesConfigurationProvider(new DefaultRedisquesConfigurationProvider(vertx, config))
+                .withRedisquesRedisquesConfigurationProvider(new DefaultRedisquesConfigurationProvider(vertx, rqConfig.asJsonObject()))
                 .withMeterRegistry(meterRegistry)
                 .build();
-        vertx.deployVerticle(redisQues, new DeploymentOptions().setConfig(config), context.asyncAssertSuccess(event -> {
+        vertx.deployVerticle(redisQues, new DeploymentOptions().setConfig(rqConfig.asJsonObject()), context.asyncAssertSuccess(event -> {
             deploymentId = event;
             log.info("vert.x Deploy - {} was successful.", redisQues.getClass().getSimpleName());
             jedis = new Jedis("localhost", 6379, 5000);
+            async.complete();
         }));
     }
 

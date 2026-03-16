@@ -16,6 +16,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.swisspush.redisques.RedisQues;
 import org.swisspush.redisques.util.QueueConfiguration;
+import org.swisspush.redisques.util.QueueConfigurationProvider;
 import org.swisspush.redisques.util.RedisquesAPI;
 import org.swisspush.redisques.util.RedisquesConfiguration;
 
@@ -45,6 +46,7 @@ public class EnqueueThrottleTest {
         Async async = testContext.async();
         vertx = RULE.vertx();
 
+        QueueConfigurationProvider.reset();
         RedisquesConfiguration redisquesConfig = RedisquesConfiguration.with()
                 .address(REDISQUES_ADDRESS)
                 .processorAddress(PROCESSOR_ADDRESS)

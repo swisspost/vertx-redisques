@@ -12,9 +12,8 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mockito;
 import org.slf4j.Logger;
+import org.swisspush.redisques.util.QueueConfigurationProvider;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
-
-import java.util.ArrayList;
 
 import static org.mockito.Mockito.*;
 import static org.swisspush.redisques.util.RedisquesAPI.buildGetQueueItemOperation;
@@ -26,17 +25,18 @@ import static org.swisspush.redisques.util.RedisquesAPI.buildGetQueueItemOperati
  */
 @RunWith(VertxUnitRunner.class)
 public class GetQueueItemActionTest extends AbstractQueueActionTest {
+    private QueueConfigurationProvider queueConfigurationProvider = Mockito.mock(QueueConfigurationProvider.class);
 
     @Before
     @Override
     public void setup() {
         super.setup();
         action = new GetQueueItemAction(vertx, redisService, keyspaceHelper,
-                getConfigurationProvider(), exceptionFactory, Mockito.mock(QueueStatisticsCollector.class), Mockito.mock(Logger.class));
+                queueConfigurationProvider, getConfigurationProvider(), exceptionFactory, Mockito.mock(QueueStatisticsCollector.class), Mockito.mock(Logger.class));
     }
 
     @Test
-    public void testGetQueueItemWhenRedisIsNotReady(TestContext context){
+    public void testGetQueueItemWhenRedisIsNotReady(TestContext context) {
         when(redisProvider.redis()).thenReturn(Future.failedFuture("not ready"));
         when(message.body()).thenReturn(buildGetQueueItemOperation("q1", 0));
 
@@ -47,7 +47,7 @@ public class GetQueueItemActionTest extends AbstractQueueActionTest {
     }
 
     @Test
-    public void testGetQueueItem(TestContext context){
+    public void testGetQueueItem(TestContext context) {
         when(message.body()).thenReturn(buildGetQueueItemOperation("q1", 0));
 
         when(redisAPI.lindex(anyString(), anyString())).thenReturn(Future.succeededFuture(SimpleStringType.create(new JsonObject().put("foo", "bar").encode())));
@@ -60,7 +60,7 @@ public class GetQueueItemActionTest extends AbstractQueueActionTest {
     }
 
     @Test
-    public void testGetQueueItemNotExistingIndex(TestContext context){
+    public void testGetQueueItemNotExistingIndex(TestContext context) {
         when(message.body()).thenReturn(buildGetQueueItemOperation("q1", 0));
 
         when(redisAPI.lindex(anyString(), anyString())).thenReturn(Future.succeededFuture());
@@ -71,7 +71,7 @@ public class GetQueueItemActionTest extends AbstractQueueActionTest {
     }
 
     @Test
-    public void testGetQueueItemLINDEXFail(TestContext context){
+    public void testGetQueueItemLINDEXFail(TestContext context) {
         when(message.body()).thenReturn(buildGetQueueItemOperation("q1", 0));
 
         when(redisAPI.lindex(anyString(), anyString())).thenReturn(Future.failedFuture("booom"));

@@ -10,7 +10,6 @@ import org.swisspush.redisques.queue.KeyspaceHelper;
 import org.swisspush.redisques.queue.RedisService;
 import org.swisspush.redisques.util.*;
 
-import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.Semaphore;
 import java.util.regex.Pattern;
@@ -29,13 +28,14 @@ public class GetQueuesItemsCountAction extends AbstractQueueAction {
             Vertx vertx,
             RedisService redisService,
             KeyspaceHelper keyspaceHelper,
-            RedisquesConfigurationProvider queueConfigurations,
+            QueueConfigurationProvider queueConfigurationProvider,
+            RedisquesConfigurationProvider redisquesConfigurationProvider,
             RedisQuesExceptionFactory exceptionFactory,
             Semaphore redisRequestQuota,
             QueueStatisticsCollector queueStatisticsCollector,
             Logger log
     ) {
-        super(vertx, redisService, keyspaceHelper, queueConfigurations,
+        super(vertx, redisService, keyspaceHelper, queueConfigurationProvider, redisquesConfigurationProvider,
                 exceptionFactory, queueStatisticsCollector, log);
         this.exceptionFactory = exceptionFactory;
         this.redisRequestQuota = redisRequestQuota;
@@ -52,7 +52,7 @@ public class GetQueuesItemsCountAction extends AbstractQueueAction {
                     String.valueOf(getMaxAgeTimestamp()), "+inf").onComplete(response ->
                     new GetQueuesItemsCountHandler(vertx, event, filterPattern.getOk(),
                             keyspaceHelper.getQueuesPrefix(), redisService, exceptionFactory, redisRequestQuota,
-                            configurationProvider.configuration().getQueuesItemsCountRedisRequestQuotaAcquireTimeoutMs()).handle(response));
+                            redisquesConfigurationProvider.configuration().getQueuesItemsCountRedisRequestQuotaAcquireTimeoutMs()).handle(response));
         }
     }
 

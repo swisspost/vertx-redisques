@@ -10,24 +10,25 @@ import org.swisspush.redisques.queue.KeyspaceHelper;
 import org.swisspush.redisques.queue.QueueRegistryService;
 import org.swisspush.redisques.queue.RedisService;
 import org.swisspush.redisques.util.MemoryUsageProvider;
-import org.swisspush.redisques.util.QueueConfiguration;
+import org.swisspush.redisques.util.QueueConfigurationProvider;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 import org.swisspush.redisques.util.RedisquesConfigurationProvider;
 
 import java.util.Arrays;
-import java.util.List;
 
 import static org.swisspush.redisques.util.RedisquesAPI.*;
 
 public class LockedEnqueueAction extends EnqueueAction {
 
     public LockedEnqueueAction(Vertx vertx, QueueRegistryService queueRegistryService, RedisService redisService,
-                               KeyspaceHelper keyspaceHelper, RedisquesConfigurationProvider queueConfigurations,
+                               KeyspaceHelper keyspaceHelper, QueueConfigurationProvider queueConfigurationProvider,
+                               RedisquesConfigurationProvider redisquesConfigurationProvider,
                                RedisQuesExceptionFactory exceptionFactory,
                                QueueStatisticsCollector queueStatisticsCollector, Logger log,
                                MemoryUsageProvider memoryUsageProvider, MeterRegistry meterRegistry) {
 
-        super(vertx, queueRegistryService, redisService, keyspaceHelper, queueConfigurations, exceptionFactory, queueStatisticsCollector, log, memoryUsageProvider,
+        super(vertx, queueRegistryService, redisService, keyspaceHelper, queueConfigurationProvider,
+                redisquesConfigurationProvider, exceptionFactory, queueStatisticsCollector, log, memoryUsageProvider,
                 meterRegistry);
     }
 
