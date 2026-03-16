@@ -85,7 +85,7 @@ public class UpperBoundParallel {
                 assert req.worker == currentThread();
                 if (req.isFatalError) {
                     log.trace("return from 'resume()' because isFatalError");
-                    assert req.permitsUsed == 0 : "assert(permitsUsed != " + req.permitsUsed + ")";
+                    assert req.numTokensAvailForOurself == 0 : "assert(numTokensAvailForOurself != " + req.numTokensAvailForOurself + ")";
                     return;
                 }
                 if (!req.hasMore) {
@@ -117,7 +117,6 @@ public class UpperBoundParallel {
                 }
                 req.hasStarted = true;
                 req.numInProgress += 1;
-                req.permitsUsed += 1;
                 assert req.hasMore : "assert(hasMore)";
                 boolean hasMore = true;
                 try {
@@ -198,25 +197,25 @@ public class UpperBoundParallel {
             log.trace("onOneDone({})  {} remaining", ex != null ? "ex" : "null", req.numInProgress);
             assert req.numInProgress >= 0 : req.numInProgress + " >= 0  (BTW: mentor MUST call 'onDone' EXACTLY once)";
             boolean isFatalError = true;
-            if (ex != null) try {
-                // Unlock, to prevent thread stalls as we don't know for how long mentor
-                // is going to block.
-                req.lock.unlock();
-                if (log.isDebugEnabled()) {
-                    log.debug("mentor.onError({}: {})", ex.getClass().getName(), ex.getMessage());
-                }
-                isFatalError = !req.mentor.onError(ex, req.ctx);
-            } finally {
-                req.lock.lock(); // Need our lock back.
-                req.isFatalError = isFatalError;
-                // Need to release our token now. As we won't do it later anymore.
-                if (isFatalError) {
-                    req.numTokensAvailForOurself -= 1;
-                    // release all tokens we used here, because stops here
-                    req.limit.release(req.permitsUsed);
-                    req.permitsUsed = 0;
-                } else {
-                    req.permitsUsed -= 1;
+            if (ex != null) {
+                try {
+                    // Unlock, to prevent thread stalls as we don't know for how long mentor
+                    // is going to block.
+                    req.lock.unlock();
+                    if (log.isDebugEnabled()) {
+                        log.debug("mentor.onError({}: {})", ex.getClass().getName(), ex.getMessage());
+                    }
+                    isFatalError = !req.mentor.onError(ex, req.ctx);
+                } finally {
+                    req.lock.lock(); // Need our lock back.
+                    req.isFatalError = isFatalError;
+                    // Need to release our token now. As we won't do it later anymore.
+                    if (isFatalError) {
+                        // release all tokens we used here, because stops here
+                        req.limit.release(req.numTokensAvailForOurself);
+                        // set usage to 0
+                        req.numTokensAvailForOurself = 0;
+                    }
                 }
             }
         } finally {
@@ -230,7 +229,6 @@ public class UpperBoundParallel {
         private final Mentor<Ctx> mentor;
         private final Lock lock = new ReentrantLock();
         private final Semaphore limit;
-        private volatile int permitsUsed = 0;
         private Thread worker = null;
         private int numInProgress = 0;
         private int numTokensAvailForOurself = 0;
