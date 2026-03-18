@@ -587,16 +587,22 @@ public class QueueRegistryService {
                                 });
                             });
                         };
-                        redisService.exists(Collections.singletonList(key)).onComplete(event -> {
+                        // if mylist is a list with 5 items:
+                        //  LLEN mylist → 5
+                        //  EXISTS mylist → 1
+                        // if mylist does not exist:
+                        //  LLEN mylist → 0
+                        //  EXISTS mylist → 0
+                        redisService.llen(key).onComplete(event -> {
                             if (event.failed() || event.result() == null) {
-                                log.error("RedisQues is unable to check existence of queue {}", queueName,
-                                        exceptionFactory.newException("redisAPI.exists(" + key + ") failed", event.cause()));
+                                log.error("RedisQues is unable to check size of queue {}", queueName,
+                                        exceptionFactory.newException("redisAPI.llen(" + key + ") failed", event.cause()));
                                 onDone.accept(null, null);
                                 return;
                             }
-                            if (event.result().toLong() == 1) {
-                                log.trace("Updating queue timestamp for queue '{}'", queueName);
+                            if (event.result().toLong() > 0) {
                                 // If not empty, update the queue timestamp to keep it in the sorted set.
+                                log.trace("Updating queue timestamp for queue '{}'", queueName);
                                 updateTimestamp(queueName).onComplete(upTsResult -> {
                                     if (upTsResult.failed()) {
                                         log.warn("Failed to update timestamps for queue '{}'", queueName,
