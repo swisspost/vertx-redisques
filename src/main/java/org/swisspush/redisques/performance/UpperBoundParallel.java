@@ -141,7 +141,7 @@ public class UpperBoundParallel {
                             onOneDone(req, ex);
                         }
                     }, req.ctx);
-                } catch (RuntimeException ex) {
+                } catch (Throwable ex) {
                     assert req.worker == currentThread();
                     onOneDone(req, ex);
                 } finally {
@@ -275,7 +275,7 @@ public class UpperBoundParallel {
          * @return true if more elements have to be processed. False if
          *      iteration source has reached its end.
          */
-        boolean runOneMore(BiConsumer<Throwable, Void> onDone, Ctx ctx);
+        boolean runOneMore(BiConsumer<Throwable, Void> onDone, Ctx ctx) throws Throwable;
 
         /**
          * @return true if iteration should continue with other elements. False
