@@ -113,6 +113,12 @@ public class UpperBoundParallel {
                     // new ones. Explanation see comment in 'onOneDone()'.
                     req.numTokensAvailForOurself -= 1;
                 } else if (req.acquireTimeout > 0 ? !req.limit.tryAcquire(req.acquireTimeout, TimeUnit.MILLISECONDS) : !req.limit.tryAcquire()) {
+                    /* WARNING: whoever enables the feature `acquireTimeout` risks to cause
+                     * latency issues throughout the application! So DO NOT enable this
+                     * feature unless you know exactly what you're doing! If you do, DO NOT
+                     * complain due to latency issues and blocked threads. Because that's
+                     * exactly what that feature causes.
+                     */
                     log.debug("redis request limit reached. Need to pause now.");
                     break; // Go to end of loop to schedule a run later.
                 }
