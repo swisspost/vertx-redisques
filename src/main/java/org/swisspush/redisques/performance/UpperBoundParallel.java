@@ -144,16 +144,23 @@ public class UpperBoundParallel {
                             onOneDone(req, ex);
                         }
                     }, req.ctx);
-                } catch (RuntimeException ex) {
+                } catch (Throwable ex) {
                     assert req.worker == currentThread();
                     onOneDone(req, ex);
                 } finally {
                     // We MUST get back our lock right NOW. No way to just 'try'.
-                    log.trace("mentor.runOneMore() -> hasMore={}", hasMore);
                     req.lock.lock();
+                    log.trace("mentor.runOneMore() -> hasMore={}", hasMore);
                     assert req.worker == currentThread();
                     assert req.hasMore;
                     req.hasMore = hasMore;
+                    // If we finished here, we must check for any parked tokens which might habe been allocated
+                    // in the meantime before the lock was retrieved again. The onOneDone might have changed it in the
+                    // meantime in some rare race conditions.
+                    if (!req.hasMore && req.numTokensAvailForOurself > 0) {
+                        req.limit.release(req.numTokensAvailForOurself);
+                        req.numTokensAvailForOurself = 0;
+                    }
                 }
             }
             assert req.numInProgress >= 0 : req.numInProgress;
@@ -197,8 +204,18 @@ public class UpperBoundParallel {
             // can apply backpressure to new incoming requests. This allows us to complete
             // the already running requests.
             req.numInProgress -= 1;
-            req.numTokensAvailForOurself += 1;
-            // ^^-- Token transfer only consists of those two statements.
+            // Due to possible race conditions, we might have already set 'hasMore' to false in 'resume()' and then
+            // called 'mentor.onDone()' (because no more work to do). In this case we should not park a token for
+            // ourself, because there is no more work to do. Instead we should just release back to the semaphore.
+            if (req.hasMore && !req.isFatalError) {
+                // FIX: We should only park a token here if we are sure that there is further work to do.
+                req.numTokensAvailForOurself += 1;
+            } else {
+                // If there is no more work to do, we could just release back the token to the semaphore.
+                // Without this, we would lose here a semaphore token, which would then never be released again, because
+                // we won't call 'resume()' anymore (as there is no more work to do).
+                req.limit.release(1);
+            }
             log.trace("onOneDone({})  {} remaining", ex != null ? "ex" : "null", req.numInProgress);
             assert req.numInProgress >= 0 : req.numInProgress + " >= 0  (BTW: mentor MUST call 'onDone' EXACTLY once)";
             boolean isFatalError = true;
@@ -265,7 +282,7 @@ public class UpperBoundParallel {
          * @return true if more elements have to be processed. False if
          *      iteration source has reached its end.
          */
-        boolean runOneMore(BiConsumer<Throwable, Void> onDone, Ctx ctx);
+        boolean runOneMore(BiConsumer<Throwable, Void> onDone, Ctx ctx) throws Throwable;
 
         /**
          * @return true if iteration should continue with other elements. False
