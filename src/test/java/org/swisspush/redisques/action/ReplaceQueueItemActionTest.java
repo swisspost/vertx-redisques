@@ -14,8 +14,6 @@ import org.slf4j.Logger;
 import org.swisspush.redisques.util.QueueConfigurationProvider;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 
-import java.util.ArrayList;
-
 import static org.mockito.Mockito.*;
 import static org.swisspush.redisques.util.RedisquesAPI.buildReplaceQueueItemOperation;
 
@@ -33,13 +31,13 @@ public class ReplaceQueueItemActionTest extends AbstractQueueActionTest {
     public void setup() {
         super.setup();
         action = new ReplaceQueueItemAction(vertx, redisService, keyspaceHelper,
-                queueConfigurationProvider, exceptionFactory, Mockito.mock(QueueStatisticsCollector.class), Mockito.mock(Logger.class));
+                queueConfigurationProvider, getConfigurationProvider(), exceptionFactory, Mockito.mock(QueueStatisticsCollector.class), Mockito.mock(Logger.class));
     }
 
     @Test
-    public void testReplaceQueueItemWhenRedisIsNotReady(TestContext context){
+    public void testReplaceQueueItemWhenRedisIsNotReady(TestContext context) {
         when(redisProvider.redis()).thenReturn(Future.failedFuture("not ready"));
-        when(message.body()).thenReturn(buildReplaceQueueItemOperation("q1", 0,"geronimo"));
+        when(message.body()).thenReturn(buildReplaceQueueItemOperation("q1", 0, "geronimo"));
 
         action.execute(message);
 
@@ -48,8 +46,8 @@ public class ReplaceQueueItemActionTest extends AbstractQueueActionTest {
     }
 
     @Test
-    public void testReplaceQueueItem(TestContext context){
-        when(message.body()).thenReturn(buildReplaceQueueItemOperation("q1", 0,"geronimo"));
+    public void testReplaceQueueItem(TestContext context) {
+        when(message.body()).thenReturn(buildReplaceQueueItemOperation("q1", 0, "geronimo"));
 
         when(redisAPI.lset(anyString(), anyString(), anyString())).thenReturn(Future.succeededFuture());
 
@@ -60,8 +58,8 @@ public class ReplaceQueueItemActionTest extends AbstractQueueActionTest {
     }
 
     @Test
-    public void testReplaceQueueItemWithLSETFail(TestContext context){
-        when(message.body()).thenReturn(buildReplaceQueueItemOperation("q1", 0,"geronimo"));
+    public void testReplaceQueueItemWithLSETFail(TestContext context) {
+        when(message.body()).thenReturn(buildReplaceQueueItemOperation("q1", 0, "geronimo"));
 
         when(redisAPI.lset(anyString(), anyString(), anyString())).thenReturn(Future.failedFuture("booom"));
 

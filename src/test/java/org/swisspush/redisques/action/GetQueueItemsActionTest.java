@@ -13,8 +13,6 @@ import org.slf4j.Logger;
 import org.swisspush.redisques.util.QueueConfigurationProvider;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 
-import java.util.ArrayList;
-
 import static org.mockito.Mockito.*;
 import static org.swisspush.redisques.util.RedisquesAPI.buildGetQueueItemsOperation;
 
@@ -32,11 +30,11 @@ public class GetQueueItemsActionTest extends AbstractQueueActionTest {
     public void setup() {
         super.setup();
         action = new GetQueueItemsAction(vertx, redisService, keyspaceHelper,
-                queueConfigurationProvider, exceptionFactory, Mockito.mock(QueueStatisticsCollector.class), Mockito.mock(Logger.class));
+                queueConfigurationProvider, getConfigurationProvider(), exceptionFactory, Mockito.mock(QueueStatisticsCollector.class), Mockito.mock(Logger.class));
     }
 
     @Test
-    public void testGetQueueItemsWhenRedisIsNotReady(TestContext context){
+    public void testGetQueueItemsWhenRedisIsNotReady(TestContext context) {
         when(redisProvider.redis()).thenReturn(Future.failedFuture("not ready"));
         when(message.body()).thenReturn(buildGetQueueItemsOperation("q1", null));
 
@@ -47,7 +45,7 @@ public class GetQueueItemsActionTest extends AbstractQueueActionTest {
     }
 
     @Test
-    public void testLLENFail(TestContext context){
+    public void testLLENFail(TestContext context) {
         when(message.body()).thenReturn(buildGetQueueItemsOperation("q1", null));
         when(redisAPI.llen(anyString())).thenReturn(Future.failedFuture("boooom"));
 
@@ -58,7 +56,7 @@ public class GetQueueItemsActionTest extends AbstractQueueActionTest {
     }
 
     @Test
-    public void testLLENInvalidResponseValue(TestContext context){
+    public void testLLENInvalidResponseValue(TestContext context) {
         when(message.body()).thenReturn(buildGetQueueItemsOperation("q1", null));
         when(redisAPI.llen(anyString())).thenReturn(Future.succeededFuture(SimpleStringType.create(null)));
 

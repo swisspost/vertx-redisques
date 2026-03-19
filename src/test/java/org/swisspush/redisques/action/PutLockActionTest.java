@@ -13,9 +13,6 @@ import org.mockito.Mockito;
 import org.slf4j.Logger;
 import org.swisspush.redisques.util.QueueConfigurationProvider;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
-import org.swisspush.redisques.util.RedisquesAPI;
-
-import java.util.ArrayList;
 
 import static org.mockito.Mockito.*;
 import static org.swisspush.redisques.util.RedisquesAPI.*;
@@ -33,12 +30,12 @@ public class PutLockActionTest extends AbstractQueueActionTest {
     @Override
     public void setup() {
         super.setup();
-        action = new PutLockAction(vertx, redisService, keyspaceHelper,
-                queueConfigurationProvider, exceptionFactory, Mockito.mock(QueueStatisticsCollector.class), Mockito.mock(Logger.class));
+        action = new PutLockAction(vertx, redisService, keyspaceHelper, queueConfigurationProvider, getConfigurationProvider(),
+                exceptionFactory, Mockito.mock(QueueStatisticsCollector.class), Mockito.mock(Logger.class));
     }
 
     @Test
-    public void testPutLockWhenRedisIsNotReady(TestContext context){
+    public void testPutLockWhenRedisIsNotReady(TestContext context) {
         when(redisProvider.redis()).thenReturn(Future.failedFuture("not ready"));
         when(message.body()).thenReturn(buildPutLockOperation("q1", "geronimo"));
 
@@ -49,7 +46,7 @@ public class PutLockActionTest extends AbstractQueueActionTest {
     }
 
     @Test
-    public void testPutLockWithoutRequestedByProperty(TestContext context){
+    public void testPutLockWithoutRequestedByProperty(TestContext context) {
         when(message.body()).thenReturn(buildOperation(QueueOperation.putLock, new JsonObject().put(QUEUENAME, "q1")));
 
         action.execute(message);
@@ -59,7 +56,7 @@ public class PutLockActionTest extends AbstractQueueActionTest {
     }
 
     @Test
-    public void testPutLockWithInvalidQueuenameProperty(TestContext context){
+    public void testPutLockWithInvalidQueuenameProperty(TestContext context) {
         when(message.body()).thenReturn(buildOperation(QueueOperation.putLock, new JsonObject().put(REQUESTED_BY, "geronimo")));
 
         action.execute(message);
@@ -69,7 +66,7 @@ public class PutLockActionTest extends AbstractQueueActionTest {
     }
 
     @Test
-    public void testPutLock(TestContext context){
+    public void testPutLock(TestContext context) {
         when(message.body()).thenReturn(buildPutLockOperation("q1", "geronimo"));
 
         when(redisAPI.hmset(anyList())).thenReturn(Future.succeededFuture());
@@ -81,7 +78,7 @@ public class PutLockActionTest extends AbstractQueueActionTest {
     }
 
     @Test
-    public void testPutLockHMSETFail(TestContext context){
+    public void testPutLockHMSETFail(TestContext context) {
         when(message.body()).thenReturn(buildPutLockOperation("q1", "geronimo"));
 
         when(redisAPI.hmset(anyList())).thenReturn(Future.failedFuture("booom"));

@@ -19,8 +19,6 @@ import org.swisspush.redisques.util.MetricTags;
 import org.swisspush.redisques.util.QueueConfigurationProvider;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 
-import java.util.ArrayList;
-
 import static org.mockito.Mockito.*;
 import static org.swisspush.redisques.util.RedisquesAPI.buildLockedEnqueueOperation;
 
@@ -36,6 +34,7 @@ public class LockedEnqueueActionTest extends AbstractQueueActionTest {
     private Counter enqueueCounterSuccess;
     private Counter enqueueCounterFail;
     private QueueRegistryService registryService;
+
     @Before
     @Override
     public void setup() {
@@ -44,13 +43,13 @@ public class LockedEnqueueActionTest extends AbstractQueueActionTest {
         MeterRegistry meterRegistry = new SimpleMeterRegistry();
         enqueueCounterSuccess = meterRegistry.counter(MetricMeter.ENQUEUE_SUCCESS.getId(), MetricTags.IDENTIFIER.getId(), "foo");
         enqueueCounterFail = meterRegistry.counter(MetricMeter.ENQUEUE_FAIL.getId(), MetricTags.IDENTIFIER.getId(), "foo");
-        action = new LockedEnqueueAction(vertx, registryService, redisService, keyspaceHelper,
-                queueConfigurationProvider, exceptionFactory, Mockito.mock(QueueStatisticsCollector.class),
-                Mockito.mock(Logger.class), memoryUsageProvider, 80, meterRegistry, "foo");
+        action = new LockedEnqueueAction(vertx, registryService, redisService, keyspaceHelper, queueConfigurationProvider,
+                getConfigurationProvider(), exceptionFactory, Mockito.mock(QueueStatisticsCollector.class),
+                Mockito.mock(Logger.class), memoryUsageProvider, meterRegistry);
     }
 
     @Test
-    public void testLockedEnqueueWhenRedisIsNotReady(TestContext context){
+    public void testLockedEnqueueWhenRedisIsNotReady(TestContext context) {
         when(redisProvider.redis()).thenReturn(Future.failedFuture("not ready"));
         when(message.body()).thenReturn(buildLockedEnqueueOperation("queueEnqueue", "helloEnqueue", "someuser"));
 
@@ -61,7 +60,7 @@ public class LockedEnqueueActionTest extends AbstractQueueActionTest {
         verifyNoInteractions(redisAPI);
     }
 
-    private void assertEnqueueCounts(TestContext context, double successCount, double failCount){
+    private void assertEnqueueCounts(TestContext context, double successCount, double failCount) {
         context.assertEquals(successCount, enqueueCounterSuccess.count(), "Success enqueue count is wrong");
         context.assertEquals(failCount, enqueueCounterFail.count(), "Failed enqueue count is wrong");
     }

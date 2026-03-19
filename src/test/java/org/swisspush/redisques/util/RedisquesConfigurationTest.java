@@ -58,6 +58,11 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getMetricStorageName(), "queue");
         testContext.assertNull(config.getPublishMetricsAddress());
         testContext.assertEquals(config.getEmptyQueueLiveTimeMillis(), -1);
+        testContext.assertEquals(config.getRedisMonitoringReqQuotaAcquireTimeoutMs(), 0);
+        testContext.assertEquals(config.getCheckQueueRequestsQuotaAcquireTimeoutMs(), 0);
+        testContext.assertEquals(config.getQueuesItemsCountRedisRequestQuotaAcquireTimeoutMs(), 0);
+        testContext.assertEquals(config.getQueueStatsRequestQuotaAcquireTimeoutMs(), 0);
+        testContext.assertEquals(config.getActiveQueueRegRefreshReqQuotaAcquireTimeoutMs(), 0);
     }
 
     @Test
@@ -95,6 +100,11 @@ public class RedisquesConfigurationTest {
                 .publishMetricsAddress("eventbus-addr-1")
                 .metricStorageName("queue")
                 .emptyQueueLiveTimeMs(9000)
+                .queuesItemsCountRedisRequestQuotaAcquireTimeoutMs(1)
+                .redisMonitoringReqQuotaAcquireTimeoutMs(2)
+                .activeQueueRegRefreshReqQuotaAcquireTimeoutMs(3)
+                .checkQueueRequestsQuotaAcquireTimeoutMs(4)
+                .queueStatsRequestQuotaAcquireTimeoutMs(5)
                 .build();
 
         // default values
@@ -133,6 +143,12 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getMetricStorageName(), "queue");
         testContext.assertEquals(config.getConsumerLockMultiplier(), 9);
         testContext.assertEquals(config.getEmptyQueueLiveTimeMillis(), 9000);
+        testContext.assertEquals(config.getRedisMonitoringReqQuotaAcquireTimeoutMs(), 2);
+        testContext.assertEquals(config.getCheckQueueRequestsQuotaAcquireTimeoutMs(), 4);
+        testContext.assertEquals(config.getQueuesItemsCountRedisRequestQuotaAcquireTimeoutMs(), 1);
+        testContext.assertEquals(config.getQueueStatsRequestQuotaAcquireTimeoutMs(), 5);
+        testContext.assertEquals(config.getActiveQueueRegRefreshReqQuotaAcquireTimeoutMs(), 3);
+
         // queue configurations
         testContext.assertEquals(config.getQueueConfigurations().size(), 1);
         QueueConfiguration queueConfiguration = config.getQueueConfigurations().get(0);
@@ -181,6 +197,11 @@ public class RedisquesConfigurationTest {
         testContext.assertNull(json.getString(PROP_PUBLISH_METRICS_ADDRESS));
         testContext.assertEquals(json.getString(PROP_METRIC_STORAGE_NAME), "queue");
         testContext.assertEquals(json.getInteger(PROP_EMPTY_QUEUE_LIVE_TIME_MS), -1);
+        testContext.assertEquals(json.getInteger(PROP_MONITORING_REQUEST_QUOTA_ACQUIRE_TIMEOUT_MS), 0);
+        testContext.assertEquals(json.getInteger(PROP_CHECK_QUEUE_REQUEST_QUOTA_ACQUIRE_TIMEOUT_MS), 0);
+        testContext.assertEquals(json.getInteger(PROP_QUEUESITEMS_COUNT_REQUEST_QUOTA_ACQUIRE_TIMEOUT_MS), 0);
+        testContext.assertEquals(json.getInteger(PROP_ACTIVE_QUEUE_REFRESH_REQUEST_QUOTA_ACQUIRE_TIMEOUT_MS), 0);
+        testContext.assertEquals(json.getInteger(PROP_QUEUE_STATS_REQUEST_QUOTA_ACQUIRE_TIMEOUT_MS), 0);
     }
 
     @Test
@@ -217,6 +238,11 @@ public class RedisquesConfigurationTest {
                 .publishMetricsAddress("eventbus-addr-1")
                 .metricStorageName("queue")
                 .emptyQueueLiveTimeMs(8000)
+                .queuesItemsCountRedisRequestQuotaAcquireTimeoutMs(1)
+                .redisMonitoringReqQuotaAcquireTimeoutMs(2)
+                .activeQueueRegRefreshReqQuotaAcquireTimeoutMs(3)
+                .checkQueueRequestsQuotaAcquireTimeoutMs(4)
+                .queueStatsRequestQuotaAcquireTimeoutMs(5)
                 .build();
 
         JsonObject json = config.asJsonObject();
@@ -259,6 +285,11 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(json.getString(PROP_METRIC_STORAGE_NAME), "queue");
         testContext.assertEquals(json.getInteger(PROP_CONSUMER_LOCK_MULTIPLIER), 3);
         testContext.assertEquals(json.getInteger(PROP_EMPTY_QUEUE_LIVE_TIME_MS), 8000);
+        testContext.assertEquals(json.getInteger(PROP_QUEUESITEMS_COUNT_REQUEST_QUOTA_ACQUIRE_TIMEOUT_MS), 1);
+        testContext.assertEquals(json.getInteger(PROP_MONITORING_REQUEST_QUOTA_ACQUIRE_TIMEOUT_MS), 2);
+        testContext.assertEquals(json.getInteger(PROP_ACTIVE_QUEUE_REFRESH_REQUEST_QUOTA_ACQUIRE_TIMEOUT_MS), 3);
+        testContext.assertEquals(json.getInteger(PROP_CHECK_QUEUE_REQUEST_QUOTA_ACQUIRE_TIMEOUT_MS), 4);
+        testContext.assertEquals(json.getInteger(PROP_QUEUE_STATS_REQUEST_QUOTA_ACQUIRE_TIMEOUT_MS), 5);
         // queue configurations
         JsonArray queueConfigurationsJsonArray = json.getJsonArray(PROP_QUEUE_CONFIGURATIONS);
         List<JsonObject> queueConfigurationJsonObjects = queueConfigurationsJsonArray.getList();
@@ -309,6 +340,11 @@ public class RedisquesConfigurationTest {
         testContext.assertNull(config.getPublishMetricsAddress());
         testContext.assertEquals(config.getMetricStorageName(), "queue");
         testContext.assertEquals(config.getEmptyQueueLiveTimeMillis(), -1);
+        testContext.assertEquals(config.getQueuesItemsCountRedisRequestQuotaAcquireTimeoutMs(), 0);
+        testContext.assertEquals(config.getQueueStatsRequestQuotaAcquireTimeoutMs(), 0);
+        testContext.assertEquals(config.getActiveQueueRegRefreshReqQuotaAcquireTimeoutMs(), 0);
+        testContext.assertEquals(config.getRedisMonitoringReqQuotaAcquireTimeoutMs(), 0);
+        testContext.assertEquals(config.getCheckQueueRequestsQuotaAcquireTimeoutMs(), 0);
     }
 
     @Test
@@ -355,6 +391,12 @@ public class RedisquesConfigurationTest {
                         .asJsonObject()
         )));
 
+        json.put(PROP_MONITORING_REQUEST_QUOTA_ACQUIRE_TIMEOUT_MS, 2);
+        json.put(PROP_CHECK_QUEUE_REQUEST_QUOTA_ACQUIRE_TIMEOUT_MS, 1);
+        json.put(PROP_QUEUESITEMS_COUNT_REQUEST_QUOTA_ACQUIRE_TIMEOUT_MS, 5);
+        json.put(PROP_ACTIVE_QUEUE_REFRESH_REQUEST_QUOTA_ACQUIRE_TIMEOUT_MS, 3);
+        json.put(PROP_QUEUE_STATS_REQUEST_QUOTA_ACQUIRE_TIMEOUT_MS, 4);
+
         RedisquesConfiguration config = fromJsonObject(json);
         testContext.assertEquals(config.getAddress(), "new_address");
         testContext.assertEquals(config.getConfigurationUpdatedAddress(), "config_updated");
@@ -390,6 +432,11 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getPublishMetricsAddress(), "eventbus-addr-1");
         testContext.assertEquals(config.getMetricStorageName(), "queue");
         testContext.assertEquals(config.getEmptyQueueLiveTimeMillis(), 1500);
+        testContext.assertEquals(config.getQueuesItemsCountRedisRequestQuotaAcquireTimeoutMs(), 5);
+        testContext.assertEquals(config.getQueueStatsRequestQuotaAcquireTimeoutMs(), 4);
+        testContext.assertEquals(config.getActiveQueueRegRefreshReqQuotaAcquireTimeoutMs(), 3);
+        testContext.assertEquals(config.getRedisMonitoringReqQuotaAcquireTimeoutMs(), 2);
+        testContext.assertEquals(config.getCheckQueueRequestsQuotaAcquireTimeoutMs(), 1);
 
         // queue configurations
         testContext.assertEquals(config.getQueueConfigurations().size(), 1);

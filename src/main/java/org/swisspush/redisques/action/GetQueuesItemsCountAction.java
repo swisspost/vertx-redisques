@@ -29,12 +29,13 @@ public class GetQueuesItemsCountAction extends AbstractQueueAction {
             RedisService redisService,
             KeyspaceHelper keyspaceHelper,
             QueueConfigurationProvider queueConfigurationProvider,
+            RedisquesConfigurationProvider redisquesConfigurationProvider,
             RedisQuesExceptionFactory exceptionFactory,
             Semaphore redisRequestQuota,
             QueueStatisticsCollector queueStatisticsCollector,
             Logger log
     ) {
-        super(vertx, redisService, keyspaceHelper, queueConfigurationProvider,
+        super(vertx, redisService, keyspaceHelper, queueConfigurationProvider, redisquesConfigurationProvider,
                 exceptionFactory, queueStatisticsCollector, log);
         this.exceptionFactory = exceptionFactory;
         this.redisRequestQuota = redisRequestQuota;
@@ -50,7 +51,8 @@ public class GetQueuesItemsCountAction extends AbstractQueueAction {
             redisService.zrangebyscore(keyspaceHelper.getQueuesKey(),
                     String.valueOf(getMaxAgeTimestamp()), "+inf").onComplete(response ->
                     new GetQueuesItemsCountHandler(vertx, event, filterPattern.getOk(),
-                            keyspaceHelper.getQueuesPrefix(), redisService, exceptionFactory, redisRequestQuota).handle(response));
+                            keyspaceHelper.getQueuesPrefix(), redisService, exceptionFactory, redisRequestQuota,
+                            redisquesConfigurationProvider.configuration().getQueuesItemsCountRedisRequestQuotaAcquireTimeoutMs()).handle(response));
         }
     }
 

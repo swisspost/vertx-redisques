@@ -12,6 +12,7 @@ import org.swisspush.redisques.queue.RedisService;
 import org.swisspush.redisques.util.MemoryUsageProvider;
 import org.swisspush.redisques.util.QueueConfigurationProvider;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
+import org.swisspush.redisques.util.RedisquesConfigurationProvider;
 
 import java.util.Arrays;
 
@@ -21,12 +22,14 @@ public class LockedEnqueueAction extends EnqueueAction {
 
     public LockedEnqueueAction(Vertx vertx, QueueRegistryService queueRegistryService, RedisService redisService,
                                KeyspaceHelper keyspaceHelper, QueueConfigurationProvider queueConfigurationProvider,
+                               RedisquesConfigurationProvider redisquesConfigurationProvider,
                                RedisQuesExceptionFactory exceptionFactory,
                                QueueStatisticsCollector queueStatisticsCollector, Logger log,
-                               MemoryUsageProvider memoryUsageProvider, int memoryUsageLimitPercent, MeterRegistry meterRegistry,
-                               String metricsIdentifier) {
-        super(vertx, queueRegistryService, redisService, keyspaceHelper, queueConfigurationProvider, exceptionFactory, queueStatisticsCollector, log, memoryUsageProvider,
-                memoryUsageLimitPercent, meterRegistry, metricsIdentifier);
+                               MemoryUsageProvider memoryUsageProvider, MeterRegistry meterRegistry) {
+
+        super(vertx, queueRegistryService, redisService, keyspaceHelper, queueConfigurationProvider,
+                redisquesConfigurationProvider, exceptionFactory, queueStatisticsCollector, log, memoryUsageProvider,
+                meterRegistry);
     }
 
     @Override

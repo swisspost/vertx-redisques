@@ -159,7 +159,7 @@ public class RedisQues extends AbstractVerticle {
 
         this.queueStatisticsCollector = new QueueStatisticsCollector(
                 redisService, keyspaceHelper.getQueuesPrefix(), vertx, exceptionFactory, redisMonitoringReqQuota,
-                configuration.getQueueSpeedIntervalSec());
+                configuration.getQueueSpeedIntervalSec(), configurationProvider);
 
         this.queueStatsService = new QueueStatsService(
                 vertx, configuration, keyspaceHelper.getAddress(), queueStatisticsCollector, dequeueStatisticCollector,

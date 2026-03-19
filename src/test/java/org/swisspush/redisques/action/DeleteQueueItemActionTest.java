@@ -12,8 +12,6 @@ import org.slf4j.Logger;
 import org.swisspush.redisques.util.QueueConfigurationProvider;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 
-import java.util.ArrayList;
-
 import static org.mockito.Mockito.*;
 import static org.swisspush.redisques.util.RedisquesAPI.buildDeleteQueueItemOperation;
 
@@ -31,11 +29,11 @@ public class DeleteQueueItemActionTest extends AbstractQueueActionTest {
     public void setup() {
         super.setup();
         action = new DeleteQueueItemAction(vertx, redisService, keyspaceHelper,
-                queueConfigurationProvider, exceptionFactory, Mockito.mock(QueueStatisticsCollector.class), Mockito.mock(Logger.class));
+                queueConfigurationProvider, getConfigurationProvider(), exceptionFactory, Mockito.mock(QueueStatisticsCollector.class), Mockito.mock(Logger.class));
     }
 
     @Test
-    public void testDeleteQueueItemWhenRedisIsNotReady(TestContext context){
+    public void testDeleteQueueItemWhenRedisIsNotReady(TestContext context) {
         when(redisProvider.redis()).thenReturn(Future.failedFuture("not ready"));
         when(message.body()).thenReturn(buildDeleteQueueItemOperation("queue1", 0));
 
@@ -46,7 +44,7 @@ public class DeleteQueueItemActionTest extends AbstractQueueActionTest {
     }
 
     @Test
-    public void testFailedLSET(TestContext context){
+    public void testFailedLSET(TestContext context) {
         when(redisAPI.lset(anyString(), anyString(), anyString())).thenReturn(Future.failedFuture("boooom"));
 
         when(message.body()).thenReturn(buildDeleteQueueItemOperation("queue1", 0));
@@ -59,7 +57,7 @@ public class DeleteQueueItemActionTest extends AbstractQueueActionTest {
     }
 
     @Test
-    public void testFailedLSETNoSuchKey(TestContext context){
+    public void testFailedLSETNoSuchKey(TestContext context) {
         when(redisAPI.lset(anyString(), anyString(), anyString())).thenReturn(Future.failedFuture("ERR no such key"));
 
         when(message.body()).thenReturn(buildDeleteQueueItemOperation("queue1", 0));
@@ -72,7 +70,7 @@ public class DeleteQueueItemActionTest extends AbstractQueueActionTest {
     }
 
     @Test
-    public void testFailedLREM(TestContext context){
+    public void testFailedLREM(TestContext context) {
         when(redisAPI.lset(anyString(), anyString(), anyString())).thenReturn(Future.succeededFuture());
         when(redisAPI.lrem(anyString(), anyString(), anyString())).thenReturn(Future.failedFuture("boooom"));
 
@@ -86,7 +84,7 @@ public class DeleteQueueItemActionTest extends AbstractQueueActionTest {
     }
 
     @Test
-    public void testDeleteQueueItem(TestContext context){
+    public void testDeleteQueueItem(TestContext context) {
         when(redisAPI.lset(anyString(), anyString(), anyString())).thenReturn(Future.succeededFuture());
         when(redisAPI.lrem(anyString(), anyString(), anyString())).thenReturn(Future.succeededFuture());
 

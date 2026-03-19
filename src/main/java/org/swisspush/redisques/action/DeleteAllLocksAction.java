@@ -11,6 +11,7 @@ import org.swisspush.redisques.queue.RedisService;
 
 import org.swisspush.redisques.util.QueueConfigurationProvider;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
+import org.swisspush.redisques.util.RedisquesConfigurationProvider;
 
 
 import static org.swisspush.redisques.util.RedisquesAPI.MESSAGE;
@@ -19,10 +20,11 @@ public class DeleteAllLocksAction extends AbstractQueueAction {
 
     public DeleteAllLocksAction(
             Vertx vertx, RedisService redisService, KeyspaceHelper keyspaceHelper, QueueConfigurationProvider queueConfigurationProvider,
+            RedisquesConfigurationProvider redisquesConfigurationProvider,
             RedisQuesExceptionFactory exceptionFactory, QueueStatisticsCollector queueStatisticsCollector, Logger log
     ) {
         super(vertx, redisService, keyspaceHelper,
-                queueConfigurationProvider, exceptionFactory, queueStatisticsCollector, log);
+                queueConfigurationProvider, redisquesConfigurationProvider, exceptionFactory, queueStatisticsCollector, log);
     }
 
     @Override

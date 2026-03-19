@@ -15,8 +15,6 @@ import org.slf4j.Logger;
 import org.swisspush.redisques.util.QueueConfigurationProvider;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 
-import java.util.ArrayList;
-
 import static org.mockito.Mockito.*;
 import static org.swisspush.redisques.util.RedisquesAPI.buildDeleteAllQueueItemsOperation;
 
@@ -34,11 +32,11 @@ public class DeleteAllQueueItemsActionTest extends AbstractQueueActionTest {
     public void setup() {
         super.setup();
         action = new DeleteAllQueueItemsAction(vertx, redisService, keyspaceHelper,
-               queueConfigurationProvider, exceptionFactory, Mockito.mock(QueueStatisticsCollector.class), Mockito.mock(Logger.class));
+                queueConfigurationProvider, getConfigurationProvider(), exceptionFactory, Mockito.mock(QueueStatisticsCollector.class), Mockito.mock(Logger.class));
     }
 
     @Test
-    public void testDeleteAllQueueItemsNoUnlock(TestContext context){
+    public void testDeleteAllQueueItemsNoUnlock(TestContext context) {
         when(message.body()).thenReturn(buildDeleteAllQueueItemsOperation("q1"));
 
         when(redisAPI.del(anyList())).thenReturn(Future.succeededFuture(SimpleStringType.create("1")));
@@ -51,7 +49,7 @@ public class DeleteAllQueueItemsActionTest extends AbstractQueueActionTest {
     }
 
     @Test
-    public void testDeleteAllQueueItemsWithUnlock(TestContext context){
+    public void testDeleteAllQueueItemsWithUnlock(TestContext context) {
         when(message.body()).thenReturn(buildDeleteAllQueueItemsOperation("q1", true));
 
         when(redisAPI.del(anyList())).thenReturn(Future.succeededFuture(SimpleStringType.create("1")));
@@ -65,7 +63,7 @@ public class DeleteAllQueueItemsActionTest extends AbstractQueueActionTest {
     }
 
     @Test
-    public void testDeleteAllQueueItemsWhenRedisIsNotReady(TestContext context){
+    public void testDeleteAllQueueItemsWhenRedisIsNotReady(TestContext context) {
         when(redisProvider.redis()).thenReturn(Future.failedFuture("not ready"));
         when(message.body()).thenReturn(buildDeleteAllQueueItemsOperation("q1"));
 
@@ -76,7 +74,7 @@ public class DeleteAllQueueItemsActionTest extends AbstractQueueActionTest {
     }
 
     @Test
-    public void testRedisApiDELFail(TestContext context){
+    public void testRedisApiDELFail(TestContext context) {
         when(message.body()).thenReturn(buildDeleteAllQueueItemsOperation("q1"));
 
         when(redisAPI.del(anyList())).thenReturn(Future.failedFuture("boooom"));
@@ -88,7 +86,7 @@ public class DeleteAllQueueItemsActionTest extends AbstractQueueActionTest {
     }
 
     @Test
-    public void testRedisApiUnlockFail(TestContext context){
+    public void testRedisApiUnlockFail(TestContext context) {
         when(message.body()).thenReturn(buildDeleteAllQueueItemsOperation("q1", true));
 
         when(redisAPI.del(anyList())).thenReturn(Future.succeededFuture(SimpleStringType.create("1")));
