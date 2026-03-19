@@ -89,6 +89,18 @@ The following configuration values are available:
 | getQueuesItemsCountRedisRequestQuotaAcquireTimeoutMs | 0                               | Get queues items count action  requests quota acquire timeout [ms]. Use **0** to reject immediately                                                                                                              |
 | activeQueueRegRefreshReqQuotaAcquireTimeoutMs        | 0                               | Active queue register refresh requests quota acquire timeout [ms]. Use **0** to reject immediately                                                                                                               |
 
+
+
+### Warning about Quota Timeout Configuration
+
+**WARNING**: Whoever enables any of those timeouts risks to cause severe
+latency issues throughout the application! So DO NOT enable this feature
+unless you know exactly what you're doing! If you do, DO NOT complain
+due to latency issues and blocked threads. Because that's exactly what
+that feature causes.
+
+
+
 ### Configuration util
 
 The configurations have to be passed as JsonObject to the module. For a simplified configuration the _RedisquesConfigurationBuilder_ can be used.
