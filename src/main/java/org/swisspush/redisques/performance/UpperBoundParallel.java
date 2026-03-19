@@ -5,6 +5,7 @@ import org.slf4j.Logger;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
@@ -55,8 +56,8 @@ public class UpperBoundParallel {
         this.exceptionFactory = exceptionFactory;
     }
 
-    public <Ctx> void request(Semaphore limit, Ctx ctx, Mentor<Ctx> mentor) {
-        var req = new Request<>(ctx, mentor, limit);
+    public <Ctx> void request(Semaphore limit, int acquireTimeout, Ctx ctx, Mentor<Ctx> mentor) {
+        var req = new Request<>(ctx, mentor, limit, acquireTimeout);
         resume(req);
     }
 
@@ -111,7 +112,7 @@ public class UpperBoundParallel {
                     // We still have a token reserved for ourself. Use those first before acquiring
                     // new ones. Explanation see comment in 'onOneDone()'.
                     req.numTokensAvailForOurself -= 1;
-                } else if (!req.limit.tryAcquire()) {
+                } else if (req.acquireTimeout > 0 ? !req.limit.tryAcquire(req.acquireTimeout, TimeUnit.MILLISECONDS) : !req.limit.tryAcquire()) {
                     log.debug("redis request limit reached. Need to pause now.");
                     break; // Go to end of loop to schedule a run later.
                 }
@@ -131,7 +132,9 @@ public class UpperBoundParallel {
                     hasMore = req.mentor.runOneMore(new BiConsumer<>() {
                         // this boolean is just for paranoia, in case mentor tries to call back too often.
                         final AtomicBoolean isCalled = new AtomicBoolean();
-                        @Override public void accept(Throwable ex, Void ret) {
+
+                        @Override
+                        public void accept(Throwable ex, Void ret) {
                             if (!isCalled.compareAndSet(false, true)) {
                                 boolean d = log.isDebugEnabled();
                                 log.error("This callback MUST NOT be called multiple times!! Make sure caller only calls it ONCE!{}",
@@ -141,16 +144,23 @@ public class UpperBoundParallel {
                             onOneDone(req, ex);
                         }
                     }, req.ctx);
-                } catch (RuntimeException ex) {
+                } catch (Throwable ex) {
                     assert req.worker == currentThread();
                     onOneDone(req, ex);
                 } finally {
                     // We MUST get back our lock right NOW. No way to just 'try'.
-                    log.trace("mentor.runOneMore() -> hasMore={}", hasMore);
                     req.lock.lock();
+                    log.trace("mentor.runOneMore() -> hasMore={}", hasMore);
                     assert req.worker == currentThread();
                     assert req.hasMore;
                     req.hasMore = hasMore;
+                    // If we finished here, we must check for any parked tokens which might habe been allocated
+                    // in the meantime before the lock was retrieved again. The onOneDone might have changed it in the
+                    // meantime in some rare race conditions.
+                    if (!req.hasMore && req.numTokensAvailForOurself > 0) {
+                        req.limit.release(req.numTokensAvailForOurself);
+                        req.numTokensAvailForOurself = 0;
+                    }
                 }
             }
             assert req.numInProgress >= 0 : req.numInProgress;
@@ -169,6 +179,8 @@ public class UpperBoundParallel {
                     vertx.setTimer(4000, nonsense -> resume(req));
                 }
             }
+        } catch (Exception e) {
+           log.error("an exception happened while in loop", e);
         } finally {
             req.worker = null;
             req.lock.unlock();
@@ -192,8 +204,18 @@ public class UpperBoundParallel {
             // can apply backpressure to new incoming requests. This allows us to complete
             // the already running requests.
             req.numInProgress -= 1;
-            req.numTokensAvailForOurself += 1;
-            // ^^-- Token transfer only consists of those two statements.
+            // Due to possible race conditions, we might have already set 'hasMore' to false in 'resume()' and then
+            // called 'mentor.onDone()' (because no more work to do). In this case we should not park a token for
+            // ourself, because there is no more work to do. Instead we should just release back to the semaphore.
+            if (req.hasMore && !req.isFatalError) {
+                // FIX: We should only park a token here if we are sure that there is further work to do.
+                req.numTokensAvailForOurself += 1;
+            } else {
+                // If there is no more work to do, we could just release back the token to the semaphore.
+                // Without this, we would lose here a semaphore token, which would then never be released again, because
+                // we won't call 'resume()' anymore (as there is no more work to do).
+                req.limit.release(1);
+            }
             log.trace("onOneDone({})  {} remaining", ex != null ? "ex" : "null", req.numInProgress);
             assert req.numInProgress >= 0 : req.numInProgress + " >= 0  (BTW: mentor MUST call 'onDone' EXACTLY once)";
             boolean isFatalError = true;
@@ -229,6 +251,7 @@ public class UpperBoundParallel {
         private final Mentor<Ctx> mentor;
         private final Lock lock = new ReentrantLock();
         private final Semaphore limit;
+        public int acquireTimeout;
         private Thread worker = null;
         private int numInProgress = 0;
         private int numTokensAvailForOurself = 0;
@@ -237,10 +260,11 @@ public class UpperBoundParallel {
         private boolean isFatalError = false;
         private boolean isDoneCalled = false;
 
-        private Request(Ctx ctx, Mentor<Ctx> mentor, Semaphore limit) {
+        private Request(Ctx ctx, Mentor<Ctx> mentor, Semaphore limit, int acquireTimeout) {
             this.ctx = ctx;
             this.mentor = mentor;
             this.limit = limit;
+            this.acquireTimeout = acquireTimeout;
         }
     }
 
@@ -258,7 +282,7 @@ public class UpperBoundParallel {
          * @return true if more elements have to be processed. False if
          *      iteration source has reached its end.
          */
-        boolean runOneMore(BiConsumer<Throwable, Void> onDone, Ctx ctx);
+        boolean runOneMore(BiConsumer<Throwable, Void> onDone, Ctx ctx) throws Throwable;
 
         /**
          * @return true if iteration should continue with other elements. False

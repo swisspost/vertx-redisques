@@ -12,8 +12,6 @@ import org.swisspush.redisques.queue.QueueRegistryService;
 import org.swisspush.redisques.queue.RedisService;
 import org.swisspush.redisques.util.*;
 
-import java.util.List;
-
 import static org.swisspush.redisques.util.RedisquesAPI.*;
 
 public class EnqueueAction extends AbstractQueueAction {
@@ -23,17 +21,17 @@ public class EnqueueAction extends AbstractQueueAction {
     private final int memoryUsageLimitPercent;
     private Counter enqueueCounterSuccess;
     private Counter enqueueCounterFail;
-    public EnqueueAction(
-            Vertx vertx, QueueRegistryService queueRegistryService, RedisService redisService, KeyspaceHelper keyspaceHelper, List<QueueConfiguration> queueConfigurations,
-            RedisQuesExceptionFactory exceptionFactory, QueueStatisticsCollector queueStatisticsCollector, Logger log,
-            MemoryUsageProvider memoryUsageProvider, int memoryUsageLimitPercent, MeterRegistry meterRegistry, String metricsIdentifier
-    ) {
-        super(vertx, redisService, keyspaceHelper,
-                queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
-        this.memoryUsageProvider = memoryUsageProvider;
-        this.memoryUsageLimitPercent = memoryUsageLimitPercent;
-        this.queueRegistryService = queueRegistryService;
 
+    public EnqueueAction(
+            Vertx vertx, QueueRegistryService queueRegistryService, RedisService redisService, KeyspaceHelper keyspaceHelper, QueueConfigurationProvider queueConfigurationProvider,
+            RedisquesConfigurationProvider redisquesConfigurationProvider, RedisQuesExceptionFactory exceptionFactory, QueueStatisticsCollector queueStatisticsCollector, Logger log,
+            MemoryUsageProvider memoryUsageProvider, MeterRegistry meterRegistry) {
+        super(vertx, redisService, keyspaceHelper,
+                queueConfigurationProvider, redisquesConfigurationProvider, exceptionFactory, queueStatisticsCollector, log);
+        this.memoryUsageProvider = memoryUsageProvider;
+        this.memoryUsageLimitPercent = redisquesConfigurationProvider.configuration().getMemoryUsageLimitPercent();
+        this.queueRegistryService = queueRegistryService;
+        String metricsIdentifier = redisquesConfigurationProvider.configuration().getMicrometerMetricsIdentifier();
         if (meterRegistry != null) {
             enqueueCounterSuccess = Counter.builder(MetricMeter.ENQUEUE_SUCCESS.getId()).description(MetricMeter.ENQUEUE_SUCCESS.getDescription())
                     .tag(MetricTags.IDENTIFIER.getId(), metricsIdentifier).register(meterRegistry);

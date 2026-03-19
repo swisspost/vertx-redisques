@@ -24,6 +24,7 @@ import org.swisspush.redisques.AbstractTestCase;
 import org.swisspush.redisques.RedisQues;
 import org.swisspush.redisques.util.DefaultRedisquesConfigurationProvider;
 import org.swisspush.redisques.util.QueueConfiguration;
+import org.swisspush.redisques.util.QueueConfigurationProvider;
 import org.swisspush.redisques.util.RedisquesAPI;
 import org.swisspush.redisques.util.RedisquesConfiguration;
 import org.swisspush.redisques.util.TestMemoryUsageProvider;
@@ -156,6 +157,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
     public void deployRedisques(TestContext context) {
         Async async = context.async();
         testVertx = Vertx.vertx();
+        QueueConfigurationProvider.reset();
         JsonObject config = RedisquesConfiguration.with()
                 .address(getRedisquesAddress())
                 .processorAddress("processor-address")

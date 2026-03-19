@@ -48,7 +48,7 @@ public class RedisQues extends AbstractVerticle {
     private QueueRegistryService queueRegistryService;
     private QueueActionsService queueActionsService;
     private QueueStatsService queueStatsService;
-
+    private QueueConfigurationProvider queueConfigurationProvider;
 
     private final RedisQuesExceptionFactory exceptionFactory;
     private PeriodicSkipScheduler periodicSkipScheduler;
@@ -131,18 +131,27 @@ public class RedisQues extends AbstractVerticle {
             redisProvider = new DefaultRedisProvider(vertx, configurationProvider);
         }
         this.keyspaceHelper = new KeyspaceHelper(modConfig, uid);
+
         redisProvider.redis().onComplete(event -> {
             if(event.succeeded()) {
-                initialize();
-                promise.complete();
+                redisService = new RedisService(redisProvider);
+                if (this.dequeueStatisticCollector == null) {
+                    this.dequeueStatisticCollector = new DequeueStatisticCollector(modConfig.isDequeueStatsEnabled(), redisService, keyspaceHelper);
+                }
+                QueueConfigurationProvider.provider(vertx, configurationProvider.configuration().getQueueConfigurations()).get().onComplete(event1 -> {
+                    if(event1.succeeded()) {
+                        RedisQues.this.queueConfigurationProvider = event1.result();
+                        initialize();
+                        promise.complete();
+                    }else{
+                        log.error("Failed to start Redisques module with configuration: {}", event1.cause().getMessage());
+                        promise.fail(new Exception(event1.cause()));
+                    }
+                });
             } else {
                 promise.fail(new Exception(event.cause()));
             }
         });
-        redisService = new RedisService(redisProvider);
-        if (this.dequeueStatisticCollector == null) {
-            this.dequeueStatisticCollector = new DequeueStatisticCollector(modConfig.isDequeueStatsEnabled(), redisService, keyspaceHelper);
-        }
     }
 
     private void initialize() {
@@ -150,7 +159,7 @@ public class RedisQues extends AbstractVerticle {
 
         this.queueStatisticsCollector = new QueueStatisticsCollector(
                 redisService, keyspaceHelper.getQueuesPrefix(), vertx, exceptionFactory, redisMonitoringReqQuota,
-                configuration.getQueueSpeedIntervalSec());
+                configuration.getQueueSpeedIntervalSec(), configurationProvider);
 
         this.queueStatsService = new QueueStatsService(
                 vertx, configuration, keyspaceHelper.getAddress(), queueStatisticsCollector, dequeueStatisticCollector,
@@ -169,9 +178,9 @@ public class RedisQues extends AbstractVerticle {
         assert getQueuesItemsCountRedisRequestQuota != null;
 
         this.queueRegistryService = new QueueRegistryService(vertx, redisService, configurationProvider, exceptionFactory,
-                keyspaceHelper, queueMetrics, queueStatsService, queueStatisticsCollector , checkQueueRequestsQuota, activeQueueRegRefreshReqQuota);
+                keyspaceHelper, queueMetrics, queueStatsService, queueStatisticsCollector , checkQueueRequestsQuota, activeQueueRegRefreshReqQuota, queueConfigurationProvider);
         this.queueActionsService = new QueueActionsService(vertx, queueRegistryService, redisService, keyspaceHelper, configurationProvider,
-                exceptionFactory, memoryUsageProvider, queueStatisticsCollector, getQueuesItemsCountRedisRequestQuota, meterRegistry);
+                exceptionFactory, memoryUsageProvider, queueStatisticsCollector, getQueuesItemsCountRedisRequestQuota, meterRegistry, queueConfigurationProvider);
 
         // Handles operations
         vertx.eventBus().consumer(keyspaceHelper.getAddress(), operationsHandler());

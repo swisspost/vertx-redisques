@@ -12,10 +12,12 @@ import io.vertx.redis.client.Response;
 import org.slf4j.Logger;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.queue.KeyspaceHelper;
-import org.swisspush.redisques.queue.QueueRegistryService;
 import org.swisspush.redisques.queue.RedisService;
+
 import org.swisspush.redisques.util.QueueConfiguration;
+import org.swisspush.redisques.util.QueueConfigurationProvider;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
+import org.swisspush.redisques.util.RedisquesConfigurationProvider;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -31,17 +33,22 @@ public abstract class AbstractQueueAction implements QueueAction {
     protected final Vertx vertx;
     protected final Logger log;
     protected final KeyspaceHelper keyspaceHelper;
-    protected final List<QueueConfiguration> queueConfigurations;
+    protected final RedisquesConfigurationProvider redisquesConfigurationProvider;
+    protected final QueueConfigurationProvider queueConfigurationProvider;
     protected final RedisQuesExceptionFactory exceptionFactory;
     protected final QueueStatisticsCollector queueStatisticsCollector;
 
 
-    public AbstractQueueAction(Vertx vertx, RedisService redisService, KeyspaceHelper keyspaceHelper, List<QueueConfiguration> queueConfigurations,
-                               RedisQuesExceptionFactory exceptionFactory, QueueStatisticsCollector queueStatisticsCollector, Logger log) {
+    public AbstractQueueAction(Vertx vertx, RedisService redisService, KeyspaceHelper keyspaceHelper,
+                               QueueConfigurationProvider queueConfigurationProvider,
+                               RedisquesConfigurationProvider redisquesConfigurationProvider,
+                               RedisQuesExceptionFactory exceptionFactory,
+                               QueueStatisticsCollector queueStatisticsCollector, Logger log) {
         this.vertx = vertx;
         this.redisService = redisService;
         this.keyspaceHelper = keyspaceHelper;
-        this.queueConfigurations = queueConfigurations;
+        this.redisquesConfigurationProvider = redisquesConfigurationProvider;
+        this.queueConfigurationProvider = queueConfigurationProvider;
         this.exceptionFactory = exceptionFactory;
         this.queueStatisticsCollector = queueStatisticsCollector;
         this.log = log;
@@ -134,20 +141,8 @@ public abstract class AbstractQueueAction implements QueueAction {
         });
     }
 
-
-    /**
-     * find first matching Queue-Configuration
-     *
-     * @param queueName search first configuration for that queue-name
-     * @return null when no queueConfiguration's RegEx matches given queueName - else the QueueConfiguration
-     */
     protected QueueConfiguration findQueueConfiguration(String queueName) {
-        for (QueueConfiguration queueConfiguration : queueConfigurations) {
-            if (queueConfiguration.compiledPattern().matcher(queueName).matches()) {
-                return queueConfiguration;
-            }
-        }
-        return null;
+        return queueConfigurationProvider.findQueueConfiguration(queueName);
     }
 
     /**
@@ -155,6 +150,7 @@ public abstract class AbstractQueueAction implements QueueAction {
      * 1. Have a Consumer registered, will ask the consumer to process the trim request
      * 2. No Consumer registered, will trim it now.
      * 3. Failed to get Consumer, will do nothing, let the queue consumer itself to trim while process the queue
+     *
      * @param queueName
      * @return always succeeded future.
      */
@@ -183,7 +179,7 @@ public abstract class AbstractQueueAction implements QueueAction {
                 if (consumer == null) {
                     // No consumer for this queue, trim now
                     final String key = keyspaceHelper.getQueuesPrefix() + queueName;
-                    redisService.ltrim(key,"-" + maxQueueEntries, "-1").onComplete(event1 -> {
+                    redisService.ltrim(key, "-" + maxQueueEntries, "-1").onComplete(event1 -> {
                         if (event1.failed()) {
                             log.warn("Failed to trim queue '{}'", queueName, event1.cause());
                         }

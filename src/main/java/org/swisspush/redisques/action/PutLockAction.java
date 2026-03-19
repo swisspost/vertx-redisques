@@ -9,10 +9,10 @@ import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.handler.PutLockHandler;
 import org.swisspush.redisques.queue.KeyspaceHelper;
 import org.swisspush.redisques.queue.RedisService;
-import org.swisspush.redisques.util.QueueConfiguration;
-import org.swisspush.redisques.util.QueueStatisticsCollector;
 
-import java.util.List;
+import org.swisspush.redisques.util.QueueConfigurationProvider;
+import org.swisspush.redisques.util.QueueStatisticsCollector;
+import org.swisspush.redisques.util.RedisquesConfigurationProvider;
 
 import static org.swisspush.redisques.util.RedisquesAPI.*;
 
@@ -20,12 +20,14 @@ public class PutLockAction extends AbstractQueueAction {
 
     public PutLockAction(
             Vertx vertx, RedisService redisService, KeyspaceHelper keyspaceHelper,
-            List<QueueConfiguration> queueConfigurations,
+            QueueConfigurationProvider queueConfigurationProvider,
+            RedisquesConfigurationProvider redisquesConfigurationProvider,
             RedisQuesExceptionFactory exceptionFactory,
             QueueStatisticsCollector queueStatisticsCollector, Logger log
     ) {
         super(vertx, redisService, keyspaceHelper,
-                queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
+                queueConfigurationProvider, redisquesConfigurationProvider,
+                exceptionFactory, queueStatisticsCollector, log);
     }
 
     @Override

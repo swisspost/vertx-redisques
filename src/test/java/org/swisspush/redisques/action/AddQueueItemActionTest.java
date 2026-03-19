@@ -9,9 +9,8 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mockito;
 import org.slf4j.Logger;
+import org.swisspush.redisques.util.QueueConfigurationProvider;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
-
-import java.util.ArrayList;
 
 import static org.mockito.Mockito.*;
 import static org.swisspush.redisques.util.RedisquesAPI.buildAddQueueItemOperation;
@@ -23,17 +22,19 @@ import static org.swisspush.redisques.util.RedisquesAPI.buildAddQueueItemOperati
  */
 @RunWith(VertxUnitRunner.class)
 public class AddQueueItemActionTest extends AbstractQueueActionTest {
+    private QueueConfigurationProvider queueConfigurationProvider = Mockito.mock(QueueConfigurationProvider.class);
 
     @Before
     @Override
     public void setup() {
         super.setup();
         action = new AddQueueItemAction(vertx, redisService, keyspaceHelper,
-                new ArrayList<>(), exceptionFactory, Mockito.mock(QueueStatisticsCollector.class), Mockito.mock(Logger.class));
+                queueConfigurationProvider, getConfigurationProvider(),
+                exceptionFactory, Mockito.mock(QueueStatisticsCollector.class), Mockito.mock(Logger.class));
     }
 
     @Test
-    public void testAddQueueItemWhenRedisIsNotReady(TestContext context){
+    public void testAddQueueItemWhenRedisIsNotReady(TestContext context) {
         when(redisProvider.redis()).thenReturn(Future.failedFuture("not ready"));
         when(message.body()).thenReturn(buildAddQueueItemOperation("queue2", "fooBar"));
 
@@ -44,7 +45,7 @@ public class AddQueueItemActionTest extends AbstractQueueActionTest {
     }
 
     @Test
-    public void testAddQueueItem(TestContext context){
+    public void testAddQueueItem(TestContext context) {
         when(message.body()).thenReturn(buildAddQueueItemOperation("queue2", "fooBar"));
         when(redisAPI.rpush(anyList())).thenReturn(Future.succeededFuture());
 
@@ -56,7 +57,7 @@ public class AddQueueItemActionTest extends AbstractQueueActionTest {
     }
 
     @Test
-    public void testAddQueueItemRPUSHFail(TestContext context){
+    public void testAddQueueItemRPUSHFail(TestContext context) {
         when(message.body()).thenReturn(buildAddQueueItemOperation("queue2", "fooBar"));
         when(redisAPI.rpush(anyList())).thenReturn(Future.failedFuture("booom"));
 

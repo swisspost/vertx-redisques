@@ -8,10 +8,10 @@ import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.handler.GetQueueItemsHandler;
 import org.swisspush.redisques.queue.KeyspaceHelper;
 import org.swisspush.redisques.queue.RedisService;
-import org.swisspush.redisques.util.QueueConfiguration;
+import org.swisspush.redisques.util.QueueConfigurationProvider;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
+import org.swisspush.redisques.util.RedisquesConfigurationProvider;
 
-import java.util.List;
 
 import static org.swisspush.redisques.util.RedisquesAPI.*;
 
@@ -19,9 +19,9 @@ public class GetQueueItemsAction extends AbstractQueueAction {
 
     private static final int DEFAULT_MAX_QUEUEITEM_COUNT = 49;
 
-    public GetQueueItemsAction(Vertx vertx, RedisService redisService, KeyspaceHelper keyspaceHelper, List<QueueConfiguration> queueConfigurations,
-                               RedisQuesExceptionFactory exceptionFactory, QueueStatisticsCollector queueStatisticsCollector, Logger log) {
-        super(vertx, redisService, keyspaceHelper, queueConfigurations,
+    public GetQueueItemsAction(Vertx vertx, RedisService redisService, KeyspaceHelper keyspaceHelper, QueueConfigurationProvider queueConfigurationProvider,
+                               RedisquesConfigurationProvider redisquesConfigurationProvider, RedisQuesExceptionFactory exceptionFactory, QueueStatisticsCollector queueStatisticsCollector, Logger log) {
+        super(vertx, redisService, keyspaceHelper, queueConfigurationProvider, redisquesConfigurationProvider,
                 exceptionFactory, queueStatisticsCollector, log);
     }
 
@@ -33,12 +33,12 @@ public class GetQueueItemsAction extends AbstractQueueAction {
 
         redisService.llen(keyListRange).onSuccess(countReply -> {
             Long queueItemCount = countReply.toLong();
-            if(queueItemCount != null) {
+            if (queueItemCount != null) {
                 redisService.lrange(keyListRange, "0", String.valueOf(maxQueueItemCountIndex)).onComplete(response ->
                         new GetQueueItemsHandler(event, queueItemCount).handle(response));
             } else {
                 event.reply(exceptionFactory.newReplyException(
-                    "Operation getQueueItems failed to extract queueItemCount", null));
+                        "Operation getQueueItems failed to extract queueItemCount", null));
             }
         }).onFailure(throwable -> handleFail(event, "Operation getQueueItems failed", throwable));
     }

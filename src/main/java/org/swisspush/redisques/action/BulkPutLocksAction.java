@@ -9,21 +9,22 @@ import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.handler.PutLockHandler;
 import org.swisspush.redisques.queue.KeyspaceHelper;
 import org.swisspush.redisques.queue.RedisService;
-import org.swisspush.redisques.util.QueueConfiguration;
+import org.swisspush.redisques.util.QueueConfigurationProvider;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
-
-import java.util.List;
+import org.swisspush.redisques.util.RedisquesConfigurationProvider;
 
 import static org.swisspush.redisques.util.RedisquesAPI.*;
 
 public class BulkPutLocksAction extends AbstractQueueAction {
 
     public BulkPutLocksAction(
-            Vertx vertx, RedisService redisService, KeyspaceHelper keyspaceHelper, List<QueueConfiguration> queueConfigurations,
+            Vertx vertx, RedisService redisService, KeyspaceHelper keyspaceHelper,
+            QueueConfigurationProvider queueConfigurationProvider,
+            RedisquesConfigurationProvider redisquesConfigurationProvider,
             RedisQuesExceptionFactory exceptionFactory, QueueStatisticsCollector queueStatisticsCollector, Logger log
     ) {
         super(vertx, redisService, keyspaceHelper,
-                queueConfigurations, exceptionFactory, queueStatisticsCollector, log);
+                queueConfigurationProvider, redisquesConfigurationProvider, exceptionFactory, queueStatisticsCollector, log);
     }
 
     @Override
@@ -45,7 +46,7 @@ public class BulkPutLocksAction extends AbstractQueueAction {
             return;
         }
         redisService.hmset(buildLocksItems(keyspaceHelper.getLocksKey(), locks, lockInfo)).onComplete(response ->
-                new PutLockHandler(event, exceptionFactory).handle(response))
+                        new PutLockHandler(event, exceptionFactory).handle(response))
                 .onFailure(ex -> replyErrorMessageHandler(event).handle(ex));
     }
 

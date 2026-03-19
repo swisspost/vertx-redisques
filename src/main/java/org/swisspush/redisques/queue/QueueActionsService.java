@@ -11,6 +11,7 @@ import org.swisspush.redisques.action.QueueAction;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.util.MemoryUsageProvider;
 import org.swisspush.redisques.util.QueueActionFactory;
+import org.swisspush.redisques.util.QueueConfigurationProvider;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 import org.swisspush.redisques.util.RedisquesAPI;
 import org.swisspush.redisques.util.RedisquesConfigurationProvider;
@@ -44,27 +45,30 @@ import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.monitor;
 import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.putLock;
 import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.replaceQueueItem;
 import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.setConfiguration;
+import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.setPerQueueConfiguration;
 
 public class QueueActionsService {
     private static final Logger log = LoggerFactory.getLogger(QueueActionsService.class);
     private final QueueActionFactory queueActionFactory;
     private final Map<RedisquesAPI.QueueOperation, QueueAction> queueActions = new HashMap<>();
     private final RedisQuesExceptionFactory exceptionFactory;
+    private final QueueConfigurationProvider queueConfigurationProvider;
 
     public QueueActionsService(Vertx vertx, QueueRegistryService queueRegistryService, RedisService redisService, KeyspaceHelper keyspaceHelper,
                                RedisquesConfigurationProvider configurationProvider,
                                RedisQuesExceptionFactory exceptionFactory, MemoryUsageProvider memoryUsageProvider,
                                QueueStatisticsCollector queueStatisticsCollector,
                                Semaphore getQueuesItemsCountRedisRequestQuota,
-                               MeterRegistry meterRegistry) {
+                               MeterRegistry meterRegistry, QueueConfigurationProvider queueConfigurationProvider) {
         this.exceptionFactory = exceptionFactory;
+        this.queueConfigurationProvider = queueConfigurationProvider;
         HttpClient client = vertx.createHttpClient();
 
         this.queueActionFactory = new QueueActionFactory(
                 redisService, vertx, client, log, keyspaceHelper,
                 memoryUsageProvider, queueStatisticsCollector, exceptionFactory,
                 configurationProvider, getQueuesItemsCountRedisRequestQuota, meterRegistry,
-                queueRegistryService);
+                queueRegistryService, queueConfigurationProvider);
 
         queueActions.put(addQueueItem, queueActionFactory.buildQueueAction(addQueueItem));
         queueActions.put(deleteQueueItem, queueActionFactory.buildQueueAction(deleteQueueItem));
@@ -91,6 +95,7 @@ public class QueueActionsService {
         queueActions.put(setConfiguration, queueActionFactory.buildQueueAction(setConfiguration));
         queueActions.put(getConfiguration, queueActionFactory.buildQueueAction(getConfiguration));
         queueActions.put(monitor, queueActionFactory.buildQueueAction(monitor));
+        queueActions.put(setPerQueueConfiguration, queueActionFactory.buildQueueAction(setPerQueueConfiguration));
 
     }
 

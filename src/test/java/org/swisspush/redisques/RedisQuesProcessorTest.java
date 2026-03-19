@@ -13,6 +13,7 @@ import io.vertx.ext.unit.Async;
 import io.vertx.ext.unit.TestContext;
 import io.vertx.ext.unit.junit.Timeout;
 import org.junit.*;
+import org.swisspush.redisques.util.QueueConfigurationProvider;
 import org.swisspush.redisques.util.RedisquesConfiguration;
 import redis.clients.jedis.Jedis;
 
@@ -66,6 +67,8 @@ public class RedisQuesProcessorTest extends AbstractTestCase {
 
     protected void deployRedisques(TestContext context) {
         vertx = Vertx.vertx();
+        Async async = context.async();
+        QueueConfigurationProvider.reset();
         JsonObject config = RedisquesConfiguration.with()
                 .address(getRedisquesAddress())
                 .redisPrefix(CUSTOM_REDIS_KEY_PREFIX)
@@ -80,14 +83,17 @@ public class RedisQuesProcessorTest extends AbstractTestCase {
             deploymentId = event;
             log.info("vert.x Deploy - {} was successful.", redisQues.getClass().getSimpleName());
             jedis = new Jedis("localhost", 6379, 5000);
+            async.complete();
         }));
     }
 
     @Test
-    public void test10Queues(TestContext context) {
-
+    public void test10Queues(TestContext context) throws InterruptedException {
         final Map<String, MessageDigest> signatures = new HashMap<>();
-
+        Async async = context.async();
+        flushAll();
+        Thread.sleep(500);
+        assertKeyCount(context, 0);
         queueProcessor.handler(message -> {
             final String queue = message.body().getString("queue");
             final String payload = message.body().getString("payload");
@@ -116,9 +122,6 @@ public class RedisQuesProcessorTest extends AbstractTestCase {
             });
         });
 
-        Async async = context.async();
-        flushAll();
-        assertKeyCount(context, 0);
         for (int i = 0; i < NUM_QUEUES; i++) {
             log.info("create new sender for queue: queue_{}", i);
             new Sender(context, async, "queue_" + i).send(null);

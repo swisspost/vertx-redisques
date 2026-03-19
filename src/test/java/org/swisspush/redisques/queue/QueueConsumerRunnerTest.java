@@ -15,6 +15,7 @@ import org.swisspush.redisques.AbstractTestCase;
 import org.swisspush.redisques.RedisQues;
 import org.swisspush.redisques.util.DefaultRedisquesConfigurationProvider;
 import org.swisspush.redisques.util.QueueConfiguration;
+import org.swisspush.redisques.util.QueueConfigurationProvider;
 import org.swisspush.redisques.util.RedisquesConfiguration;
 import org.swisspush.redisques.util.TestMemoryUsageProvider;
 import redis.clients.jedis.Jedis;
@@ -39,7 +40,7 @@ public class QueueConsumerRunnerTest extends AbstractTestCase {
     @Before
     public void deployRedisques(TestContext context) {
         vertx = Vertx.vertx();
-
+        QueueConfigurationProvider.reset();
         JsonObject config = RedisquesConfiguration.with()
                 .processorAddress(PROCESSOR_ADDRESS)
                 .micrometerMetricsEnabled(true)
@@ -78,7 +79,6 @@ public class QueueConsumerRunnerTest extends AbstractTestCase {
             log.info("vert.x Deploy - {} was successful.", redisQues.getClass().getSimpleName());
             jedis = new Jedis("localhost", 6379, 5000);
         }));
-        
     }
     @Test
     public void getQueueRescheduleRefreshPeriodWhileFailureCountIncreasedUntilExceedMaxRetryInterval(TestContext context) {

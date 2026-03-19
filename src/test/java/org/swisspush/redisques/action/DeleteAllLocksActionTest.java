@@ -10,9 +10,8 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mockito;
 import org.slf4j.Logger;
+import org.swisspush.redisques.util.QueueConfigurationProvider;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
-
-import java.util.ArrayList;
 
 import static org.mockito.Mockito.*;
 import static org.swisspush.redisques.util.RedisquesAPI.buildDeleteAllLocksOperation;
@@ -24,17 +23,18 @@ import static org.swisspush.redisques.util.RedisquesAPI.buildDeleteAllLocksOpera
  */
 @RunWith(VertxUnitRunner.class)
 public class DeleteAllLocksActionTest extends AbstractQueueActionTest {
+    private QueueConfigurationProvider queueConfigurationProvider = Mockito.mock(QueueConfigurationProvider.class);
 
     @Before
     @Override
     public void setup() {
         super.setup();
         action = new DeleteAllLocksAction(vertx, redisService, keyspaceHelper,
-                new ArrayList<>(), exceptionFactory, Mockito.mock(QueueStatisticsCollector.class), Mockito.mock(Logger.class));
+                queueConfigurationProvider, getConfigurationProvider(), exceptionFactory, Mockito.mock(QueueStatisticsCollector.class), Mockito.mock(Logger.class));
     }
 
     @Test
-    public void testDeleteAllLocksWhenRedisIsNotReady(TestContext context){
+    public void testDeleteAllLocksWhenRedisIsNotReady(TestContext context) {
         when(redisProvider.redis()).thenReturn(Future.failedFuture("not ready"));
         when(message.body()).thenReturn(buildDeleteAllLocksOperation());
 

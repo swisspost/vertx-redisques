@@ -325,6 +325,27 @@ public class RedisquesAPITest {
                 new JsonObject().put(EMPTY_QUEUES, true)), operation);
     }
 
+    @Test
+    public void testBuildSetPerQueueConfiguration(TestContext context) {
+        JsonObject payload = new JsonObject();
+        JsonArray jsonArray = new JsonArray();
+        jsonArray.add(10);
+        jsonArray.add(20);
+        payload.put("retryIntervals", jsonArray);
+
+        payload.put("maxQueueEntries", 11);
+        payload.put("enqueueDelayFactorMillis", 22);
+        payload.put("enqueueMaxDelayMillis", 33);
+        JsonObject operation = RedisquesAPI.buildSetPerQueueConfiguration("testQueue", payload);
+
+        context.assertEquals(QueueOperation.setPerQueueConfiguration.toString(), operation.getString("operation"));
+        context.assertEquals("testQueue", operation.getJsonObject("payload").getString("filter"));
+        context.assertEquals(jsonArray, operation.getJsonObject("payload").getJsonArray("retryIntervals"));
+        context.assertEquals(11, operation.getJsonObject("payload").getInteger("maxQueueEntries"));
+        context.assertEquals(22, operation.getJsonObject("payload").getInteger("enqueueDelayFactorMillis"));
+        context.assertEquals(33, operation.getJsonObject("payload").getInteger("enqueueMaxDelayMillis"));
+    }
+
     private JsonObject buildExpectedJsonObject(String operation){
         JsonObject expected = new JsonObject();
         expected.put("operation", operation);
