@@ -9,7 +9,10 @@ import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.EventBus;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.eventbus.MessageConsumer;
+import io.vertx.redis.client.Command;
+import io.vertx.redis.client.Request;
 import io.vertx.redis.client.Response;
+import io.vertx.redis.client.ResponseType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.swisspush.redisques.QueueState;
@@ -27,6 +30,7 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -293,6 +297,41 @@ public class QueueRegistryService {
     }
 
     /**
+     * refresh a set of queue registration
+     * @param queueNames
+     * @return a list of response of each refresh
+     */
+    public Future<List<Response>> batchRefreshRegistration(List<String> queueNames) {
+        if (queueNames == null || queueNames.isEmpty()) {
+            throw new RuntimeException("queueNames must be set");
+        }
+        Promise<List<Response>> promise = Promise.promise();
+
+        log.debug("RedisQues Refreshing registration of {} queue consumers, expire in {} s",
+                queueNames.size(), consumerLockTime);
+
+        List<Request> requests = new ArrayList<>(queueNames.size());
+        for (String queueName : queueNames) {
+            String consumerKey = keyspaceHelper.getConsumersPrefix() + queueName;
+            requests.add(Request.cmd(Command.EXPIRE)
+                    .arg(consumerKey)
+                    .arg(String.valueOf(consumerLockTime)));
+            metrics.perQueueMetricsRefresh(queueName);
+        }
+
+        redisService.batch(requests).onComplete(event -> {
+            if (event.succeeded()) {
+                for (String queueName : queueNames) {
+                    getQueueConsumerRunner().updateLastRefreshRegistrationTimeStamp(queueName);
+                }
+            }
+            promise.complete(event.result());
+        });
+
+        return promise.future();
+    }
+
+    /**
      * reorder the myqueues list, sorted by old to new by LastRegisterRefreshedMillis
      *
      * @return
@@ -537,128 +576,170 @@ public class QueueRegistryService {
      */
     public Future<Void> checkQueues() {
         final long startTs = System.currentTimeMillis();
-        final var ctx = new Object() {
-            long limit;
-            AtomicInteger counter;
-            Iterator<Response> iter;
-        };
-
-        return Future.<Void>succeededFuture().compose((Void v) -> {
-            log.debug("Checking queues timestamps");
-            // List all queues that look inactive (i.e. that have not been updated since 3 periods).
-            ctx.limit = currentTimeMillis() - 3L * configurationProvider.configuration().getRefreshPeriod() * 1000;
-            return redisService.zrangebyscore(keyspaceHelper.getQueuesKey(), "-inf", String.valueOf(ctx.limit));
-        }).compose((Response queues) -> {
-            if (log.isDebugEnabled()) {
-                log.debug("zrangebyscore time used is {} ms", System.currentTimeMillis() - startTs);
-            }
-            assert ctx.counter == null;
-            assert ctx.iter == null;
-            ctx.counter = new AtomicInteger(queues.size());
-            ctx.iter = queues.iterator();
-            log.trace("RedisQues update queues: {}", ctx.counter);
-            var p = Promise.<Void>promise();
-            upperBoundParallel.request(checkQueueRequestsQuota, null, new UpperBoundParallel.Mentor<Void>() {
-                @Override
-                public boolean runOneMore(BiConsumer<Throwable, Void> onDone, Void ctx_) {
-                    if (ctx.iter.hasNext()) {
-                        final long perQueueStartTs = System.currentTimeMillis();
-                        var queueObject = ctx.iter.next();
-                        // Check if the inactive queue is not empty (i.e. the key exists)
-                        final String queueName = queueObject.toString();
-                        String key = keyspaceHelper.getQueuesPrefix() + queueName;
-                        log.trace("RedisQues update queue: {}", key);
-                        Handler<Void> refreshRegHandler = event -> {
-                            // Make sure its TTL is correctly set (replaces the previous orphan detection mechanism).
-                            refreshRegistration(queueName, refreshRegistrationEvent -> {
-                                if (refreshRegistrationEvent.failed()) log.warn("TODO error handling",
-                                        exceptionFactory.newException("refreshRegistration(" + queueName + ") failed",
-                                                refreshRegistrationEvent.cause()));
-                                metrics.perQueueMetricsRefresh(queueName);
-                                // And trigger its consumer.
-                                notifyConsumer(queueName).onComplete(notifyConsumerEvent -> {
-                                    if (notifyConsumerEvent.failed()) log.warn("TODO error handling",
-                                            exceptionFactory.newException("notifyConsumer(" + queueName + ") failed",
-                                                    notifyConsumerEvent.cause()));
-                                    if (log.isTraceEnabled()) {
-                                        log.trace("refreshRegistration for queue {} time used is {} ms", queueName, System.currentTimeMillis() - perQueueStartTs);
-                                    }
-                                    onDone.accept(null, null);
-                                });
-                            });
-                        };
-                        redisService.exists(Collections.singletonList(key)).onComplete(event -> {
-                            if (event.failed() || event.result() == null) {
-                                log.error("RedisQues is unable to check existence of queue {}", queueName,
-                                        exceptionFactory.newException("redisAPI.exists(" + key + ") failed", event.cause()));
-                                onDone.accept(null, null);
-                                return;
-                            }
-                            if (event.result().toLong() == 1) {
-                                log.trace("Updating queue timestamp for queue '{}'", queueName);
-                                // If not empty, update the queue timestamp to keep it in the sorted set.
-                                updateTimestamp(queueName).onComplete(upTsResult -> {
-                                    if (upTsResult.failed()) {
-                                        log.warn("Failed to update timestamps for queue '{}'", queueName,
-                                                exceptionFactory.newException("updateTimestamp(" + queueName + ") failed",
-                                                        upTsResult.cause()));
-                                        return;
-                                    }
-                                    // Ensure we clean the old queues after having updated all timestamps
-                                    if (ctx.counter.decrementAndGet() == 0) {
-                                        removeOldQueues(ctx.limit).onComplete(removeOldQueuesEvent -> {
-                                            if (removeOldQueuesEvent.failed() && log.isWarnEnabled()) {
-                                                log.warn("TODO error handling", exceptionFactory.newException(
-                                                        "removeOldQueues(" + ctx.limit + ") failed", removeOldQueuesEvent.cause()));
-                                            }
-                                            refreshRegHandler.handle(null);
-                                        });
-                                    } else {
-                                        refreshRegHandler.handle(null);
-                                    }
-                                });
-                            } else {
-                                // Ensure we clean the old queues also in the case of empty queue.
-                                if (log.isTraceEnabled()) {
-                                    log.trace("RedisQues remove old queue: {}", queueName);
-                                }
-                                queueStatsService.dequeueStatisticMarkedForRemoval(queueName);
-                                if (ctx.counter.decrementAndGet() == 0) {
-                                    removeOldQueues(ctx.limit).onComplete(removeOldQueuesEvent -> {
-                                        if (removeOldQueuesEvent.failed() && log.isWarnEnabled()) {
-                                            log.warn("TODO error handling", exceptionFactory.newException(
-                                                    "removeOldQueues(" + ctx.limit + ") failed", removeOldQueuesEvent.cause()));
-                                        }
-                                        queueStatisticsCollector.resetQueueFailureStatistics(queueName, onDone);
-                                    });
-                                } else {
-                                    queueStatisticsCollector.resetQueueFailureStatistics(queueName, onDone);
-                                }
-                            }
-                        });
-                    } else {
-                        onDone.accept(null, null);
+        // List all queues that look inactive (i.e. that have not been updated since 3 periods).
+        final long limit = currentTimeMillis() - 3L * configurationProvider.configuration().getRefreshPeriod() * 1000L;
+        final int batchSize = RedisService.MAX_COMMANDS_IN_BATCH;
+        log.debug("Checking queues timestamps");
+        return redisService.zrangebyscore(keyspaceHelper.getQueuesKey(), "-inf", String.valueOf(limit))
+                .onFailure(new Handler<Throwable>() {
+                    @Override
+                    public void handle(Throwable event) {
+                        log.error("Unable to check queues timestamps by zrangebyscore", event);
                     }
-                    return ctx.iter.hasNext();
-                }
+                })
+                .compose(queues -> {
+                    if (log.isDebugEnabled()) {
+                        log.debug("zrangebyscore time used is {} ms", System.currentTimeMillis() - startTs);
+                    }
+                    List<List<String>> processQueue = new ArrayList<>();
+                    List<String> currentBatch = new ArrayList<>(batchSize);
 
-                @Override
-                public boolean onError(Throwable ex, Void ctx_) {
-                    log.warn("TODO error handling", exceptionFactory.newException(ex));
-                    return true; // true, keep going with other queues.
-                }
+                    // create a batch with MAX_COMMANDS_IN_BATCH
+                    for (Response queue : queues) {
+                        currentBatch.add(queue.toString());
+                        if (currentBatch.size() == batchSize) {
+                            processQueue.add(currentBatch);
+                            currentBatch = new ArrayList<>(batchSize);
+                        }
+                    }
 
-                @Override
-                public void onDone(Void ctx_) {
-                    // No longer used, so reduce GC graph traversal effort.
-                    ctx.counter = null;
-                    ctx.iter = null;
-                    // Mark this composition step as completed.
-                    log.debug("all queue items time used is {} ms", System.currentTimeMillis() - startTs);
-                    p.complete();
+                    if (!currentBatch.isEmpty()) {
+                        // if batch is not empty, add it to process queue
+                        processQueue.add(currentBatch);
+                    }
+                    Promise<Void> promise = Promise.promise();
+                    Iterator<List<String>> iter = processQueue.iterator();
+                    // limits on process queue size
+                    upperBoundParallel.request(checkQueueRequestsQuota, iter, new UpperBoundParallel.Mentor<>() {
+                        @Override
+                        public boolean runOneMore(BiConsumer<Throwable, Void> onDone, Iterator<List<String>> iterator) {
+                            if (!iterator.hasNext()) {
+                                onDone.accept(null, null);
+                                return false;
+                            }
+
+                            List<String> batch = iterator.next();
+                            batchCheckQueuesSize(batch).onComplete(asyncResult -> {
+                                if (asyncResult.failed()) {
+                                    log.warn("failed to batch check queue exist", asyncResult.cause());
+                                    onDone.accept(asyncResult.cause(), null);
+                                } else {
+                                    Map<String, Integer> result = asyncResult.result();
+                                    List<String> nonEmptyQueue = new ArrayList<>();
+                                    List<String> emptyQueue = new ArrayList<>();
+                                    List<String> failedQueue = new ArrayList<>();
+                                    result.forEach((key, value) -> {
+                                        if (value == null) {
+                                            failedQueue.add(key);
+                                        } else if (value == 0) {
+                                            emptyQueue.add(key);
+                                        } else {
+                                            nonEmptyQueue.add(key);
+                                        }
+                                    });
+
+                                    if (!failedQueue.isEmpty()) {
+                                        log.warn("{} queue failed to get size", failedQueue);
+                                    }
+                                    updateTimestampsWithOverwrite(nonEmptyQueue).onComplete(event -> {
+                                        if (event.failed()) {
+                                            log.warn("failed to batch update queues timestamp", event.cause());
+                                            onDone.accept(event.cause(), null);
+                                            return;
+                                        }
+                                        int updateTimestampsErrorCounter = countErrorsAndNulls(event.result());
+                                        if (updateTimestampsErrorCounter > 0) {
+                                            log.warn("() queue failed to update queues timestamp", event.cause());
+                                        }
+                                        batchRefreshRegistration(nonEmptyQueue).onComplete(event2 -> {
+                                            if (event2.failed()) {
+                                                log.warn("failed to batch update queues registration", event.cause());
+                                                onDone.accept(event.cause(), null);
+                                                return;
+                                            }
+
+                                            int refreshRegistrationErrorCounter = countErrorsAndNulls(event.result());
+                                            if (refreshRegistrationErrorCounter > 0) {
+                                                log.warn("() queue failed to update queues registration", event.cause());
+                                            }
+                                            List<Future<?>> notifyConsumerFutures = new ArrayList<>();
+                                            nonEmptyQueue.forEach(queueName -> {
+                                                notifyConsumerFutures.add(notifyConsumer(queueName).onComplete(notifyConsumerEvent -> {
+                                                    if (notifyConsumerEvent.failed()) log.warn("TODO error handling",
+                                                            exceptionFactory.newException("notifyConsumer(" + queueName + ") failed",
+                                                                    notifyConsumerEvent.cause()));
+                                                }));
+                                            });
+
+                                            // reset queues for not exits or empty queue
+                                            emptyQueue.forEach(queueName -> {
+                                                queueStatsService.dequeueStatisticMarkedForRemoval(queueName);
+                                                queueStatisticsCollector.resetQueueFailureStatistics(queueName, (throwable, unused) -> {});
+                                            });
+                                            Future.all(notifyConsumerFutures).onComplete(event1 -> {
+                                                    if (event1.failed()) {
+                                                        log.warn("failed to notifyConsumer", event1.cause());
+                                                    }
+                                                onDone.accept(null, null);
+                                            });
+                                        });
+                                    });
+                                }
+                            });
+                            return iterator.hasNext();
+                        }
+
+                        @Override
+                        public boolean onError(Throwable ex, Iterator<List<String>> iterator) {
+                            log.warn("Failed while processing queue batch", exceptionFactory.newException(ex));
+                            return true; // true, keep going with other queues batch in queue.
+                        }
+
+                        @Override
+                        public void onDone(Iterator<List<String>> iterator) {
+                            log.debug("all queue items time used is {} ms", System.currentTimeMillis() - startTs);
+                            removeOldQueues(limit).onComplete(removeOldQueuesEvent -> {
+                                if (removeOldQueuesEvent.failed() && log.isWarnEnabled()) {
+                                    log.warn("TODO error handling", exceptionFactory.newException(
+                                            "removeOldQueues(" + limit + ") failed", removeOldQueuesEvent.cause()));
+                                }
+                                // Mark this composition step as completed.
+                                promise.complete();
+                            });
+                        }
+                    });
+
+                    return promise.future();
+                });
+    }
+
+    /**
+     * check the queue list size in a batch command
+     * @param queueNameBatch a set of queues name will check
+     * @return a Map continues queue name and result, null means error
+     */
+    Future<Map<String, Integer>> batchCheckQueuesSize(List<String> queueNameBatch) {
+        if (queueNameBatch.isEmpty()) {
+            return Future.succeededFuture();
+        }
+        List<Request> requests = new ArrayList<>(queueNameBatch.size());
+        Map<String, Integer> reslutMap = new HashMap<>();
+        for (String queueName : queueNameBatch) {
+            requests.add(Request.cmd(Command.LLEN).arg(keyspaceHelper.getQueuesPrefix() + queueName));
+        }
+        return redisService.batch(requests).compose(responses -> {
+            for (int i = 0; i < queueNameBatch.size(); i++) {
+                Response response = responses.get(i);
+                String queueName = queueNameBatch.get(i);
+                if (response != null && response.type() == ResponseType.NUMBER) {
+                    reslutMap.put(queueName, response.toInteger());
+                } else {
+                    reslutMap.put(queueName, null);
+                    log.error("RedisQues is unable to check existence of queue {}, response {}", queueName, response,
+                                exceptionFactory.newException("redisAPI.llen() failed"));
                 }
-            });
-            return p.future();
+            }
+            return Future.succeededFuture(reslutMap);
         });
     }
 
@@ -679,6 +760,50 @@ public class QueueRegistryService {
                     promise.fail(throwable);
                 });
         return promise.future();
+    }
+
+    /**
+     * Store the queue names in a sorted set with the current date as score, if exist will update the score
+     *
+     * @param queueNames list of queue name
+     */
+    public Future<List<Response>> updateTimestampsWithOverwrite(final List<String> queueNames) {
+        if (queueNames == null || queueNames.isEmpty()) {
+            return Future.failedFuture(new RuntimeException("queueNames must be set"));
+        }
+
+        final String queuesKey = keyspaceHelper.getQueuesKey();
+        final long score = currentTimeMillis();
+
+        List<Request> requests = new ArrayList<>(queueNames.size());
+        for (String queueName : queueNames) {
+            requests.add(Request.cmd(Command.ZADD)
+                    .arg(queuesKey)
+                    .arg("CH")  // update the timestamp
+                    .arg(score)
+                    .arg(queueName));
+        }
+
+        return redisService.batch(requests);
+    }
+
+    /**
+     * count how many error in a batch request
+     * @param batchResponse
+     * @return number of error
+     */
+    int countErrorsAndNulls(List<Response> batchResponse) {
+        if (batchResponse == null) {
+            return 1;
+        }
+
+        int count = 0;
+        for (Response item : batchResponse) {
+            if (item == null || item.type() == ResponseType.ERROR) {
+                count++;
+            }
+        }
+        return count;
     }
 
     /**

@@ -12,6 +12,9 @@ import io.vertx.core.json.JsonObject;
 import io.vertx.ext.unit.Async;
 import io.vertx.ext.unit.TestContext;
 import io.vertx.ext.unit.junit.Timeout;
+import io.vertx.redis.client.Command;
+import io.vertx.redis.client.Request;
+import io.vertx.redis.client.Response;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
@@ -379,6 +382,122 @@ public class QueueRegistryServiceTest extends AbstractTestCase {
             public void handle(Void event) {
                 async.complete();
             }
+        });
+    }
+
+    @Test
+    public void testUpdateTimestampsWithOverwriteScore(TestContext context) {
+        Async async = context.async();
+        flushAll();
+        QueueRegistryService queueRegistryService = redisQues.getQueueRegistryService();
+        jedis.zadd(redisQues.getKeyspaceHelper().getQueuesKey(), 1, "queue1-test-updatetimestamps");
+        jedis.zadd(redisQues.getKeyspaceHelper().getQueuesKey(), 1, "queue3-test-updatetimestamps");
+        jedis.zadd(redisQues.getKeyspaceHelper().getQueuesKey(), 1, "queue5-test-updatetimestamps");
+        jedis.zadd(redisQues.getKeyspaceHelper().getQueuesKey(), 1, "queue7-test-updatetimestamps");
+        List<String> queueNames = new ArrayList<>();
+        queueNames.add("queue1-test-updatetimestamps");
+        queueNames.add("queue2-test-updatetimestamps");
+        queueNames.add("queue3-test-updatetimestamps");
+        queueRegistryService.updateTimestampsWithOverwrite(queueNames).onComplete(event -> {
+            if (event.failed()) {
+                context.fail();
+                return;
+            }
+            List<Response> result = event.result();
+            context.assertEquals(queueNames.size(), result.size());
+            context.assertEquals(1, result.get(0).toInteger());
+            context.assertEquals(1, result.get(1).toInteger());
+            context.assertEquals(1, result.get(2).toInteger());
+
+            context.assertTrue(jedis.zscore(redisQues.getKeyspaceHelper().getQueuesKey(), "queue1-test-updatetimestamps") != 1);
+            context.assertTrue(jedis.zscore(redisQues.getKeyspaceHelper().getQueuesKey(), "queue2-test-updatetimestamps") != 1);
+            context.assertTrue(jedis.zscore(redisQues.getKeyspaceHelper().getQueuesKey(), "queue3-test-updatetimestamps") != 1);
+            context.assertNull(jedis.zscore(redisQues.getKeyspaceHelper().getQueuesKey(), "queue4-test-updatetimestamps"));
+            context.assertTrue(jedis.zscore(redisQues.getKeyspaceHelper().getQueuesKey(), "queue5-test-updatetimestamps") == 1);
+            context.assertTrue(jedis.zscore(redisQues.getKeyspaceHelper().getQueuesKey(), "queue7-test-updatetimestamps") == 1);
+            async.complete();
+        });
+    }
+
+    @Test
+    public void testBatchRefreshRegistration(TestContext context) {
+        Async async = context.async();
+        flushAll();
+
+        jedis.set(redisQues.getKeyspaceHelper().getConsumersPrefix() + "queue2-test-batchregistry", "another-value");
+        jedis.set(redisQues.getKeyspaceHelper().getConsumersPrefix() + "queue5-test-batchregistry", "another-value");
+        jedis.set(redisQues.getKeyspaceHelper().getConsumersPrefix() + "queue9-test-batchregistry", "another-value");
+        QueueRegistryService queueRegistryService = redisQues.getQueueRegistryService();
+        List<String> queueNames = new ArrayList<>();
+        queueNames.add("queue1-test-batchregistry");
+        queueNames.add("queue2-test-batchregistry");
+        queueNames.add("queue3-test-batchregistry");
+        queueNames.add("queue4-test-batchregistry");
+        queueNames.add("queue5-test-batchregistry");
+        queueRegistryService.batchRefreshRegistration(queueNames).onComplete(event -> {
+            if (event.failed()) {
+                context.fail();
+                return;
+            }
+            List<Response> result = event.result();
+            context.assertEquals(queueNames.size(), result.size());
+            context.assertEquals(0, result.get(0).toInteger());
+            context.assertEquals(1, result.get(1).toInteger());
+            context.assertEquals(0, result.get(2).toInteger());
+            context.assertEquals(0, result.get(3).toInteger());
+            context.assertEquals(1, result.get(4).toInteger());
+            async.complete();
+        });
+    }
+
+    @Test
+    public void testBatchCheckQueuesSize(TestContext context) {
+        Async async = context.async();
+        flushAll();
+        QueueRegistryService queueRegistryService = redisQues.getQueueRegistryService();
+        List<String> queueNames = new ArrayList<>();
+        queueNames.add("queue1-test-batchsize");
+        queueNames.add("queue2-test-batchsize");
+        queueNames.add("queue0-test-batchsize");
+        queueNames.add("queue3-test-batchsize");
+        queueNames.add("queue4-test-batchsize");
+        queueNames.add("queue5-test-batchsize");
+        eventBusSend(buildAddQueueItemOperation("queue1-test-batchsize", "message_1-1"), e1 -> {
+            eventBusSend(buildAddQueueItemOperation("queue1-test-batchsize", "message_1-2"), e2 -> {
+                eventBusSend(buildAddQueueItemOperation("queue1-test-batchsize", "message_1-3"), e3 -> {
+                    eventBusSend(buildAddQueueItemOperation("queue2-test-batchsize", "message_2-1"), e4 -> {
+                        eventBusSend(buildAddQueueItemOperation("queue2-test-batchsize", "message_2-2"), e5 -> {
+                            eventBusSend(buildAddQueueItemOperation("queue3-test-batchsize", "message_1-2"), e6 -> {
+                                queueRegistryService.batchCheckQueuesSize(queueNames).onComplete(new Handler<AsyncResult<Map<String, Integer>>>() {
+                                    @Override
+                                    public void handle(AsyncResult<Map<String, Integer>> event) {
+                                        if (event.failed()) {
+                                            context.fail();
+                                            return;
+                                        }
+                                        Map<String, Integer> result = event.result();
+                                        context.assertEquals(queueNames.size(), result.size());
+                                        context.assertTrue(result.containsKey("queue1-test-batchsize"));
+                                        context.assertTrue(result.containsKey("queue2-test-batchsize"));
+                                        context.assertTrue(result.containsKey("queue0-test-batchsize"));
+                                        context.assertTrue(result.containsKey("queue3-test-batchsize"));
+                                        context.assertTrue(result.containsKey("queue4-test-batchsize"));
+                                        context.assertTrue(result.containsKey("queue5-test-batchsize"));
+
+                                        context.assertEquals(3, result.get("queue1-test-batchsize"));
+                                        context.assertEquals(2, result.get("queue2-test-batchsize"));
+                                        context.assertEquals(0, result.get("queue0-test-batchsize"));
+                                        context.assertEquals(1, result.get("queue3-test-batchsize"));
+                                        context.assertEquals(0, result.get("queue4-test-batchsize"));
+                                        context.assertEquals(0, result.get("queue5-test-batchsize"));
+                                        async.complete();
+                                    }
+                                });
+                            });
+                        });
+                    });
+                });
+            });
         });
     }
 
