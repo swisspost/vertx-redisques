@@ -4,6 +4,7 @@ import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.ext.unit.TestContext;
 import io.vertx.ext.unit.junit.VertxUnitRunner;
+import io.vertx.redis.client.RedisReplicas;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
@@ -63,6 +64,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getQueuesItemsCountRedisRequestQuotaAcquireTimeoutMs(), 0);
         testContext.assertEquals(config.getQueueStatsRequestQuotaAcquireTimeoutMs(), 0);
         testContext.assertEquals(config.getActiveQueueRegRefreshReqQuotaAcquireTimeoutMs(), 0);
+        testContext.assertEquals(config.getRedisReplicasType(), RedisReplicas.NEVER);
     }
 
     @Test
@@ -105,6 +107,7 @@ public class RedisquesConfigurationTest {
                 .activeQueueRegRefreshReqQuotaAcquireTimeoutMs(3)
                 .checkQueueRequestsQuotaAcquireTimeoutMs(4)
                 .queueStatsRequestQuotaAcquireTimeoutMs(5)
+                .redisReplicasType(RedisReplicas.ALWAYS)
                 .build();
 
         // default values
@@ -148,6 +151,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getQueuesItemsCountRedisRequestQuotaAcquireTimeoutMs(), 1);
         testContext.assertEquals(config.getQueueStatsRequestQuotaAcquireTimeoutMs(), 5);
         testContext.assertEquals(config.getActiveQueueRegRefreshReqQuotaAcquireTimeoutMs(), 3);
+        testContext.assertEquals(config.getRedisReplicasType(), RedisReplicas.ALWAYS);
 
         // queue configurations
         testContext.assertEquals(config.getQueueConfigurations().size(), 1);
@@ -202,6 +206,8 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(json.getInteger(PROP_QUEUESITEMS_COUNT_REQUEST_QUOTA_ACQUIRE_TIMEOUT_MS), 0);
         testContext.assertEquals(json.getInteger(PROP_ACTIVE_QUEUE_REFRESH_REQUEST_QUOTA_ACQUIRE_TIMEOUT_MS), 0);
         testContext.assertEquals(json.getInteger(PROP_QUEUE_STATS_REQUEST_QUOTA_ACQUIRE_TIMEOUT_MS), 0);
+        testContext.assertEquals(RedisReplicas.valueOf(json.getString(PROP_REDIS_REPLICAS_TYPE)), RedisReplicas.NEVER);
+
     }
 
     @Test
@@ -243,6 +249,7 @@ public class RedisquesConfigurationTest {
                 .activeQueueRegRefreshReqQuotaAcquireTimeoutMs(3)
                 .checkQueueRequestsQuotaAcquireTimeoutMs(4)
                 .queueStatsRequestQuotaAcquireTimeoutMs(5)
+                .redisReplicasType(RedisReplicas.SHARE)
                 .build();
 
         JsonObject json = config.asJsonObject();
@@ -290,6 +297,8 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(json.getInteger(PROP_ACTIVE_QUEUE_REFRESH_REQUEST_QUOTA_ACQUIRE_TIMEOUT_MS), 3);
         testContext.assertEquals(json.getInteger(PROP_CHECK_QUEUE_REQUEST_QUOTA_ACQUIRE_TIMEOUT_MS), 4);
         testContext.assertEquals(json.getInteger(PROP_QUEUE_STATS_REQUEST_QUOTA_ACQUIRE_TIMEOUT_MS), 5);
+        testContext.assertEquals(RedisReplicas.valueOf(json.getString(PROP_REDIS_REPLICAS_TYPE)), RedisReplicas.SHARE);
+
         // queue configurations
         JsonArray queueConfigurationsJsonArray = json.getJsonArray(PROP_QUEUE_CONFIGURATIONS);
         List<JsonObject> queueConfigurationJsonObjects = queueConfigurationsJsonArray.getList();
@@ -345,6 +354,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getActiveQueueRegRefreshReqQuotaAcquireTimeoutMs(), 0);
         testContext.assertEquals(config.getRedisMonitoringReqQuotaAcquireTimeoutMs(), 0);
         testContext.assertEquals(config.getCheckQueueRequestsQuotaAcquireTimeoutMs(), 0);
+        testContext.assertEquals(config.getRedisReplicasType(), RedisReplicas.NEVER);
     }
 
     @Test
@@ -396,6 +406,7 @@ public class RedisquesConfigurationTest {
         json.put(PROP_QUEUESITEMS_COUNT_REQUEST_QUOTA_ACQUIRE_TIMEOUT_MS, 5);
         json.put(PROP_ACTIVE_QUEUE_REFRESH_REQUEST_QUOTA_ACQUIRE_TIMEOUT_MS, 3);
         json.put(PROP_QUEUE_STATS_REQUEST_QUOTA_ACQUIRE_TIMEOUT_MS, 4);
+        json.put(PROP_REDIS_REPLICAS_TYPE, RedisReplicas.ALWAYS);
 
         RedisquesConfiguration config = fromJsonObject(json);
         testContext.assertEquals(config.getAddress(), "new_address");
@@ -437,6 +448,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getActiveQueueRegRefreshReqQuotaAcquireTimeoutMs(), 3);
         testContext.assertEquals(config.getRedisMonitoringReqQuotaAcquireTimeoutMs(), 2);
         testContext.assertEquals(config.getCheckQueueRequestsQuotaAcquireTimeoutMs(), 1);
+        testContext.assertEquals(config.getRedisReplicasType(), RedisReplicas.ALWAYS);
 
         // queue configurations
         testContext.assertEquals(config.getQueueConfigurations().size(), 1);
