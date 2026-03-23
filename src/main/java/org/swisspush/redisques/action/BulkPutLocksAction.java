@@ -11,17 +11,20 @@ import org.swisspush.redisques.queue.KeyspaceHelper;
 import org.swisspush.redisques.queue.RedisService;
 import org.swisspush.redisques.util.QueueConfigurationProvider;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
+import org.swisspush.redisques.util.RedisquesConfigurationProvider;
 
 import static org.swisspush.redisques.util.RedisquesAPI.*;
 
 public class BulkPutLocksAction extends AbstractQueueAction {
 
     public BulkPutLocksAction(
-            Vertx vertx, RedisService redisService, KeyspaceHelper keyspaceHelper, QueueConfigurationProvider queueConfigurationProvider,
+            Vertx vertx, RedisService redisService, KeyspaceHelper keyspaceHelper,
+            QueueConfigurationProvider queueConfigurationProvider,
+            RedisquesConfigurationProvider redisquesConfigurationProvider,
             RedisQuesExceptionFactory exceptionFactory, QueueStatisticsCollector queueStatisticsCollector, Logger log
     ) {
         super(vertx, redisService, keyspaceHelper,
-                queueConfigurationProvider, exceptionFactory, queueStatisticsCollector, log);
+                queueConfigurationProvider, redisquesConfigurationProvider, exceptionFactory, queueStatisticsCollector, log);
     }
 
     @Override

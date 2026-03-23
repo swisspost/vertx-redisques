@@ -13,6 +13,7 @@ import org.swisspush.redisques.queue.KeyspaceHelper;
 import org.swisspush.redisques.queue.RedisService;
 import org.swisspush.redisques.util.QueueConfigurationProvider;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
+import org.swisspush.redisques.util.RedisquesConfigurationProvider;
 
 
 import static org.swisspush.redisques.util.RedisquesAPI.*;
@@ -20,8 +21,9 @@ import static org.swisspush.redisques.util.RedisquesAPI.*;
 public class BulkDeleteLocksAction extends AbstractQueueAction {
 
     public BulkDeleteLocksAction(Vertx vertx, RedisService redisService, KeyspaceHelper keyspaceHelper, QueueConfigurationProvider queueConfigurationProvider,
+                                 RedisquesConfigurationProvider redisquesConfigurationProvider,
                                  RedisQuesExceptionFactory exceptionFactory, QueueStatisticsCollector queueStatisticsCollector, Logger log) {
-        super(vertx, redisService, keyspaceHelper, queueConfigurationProvider,
+        super(vertx, redisService, keyspaceHelper, queueConfigurationProvider, redisquesConfigurationProvider,
                 exceptionFactory, queueStatisticsCollector, log);
     }
 

@@ -12,10 +12,10 @@ import static org.swisspush.redisques.util.RedisquesAPI.PAYLOAD;
 
 public class SetPerQueueConfigurationAction implements QueueAction {
     private final Logger log;
-    private final QueueConfigurationProvider configurationProvider;
+    private final QueueConfigurationProvider redisquesConfigurationProvider;
 
     public SetPerQueueConfigurationAction(QueueConfigurationProvider queueConfigurationProvider, Logger log) {
-        this.configurationProvider = queueConfigurationProvider;
+        this.redisquesConfigurationProvider = queueConfigurationProvider;
         this.log = log;
     }
 
@@ -32,7 +32,7 @@ public class SetPerQueueConfigurationAction implements QueueAction {
             event.reply(createOkReply());
             return;
         }
-        configurationProvider.updateQueueConfiguration(pattern, configurationValues);
+        redisquesConfigurationProvider.updateQueueConfiguration(pattern, configurationValues);
         event.reply(createOkReply());
     }
 }

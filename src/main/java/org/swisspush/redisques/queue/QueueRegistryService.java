@@ -351,7 +351,8 @@ public class QueueRegistryService {
 
     private void registerActiveQueueRegistrationRefresh() {
         // Periodic refresh of my registrations on active queues.
-        var periodMs = getConfiguration().getRefreshPeriod() * 1000L;
+        final long periodMs = getConfiguration().getRefreshPeriod() * 1000L;
+        final int activeQueueRegRefreshReqQuotaTimeout = getConfiguration().getActiveQueueRegRefreshReqQuotaAcquireTimeoutMs();
         periodicSkipScheduler.setPeriodic(periodMs, "registerActiveQueueRegistrationRefresh", new Consumer<Runnable>() {
             Iterator<Map.Entry<String, QueueProcessingState>> iter;
 
@@ -360,7 +361,7 @@ public class QueueRegistryService {
                 // Need a copy to prevent concurrent modification issuses.
                 iter = getSortedMyQueueClone(queueConsumerRunner.getMyQueues()).entrySet().iterator();
                 // Trigger only a limited amount of requests in parallel.
-                upperBoundParallel.request(activeQueueRegRefreshReqQuota, iter, new UpperBoundParallel.Mentor<>() {
+                upperBoundParallel.request(activeQueueRegRefreshReqQuota, activeQueueRegRefreshReqQuotaTimeout, iter, new UpperBoundParallel.Mentor<>() {
                     @Override
                     public boolean runOneMore(BiConsumer<Throwable, Void> onQueueDone, Iterator<Map.Entry<String, QueueProcessingState>> iter) {
                         refreshConsumerRegistration(onQueueDone);
@@ -579,6 +580,7 @@ public class QueueRegistryService {
         // List all queues that look inactive (i.e. that have not been updated since 3 periods).
         final long limit = currentTimeMillis() - 3L * configurationProvider.configuration().getRefreshPeriod() * 1000L;
         final int batchSize = RedisService.MAX_COMMANDS_IN_BATCH;
+        final int checkQueueRequestsQuotaAcquireTimeout = configurationProvider.configuration().getCheckQueueRequestsQuotaAcquireTimeoutMs();
         log.debug("Checking queues timestamps");
         return redisService.zrangebyscore(keyspaceHelper.getQueuesKey(), "-inf", String.valueOf(limit))
                 .onFailure(new Handler<Throwable>() {

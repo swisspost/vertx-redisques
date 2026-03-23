@@ -13,8 +13,6 @@ import org.slf4j.Logger;
 import org.swisspush.redisques.util.QueueConfigurationProvider;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 
-import java.util.ArrayList;
-
 import static org.mockito.Mockito.*;
 import static org.swisspush.redisques.util.RedisquesAPI.buildGetQueuesSpeedOperation;
 
@@ -32,11 +30,11 @@ public class GetQueuesSpeedActionTest extends AbstractQueueActionTest {
     public void setup() {
         super.setup();
         action = new GetQueuesSpeedAction(vertx, redisService, keyspaceHelper,
-                queueConfigurationProvider, exceptionFactory, Mockito.mock(QueueStatisticsCollector.class), Mockito.mock(Logger.class));
+                queueConfigurationProvider, getConfigurationProvider(), exceptionFactory, Mockito.mock(QueueStatisticsCollector.class), Mockito.mock(Logger.class));
     }
 
     @Test
-    public void testGetQueuesSpeedWhenRedisIsNotReady(TestContext context){
+    public void testGetQueuesSpeedWhenRedisIsNotReady(TestContext context) {
         when(redisProvider.redis()).thenReturn(Future.failedFuture("not ready"));
         when(message.body()).thenReturn(buildGetQueuesSpeedOperation(null));
 
@@ -47,7 +45,7 @@ public class GetQueuesSpeedActionTest extends AbstractQueueActionTest {
     }
 
     @Test
-    public void testGetQueuesSpeedWithFilterWhenRedisIsNotReady(TestContext context){
+    public void testGetQueuesSpeedWithFilterWhenRedisIsNotReady(TestContext context) {
         when(redisProvider.redis()).thenReturn(Future.failedFuture("not ready"));
         when(message.body()).thenReturn(buildGetQueuesSpeedOperation("abc"));
 

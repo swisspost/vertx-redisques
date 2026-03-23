@@ -12,6 +12,7 @@ import org.swisspush.redisques.queue.RedisService;
 
 import org.swisspush.redisques.util.QueueConfigurationProvider;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
+import org.swisspush.redisques.util.RedisquesConfigurationProvider;
 
 import java.util.Collections;
 
@@ -21,10 +22,10 @@ public class DeleteAllQueueItemsAction extends AbstractQueueAction {
 
     public DeleteAllQueueItemsAction(
             Vertx vertx, RedisService redisService, KeyspaceHelper keyspaceHelper, QueueConfigurationProvider queueConfigurationProvider,
-            RedisQuesExceptionFactory exceptionFactory, QueueStatisticsCollector queueStatisticsCollector, Logger log
+            RedisquesConfigurationProvider redisquesConfigurationProvider, RedisQuesExceptionFactory exceptionFactory, QueueStatisticsCollector queueStatisticsCollector, Logger log
     ) {
         super(vertx, redisService, keyspaceHelper,
-                queueConfigurationProvider, exceptionFactory, queueStatisticsCollector, log);
+                queueConfigurationProvider, redisquesConfigurationProvider, exceptionFactory, queueStatisticsCollector, log);
     }
 
     @Override

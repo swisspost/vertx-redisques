@@ -21,17 +21,17 @@ public class EnqueueAction extends AbstractQueueAction {
     private final int memoryUsageLimitPercent;
     private Counter enqueueCounterSuccess;
     private Counter enqueueCounterFail;
+
     public EnqueueAction(
             Vertx vertx, QueueRegistryService queueRegistryService, RedisService redisService, KeyspaceHelper keyspaceHelper, QueueConfigurationProvider queueConfigurationProvider,
-            RedisQuesExceptionFactory exceptionFactory, QueueStatisticsCollector queueStatisticsCollector, Logger log,
-            MemoryUsageProvider memoryUsageProvider, int memoryUsageLimitPercent, MeterRegistry meterRegistry, String metricsIdentifier
-    ) {
+            RedisquesConfigurationProvider redisquesConfigurationProvider, RedisQuesExceptionFactory exceptionFactory, QueueStatisticsCollector queueStatisticsCollector, Logger log,
+            MemoryUsageProvider memoryUsageProvider, MeterRegistry meterRegistry) {
         super(vertx, redisService, keyspaceHelper,
-                queueConfigurationProvider, exceptionFactory, queueStatisticsCollector, log);
+                queueConfigurationProvider, redisquesConfigurationProvider, exceptionFactory, queueStatisticsCollector, log);
         this.memoryUsageProvider = memoryUsageProvider;
-        this.memoryUsageLimitPercent = memoryUsageLimitPercent;
+        this.memoryUsageLimitPercent = redisquesConfigurationProvider.configuration().getMemoryUsageLimitPercent();
         this.queueRegistryService = queueRegistryService;
-
+        String metricsIdentifier = redisquesConfigurationProvider.configuration().getMicrometerMetricsIdentifier();
         if (meterRegistry != null) {
             enqueueCounterSuccess = Counter.builder(MetricMeter.ENQUEUE_SUCCESS.getId()).description(MetricMeter.ENQUEUE_SUCCESS.getDescription())
                     .tag(MetricTags.IDENTIFIER.getId(), metricsIdentifier).register(meterRegistry);

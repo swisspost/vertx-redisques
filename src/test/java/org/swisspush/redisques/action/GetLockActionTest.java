@@ -15,8 +15,6 @@ import org.slf4j.Logger;
 import org.swisspush.redisques.util.QueueConfigurationProvider;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 
-import java.util.ArrayList;
-
 import static org.mockito.Mockito.*;
 import static org.swisspush.redisques.util.RedisquesAPI.buildGetLockOperation;
 
@@ -34,11 +32,11 @@ public class GetLockActionTest extends AbstractQueueActionTest {
     public void setup() {
         super.setup();
         action = new GetLockAction(vertx, redisService, keyspaceHelper,
-                queueConfigurationProvider, exceptionFactory, Mockito.mock(QueueStatisticsCollector.class), Mockito.mock(Logger.class));
+                queueConfigurationProvider, getConfigurationProvider(), exceptionFactory, Mockito.mock(QueueStatisticsCollector.class), Mockito.mock(Logger.class));
     }
 
     @Test
-    public void testGetLockWhenRedisIsNotReady(TestContext context){
+    public void testGetLockWhenRedisIsNotReady(TestContext context) {
         when(redisProvider.redis()).thenReturn(Future.failedFuture("not ready"));
         when(message.body()).thenReturn(buildGetLockOperation("q1"));
 
@@ -49,7 +47,7 @@ public class GetLockActionTest extends AbstractQueueActionTest {
     }
 
     @Test
-    public void testGetLock(TestContext context){
+    public void testGetLock(TestContext context) {
         when(message.body()).thenReturn(buildGetLockOperation("q1"));
 
         when(redisAPI.hget(anyString(), anyString())).thenReturn(Future.succeededFuture(SimpleStringType.create(new JsonObject().put("requestedBy", "UNKNOWN").put("timestamp", 1719931433522L).encode())));
@@ -61,7 +59,7 @@ public class GetLockActionTest extends AbstractQueueActionTest {
     }
 
     @Test
-    public void testGetLockNoSuchLock(TestContext context){
+    public void testGetLockNoSuchLock(TestContext context) {
         when(message.body()).thenReturn(buildGetLockOperation("q1"));
 
         when(redisAPI.hget(anyString(), anyString())).thenReturn(Future.succeededFuture());
@@ -73,7 +71,7 @@ public class GetLockActionTest extends AbstractQueueActionTest {
     }
 
     @Test
-    public void testGetLockHGETFail(TestContext context){
+    public void testGetLockHGETFail(TestContext context) {
         when(message.body()).thenReturn(buildGetLockOperation("q1"));
 
         when(redisAPI.hget(anyString(), anyString())).thenReturn(Future.failedFuture("booom"));

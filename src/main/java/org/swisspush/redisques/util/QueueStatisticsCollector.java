@@ -69,6 +69,7 @@ public class QueueStatisticsCollector {
     private final Map<String, Long> queueBackpressureTime = new HashMap<>();
     private final Map<String, Long> queueSlowDownTime = new HashMap<>();
     private final ConcurrentMap<String, AtomicLong> queueMessageSpeedCtr = new ConcurrentHashMap<>();
+    private final RedisquesConfigurationProvider configurationProvider;
     private volatile Map<String, Long> queueMessageSpeed = new HashMap<>();
     private final RedisService redisService;
     private final String queuePrefix;
@@ -83,14 +84,15 @@ public class QueueStatisticsCollector {
             Vertx vertx,
             RedisQuesExceptionFactory exceptionFactory,
             Semaphore redisRequestQuota,
-            int speedIntervalSec
-    ) {
+            int speedIntervalSec,
+            RedisquesConfigurationProvider configurationProvider) {
         this.redisService = redisService;
         this.queuePrefix = queuePrefix;
         this.vertx = vertx;
         this.exceptionFactory = exceptionFactory;
         this.redisRequestQuota = redisRequestQuota;
         this.upperBoundParallel = new UpperBoundParallel(vertx, exceptionFactory);
+        this.configurationProvider = configurationProvider;
         speedStatisticsScheduler(speedIntervalSec);
     }
 
@@ -179,7 +181,8 @@ public class QueueStatisticsCollector {
             onDone.accept(null, null);
             return;
         }
-        upperBoundParallel.request(redisRequestQuota, null, new UpperBoundParallel.Mentor<Void>() {
+        final int redisRequestQuotaTimeout = configurationProvider.configuration().getRedisMonitoringReqQuotaAcquireTimeoutMs();
+        upperBoundParallel.request(redisRequestQuota, redisRequestQuotaTimeout, null, new UpperBoundParallel.Mentor<Void>() {
             int i = 0;
             final int size = queues.size();
 
@@ -498,7 +501,8 @@ public class QueueStatisticsCollector {
         assert ctx.queueLengthList == null;
         ctx.queueLengthList = new ArrayList<>(ctx.queueNames.size());
         var upperBoundPromise = Promise.<Void>promise();
-        upperBoundParallel.request(redisRequestQuota, ctx, new UpperBoundParallel.Mentor<>() {
+        final int redisRequestQuotaTimeout = configurationProvider.configuration().getRedisMonitoringReqQuotaAcquireTimeoutMs();
+        upperBoundParallel.request(redisRequestQuota, redisRequestQuotaTimeout, ctx, new UpperBoundParallel.Mentor<>() {
             Iterator<String> queueNamesIter = ctx.queueNames.iterator();
 
             @Override

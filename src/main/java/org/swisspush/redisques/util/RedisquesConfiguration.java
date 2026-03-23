@@ -65,6 +65,12 @@ public class RedisquesConfiguration {
     private final int dequeueStatisticReportIntervalSec;
     private final int emptyQueueLiveTimeMs;
 
+    private final int redisMonitoringReqQuotaAcquireTimeoutMs;
+    private final int checkQueueRequestsQuotaAcquireTimeoutMs;
+    private final int queueStatsRequestQuotaAcquireTimeoutMs;
+    private final int getQueuesItemsCountRedisRequestQuotaAcquireTimeoutMs;
+    private final int activeQueueRegRefreshReqQuotaAcquireTimeoutMs;
+
     private static final int DEFAULT_HTTP_REQUEST_HANDLER_MAX_HEADER_SIZE = 8192;
     private static final int DEFAULT_HTTP_REQUEST_HANDLER_MAX_INITIAL_LINE_LENGTH = 4096;
     private static final int DEFAULT_CHECK_INTERVAL_S = 60; // 60s
@@ -91,6 +97,7 @@ public class RedisquesConfiguration {
     private static final int DEFAULT_MEMORY_USAGE_CHECK_INTERVAL_SEC = 60;
     private static final int DEFAULT_DEQUEUE_STATISTIC_REPORT_INTERVAL_SEC = -1;
     private static final int DEFAULT_REDIS_READY_CHECK_INTERVAL_MS = -1;
+    private static final int DEFAULT_QUOTA_ACQUIRE_TIMEOUT_MS = 0;
 
     public static final String PROP_ADDRESS = "address";
     public static final String PROP_CONFIGURATION_UPDATED_ADDRESS = "configuration-updated-address";
@@ -144,6 +151,11 @@ public class RedisquesConfiguration {
     public static final String PROP_REDIS_READY_CHECK_INTERVAL_MS = "redisReadyCheckIntervalMs";
     public static final String PROP_DEQUEUE_STATISTIC_REPORT_INTERVAL_SEC = "dequeueStatisticReportIntervalSec";
     public static final String PROP_EMPTY_QUEUE_LIVE_TIME_MS = "emptyQueueLiveTimeMs";
+    public static final String PROP_MONITORING_REQUEST_QUOTA_ACQUIRE_TIMEOUT_MS = "redisMonitoringReqQuotaAcquireTimeoutMs";
+    public static final String PROP_CHECK_QUEUE_REQUEST_QUOTA_ACQUIRE_TIMEOUT_MS = "checkQueueRequestsQuotaAcquireTimeoutMs";
+    public static final String PROP_QUEUE_STATS_REQUEST_QUOTA_ACQUIRE_TIMEOUT_MS = "queueStatsRequestQuotaAcquireTimeoutMs";
+    public static final String PROP_QUEUESITEMS_COUNT_REQUEST_QUOTA_ACQUIRE_TIMEOUT_MS = "getQueuesItemsCountRedisRequestQuotaAcquireTimeoutMs";
+    public static final String PROP_ACTIVE_QUEUE_REFRESH_REQUEST_QUOTA_ACQUIRE_TIMEOUT_MS = "activeQueueRegRefreshReqQuotaAcquireTimeoutMs";
 
     /**
      * Constructor with default values. Use the {@link RedisquesConfigurationBuilder} class
@@ -181,7 +193,8 @@ public class RedisquesConfiguration {
                 DEFAULT_REDIS_MAX_PIPELINE_WAIT_SIZE, DEFAULT_QUEUE_SPEED_INTERVAL_SEC, DEFAULT_MEMORY_USAGE_LIMIT_PCT,
                 DEFAULT_MEMORY_USAGE_CHECK_INTERVAL_SEC, DEFAULT_REDIS_RECONNECT_ATTEMPTS, DEFAULT_REDIS_RECONNECT_DELAY_SEC,
                 DEFAULT_REDIS_POOL_RECYCLE_TIMEOUT_MS, DEFAULT_DEQUEUE_STATISTIC_REPORT_INTERVAL_SEC,
-                DEFAULT_REDIS_READY_CHECK_INTERVAL_MS, DEFAULT_EMPTY_QUEUE_LIVE_TIME_MS);
+                DEFAULT_REDIS_READY_CHECK_INTERVAL_MS, DEFAULT_EMPTY_QUEUE_LIVE_TIME_MS, DEFAULT_QUOTA_ACQUIRE_TIMEOUT_MS,
+                DEFAULT_QUOTA_ACQUIRE_TIMEOUT_MS, DEFAULT_QUOTA_ACQUIRE_TIMEOUT_MS, DEFAULT_QUOTA_ACQUIRE_TIMEOUT_MS, DEFAULT_QUOTA_ACQUIRE_TIMEOUT_MS);
     }
 
     /**
@@ -210,7 +223,8 @@ public class RedisquesConfiguration {
                 DEFAULT_REDIS_MAX_PIPELINE_WAIT_SIZE, DEFAULT_QUEUE_SPEED_INTERVAL_SEC, DEFAULT_MEMORY_USAGE_LIMIT_PCT,
                 DEFAULT_MEMORY_USAGE_CHECK_INTERVAL_SEC, DEFAULT_REDIS_RECONNECT_ATTEMPTS, DEFAULT_REDIS_RECONNECT_DELAY_SEC,
                 DEFAULT_REDIS_POOL_RECYCLE_TIMEOUT_MS, DEFAULT_DEQUEUE_STATISTIC_REPORT_INTERVAL_SEC,
-                DEFAULT_REDIS_READY_CHECK_INTERVAL_MS, DEFAULT_EMPTY_QUEUE_LIVE_TIME_MS);
+                DEFAULT_REDIS_READY_CHECK_INTERVAL_MS, DEFAULT_EMPTY_QUEUE_LIVE_TIME_MS, DEFAULT_QUOTA_ACQUIRE_TIMEOUT_MS,
+                DEFAULT_QUOTA_ACQUIRE_TIMEOUT_MS, DEFAULT_QUOTA_ACQUIRE_TIMEOUT_MS, DEFAULT_QUOTA_ACQUIRE_TIMEOUT_MS, DEFAULT_QUOTA_ACQUIRE_TIMEOUT_MS);
     }
 
     /**
@@ -238,7 +252,8 @@ public class RedisquesConfiguration {
                 DEFAULT_REDIS_MAX_PIPELINE_WAIT_SIZE, DEFAULT_QUEUE_SPEED_INTERVAL_SEC, DEFAULT_MEMORY_USAGE_LIMIT_PCT,
                 DEFAULT_MEMORY_USAGE_CHECK_INTERVAL_SEC, DEFAULT_REDIS_RECONNECT_ATTEMPTS, DEFAULT_REDIS_RECONNECT_DELAY_SEC,
                 DEFAULT_REDIS_POOL_RECYCLE_TIMEOUT_MS, DEFAULT_DEQUEUE_STATISTIC_REPORT_INTERVAL_SEC,
-                DEFAULT_REDIS_READY_CHECK_INTERVAL_MS, DEFAULT_EMPTY_QUEUE_LIVE_TIME_MS);
+                DEFAULT_REDIS_READY_CHECK_INTERVAL_MS, DEFAULT_EMPTY_QUEUE_LIVE_TIME_MS, DEFAULT_QUOTA_ACQUIRE_TIMEOUT_MS,
+                DEFAULT_QUOTA_ACQUIRE_TIMEOUT_MS, DEFAULT_QUOTA_ACQUIRE_TIMEOUT_MS, DEFAULT_QUOTA_ACQUIRE_TIMEOUT_MS, DEFAULT_QUOTA_ACQUIRE_TIMEOUT_MS);
     }
 
     /**
@@ -266,7 +281,8 @@ public class RedisquesConfiguration {
                 DEFAULT_REDIS_MAX_PIPELINE_WAIT_SIZE, DEFAULT_QUEUE_SPEED_INTERVAL_SEC, DEFAULT_MEMORY_USAGE_LIMIT_PCT,
                 DEFAULT_MEMORY_USAGE_CHECK_INTERVAL_SEC, DEFAULT_REDIS_RECONNECT_ATTEMPTS, DEFAULT_REDIS_RECONNECT_DELAY_SEC,
                 DEFAULT_REDIS_POOL_RECYCLE_TIMEOUT_MS, DEFAULT_DEQUEUE_STATISTIC_REPORT_INTERVAL_SEC,
-                DEFAULT_REDIS_READY_CHECK_INTERVAL_MS, DEFAULT_EMPTY_QUEUE_LIVE_TIME_MS);
+                DEFAULT_REDIS_READY_CHECK_INTERVAL_MS, DEFAULT_EMPTY_QUEUE_LIVE_TIME_MS, DEFAULT_QUOTA_ACQUIRE_TIMEOUT_MS,
+                DEFAULT_QUOTA_ACQUIRE_TIMEOUT_MS, DEFAULT_QUOTA_ACQUIRE_TIMEOUT_MS, DEFAULT_QUOTA_ACQUIRE_TIMEOUT_MS, DEFAULT_QUOTA_ACQUIRE_TIMEOUT_MS);
     }
 
     private RedisquesConfiguration(String address, String configurationUpdatedAddress, String redisPrefix, String processorAddress,
@@ -284,7 +300,10 @@ public class RedisquesConfiguration {
                                    int maxPoolSize, int maxPoolWaitSize, int maxPipelineWaitSize,
                                    int queueSpeedIntervalSec, int memoryUsageLimitPercent, int memoryUsageCheckIntervalSec,
                                    int redisReconnectAttempts, int redisReconnectDelaySec, int redisPoolRecycleTimeoutMs,
-                                   int dequeueStatisticReportIntervalSec, int redisReadyCheckIntervalMs, int emptyQueueLiveTimeMs) {
+                                   int dequeueStatisticReportIntervalSec, int redisReadyCheckIntervalMs, int emptyQueueLiveTimeMs,
+                                   int redisMonitoringReqQuotaAcquireTimeoutMs, int checkQueueRequestsQuotaAcquireTimeoutMs,
+                                   int queueStatsRequestQuotaAcquireTimeoutMs, int getQueuesItemsCountRedisRequestQuotaAcquireTimeoutMs,
+                                   int activeQueueRegRefreshReqQuotaAcquireTimeoutMs) {
         this.address = address;
         this.configurationUpdatedAddress = configurationUpdatedAddress;
         this.redisPrefix = redisPrefix;
@@ -303,6 +322,12 @@ public class RedisquesConfiguration {
         this.maxPoolSize = maxPoolSize;
         this.maxPoolWaitSize = maxPoolWaitSize;
         this.maxPipelineWaitSize = maxPipelineWaitSize;
+        this.redisMonitoringReqQuotaAcquireTimeoutMs = redisMonitoringReqQuotaAcquireTimeoutMs;
+        this.checkQueueRequestsQuotaAcquireTimeoutMs = checkQueueRequestsQuotaAcquireTimeoutMs;
+        this.queueStatsRequestQuotaAcquireTimeoutMs = queueStatsRequestQuotaAcquireTimeoutMs;
+        this.getQueuesItemsCountRedisRequestQuotaAcquireTimeoutMs = getQueuesItemsCountRedisRequestQuotaAcquireTimeoutMs;
+        this.activeQueueRegRefreshReqQuotaAcquireTimeoutMs = activeQueueRegRefreshReqQuotaAcquireTimeoutMs;
+
         Logger log = LoggerFactory.getLogger(RedisquesConfiguration.class);
 
         String maybeEmptyMicrometerMetricsIdentifier = Strings.nullToEmpty(micrometerMetricsIdentifier).trim();
@@ -431,7 +456,12 @@ public class RedisquesConfiguration {
                 builder.redisPoolRecycleTimeoutMs,
                 builder.dequeueStatisticReportIntervalSec,
                 builder.redisReadyCheckIntervalMs,
-                builder.emptyQueueLiveTimeMs);
+                builder.emptyQueueLiveTimeMs,
+                builder.redisMonitoringReqQuotaAcquireTimeoutMs,
+                builder.checkQueueRequestsQuotaAcquireTimeoutMs,
+                builder.queueStatsRequestQuotaAcquireTimeoutMs,
+                builder.getQueuesItemsCountRedisRequestQuotaAcquireTimeoutMs,
+                builder.activeQueueRegRefreshReqQuotaAcquireTimeoutMs);
     }
 
     public JsonObject asJsonObject() {
@@ -484,6 +514,11 @@ public class RedisquesConfiguration {
         obj.put(PROP_REDIS_READY_CHECK_INTERVAL_MS, getRedisReadyCheckIntervalMs());
         obj.put(PROP_DEQUEUE_STATISTIC_REPORT_INTERVAL_SEC, getDequeueStatisticReportIntervalSec());
         obj.put(PROP_EMPTY_QUEUE_LIVE_TIME_MS, getEmptyQueueLiveTimeMillis());
+        obj.put(PROP_MONITORING_REQUEST_QUOTA_ACQUIRE_TIMEOUT_MS, getRedisMonitoringReqQuotaAcquireTimeoutMs());
+        obj.put(PROP_CHECK_QUEUE_REQUEST_QUOTA_ACQUIRE_TIMEOUT_MS, getCheckQueueRequestsQuotaAcquireTimeoutMs());
+        obj.put(PROP_QUEUE_STATS_REQUEST_QUOTA_ACQUIRE_TIMEOUT_MS, getQueueStatsRequestQuotaAcquireTimeoutMs());
+        obj.put(PROP_QUEUESITEMS_COUNT_REQUEST_QUOTA_ACQUIRE_TIMEOUT_MS, getQueuesItemsCountRedisRequestQuotaAcquireTimeoutMs());
+        obj.put(PROP_ACTIVE_QUEUE_REFRESH_REQUEST_QUOTA_ACQUIRE_TIMEOUT_MS, getActiveQueueRegRefreshReqQuotaAcquireTimeoutMs());
         return obj;
     }
 
@@ -635,6 +670,21 @@ public class RedisquesConfiguration {
         }
         if (json.containsKey(PROP_EMPTY_QUEUE_LIVE_TIME_MS)) {
             builder.emptyQueueLiveTimeMs(json.getInteger(PROP_EMPTY_QUEUE_LIVE_TIME_MS));
+        }
+        if (json.containsKey(PROP_MONITORING_REQUEST_QUOTA_ACQUIRE_TIMEOUT_MS)) {
+            builder.redisMonitoringReqQuotaAcquireTimeoutMs(json.getInteger(PROP_MONITORING_REQUEST_QUOTA_ACQUIRE_TIMEOUT_MS));
+        }
+        if (json.containsKey(PROP_CHECK_QUEUE_REQUEST_QUOTA_ACQUIRE_TIMEOUT_MS)) {
+            builder.checkQueueRequestsQuotaAcquireTimeoutMs(json.getInteger(PROP_CHECK_QUEUE_REQUEST_QUOTA_ACQUIRE_TIMEOUT_MS));
+        }
+        if (json.containsKey(PROP_QUEUE_STATS_REQUEST_QUOTA_ACQUIRE_TIMEOUT_MS)) {
+            builder.queueStatsRequestQuotaAcquireTimeoutMs(json.getInteger(PROP_QUEUE_STATS_REQUEST_QUOTA_ACQUIRE_TIMEOUT_MS));
+        }
+        if (json.containsKey(PROP_QUEUESITEMS_COUNT_REQUEST_QUOTA_ACQUIRE_TIMEOUT_MS)) {
+            builder.queuesItemsCountRedisRequestQuotaAcquireTimeoutMs(json.getInteger(PROP_QUEUESITEMS_COUNT_REQUEST_QUOTA_ACQUIRE_TIMEOUT_MS));
+        }
+        if (json.containsKey(PROP_ACTIVE_QUEUE_REFRESH_REQUEST_QUOTA_ACQUIRE_TIMEOUT_MS)) {
+            builder.activeQueueRegRefreshReqQuotaAcquireTimeoutMs(json.getInteger(PROP_ACTIVE_QUEUE_REFRESH_REQUEST_QUOTA_ACQUIRE_TIMEOUT_MS));
         }
         return builder.build();
     }
@@ -864,6 +914,25 @@ public class RedisquesConfiguration {
         return emptyQueueLiveTimeMs;
     }
 
+    public int getRedisMonitoringReqQuotaAcquireTimeoutMs() {
+        return redisMonitoringReqQuotaAcquireTimeoutMs;
+    }
+
+    public int getCheckQueueRequestsQuotaAcquireTimeoutMs() {
+        return checkQueueRequestsQuotaAcquireTimeoutMs;
+    }
+
+    public int getQueueStatsRequestQuotaAcquireTimeoutMs() {
+        return queueStatsRequestQuotaAcquireTimeoutMs;
+    }
+
+    public int getQueuesItemsCountRedisRequestQuotaAcquireTimeoutMs() {
+        return getQueuesItemsCountRedisRequestQuotaAcquireTimeoutMs;
+    }
+
+    public int getActiveQueueRegRefreshReqQuotaAcquireTimeoutMs() {
+        return activeQueueRegRefreshReqQuotaAcquireTimeoutMs;
+    }
 
     /**
      * RedisquesConfigurationBuilder class for simplified configuration.
@@ -925,6 +994,12 @@ public class RedisquesConfiguration {
         private int emptyQueueLiveTimeMs;
         private boolean micrometerPerQueueMetricsEnabled;
 
+        private int redisMonitoringReqQuotaAcquireTimeoutMs;
+        private int checkQueueRequestsQuotaAcquireTimeoutMs;
+        private int queueStatsRequestQuotaAcquireTimeoutMs;
+        private int getQueuesItemsCountRedisRequestQuotaAcquireTimeoutMs;
+        private int activeQueueRegRefreshReqQuotaAcquireTimeoutMs;
+
         public RedisquesConfigurationBuilder() {
             this.address = "redisques";
             this.configurationUpdatedAddress = "redisques-configuration-updated";
@@ -966,6 +1041,11 @@ public class RedisquesConfiguration {
             this.dequeueStatisticReportIntervalSec = DEFAULT_DEQUEUE_STATISTIC_REPORT_INTERVAL_SEC;
             this.redisReadyCheckIntervalMs = DEFAULT_REDIS_READY_CHECK_INTERVAL_MS;
             this.emptyQueueLiveTimeMs = DEFAULT_EMPTY_QUEUE_LIVE_TIME_MS;
+            this.redisMonitoringReqQuotaAcquireTimeoutMs = DEFAULT_QUOTA_ACQUIRE_TIMEOUT_MS;
+            this.checkQueueRequestsQuotaAcquireTimeoutMs = DEFAULT_QUOTA_ACQUIRE_TIMEOUT_MS;
+            this.queueStatsRequestQuotaAcquireTimeoutMs = DEFAULT_QUOTA_ACQUIRE_TIMEOUT_MS;
+            this.getQueuesItemsCountRedisRequestQuotaAcquireTimeoutMs = DEFAULT_QUOTA_ACQUIRE_TIMEOUT_MS;
+            this.activeQueueRegRefreshReqQuotaAcquireTimeoutMs = DEFAULT_QUOTA_ACQUIRE_TIMEOUT_MS;
         }
 
         public RedisquesConfigurationBuilder address(String address) {
@@ -1206,6 +1286,31 @@ public class RedisquesConfiguration {
 
         public RedisquesConfigurationBuilder emptyQueueLiveTimeMs(int emptyQueueLiveTimeMs) {
             this.emptyQueueLiveTimeMs = emptyQueueLiveTimeMs;
+            return this;
+        }
+
+        public RedisquesConfigurationBuilder redisMonitoringReqQuotaAcquireTimeoutMs(int redisMonitoringReqQuotaAcquireTimeoutMs) {
+            this.redisMonitoringReqQuotaAcquireTimeoutMs = redisMonitoringReqQuotaAcquireTimeoutMs;
+            return this;
+        }
+
+        public RedisquesConfigurationBuilder checkQueueRequestsQuotaAcquireTimeoutMs(int checkQueueRequestsQuotaAcquireTimeoutMs) {
+            this.checkQueueRequestsQuotaAcquireTimeoutMs = checkQueueRequestsQuotaAcquireTimeoutMs;
+            return this;
+        }
+
+        public RedisquesConfigurationBuilder queueStatsRequestQuotaAcquireTimeoutMs(int queueStatsRequestQuotaAcquireTimeoutMs) {
+            this.queueStatsRequestQuotaAcquireTimeoutMs = queueStatsRequestQuotaAcquireTimeoutMs;
+            return this;
+        }
+
+        public RedisquesConfigurationBuilder queuesItemsCountRedisRequestQuotaAcquireTimeoutMs(int getQueuesItemsCountRedisRequestQuotaAcquireTimeoutMs) {
+            this.getQueuesItemsCountRedisRequestQuotaAcquireTimeoutMs = getQueuesItemsCountRedisRequestQuotaAcquireTimeoutMs;
+            return this;
+        }
+
+        public RedisquesConfigurationBuilder activeQueueRegRefreshReqQuotaAcquireTimeoutMs(int activeQueueRegRefreshReqQuotaAcquireTimeoutMs) {
+            this.activeQueueRegRefreshReqQuotaAcquireTimeoutMs = activeQueueRegRefreshReqQuotaAcquireTimeoutMs;
             return this;
         }
 
