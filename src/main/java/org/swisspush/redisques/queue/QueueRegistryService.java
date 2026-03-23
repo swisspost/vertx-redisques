@@ -319,17 +319,16 @@ public class QueueRegistryService {
         }
 
         redisService.batch(requests).onComplete(event -> {
-            if (event.succeeded()) {
+            if (event.failed()) {
+                log.error("batchRefreshRegistration failed with message: {}", event.cause().getMessage());
+                promise.fail(event.cause());
+            } else {
                 for (String queueName : queueNames) {
                     getQueueConsumerRunner().updateLastRefreshRegistrationTimeStamp(queueName);
                 }
-            } else {
-                log.error("batchRefreshRegistration failed with message: {}", event.cause().getMessage());
-                promise.fail(event.cause());
+                promise.complete(event.result());
             }
-            promise.complete(event.result());
         });
-
         return promise.future();
     }
 
