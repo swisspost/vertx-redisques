@@ -40,7 +40,6 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Semaphore;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
@@ -309,10 +308,10 @@ public class QueueRegistryService {
 
         log.debug("RedisQues Refreshing registration of {} queue consumers, expire in {} s",
                 queueNames.size(), consumerLockTime);
-
+        final String consumersPrefix = keyspaceHelper.getConsumersPrefix();
         List<Request> requests = new ArrayList<>(queueNames.size());
         for (String queueName : queueNames) {
-            String consumerKey = keyspaceHelper.getConsumersPrefix() + queueName;
+            String consumerKey = consumersPrefix + queueName;
             requests.add(Request.cmd(Command.EXPIRE)
                     .arg(consumerKey)
                     .arg(String.valueOf(consumerLockTime)));
@@ -324,6 +323,9 @@ public class QueueRegistryService {
                 for (String queueName : queueNames) {
                     getQueueConsumerRunner().updateLastRefreshRegistrationTimeStamp(queueName);
                 }
+            } else {
+                log.error("batchRefreshRegistration failed with message: {}", event.cause().getMessage());
+                promise.fail(event.cause());
             }
             promise.complete(event.result());
         });
@@ -612,7 +614,7 @@ public class QueueRegistryService {
                     Promise<Void> promise = Promise.promise();
                     Iterator<List<String>> iter = processQueue.iterator();
                     // limits on process queue size
-                    upperBoundParallel.request(checkQueueRequestsQuota, iter, new UpperBoundParallel.Mentor<>() {
+                    upperBoundParallel.request(checkQueueRequestsQuota, checkQueueRequestsQuotaAcquireTimeout, iter, new UpperBoundParallel.Mentor<>() {
                         @Override
                         public boolean runOneMore(BiConsumer<Throwable, Void> onDone, Iterator<List<String>> iterator) {
                             if (!iterator.hasNext()) {
