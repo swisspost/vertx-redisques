@@ -12,6 +12,9 @@ import io.vertx.core.json.JsonObject;
 import io.vertx.ext.unit.Async;
 import io.vertx.ext.unit.TestContext;
 import io.vertx.ext.unit.junit.Timeout;
+import io.vertx.redis.client.Command;
+import io.vertx.redis.client.Request;
+import io.vertx.redis.client.Response;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
@@ -38,6 +41,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import static org.swisspush.redisques.exception.RedisQuesExceptionFactory.newWastefulExceptionFactory;
 import static org.swisspush.redisques.util.RedisquesAPI.buildAddQueueItemOperation;
@@ -383,7 +387,248 @@ public class QueueRegistryServiceTest extends AbstractTestCase {
     }
 
     @Test
+    public void testUpdateTimestampsWithOverwriteScore(TestContext context) {
+        Async async = context.async();
+        flushAll();
+        QueueRegistryService queueRegistryService = redisQues.getQueueRegistryService();
+        jedis.zadd(redisQues.getKeyspaceHelper().getQueuesKey(), 1, "queue1-test-updatetimestamps");
+        jedis.zadd(redisQues.getKeyspaceHelper().getQueuesKey(), 1, "queue3-test-updatetimestamps");
+        jedis.zadd(redisQues.getKeyspaceHelper().getQueuesKey(), 1, "queue5-test-updatetimestamps");
+        jedis.zadd(redisQues.getKeyspaceHelper().getQueuesKey(), 1, "queue7-test-updatetimestamps");
+        List<String> queueNames = new ArrayList<>();
+        queueNames.add("queue1-test-updatetimestamps");
+        queueNames.add("queue2-test-updatetimestamps");
+        queueNames.add("queue3-test-updatetimestamps");
+        queueRegistryService.updateTimestampsWithOverwrite(queueNames).onComplete(event -> {
+            if (event.failed()) {
+                context.fail();
+                return;
+            }
+            List<Response> result = event.result();
+            context.assertEquals(queueNames.size(), result.size());
+            context.assertEquals(1, result.get(0).toInteger());
+            context.assertEquals(1, result.get(1).toInteger());
+            context.assertEquals(1, result.get(2).toInteger());
+
+            context.assertTrue(jedis.zscore(redisQues.getKeyspaceHelper().getQueuesKey(), "queue1-test-updatetimestamps") != 1);
+            context.assertTrue(jedis.zscore(redisQues.getKeyspaceHelper().getQueuesKey(), "queue2-test-updatetimestamps") != 1);
+            context.assertTrue(jedis.zscore(redisQues.getKeyspaceHelper().getQueuesKey(), "queue3-test-updatetimestamps") != 1);
+            context.assertNull(jedis.zscore(redisQues.getKeyspaceHelper().getQueuesKey(), "queue4-test-updatetimestamps"));
+            context.assertTrue(jedis.zscore(redisQues.getKeyspaceHelper().getQueuesKey(), "queue5-test-updatetimestamps") == 1);
+            context.assertTrue(jedis.zscore(redisQues.getKeyspaceHelper().getQueuesKey(), "queue7-test-updatetimestamps") == 1);
+            async.complete();
+        });
+    }
+
+    @Test
+    public void testBatchRefreshRegistration(TestContext context) {
+        Async async = context.async();
+        flushAll();
+
+        jedis.set(redisQues.getKeyspaceHelper().getConsumersPrefix() + "queue2-test-batchregistry", "another-value");
+        jedis.set(redisQues.getKeyspaceHelper().getConsumersPrefix() + "queue5-test-batchregistry", "another-value");
+        jedis.set(redisQues.getKeyspaceHelper().getConsumersPrefix() + "queue9-test-batchregistry", "another-value");
+        QueueRegistryService queueRegistryService = redisQues.getQueueRegistryService();
+        List<String> queueNames = new ArrayList<>();
+        queueNames.add("queue1-test-batchregistry");
+        queueNames.add("queue2-test-batchregistry");
+        queueNames.add("queue3-test-batchregistry");
+        queueNames.add("queue4-test-batchregistry");
+        queueNames.add("queue5-test-batchregistry");
+        queueRegistryService.batchRefreshRegistration(queueNames).onComplete(event -> {
+            if (event.failed()) {
+                context.fail();
+                return;
+            }
+            List<Response> result = event.result();
+            context.assertEquals(queueNames.size(), result.size());
+            context.assertEquals(0, result.get(0).toInteger());
+            context.assertEquals(1, result.get(1).toInteger());
+            context.assertEquals(0, result.get(2).toInteger());
+            context.assertEquals(0, result.get(3).toInteger());
+            context.assertEquals(1, result.get(4).toInteger());
+            async.complete();
+        });
+    }
+
+    @Test
+    public void testBatchCheckQueuesSize(TestContext context) {
+        Async async = context.async();
+        flushAll();
+        QueueRegistryService queueRegistryService = redisQues.getQueueRegistryService();
+        List<String> queueNames = new ArrayList<>();
+        queueNames.add("queue1-test-batchsize");
+        queueNames.add("queue2-test-batchsize");
+        queueNames.add("queue0-test-batchsize");
+        queueNames.add("queue3-test-batchsize");
+        queueNames.add("queue4-test-batchsize");
+        queueNames.add("queue5-test-batchsize");
+        eventBusSend(buildAddQueueItemOperation("queue1-test-batchsize", "message_1-1"), e1 -> {
+            eventBusSend(buildAddQueueItemOperation("queue1-test-batchsize", "message_1-2"), e2 -> {
+                eventBusSend(buildAddQueueItemOperation("queue1-test-batchsize", "message_1-3"), e3 -> {
+                    eventBusSend(buildAddQueueItemOperation("queue2-test-batchsize", "message_2-1"), e4 -> {
+                        eventBusSend(buildAddQueueItemOperation("queue2-test-batchsize", "message_2-2"), e5 -> {
+                            eventBusSend(buildAddQueueItemOperation("queue3-test-batchsize", "message_1-2"), e6 -> {
+                                queueRegistryService.batchCheckQueuesSize(queueNames).onComplete(new Handler<AsyncResult<Map<String, Integer>>>() {
+                                    @Override
+                                    public void handle(AsyncResult<Map<String, Integer>> event) {
+                                        if (event.failed()) {
+                                            context.fail();
+                                            return;
+                                        }
+                                        Map<String, Integer> result = event.result();
+                                        context.assertEquals(queueNames.size(), result.size());
+                                        context.assertTrue(result.containsKey("queue1-test-batchsize"));
+                                        context.assertTrue(result.containsKey("queue2-test-batchsize"));
+                                        context.assertTrue(result.containsKey("queue0-test-batchsize"));
+                                        context.assertTrue(result.containsKey("queue3-test-batchsize"));
+                                        context.assertTrue(result.containsKey("queue4-test-batchsize"));
+                                        context.assertTrue(result.containsKey("queue5-test-batchsize"));
+
+                                        context.assertEquals(3, result.get("queue1-test-batchsize"));
+                                        context.assertEquals(2, result.get("queue2-test-batchsize"));
+                                        context.assertEquals(0, result.get("queue0-test-batchsize"));
+                                        context.assertEquals(1, result.get("queue3-test-batchsize"));
+                                        context.assertEquals(0, result.get("queue4-test-batchsize"));
+                                        context.assertEquals(0, result.get("queue5-test-batchsize"));
+                                        async.complete();
+                                    }
+                                });
+                            });
+                        });
+                    });
+                });
+            });
+        });
+    }
+
+    @Test
+    public void testbatchCheckIfImStillTheRegisteredConsumer(TestContext context) {
+        Async async = context.async();
+        flushAll();
+        jedis.set(redisQues.getKeyspaceHelper().getConsumersPrefix() + "queue-1", "consumer_id_1");
+        jedis.set(redisQues.getKeyspaceHelper().getConsumersPrefix() + "queue-2", "consumer_id_1");
+        jedis.set(redisQues.getKeyspaceHelper().getConsumersPrefix() + "queue-3", "consumer_id_1");
+        jedis.set(redisQues.getKeyspaceHelper().getConsumersPrefix() + "queue-4", "consumer_id_2");
+        jedis.set(redisQues.getKeyspaceHelper().getConsumersPrefix() + "queue-5", "consumer_id_3");
+        jedis.set(redisQues.getKeyspaceHelper().getConsumersPrefix() + "queue-6", "");
+        List<String> queuesToCheck = List.of("queue-1", "queue-2", "queue-3", "queue-5", "queue-6", "queue-7", "queue-8");
+
+        QueueRegistryService queueRegistryService = redisQues.getQueueRegistryService();
+        queueRegistryService.batchCheckIfImStillTheRegisteredConsumer(queuesToCheck, "consumer_id_1").onComplete(event -> {
+            if (event.failed()) {
+                context.fail();
+                return;
+            }
+            final List<String> myQueueNames = event.result().entrySet()
+                    .stream()
+                    .filter(e -> Boolean.TRUE.equals(e.getValue()))
+                    .map(Map.Entry::getKey)
+                    .collect(Collectors.toList());
+
+            final List<String> notMyQueueNames = event.result().entrySet()
+                    .stream()
+                    .filter(e -> Boolean.FALSE.equals(e.getValue()))
+                    .map(Map.Entry::getKey)
+                    .collect(Collectors.toList());
+
+            final List<String> notExistQueueNames = event.result().entrySet()
+                    .stream()
+                    .filter(e -> null == e.getValue())
+                    .map(Map.Entry::getKey)
+                    .collect(Collectors.toList());
+            context.assertEquals(3, myQueueNames.size());
+            context.assertTrue(myQueueNames.contains("queue-1"));
+            context.assertTrue(myQueueNames.contains("queue-2"));
+            context.assertTrue(myQueueNames.contains("queue-3"));
+
+            context.assertEquals(2, notMyQueueNames.size());
+            context.assertTrue(notMyQueueNames.contains("queue-5"));
+            context.assertTrue(notMyQueueNames.contains("queue-6"));
+
+            context.assertEquals(2, notExistQueueNames.size());
+            context.assertTrue(notExistQueueNames.contains("queue-7"));
+            context.assertTrue(notExistQueueNames.contains("queue-8"));
+            async.complete();
+
+        });
+    }
+
+    @Test
+    public void testGetAllValidConsumerIds(TestContext context) throws InterruptedException {
+        Async async = context.async();
+        flushAll();
+        final long keyLiveTime = 3000;
+        Thread.sleep(2000);
+        jedis.zadd(redisQues.getKeyspaceHelper().getAliveConsumersKey(), System.currentTimeMillis() - 1000, "another-fake-id1");
+        jedis.zadd(redisQues.getKeyspaceHelper().getAliveConsumersKey(), System.currentTimeMillis() - 500, "another-fake-id2");
+        jedis.zadd(redisQues.getKeyspaceHelper().getAliveConsumersKey(), System.currentTimeMillis() - 1500, "another-fake-id3");
+        jedis.zadd(redisQues.getKeyspaceHelper().getAliveConsumersKey(), 0, "another-fake-id4");
+        jedis.zadd(redisQues.getKeyspaceHelper().getAliveConsumersKey(), 3500, "another-fake-id5");
+
+        QueueRegistryService queueRegistryService = redisQues.getQueueRegistryService();
+        queueRegistryService.getAllValidConsumerIds(keyLiveTime).onComplete(event -> {
+            if (event.failed()) {
+                context.fail();
+                return;
+            }
+            List<String> result = event.result();
+            context.assertEquals(4, result.size());
+            context.assertTrue(result.contains("another-fake-id1"));
+            context.assertTrue(result.contains("another-fake-id2"));
+            context.assertTrue(result.contains("another-fake-id3"));
+            // my self also need shows up after delays
+            context.assertTrue(result.contains(redisQues.getUid()));
+            try {
+                Thread.sleep(2000);
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+            queueRegistryService.getAllValidConsumerIds(keyLiveTime).onComplete(event1 -> {
+                if (event1.failed()) {
+                    context.fail();
+                    return;
+                }
+                List<String> result1 = event1.result();
+                context.assertEquals(2, result1.size());
+                context.assertTrue(result1.contains("another-fake-id2"));
+                // my self also need shows up after delays
+                context.assertTrue(result1.contains(redisQues.getUid()));
+                async.complete();
+            });
+        });
+    }
+
+    @Test
+    public void testUpdateConsumerIdAndRemoveExpired(TestContext context) throws InterruptedException {
+        Async async = context.async();
+        final long keyLiveTime = 2000;
+        flushAll();
+        Thread.sleep(2000);
+        jedis.zadd(redisQues.getKeyspaceHelper().getAliveConsumersKey(), System.currentTimeMillis() - 5000, "another-fake-id2");
+        QueueRegistryService queueRegistryService = redisQues.getQueueRegistryService();
+        queueRegistryService.updateConsumerIdAndRemoveExpired("another-fake-id1", keyLiveTime).onComplete(event -> {
+            if (event.failed()) {
+                context.fail();
+                return;
+            }
+            queueRegistryService.getAllValidConsumerIds(keyLiveTime).onComplete(event1 -> {
+                if (event1.failed()) {
+                    context.fail();
+                    return;
+                }
+                List<String> result1 = event1.result();
+                context.assertEquals(2, result1.size());
+                context.assertTrue(result1.contains("another-fake-id1"));
+                // my self also need shows up after delays
+                context.assertTrue(result1.contains(redisQues.getUid()));
+                async.complete();
+            });
+        });
+    }
+
     @Ignore // Can run at local only
+    @Test
     public void testAliveConsumerListUpdate(TestContext context) {
         final String fakeConsumerId = UUID.randomUUID().toString();
         flushAll();
@@ -392,8 +637,8 @@ public class QueueRegistryServiceTest extends AbstractTestCase {
         Assert.assertEquals(2, queueRegistryService.aliveConsumers.size());
         waitMillis(5000);
         Assert.assertEquals(1, queueRegistryService.aliveConsumers.size());
-        jedis.set(redisQues.getKeyspaceHelper().getAliveConsumersPrefix() + "another-fake-id1", "another-fake-id1", new SetParams().px(2000));
-        jedis.set(redisQues.getKeyspaceHelper().getAliveConsumersPrefix() + "another-fake-id2", "another-fake-id2", new SetParams().px(4000));
+        jedis.zadd(redisQues.getKeyspaceHelper().getAliveConsumersKey(), System.currentTimeMillis() - 2000, "another-fake-id1");
+        jedis.zadd(redisQues.getKeyspaceHelper().getAliveConsumersKey(), System.currentTimeMillis() - 1000, "another-fake-id2");
         waitMillis(800);
         Assert.assertEquals(1, queueRegistryService.aliveConsumers.size());
         waitMillis(1500);

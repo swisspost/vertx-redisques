@@ -506,6 +506,19 @@ public class RedisService {
         );
     }
 
+    public Future<Response> mget(List<String> keys) {
+        if (keys.size() > MAX_COMMANDS_IN_BATCH) {
+            throw new IllegalArgumentException("mget exceeds max keys in batch");
+        }
+        Request req = Request.cmd(Command.MGET);
+        for (String key : keys) {
+            req.arg(key);
+        }
+        return redisProvider.redisConnection().compose((RedisConnection connection) ->
+                connection.send(req)
+        );
+    }
+
     /**
      * execute a list of command in pipeline
      * @param batchCmd redis commands will execute

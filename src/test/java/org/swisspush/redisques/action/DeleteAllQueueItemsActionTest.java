@@ -26,13 +26,14 @@ import static org.swisspush.redisques.util.RedisquesAPI.buildDeleteAllQueueItems
 @RunWith(VertxUnitRunner.class)
 public class DeleteAllQueueItemsActionTest extends AbstractQueueActionTest {
     private QueueConfigurationProvider queueConfigurationProvider = Mockito.mock(QueueConfigurationProvider.class);
+    private QueueStatisticsCollector queueStatisticsCollector = Mockito.mock(QueueStatisticsCollector.class);
 
     @Before
     @Override
     public void setup() {
         super.setup();
         action = new DeleteAllQueueItemsAction(vertx, redisService, keyspaceHelper,
-                queueConfigurationProvider, getConfigurationProvider(), exceptionFactory, Mockito.mock(QueueStatisticsCollector.class), Mockito.mock(Logger.class));
+                queueConfigurationProvider, getConfigurationProvider(), exceptionFactory, queueStatisticsCollector, Mockito.mock(Logger.class));
     }
 
     @Test
@@ -40,6 +41,7 @@ public class DeleteAllQueueItemsActionTest extends AbstractQueueActionTest {
         when(message.body()).thenReturn(buildDeleteAllQueueItemsOperation("q1"));
 
         when(redisAPI.del(anyList())).thenReturn(Future.succeededFuture(SimpleStringType.create("1")));
+        when(queueStatisticsCollector.resetQueueFailureStatistics(anyString())).thenReturn(Future.succeededFuture());
 
         action.execute(message);
 
@@ -54,6 +56,7 @@ public class DeleteAllQueueItemsActionTest extends AbstractQueueActionTest {
 
         when(redisAPI.del(anyList())).thenReturn(Future.succeededFuture(SimpleStringType.create("1")));
         when(redisAPI.hdel(anyList())).thenReturn(Future.succeededFuture(SimpleStringType.create("1")));
+        when(queueStatisticsCollector.resetQueueFailureStatistics(anyString())).thenReturn(Future.succeededFuture());
 
         action.execute(message);
 
@@ -91,6 +94,7 @@ public class DeleteAllQueueItemsActionTest extends AbstractQueueActionTest {
 
         when(redisAPI.del(anyList())).thenReturn(Future.succeededFuture(SimpleStringType.create("1")));
         when(redisAPI.hdel(anyList())).thenReturn(Future.failedFuture("boooom"));
+        when(queueStatisticsCollector.resetQueueFailureStatistics(anyString())).thenReturn(Future.succeededFuture());
 
         action.execute(message);
 
