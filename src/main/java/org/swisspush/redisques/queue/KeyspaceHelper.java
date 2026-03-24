@@ -16,7 +16,7 @@ public class KeyspaceHelper {
     private final String verticleNotifyConsumerKey;
     private final String trimRequestKey;
     private final String consumersAddress;
-    private final String aliveConsumersPrefix;
+    private final String aliveConsumersKey;
     private final String metricsCollectorAddress;
     public static final String QUEUE_STATE_COUNT_KEY = "queueStateCount";
 
@@ -33,7 +33,7 @@ public class KeyspaceHelper {
         verticleNotifyConsumerKey = "notifyConsumer:" + verticleUid;
         trimRequestKey = "trim_request:" + verticleUid;
         consumersAddress = configuration.getAddress() + "-consumers";
-        aliveConsumersPrefix= configuration.getRedisPrefix() + "aliveConsumer:";
+        aliveConsumersKey= configuration.getRedisPrefix() + "-aliveConsumer";
         metricsCollectorAddress = configuration.getAddress()  + "-" + verticleUid + "-" + QUEUE_STATE_COUNT_KEY;
     }
 
@@ -85,8 +85,8 @@ public class KeyspaceHelper {
         return consumersAddress;
     }
 
-    public String getAliveConsumersPrefix() {
-        return aliveConsumersPrefix;
+    public String getAliveConsumersKey() {
+        return aliveConsumersKey;
     }
 
     public  String getMetricsCollectorAddress() {
