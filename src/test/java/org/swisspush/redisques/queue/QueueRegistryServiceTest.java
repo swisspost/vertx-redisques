@@ -502,7 +502,80 @@ public class QueueRegistryServiceTest extends AbstractTestCase {
     }
 
     @Test
+    public void testGetAllValidConsumerIds(TestContext context) throws InterruptedException {
+        Async async = context.async();
+        flushAll();
+        final long keyLiveTime = 3000;
+        Thread.sleep(2000);
+        jedis.zadd(redisQues.getKeyspaceHelper().getAliveConsumersKey(), System.currentTimeMillis() - 1000, "another-fake-id1");
+        jedis.zadd(redisQues.getKeyspaceHelper().getAliveConsumersKey(), System.currentTimeMillis() - 500, "another-fake-id2");
+        jedis.zadd(redisQues.getKeyspaceHelper().getAliveConsumersKey(), System.currentTimeMillis() - 1500, "another-fake-id3");
+        jedis.zadd(redisQues.getKeyspaceHelper().getAliveConsumersKey(), 0, "another-fake-id4");
+        jedis.zadd(redisQues.getKeyspaceHelper().getAliveConsumersKey(), 3500, "another-fake-id5");
+
+        QueueRegistryService queueRegistryService = redisQues.getQueueRegistryService();
+        queueRegistryService.getAllValidConsumerIds(keyLiveTime).onComplete(event -> {
+            if (event.failed()) {
+                context.fail();
+                return;
+            }
+            List<String> result = event.result();
+            context.assertEquals(4, result.size());
+            context.assertTrue(result.contains("another-fake-id1"));
+            context.assertTrue(result.contains("another-fake-id2"));
+            context.assertTrue(result.contains("another-fake-id3"));
+            // my self also need shows up after delays
+            context.assertTrue(result.contains(redisQues.getUid()));
+            try {
+                Thread.sleep(2000);
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+            queueRegistryService.getAllValidConsumerIds(keyLiveTime).onComplete(event1 -> {
+                if (event1.failed()) {
+                    context.fail();
+                    return;
+                }
+                List<String> result1 = event1.result();
+                context.assertEquals(2, result1.size());
+                context.assertTrue(result1.contains("another-fake-id2"));
+                // my self also need shows up after delays
+                context.assertTrue(result1.contains(redisQues.getUid()));
+                async.complete();
+            });
+        });
+    }
+
+    @Test
+    public void testUpdateConsumerIdAndRemoveExpired(TestContext context) throws InterruptedException {
+        Async async = context.async();
+        final long keyLiveTime = 2000;
+        flushAll();
+        Thread.sleep(2000);
+        jedis.zadd(redisQues.getKeyspaceHelper().getAliveConsumersKey(), System.currentTimeMillis() - 5000, "another-fake-id2");
+        QueueRegistryService queueRegistryService = redisQues.getQueueRegistryService();
+        queueRegistryService.updateConsumerIdAndRemoveExpired("another-fake-id1", keyLiveTime).onComplete(event -> {
+            if (event.failed()) {
+                context.fail();
+                return;
+            }
+            queueRegistryService.getAllValidConsumerIds(keyLiveTime).onComplete(event1 -> {
+                if (event1.failed()) {
+                    context.fail();
+                    return;
+                }
+                List<String> result1 = event1.result();
+                context.assertEquals(2, result1.size());
+                context.assertTrue(result1.contains("another-fake-id1"));
+                // my self also need shows up after delays
+                context.assertTrue(result1.contains(redisQues.getUid()));
+                async.complete();
+            });
+        });
+    }
+
     @Ignore // Can run at local only
+    @Test
     public void testAliveConsumerListUpdate(TestContext context) {
         final String fakeConsumerId = UUID.randomUUID().toString();
         flushAll();
@@ -511,8 +584,8 @@ public class QueueRegistryServiceTest extends AbstractTestCase {
         Assert.assertEquals(2, queueRegistryService.aliveConsumers.size());
         waitMillis(5000);
         Assert.assertEquals(1, queueRegistryService.aliveConsumers.size());
-        jedis.set(redisQues.getKeyspaceHelper().getAliveConsumersPrefix() + "another-fake-id1", "another-fake-id1", new SetParams().px(2000));
-        jedis.set(redisQues.getKeyspaceHelper().getAliveConsumersPrefix() + "another-fake-id2", "another-fake-id2", new SetParams().px(4000));
+        jedis.zadd(redisQues.getKeyspaceHelper().getAliveConsumersKey(), System.currentTimeMillis() - 2000, "another-fake-id1");
+        jedis.zadd(redisQues.getKeyspaceHelper().getAliveConsumersKey(), System.currentTimeMillis() - 1000, "another-fake-id2");
         waitMillis(800);
         Assert.assertEquals(1, queueRegistryService.aliveConsumers.size());
         waitMillis(1500);
