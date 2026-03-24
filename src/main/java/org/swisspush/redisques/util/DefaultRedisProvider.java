@@ -3,6 +3,7 @@ package org.swisspush.redisques.util;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
+import io.vertx.core.net.NetClientOptions;
 import io.vertx.redis.client.Redis;
 import io.vertx.redis.client.RedisAPI;
 import io.vertx.redis.client.RedisClientType;
@@ -104,6 +105,8 @@ public class DefaultRedisProvider implements RedisProvider {
         int redisMaxPipelineWaitingSize = config.getMaxPipelineWaitSize();
         int redisPoolRecycleTimeoutMs = config.getRedisPoolRecycleTimeoutMs();
 
+        boolean redisConnectionTcpKeepAlive = config.getTcpKeepAlive();
+
         Promise<RedisAPI> promise = Promise.promise();
 
         // make sure to invalidate old connection if present
@@ -120,11 +123,15 @@ public class DefaultRedisProvider implements RedisProvider {
                     .setMaxWaitingHandlers(redisMaxPipelineWaitingSize)
                     .setType(config.getRedisClientType());
 
+            NetClientOptions netClientOptions = redisOptions.getNetClientOptions();
+            netClientOptions.setTcpKeepAlive(redisConnectionTcpKeepAlive);
+
             if (config.getRedisEnableTls()) {
-                redisOptions.setNetClientOptions(redisOptions.getNetClientOptions()
-                        .setSsl(true)
-                        .setHostnameVerificationAlgorithm("HTTPS"));
+                netClientOptions.setSsl(true)
+                        .setHostnameVerificationAlgorithm("HTTPS");
             }
+
+            redisOptions.setNetClientOptions(netClientOptions);
 
             createConnectStrings().forEach(redisOptions::addConnectionString);
 
