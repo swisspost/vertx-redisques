@@ -152,7 +152,8 @@ public class QueueStatisticsCollector {
      *
      * @param queueName The queue name for which the statistic values must be reset.
      */
-    public void resetQueueFailureStatistics(String queueName, BiConsumer<Throwable, Void> onDone) {
+    public Future<Void> resetQueueFailureStatistics(String queueName) {
+        Promise<Void> promise = Promise.promise();
         try {
             AtomicLong failureCount = queueFailureCount.remove(queueName);
             queueSlowDownTime.remove(queueName);
@@ -161,13 +162,20 @@ public class QueueStatisticsCollector {
                 // there was a real failure before, therefore we will execute this
                 // cleanup as well on Redis itself as we would like to do redis operations
                 // only if necessary of course.
-                updateStatisticsInRedis(queueName, onDone);
+                updateStatisticsInRedis(queueName).onComplete(event -> {
+                    if (event.failed()) {
+                        promise.fail(event.cause());
+                    }else {
+                        promise.complete();
+                    }
+                });
             } else {
-                vertx.runOnContext(nonsense -> onDone.accept(null, null));
+                vertx.runOnContext(nonsense -> promise.complete());
             }
         } catch (Exception ex) {
-            onDone.accept(ex, null);
+            promise.fail(ex);
         }
+        return promise.future();
     }
 
     /**
@@ -189,13 +197,18 @@ public class QueueStatisticsCollector {
             @Override
             public boolean runOneMore(BiConsumer<Throwable, Void> onDone, Void ctx) {
                 String queueName = queues.getString(i++);
-                resetQueueFailureStatistics(queueName, onDone);
+                resetQueueFailureStatistics(queueName).onComplete(event -> {
+                    if (event.failed()) {
+                        onDone.accept(event.cause(), null);
+                    } else {
+                        onDone.accept(null, null);
+                    }
+                });
                 return i >= size;
             }
 
             @Override
             public boolean onError(Throwable ex, Void ctx) {
-                onDone.accept(ex, null);
                 return false;
             }
 
@@ -219,7 +232,13 @@ public class QueueStatisticsCollector {
             messageCtr.incrementAndGet();
         }
         // whenever there is a message successfully sent, our failure statistics could be reset as well
-        resetQueueFailureStatistics(queueName, onDone);
+        resetQueueFailureStatistics(queueName).onComplete(event -> {
+            if (event.failed()) {
+                onDone.accept(event.cause(), null);
+            } else {
+                onDone.accept(null, null);
+            }
+        });
     }
 
     /**
@@ -256,8 +275,10 @@ public class QueueStatisticsCollector {
         if (failureCount != null) {
             newFailureCount = failureCount.addAndGet(1);
         }
-        updateStatisticsInRedis(queueName, (ex, nothing) -> {
-            if (ex != null) log.warn("TODO error handling", ex);
+        updateStatisticsInRedis(queueName).onComplete(event -> {
+            if (event.failed()) {
+                log.warn("failed to update statistics", event.cause());
+            }
         });
         return newFailureCount;
     }
@@ -291,14 +312,18 @@ public class QueueStatisticsCollector {
     public void setQueueBackPressureTime(String queueName, long time) {
         if (time > 0) {
             queueBackpressureTime.put(queueName, time);
-            updateStatisticsInRedis(queueName, (ex, v) -> {
-                if (ex != null) log.warn("TODO error handling (findme_q39h8ugjoh)", ex);
+            updateStatisticsInRedis(queueName).onComplete(event -> {
+                if (event.failed()) {
+                    log.warn("failed to update statistics", event.cause());
+                }
             });
         } else {
             Long lastTime = queueBackpressureTime.remove(queueName);
             if (lastTime != null) {
-                updateStatisticsInRedis(queueName, (ex, v) -> {
-                    if (ex != null) log.warn("TODO error handling (findme_39587zg)", ex);
+                updateStatisticsInRedis(queueName).onComplete(event -> {
+                    if (event.failed()) {
+                        log.warn("failed to update statistics", event.cause());
+                    }
                 });
             }
         }
@@ -326,16 +351,21 @@ public class QueueStatisticsCollector {
      * @param time      The slowdown time in ms
      */
     public void setQueueSlowDownTime(String queueName, long time) {
-        BiConsumer<Throwable, Void> onDone = (ex, v) -> {
-            if (ex != null) log.warn("TODO_q9587hg3otuhj error handling", ex);
-        };
         if (time > 0) {
             queueSlowDownTime.put(queueName, time);
-            updateStatisticsInRedis(queueName, onDone);
+                updateStatisticsInRedis(queueName).onComplete(event -> {
+                    if (event.failed()) {
+                        log.warn("failed to update statistics", event.cause());
+                    }
+                });
         } else {
             Long lastTime = queueSlowDownTime.remove(queueName);
             if (lastTime != null) {
-                updateStatisticsInRedis(queueName, onDone);
+                updateStatisticsInRedis(queueName).onComplete(event -> {
+                    if (event.failed()) {
+                        log.warn("failed to update statistics", event.cause());
+                    }
+                });
             }
         }
     }
@@ -360,7 +390,8 @@ public class QueueStatisticsCollector {
      * If there are no valid useful data available eg. all 0, the corresponding
      * statistics entry is removed from redis
      */
-    private void updateStatisticsInRedis(String queueName, BiConsumer<Throwable, Void> onDone) {
+    private Future<Void> updateStatisticsInRedis(String queueName) {
+        Promise<Void> promise = Promise.promise();
         try {
             long failures = getQueueFailureCount(queueName);
             long slowDownTime = getQueueSlowDownTime(queueName);
@@ -372,21 +403,27 @@ public class QueueStatisticsCollector {
                 obj.put(QUEUE_SLOWDOWNTIME, slowDownTime);
                 obj.put(QUEUE_BACKPRESSURE, backpressureTime);
                 redisService.hset(STATSKEY, queueName, obj.toString())
-                        .onComplete(event ->
-                                onDone.accept(event.failed() ? exceptionFactory.newException("redisAPI.hset() failed", event.cause()) : null, null))
-                        .onFailure(ex ->
-                                onDone.accept(exceptionFactory.newException("redisProvider.redis() failed", ex), null));
-
+                        .onComplete(event -> {
+                            if (event.failed()) {
+                                promise.fail(exceptionFactory.newException("redisProvider.redis() failed", event.cause()));
+                            } else {
+                                promise.complete();
+                            }
+                        });
             } else {
                 redisService.hdel(STATSKEY, queueName)
-                        .onComplete(ev ->
-                                onDone.accept(ev.failed() ? exceptionFactory.newException("redisAPI.hdel() failed", ev.cause()) : null, null))
-                        .onFailure(ex ->
-                                onDone.accept(exceptionFactory.newException("redisProvider.redis() failed", ex), null));
+                        .onComplete(event -> {
+                            if (event.failed()) {
+                                promise.fail(exceptionFactory.newException("redisProvider.hdel() failed", event.cause()));
+                            } else {
+                                promise.complete();
+                            }
+                        });
             }
         } catch (RuntimeException ex) {
-            onDone.accept(ex, null);
+            promise.fail(ex);
         }
+        return promise.future();
     }
 
     /**

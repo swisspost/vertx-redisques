@@ -65,7 +65,6 @@ public class QueueRegistryService {
     private final Semaphore activeQueueRegRefreshReqQuota;
     private final int emptyQueueLiveTimeMillis;
     private final QueueStatsService queueStatsService;
-    private final QueueConfigurationProvider queueConfigurationProvider;
     private Handler<Void> stoppedHandler = null;
     private PeriodicSkipScheduler periodicSkipScheduler;
     protected Set<String> aliveConsumers = ConcurrentHashMap.newKeySet();
@@ -91,8 +90,6 @@ public class QueueRegistryService {
         this.queueStatisticsCollector = queueStatisticsCollector;
         this.checkQueueRequestsQuota = checkQueueRequestsQuota;
         this.activeQueueRegRefreshReqQuota = activeQueueRegRefreshReqQuota;
-        this.queueConfigurationProvider = queueConfigurationProvider;
-        String address = getConfiguration().getAddress();
 
         // Handles registration requests
         consumersMessageConsumer = vertx.eventBus().consumer(keyspaceHelper.getConsumersAddress(), this::handleRegistrationRequest);
@@ -350,94 +347,168 @@ public class QueueRegistryService {
                         ));
     }
 
+    /**
+     * split a Map into a list of map chunk, depends on chunk size
+     * @param map source
+     * @param chunkSize
+     * @return a linked list
+     */
+    <K, V> List<Map<K, V>> splitMap(Map<K, V> map, int chunkSize) {
+        final List<Map<K, V>> result = new ArrayList<>();
+        Map<K, V> current = new LinkedHashMap<>();
+        int itemCount = 0;
+        for (Map.Entry<K, V> entry : map.entrySet()) {
+            current.put(entry.getKey(), entry.getValue());
+            itemCount++;
+
+            if (itemCount >= chunkSize) {
+                result.add(current);
+                current = new LinkedHashMap<>();
+                itemCount = 0;
+            }
+        }
+        if (!current.isEmpty()) {
+            result.add(current);
+        }
+        return result;
+    }
+
     private void registerActiveQueueRegistrationRefresh() {
         // Periodic refresh of my registrations on active queues.
         final long periodMs = getConfiguration().getRefreshPeriod() * 1000L;
         final int activeQueueRegRefreshReqQuotaTimeout = getConfiguration().getActiveQueueRegRefreshReqQuotaAcquireTimeoutMs();
         periodicSkipScheduler.setPeriodic(periodMs, "registerActiveQueueRegistrationRefresh", new Consumer<Runnable>() {
-            Iterator<Map.Entry<String, QueueProcessingState>> iter;
+            Iterator<Map<String, QueueProcessingState>> iter;
 
             @Override
             public void accept(Runnable onPeriodicDone) {
+
                 // Need a copy to prevent concurrent modification issuses.
-                iter = getSortedMyQueueClone(queueConsumerRunner.getMyQueues()).entrySet().iterator();
+                List<Map<String, QueueProcessingState>> myQueueSplitClone = splitMap(getSortedMyQueueClone(queueConsumerRunner.getMyQueues()), RedisService.MAX_COMMANDS_IN_BATCH);
+                iter = myQueueSplitClone.iterator();
                 // Trigger only a limited amount of requests in parallel.
                 upperBoundParallel.request(activeQueueRegRefreshReqQuota, activeQueueRegRefreshReqQuotaTimeout, iter, new UpperBoundParallel.Mentor<>() {
                     @Override
-                    public boolean runOneMore(BiConsumer<Throwable, Void> onQueueDone, Iterator<Map.Entry<String, QueueProcessingState>> iter) {
-                        refreshConsumerRegistration(onQueueDone);
+                    public boolean runOneMore(BiConsumer<Throwable, Void> onQueueDone, Iterator<Map<String, QueueProcessingState>> iter) {
+                        batchRefreshConsumerRegistration(onQueueDone);
                         return iter.hasNext();
                     }
 
                     @Override
-                    public boolean onError(Throwable ex, Iterator<Map.Entry<String, QueueProcessingState>> iter) {
-                        if (log.isWarnEnabled()) log.warn("TODO error handling", exceptionFactory.newException(ex));
-                        onPeriodicDone.run();
+                    public boolean onError(Throwable ex, Iterator<Map<String, QueueProcessingState>> iter) {
+                        if (log.isWarnEnabled()) {
+                            log.warn("TODO error handling", exceptionFactory.newException(ex));
+                        }
                         // just continue to refresh next one
                         return true;
                     }
 
                     @Override
-                    public void onDone(Iterator<Map.Entry<String, QueueProcessingState>> iter) {
+                    public void onDone(Iterator<Map<String, QueueProcessingState>> iter) {
                         onPeriodicDone.run();
                     }
                 });
             }
 
-            void refreshConsumerRegistration(BiConsumer<Throwable, Void> onQueueDone) {
-                while (iter.hasNext()) {
-                    var entry = iter.next();
-                    var state = entry.getValue().getState();
-                    if (state != QueueState.CONSUMING) {
-                        log.trace("nothing to be done for this entry because state is: {}", state);
-                        continue;
+            void batchRefreshConsumerRegistration(BiConsumer<Throwable, Void> onQueueDone) {
+                if (iter.hasNext()) {
+                    Map<String, QueueProcessingState> mapPerSet = iter.next();
+                    List<String> queueNames = new ArrayList<>(RedisService.MAX_COMMANDS_IN_BATCH);
+                    for (Map.Entry<String, QueueProcessingState> entry : mapPerSet.entrySet()) {
+                        QueueProcessingState state = entry.getValue();
+                        if (state.getState() != QueueState.CONSUMING) {
+                            log.trace("nothing to be done for this entry because state is: {}", state);
+                            continue;
+                        }
+                        queueNames.add(entry.getKey());
                     }
-                    /* MUST only trigger *ONE* entry, with that call, we do exactly this. We
-                     * also delegate the `onDone()` callback to our callee, so we also are NOT
-                     * responsible to call that anymore ourself, therefore we're ready to return. */
-                    checkIfImStillTheRegisteredConsumer(entry.getKey(), onQueueDone);
-                    return;
-                }
-                /* did NOT trigger any entry above. So we MUST signal the completion ourself. */
-                onQueueDone.accept(null, null);
-            }
-
-            void checkIfImStillTheRegisteredConsumer(String queue, BiConsumer<Throwable, Void> onDone) {
-                // Check if I am still the registered consumer
-                String consumerKey = keyspaceHelper.getConsumersPrefix() + queue;
-                log.trace("RedisQues refresh queues get: {}", consumerKey);
-                redisService.get(consumerKey).onComplete(getConsumerEvent -> {
-                    if (getConsumerEvent.failed()) {
-                        Throwable ex = exceptionFactory.newException(
-                                "Failed to get queue consumer for queue '" + queue + "'", getConsumerEvent.cause());
-                        assert ex != null;
-                        onDone.accept(ex, null);
+                    if (queueNames.isEmpty()) {
+                        log.trace("nothing to be done for this entry");
+                        onQueueDone.accept(null, null);
                         return;
                     }
-                    final String consumer = Objects.toString(getConsumerEvent.result(), "");
-                    if (keyspaceHelper.getVerticleUid().equals(consumer)) {
-                        log.debug("RedisQues Periodic consumer refresh for active queue {}", queue);
-                        refreshRegistration(queue, ev -> {
-                            if (ev.failed()) {
-                                onDone.accept(exceptionFactory.newException("TODO error handling", ev.cause()), null);
-                                return;
-                            }
-                            metrics.perQueueMetricsRefresh(queue);
-                            updateTimestamp(queue).onComplete(ev3 -> {
-                                Throwable ex = ev3.succeeded() ? null : exceptionFactory.newException(
-                                        "updateTimestamp(" + queue + ") failed", ev3.cause());
-                                onDone.accept(ex, null);
+                    batchCheckIfImStillTheRegisteredConsumer(queueNames, keyspaceHelper.getVerticleUid()).onComplete(event -> {
+                        if (event.failed()) {
+                            log.error("Failed to get queue consumer for queues", event.cause());
+                            onQueueDone.accept(event.cause(), null);
+                        }else {
+                            log.debug("RedisQues Periodic consumer refresh for active queues");
+                            final List<String> myQueueNames = event.result().entrySet()
+                                    .stream()
+                                    .filter(e -> Boolean.TRUE.equals(e.getValue()))
+                                    .map(Map.Entry::getKey)
+                                    .collect(Collectors.toList());
+
+                            final List<String> notMyQueueNames = event.result().entrySet()
+                                    .stream()
+                                    .filter(e -> Boolean.FALSE.equals(e.getValue()))
+                                    .map(Map.Entry::getKey)
+                                    .collect(Collectors.toList());
+
+                            batchRefreshRegistration(myQueueNames).onComplete(event1 -> {
+                                if (event1.failed()) {
+                                    log.warn("failed to batch update queues registration", event1.cause());
+                                    onQueueDone.accept(event1.cause(), null);
+                                    return;
+                                }
+
+                                int refreshRegistrationErrorCounter = countErrorsAndNulls(event1.result());
+                                if (refreshRegistrationErrorCounter > 0) {
+                                    log.warn("() queue failed to update queues registration", event1.cause());
+                                }
+                                updateTimestampsWithOverwrite(myQueueNames).onComplete(event2 -> {
+                                    if (event2.failed()) {
+                                        log.warn("failed to batch update queues timestamp", event2.cause());
+                                        onQueueDone.accept(event2.cause(), null);
+                                        return;
+                                    }
+                                    if (notMyQueueNames.isEmpty()) {
+                                        onQueueDone.accept(null, null);
+                                    } else {
+                                        List<Future<?>> futures = new ArrayList<>(notMyQueueNames.size());
+                                        notMyQueueNames.forEach(queue -> {
+                                            log.debug("RedisQues Removing queue {} from the list", queue);
+                                            queueConsumerRunner.getMyQueues().remove(queue);
+                                            // This queue is not owned by this instance; removing it from the local dequeue statistics cache.
+                                            queueStatsService.dequeueStatisticRemoveFromLocal(queue);
+                                            futures.add(queueStatisticsCollector.resetQueueFailureStatistics(queue));
+                                        });
+                                        Future.all(futures).onComplete(event3 -> {
+                                            if (event3.failed()) {
+                                                log.warn("failed to remove queue stats not owen by this consumer", event3.cause());
+                                            }
+                                            onQueueDone.accept(null, null);
+                                        });
+                                    }
+                                });
                             });
-                        });
-                    } else {
-                        log.debug("RedisQues Removing queue {} from the list", queue);
-                        queueConsumerRunner.getMyQueues().remove(queue);
-                        // This queue is not owned by this instance; removing it from the local dequeue statistics cache.
-                        queueStatsService.dequeueStatisticRemoveFromLocal(queue);
-                        queueStatisticsCollector.resetQueueFailureStatistics(queue, onDone);
-                    }
-                });
+                        }
+                    });
+                }
             }
+        });
+    }
+
+    /**
+     * check do give queue's consumer match given one.
+     * @param queueNames queue names need to check
+     * @param consumerId consumer id will match
+     * @return a Future continues a map, Key is queue name, Value ture if matches, false not match, NULL queue not exist.
+     */
+    Future<Map<String, Boolean>> batchCheckIfImStillTheRegisteredConsumer(List<String> queueNames, String consumerId) {
+        List<String> queueConsumersKeys = queueNames.stream()
+                .map(queue -> keyspaceHelper.getConsumersPrefix() + queue)
+                .collect(Collectors.toList());
+
+        return redisService.mget(queueConsumersKeys).compose(response -> {
+            Map<String, Boolean> responses = new HashMap<>();
+
+            for (int i = 0; i < queueConsumersKeys.size(); i++) {
+                Response res = response.get(i);
+                // Check if I am still the registered consumer
+                responses.put(queueNames.get(i), res == null ? null : consumerId.equals(res.toString()));
+            }
+            return Future.succeededFuture(responses);
         });
     }
 
@@ -656,14 +727,14 @@ public class QueueRegistryService {
                                         }
                                         batchRefreshRegistration(nonEmptyQueue).onComplete(event2 -> {
                                             if (event2.failed()) {
-                                                log.warn("failed to batch update queues registration", event.cause());
-                                                onDone.accept(event.cause(), null);
+                                                log.warn("failed to batch update queues registration", event2.cause());
+                                                onDone.accept(event2.cause(), null);
                                                 return;
                                             }
 
-                                            int refreshRegistrationErrorCounter = countErrorsAndNulls(event.result());
+                                            int refreshRegistrationErrorCounter = countErrorsAndNulls(event2.result());
                                             if (refreshRegistrationErrorCounter > 0) {
-                                                log.warn("() queue failed to update queues registration", event.cause());
+                                                log.warn("() queue failed to update queues registration", event2.cause());
                                             }
                                             List<Future<?>> notifyConsumerFutures = new ArrayList<>();
                                             nonEmptyQueue.forEach(queueName -> {
@@ -677,7 +748,7 @@ public class QueueRegistryService {
                                             // reset queues for not exits or empty queue
                                             emptyQueue.forEach(queueName -> {
                                                 queueStatsService.dequeueStatisticMarkedForRemoval(queueName);
-                                                queueStatisticsCollector.resetQueueFailureStatistics(queueName, (throwable, unused) -> {});
+                                                queueStatisticsCollector.resetQueueFailureStatistics(queueName);
                                             });
                                             Future.all(notifyConsumerFutures).onComplete(event1 -> {
                                                     if (event1.failed()) {
