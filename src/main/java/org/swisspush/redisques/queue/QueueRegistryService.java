@@ -31,7 +31,6 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -165,33 +164,6 @@ public class QueueRegistryService {
         });
     }
 
-    private Future<HashSet<String>> getAliveConsumers() {
-        final Promise<HashSet<String>> promise = Promise.promise();
-        final HashSet<String> consumerSet = new HashSet<>();
-        // add self first
-        consumerSet.add(keyspaceHelper.getVerticleUid());
-        // don't have many keys here, so get all at once
-        redisService.keys(keyspaceHelper.getAliveConsumersPrefix() + "*").onComplete(keysResult -> {
-            if (keysResult.failed()) {
-                log.warn("failed to get alive consumer list", keysResult.cause());
-            } else {
-                Response keys = keysResult.result();
-                if (keys == null || keys.size() == 0) {
-                    log.debug("No alive consumers found");
-                    promise.complete(consumerSet);
-                    return;
-                }
-                for (Response response : keys) {
-                    consumerSet.add(response.toString().replace(keyspaceHelper.getAliveConsumersPrefix(), ""));
-                }
-                metrics.setConsumerCounter(consumerSet.size());
-                log.debug("{} alive consumers found", consumerSet.size());
-                promise.complete(consumerSet);
-            }
-        });
-        return promise.future();
-    }
-
     private void registerKeepConsumerAlive() {
         // initial set, add self into local list first
         aliveConsumers.add(keyspaceHelper.getVerticleUid());
@@ -200,26 +172,25 @@ public class QueueRegistryService {
         final long keyLiveTime = getConfiguration().getRefreshPeriod() * 1000L * 2;
 
         // add self into Redis with expiring time, without wait.
-        final String consumerKey = keyspaceHelper.getAliveConsumersPrefix() + keyspaceHelper.getVerticleUid();
-        redisService.setNxPx(consumerKey, keyspaceHelper.getVerticleUid(), false, keyLiveTime)
+        updateConsumerIdAndRemoveExpired(keyspaceHelper.getVerticleUid(), keyLiveTime)
                 .onFailure(e -> log.warn("failed to set initial alive consumer live key for {}", keyspaceHelper.getVerticleUid(), e));
 
         // update 2 heartbeat timestamp per refresh period
         final long periodMs = Math.max(getConfiguration().getRefreshPeriod() / 2 * 1000L, 1);
 
         vertx.setPeriodic(periodMs, event -> {
-            redisService.setNxPx(consumerKey, keyspaceHelper.getVerticleUid(), false, keyLiveTime).onComplete(event2 -> {
+            updateConsumerIdAndRemoveExpired(keyspaceHelper.getVerticleUid(), keyLiveTime).onComplete(event2 -> {
                 if (event2.failed()) {
                     log.warn("failed to update alive consumer live key for {}", keyspaceHelper.getVerticleUid(), event2.cause());
                 } else {
                     log.debug("RedisQues consumer {} keep alive updated", keyspaceHelper.getVerticleUid());
                 }
-                getAliveConsumers().onComplete(event1 -> {
+                getAllValidConsumerIds(keyLiveTime).onComplete(event1 -> {
                     if (event1.failed()) {
                         log.warn("failed to get alive consumer list", event1.cause());
                         return;
                     }
-                    HashSet<String> newlist = event1.result();
+                    List<String> newlist = event1.result();
                     // add all first
                     aliveConsumers.addAll(newlist);
                     // remove older which not in new list
@@ -229,6 +200,87 @@ public class QueueRegistryService {
                 });
             });
         });
+    }
+
+    /**
+     * get all not expired consumer Ids
+     * @param expireMs all values older than X ms will be removed
+     * @return
+     */
+    Future<List<String>> getAllValidConsumerIds(long expireMs) {
+        Promise<List<String>> promise = Promise.promise();
+
+        final long expireScore = System.currentTimeMillis() - expireMs;
+
+        List<Request> requests = new ArrayList<>();
+
+        // Remove expired
+        requests.add(Request.cmd(Command.ZREMRANGEBYSCORE)
+                .arg(keyspaceHelper.getAliveConsumersKey())
+                .arg("0")
+                .arg(String.valueOf(expireScore)));
+
+        // Get all remaining values
+        requests.add(Request.cmd(Command.ZRANGE)
+                .arg(keyspaceHelper.getAliveConsumersKey())
+                .arg("0")
+                .arg("-1"));
+
+        redisService.batch(requests).onComplete(res -> {
+            if (res.failed()) {
+                log.error("failed to fetch alive consumer list", res.cause());
+                promise.fail(res.cause());
+                return;
+            }
+
+            Response zrangeResponse = res.result().get(1);
+            List<String> values = new ArrayList<>();
+
+            for (int i = 0; i < zrangeResponse.size(); i++) {
+                values.add(zrangeResponse.get(i).toString());
+            }
+            promise.complete(values);
+        });
+
+        return promise.future();
+    }
+
+    /**
+     * Update or added a consumer Id with current time, and remove expired
+     * @param consumerId consumer id needs to be added or update
+     * @param expireMs all values older than X ms will be removed
+     * @return
+     */
+    Future<Void> updateConsumerIdAndRemoveExpired(String consumerId, long expireMs) {
+        Promise<Void> promise = Promise.promise();
+
+        final long now = System.currentTimeMillis();
+        final long expireScore = now - expireMs;
+
+        List<Request> requests = new ArrayList<>();
+
+        // Add or update consumer id
+        requests.add(Request.cmd(Command.ZADD)
+                .arg(keyspaceHelper.getAliveConsumersKey())
+                .arg(String.valueOf(now))
+                .arg(consumerId));
+
+        // Remove expired
+        requests.add(Request.cmd(Command.ZREMRANGEBYSCORE)
+                .arg(keyspaceHelper.getAliveConsumersKey())
+                .arg("0")
+                .arg(String.valueOf(expireScore)));
+
+        redisService.batch(requests).onComplete(res -> {
+            if (res.failed()) {
+                log.warn("failed to add or update live consumer id{}", consumerId, res.cause());
+                promise.fail(res.cause());
+            } else {
+                promise.complete();
+            }
+        });
+
+        return promise.future();
     }
 
     /**
