@@ -39,20 +39,22 @@ public class DeleteAllQueueItemsAction extends AbstractQueueAction {
                 handleFail(event, "Operation DeleteAllQueueItems failed", deleteReply.cause());
                 return;
             }
-            queueStatisticsCollector.resetQueueFailureStatistics(queue, (Throwable ex, Void v) -> {
-                if (ex != null) log.warn("TODO_2958iouhj error handling", ex);
+            queueStatisticsCollector.resetQueueFailureStatistics(queue).onComplete(event1-> {
+                if (event1.failed()) {
+                    log.warn("failed to update QueueFailure statistics", event1.cause());
+                }
+                if (unlock) {
+                    redisService.hdel(keyspaceHelper.getLocksKey(), queue).onComplete(unlockReply -> {
+                        if (unlockReply.failed()) {
+                            handleFail(event, "Failed to unlock queue " + queue, unlockReply.cause());
+                        } else {
+                            handleDeleteQueueReply(event, deleteReply);
+                        }
+                    });
+                } else {
+                    handleDeleteQueueReply(event, deleteReply);
+                }
             });
-            if (unlock) {
-                redisService.hdel(keyspaceHelper.getLocksKey(), queue).onComplete(unlockReply -> {
-                    if (unlockReply.failed()) {
-                        handleFail(event, "Failed to unlock queue " + queue, unlockReply.cause());
-                    } else {
-                        handleDeleteQueueReply(event, deleteReply);
-                    }
-                });
-            } else {
-                handleDeleteQueueReply(event, deleteReply);
-            }
         });
     }
 

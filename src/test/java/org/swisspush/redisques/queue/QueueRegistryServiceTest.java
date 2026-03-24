@@ -41,6 +41,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import static org.swisspush.redisques.exception.RedisQuesExceptionFactory.newWastefulExceptionFactory;
 import static org.swisspush.redisques.util.RedisquesAPI.buildAddQueueItemOperation;
@@ -498,6 +499,58 @@ public class QueueRegistryServiceTest extends AbstractTestCase {
                     });
                 });
             });
+        });
+    }
+
+    @Test
+    public void testbatchCheckIfImStillTheRegisteredConsumer(TestContext context) {
+        Async async = context.async();
+        flushAll();
+        jedis.set(redisQues.getKeyspaceHelper().getConsumersPrefix() + "queue-1", "consumer_id_1");
+        jedis.set(redisQues.getKeyspaceHelper().getConsumersPrefix() + "queue-2", "consumer_id_1");
+        jedis.set(redisQues.getKeyspaceHelper().getConsumersPrefix() + "queue-3", "consumer_id_1");
+        jedis.set(redisQues.getKeyspaceHelper().getConsumersPrefix() + "queue-4", "consumer_id_2");
+        jedis.set(redisQues.getKeyspaceHelper().getConsumersPrefix() + "queue-5", "consumer_id_3");
+        jedis.set(redisQues.getKeyspaceHelper().getConsumersPrefix() + "queue-6", "");
+        List<String> queuesToCheck = List.of("queue-1", "queue-2", "queue-3", "queue-5", "queue-6", "queue-7", "queue-8");
+
+        QueueRegistryService queueRegistryService = redisQues.getQueueRegistryService();
+        queueRegistryService.batchCheckIfImStillTheRegisteredConsumer(queuesToCheck, "consumer_id_1").onComplete(event -> {
+            if (event.failed()) {
+                context.fail();
+                return;
+            }
+            final List<String> myQueueNames = event.result().entrySet()
+                    .stream()
+                    .filter(e -> Boolean.TRUE.equals(e.getValue()))
+                    .map(Map.Entry::getKey)
+                    .collect(Collectors.toList());
+
+            final List<String> notMyQueueNames = event.result().entrySet()
+                    .stream()
+                    .filter(e -> Boolean.FALSE.equals(e.getValue()))
+                    .map(Map.Entry::getKey)
+                    .collect(Collectors.toList());
+
+            final List<String> notExistQueueNames = event.result().entrySet()
+                    .stream()
+                    .filter(e -> null == e.getValue())
+                    .map(Map.Entry::getKey)
+                    .collect(Collectors.toList());
+            context.assertEquals(3, myQueueNames.size());
+            context.assertTrue(myQueueNames.contains("queue-1"));
+            context.assertTrue(myQueueNames.contains("queue-2"));
+            context.assertTrue(myQueueNames.contains("queue-3"));
+
+            context.assertEquals(2, notMyQueueNames.size());
+            context.assertTrue(notMyQueueNames.contains("queue-5"));
+            context.assertTrue(notMyQueueNames.contains("queue-6"));
+
+            context.assertEquals(2, notExistQueueNames.size());
+            context.assertTrue(notExistQueueNames.contains("queue-7"));
+            context.assertTrue(notExistQueueNames.contains("queue-8"));
+            async.complete();
+
         });
     }
 
