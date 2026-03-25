@@ -134,6 +134,26 @@ public class RedisService {
         );
     }
 
+    /**
+     * Get the values of keys.
+     *
+     * @param keys keys to fetch
+     * @return a {@link Future} containing the stored values or null
+     */
+    public Future<List<Response>> get(List<String> keys) {
+        if (keys.size() > MAX_COMMANDS_IN_BATCH) {
+            throw new IllegalArgumentException("get exceeds max keys in batch");
+        }
+        return redisProvider.redisConnection().compose(connection -> {
+            List<Request> requests = new ArrayList<>();
+
+            for (String key : keys) {
+                requests.add(Request.cmd(Command.GET).arg(key));
+            }
+            return this.batch(requests);
+        });
+    }
+
 
     /**
      * Sets a key only if it does not already exist, with a TTL.
@@ -506,6 +526,11 @@ public class RedisService {
         );
     }
 
+    /**
+     * get mutiple values of keys
+     * @param keys
+     * @return a list of responses
+     */
     public Future<Response> mget(List<String> keys) {
         if (keys.size() > MAX_COMMANDS_IN_BATCH) {
             throw new IllegalArgumentException("mget exceeds max keys in batch");

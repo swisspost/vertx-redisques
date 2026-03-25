@@ -553,7 +553,7 @@ public class QueueRegistryService {
                 .map(queue -> keyspaceHelper.getConsumersPrefix() + queue)
                 .collect(Collectors.toList());
 
-        return redisService.mget(queueConsumersKeys).compose(response -> {
+        return redisService.get(queueConsumersKeys).compose(response -> {
             Map<String, Boolean> responses = new HashMap<>();
 
             for (int i = 0; i < queueConsumersKeys.size(); i++) {
