@@ -351,7 +351,8 @@ public class QueueRegistryService {
      */
     public Future<List<Response>> batchRefreshRegistration(List<String> queueNames) {
         if (queueNames == null || queueNames.isEmpty()) {
-            throw new RuntimeException("queueNames must be set");
+            log.debug("Got empty queue names for refresh registration");
+            return Future.succeededFuture(new ArrayList<>());
         }
         Promise<List<Response>> promise = Promise.promise();
 
@@ -895,7 +896,8 @@ public class QueueRegistryService {
      */
     public Future<List<Response>> updateTimestampsWithOverwrite(final List<String> queueNames) {
         if (queueNames == null || queueNames.isEmpty()) {
-            return Future.failedFuture(new RuntimeException("queueNames must be set"));
+            log.debug("Got empty queue names for update timestamps");
+            return Future.succeededFuture(new ArrayList<>());
         }
 
         final String queuesKey = keyspaceHelper.getQueuesKey();
