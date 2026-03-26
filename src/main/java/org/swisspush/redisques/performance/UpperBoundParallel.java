@@ -111,7 +111,7 @@ public class UpperBoundParallel {
                     // We still have a token reserved for ourself. Use those first before acquiring
                     // new ones. Explanation see comment in 'onOneDone()'.
                     req.numTokensAvailForOurself -= 1;
-                } else if (req.limit.tryAcquire()) {
+                } else if (!req.limit.tryAcquire()) {
                     /* WARNING: whoever enables the feature `acquireTimeout` risks to cause
                      * latency issues throughout the application! So DO NOT enable this
                      * feature unless you know exactly what you're doing! If you do, DO NOT
