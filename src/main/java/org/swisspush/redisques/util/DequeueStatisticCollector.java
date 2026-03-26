@@ -2,6 +2,7 @@ package org.swisspush.redisques.util;
 
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
+import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonObject;
 import io.vertx.redis.client.Response;
 import org.slf4j.Logger;
@@ -19,8 +20,10 @@ public class DequeueStatisticCollector {
     private final boolean dequeueStatisticEnabled;
     private final RedisService redisService;
     private final KeyspaceHelper keyspaceHelper;
+    private final Vertx vertx;
 
-    public DequeueStatisticCollector(boolean dequeueStatisticEnabled, RedisService redisService, KeyspaceHelper keyspaceHelper) {
+    public DequeueStatisticCollector(Vertx vertx, boolean dequeueStatisticEnabled, RedisService redisService, KeyspaceHelper keyspaceHelper) {
+        this.vertx = vertx;
         this.dequeueStatisticEnabled = dequeueStatisticEnabled;
         this.redisService = redisService;
         this.keyspaceHelper = keyspaceHelper;
@@ -39,15 +42,25 @@ public class DequeueStatisticCollector {
                 promise.fail(new RuntimeException("Redis: dequeue statistics queue evaluation failed",
                         statisticsSet == null ? null : statisticsSet.cause()));
             } else {
-                Map<String, DequeueStatistic> result = new HashMap<>();
-                for (Response response : statisticsSet.result()) {
-                    JsonObject jsonObject = new JsonObject(response.toString());
-                    DequeueStatistic dequeueStatistic = DequeueStatistic.fromJson(jsonObject);
-                    if (dequeueStatistic != null) {
-                        result.put(dequeueStatistic.getQueueName(), dequeueStatistic);
+                // we have few thousands here, so it may block event loop long time
+                vertx.executeBlocking(() -> {
+                    Map<String, DequeueStatistic> result = new HashMap<>();
+                    for (Response response : statisticsSet.result()) {
+                        JsonObject jsonObject = new JsonObject(response.toString());
+                        DequeueStatistic dequeueStatistic = DequeueStatistic.fromJson(jsonObject);
+                        if (dequeueStatistic != null) {
+                            result.put(dequeueStatistic.getQueueName(), dequeueStatistic);
+                        }
                     }
-                }
-                promise.complete(result);
+                    return result;
+                }).onComplete(event -> {
+                    if (event.failed()) {
+                        log.error("Redis: dequeue statistics parsing failed", event.cause());
+                        promise.fail(event.cause());
+                        return;
+                    }
+                    promise.complete(event.result());
+                });
             }
         });
         return promise.future();
