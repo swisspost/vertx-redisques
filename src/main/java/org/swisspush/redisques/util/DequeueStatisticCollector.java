@@ -53,7 +53,7 @@ public class DequeueStatisticCollector {
                         }
                     }
                     return result;
-                }).onComplete(event -> {
+                }, false).onComplete(event -> {
                     if (event.failed()) {
                         log.error("Redis: dequeue statistics parsing failed", event.cause());
                         promise.fail(event.cause());

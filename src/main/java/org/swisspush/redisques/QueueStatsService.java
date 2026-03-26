@@ -389,7 +389,7 @@ public class QueueStatsService {
                     }
                     promise.complete();
                 });
-            });
+            }, false);
         }
     }
 
