@@ -112,12 +112,6 @@ public class UpperBoundParallel {
                     // new ones. Explanation see comment in 'onOneDone()'.
                     req.numTokensAvailForOurself -= 1;
                 } else if (!req.limit.tryAcquire()) {
-                    /* WARNING: whoever enables the feature `acquireTimeout` risks to cause
-                     * latency issues throughout the application! So DO NOT enable this
-                     * feature unless you know exactly what you're doing! If you do, DO NOT
-                     * complain due to latency issues and blocked threads. Because that's
-                     * exactly what that feature causes.
-                     */
                     log.debug("redis request limit reached. Need to pause now.");
                     break; // Go to end of loop to schedule a run later.
                 }
@@ -174,7 +168,7 @@ public class UpperBoundParallel {
                     // We couldn't even trigger one single task. No resources available to
                     // handle any more requests. This caller has to try later.
                     if (req.sleepTimeAfterResourceExhaustion >= 0) {
-                        log.warn("redis request limit reached. Need to pause now, will try again after: {}ms", req.sleepTimeAfterResourceExhaustion);
+                        log.info("redis request limit reached. Need to pause now, will try again after: {}ms", req.sleepTimeAfterResourceExhaustion);
                         vertx.setTimer(req.sleepTimeAfterResourceExhaustion, nonsense -> resume(req));
                     } else {
                         req.isFatalError = true;
