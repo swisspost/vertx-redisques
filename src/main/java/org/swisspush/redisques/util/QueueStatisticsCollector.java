@@ -644,7 +644,7 @@ public class QueueStatisticsCollector {
             ctx.redisFailStats = statisticsSet.result();
             assert ctx.redisFailStats != null;
             executeBlockingPromise.complete();
-        }));
+        }), false);
 
     }
 
@@ -677,7 +677,7 @@ public class QueueStatisticsCollector {
             }
             executeBlockingPromise.complete(new JsonObject().put(STATUS, OK)
                     .put(RedisquesAPI.QUEUES, result));
-        });
+        }, false);
     }
 
     /**

@@ -335,7 +335,7 @@ public class QueueRegistryService {
         if (handler == null) {
             throw new RuntimeException("Handler must be set");
         } else {
-            vertx.executeBlocking(() -> redisService.expire(consumerKey, String.valueOf(consumerLockTime)))
+            vertx.executeBlocking(() -> redisService.expire(consumerKey, String.valueOf(consumerLockTime)), false)
                     .compose((Future<Response> tooManyNestedFutures) -> tooManyNestedFutures)
                     .onComplete(event -> {
                         getQueueConsumerRunner().updateLastRefreshRegistrationTimeStamp(queueName);
