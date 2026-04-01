@@ -9,7 +9,6 @@ import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.redis.client.Command;
-import io.vertx.redis.client.Request;
 import io.vertx.redis.client.Response;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -105,17 +104,17 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
                     if (!ctx.iter.hasNext()) {
                         return false;
                     }
-                    List<Request> batch = new ArrayList<>(RedisService.MAX_COMMANDS_IN_BATCH);
+                    List<String> keyBatch = new ArrayList<>(RedisService.MAX_COMMANDS_IN_BATCH);
                     List<Integer> resultIndexes = new ArrayList<>(RedisService.MAX_COMMANDS_IN_BATCH);
                     int count = 0;
                     while (ctx.iter.hasNext() && count < RedisService.MAX_COMMANDS_IN_BATCH) {
                         String queue = ctx.iter.next();
                         int index = ctx.iNumberResult++;
-                        batch.add(Request.cmd(Command.LLEN).arg(queuesPrefix + queue));
+                        keyBatch.add(queuesPrefix + queue);
                         resultIndexes.add(index);
                         count++;
                     }
-                    redisService.batch(batch)
+                    redisService.clusterSafeBatch(Command.LLEN, keyBatch, List.of())
                             .onSuccess(responses -> {
                                 for (int i = 0; i < responses.size(); i++) {
                                     ctx.queueLengths[resultIndexes.get(i)] =

@@ -7,7 +7,6 @@ import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.redis.client.Command;
-import io.vertx.redis.client.Request;
 import io.vertx.redis.client.Response;
 import io.vertx.redis.client.impl.types.NumberType;
 import org.slf4j.Logger;
@@ -547,16 +546,15 @@ public class QueueStatisticsCollector {
                 if (!queueNamesIter.hasNext()) {
                     return false;
                 }
-                List<Request> batch = new ArrayList<>(RedisService.MAX_COMMANDS_IN_BATCH);
+                List<String> keyBatch = new ArrayList<>(RedisService.MAX_COMMANDS_IN_BATCH);
 
                 int count = 0;
                 while (queueNamesIter.hasNext() && count < RedisService.MAX_COMMANDS_IN_BATCH) {
-                    String queueName = queueNamesIter.next();
-                    batch.add(Request.cmd(Command.LLEN).arg(queuePrefix + queueName));
+                    keyBatch.add(queuePrefix + queueNamesIter.next());
                     count++;
                 }
 
-                redisService.batch(batch)
+                redisService.clusterSafeBatch(Command.LLEN, keyBatch, List.of())
                         .compose(responses -> {
                             for (Response rsp : responses) {
                                 NumberType num = (NumberType) rsp;

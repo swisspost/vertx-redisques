@@ -359,16 +359,13 @@ public class QueueRegistryService {
         log.debug("RedisQues Refreshing registration of {} queue consumers, expire in {} s",
                 queueNames.size(), consumerLockTime);
         final String consumersPrefix = keyspaceHelper.getConsumersPrefix();
-        List<Request> requests = new ArrayList<>(queueNames.size());
+        List<String> keyBatch = new ArrayList<>(queueNames.size());
         for (String queueName : queueNames) {
-            String consumerKey = consumersPrefix + queueName;
-            requests.add(Request.cmd(Command.EXPIRE)
-                    .arg(consumerKey)
-                    .arg(String.valueOf(consumerLockTime)));
+            keyBatch.add(consumersPrefix + queueName);
             metrics.perQueueMetricsRefresh(queueName);
         }
 
-        redisService.batch(requests).onComplete(event -> {
+        redisService.clusterSafeBatch(Command.EXPIRE, keyBatch, List.of(String.valueOf(consumerLockTime))).onComplete(event -> {
             if (event.failed()) {
                 log.error("batchRefreshRegistration failed with message: {}", event.cause().getMessage());
                 promise.fail(event.cause());
@@ -553,7 +550,7 @@ public class QueueRegistryService {
                 .map(queue -> keyspaceHelper.getConsumersPrefix() + queue)
                 .collect(Collectors.toList());
 
-        return redisService.get(queueConsumersKeys).compose(response -> {
+        return redisService.clusterSafeMget(queueConsumersKeys).compose(response -> {
             Map<String, Boolean> responses = new HashMap<>();
 
             for (int i = 0; i < queueConsumersKeys.size(); i++) {
@@ -849,12 +846,12 @@ public class QueueRegistryService {
         if (queueNameBatch.isEmpty()) {
             return Future.succeededFuture();
         }
-        List<Request> requests = new ArrayList<>(queueNameBatch.size());
+        List<String> keyBatch = new ArrayList<>(queueNameBatch.size());
         Map<String, Integer> reslutMap = new HashMap<>();
         for (String queueName : queueNameBatch) {
-            requests.add(Request.cmd(Command.LLEN).arg(keyspaceHelper.getQueuesPrefix() + queueName));
+            keyBatch.add(keyspaceHelper.getQueuesPrefix() + queueName);
         }
-        return redisService.batch(requests).compose(responses -> {
+        return redisService.clusterSafeBatch(Command.LLEN, keyBatch, List.of()).compose(responses -> {
             for (int i = 0; i < queueNameBatch.size(); i++) {
                 Response response = responses.get(i);
                 String queueName = queueNameBatch.get(i);
