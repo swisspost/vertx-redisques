@@ -22,6 +22,7 @@ import org.swisspush.redisques.performance.UpperBoundParallel;
 import org.swisspush.redisques.scheduling.PeriodicSkipScheduler;
 import org.swisspush.redisques.util.QueueConfigurationProvider;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
+import org.swisspush.redisques.util.RedisClusterUtil;
 import org.swisspush.redisques.util.RedisquesConfiguration;
 import org.swisspush.redisques.util.RedisquesConfigurationProvider;
 
@@ -715,12 +716,21 @@ public class QueueRegistryService {
                     if (log.isDebugEnabled()) {
                         log.debug("zrangebyscore time used is {} ms", System.currentTimeMillis() - startTs);
                     }
-                    List<List<String>> processQueue = new ArrayList<>();
-                    List<String> currentBatch = new ArrayList<>(batchSize);
+                    List<List<Map.Entry<String, String>>> processQueue = new ArrayList<>();
+                    List<Map.Entry<String, String>> currentBatch = new ArrayList<>(batchSize);
+
+                    Map<String, String> queueNamesWithPrefix = new LinkedHashMap<>();
+
+                    for (Response queue : queues) {
+                        queueNamesWithPrefix.put(keyspaceHelper.getQueuesPrefix() + queue.toString(), queue.toString());
+                    }
+
+                    // order by key first
+                    queueNamesWithPrefix = RedisClusterUtil.groupMapBySlot(queueNamesWithPrefix);
 
                     // create a batch with MAX_COMMANDS_IN_BATCH
-                    for (Response queue : queues) {
-                        currentBatch.add(queue.toString());
+                    for (Map.Entry<String, String> entry : queueNamesWithPrefix.entrySet()) {
+                        currentBatch.add(entry);
                         if (currentBatch.size() == batchSize) {
                             processQueue.add(currentBatch);
                             currentBatch = new ArrayList<>(batchSize);
@@ -732,17 +742,17 @@ public class QueueRegistryService {
                         processQueue.add(currentBatch);
                     }
                     Promise<Void> promise = Promise.promise();
-                    Iterator<List<String>> iter = processQueue.iterator();
+                    Iterator<List<Map.Entry<String, String>>> iter = processQueue.iterator();
                     // limits on process queue size
                     upperBoundParallel.request(checkQueueRequestsQuota, checkQueueRequestsQuotaAcquireTimeout, iter, new UpperBoundParallel.Mentor<>() {
                         @Override
-                        public boolean runOneMore(BiConsumer<Throwable, Void> onDone, Iterator<List<String>> iterator) {
+                        public boolean runOneMore(BiConsumer<Throwable, Void> onDone, Iterator<List<Map.Entry<String, String>>> iterator) {
                             if (!iterator.hasNext()) {
                                 onDone.accept(null, null);
                                 return false;
                             }
 
-                            List<String> batch = iterator.next();
+                            List<Map.Entry<String, String>> batch = iterator.next();
                             batchCheckQueuesSize(batch).onComplete(asyncResult -> {
                                 if (asyncResult.failed()) {
                                     log.warn("failed to batch check queue exist", asyncResult.cause());
@@ -814,13 +824,13 @@ public class QueueRegistryService {
                         }
 
                         @Override
-                        public boolean onError(Throwable ex, Iterator<List<String>> iterator) {
+                        public boolean onError(Throwable ex, Iterator<List<Map.Entry<String, String>>> iterator) {
                             log.warn("Failed while processing queue batch", exceptionFactory.newException(ex));
                             return true; // true, keep going with other queues batch in queue.
                         }
 
                         @Override
-                        public void onDone(Iterator<List<String>> iterator) {
+                        public void onDone(Iterator<List<Map.Entry<String, String>>> iterator) {
                             log.debug("all queue items time used is {} ms", System.currentTimeMillis() - startTs);
                             removeOldQueues(limit).onComplete(removeOldQueuesEvent -> {
                                 if (removeOldQueuesEvent.failed() && log.isWarnEnabled()) {
@@ -839,22 +849,27 @@ public class QueueRegistryService {
 
     /**
      * check the queue list size in a batch command
-     * @param queueNameBatch a set of queues name will check
+     * @param queueNameWithPrefixBatch a set of queues name already added prefix will check
      * @return a Map continues queue name and result, null means error
      */
-    Future<Map<String, Integer>> batchCheckQueuesSize(List<String> queueNameBatch) {
-        if (queueNameBatch.isEmpty()) {
+    Future<Map<String, Integer>> batchCheckQueuesSize(List<Map.Entry<String, String>>  queueNameWithPrefixBatch) {
+        if (queueNameWithPrefixBatch.isEmpty()) {
             return Future.succeededFuture();
         }
-        List<String> keyBatch = new ArrayList<>(queueNameBatch.size());
+        LinkedHashMap<String, String> map =
+                queueNameWithPrefixBatch.stream()
+                        .collect(Collectors.toMap(
+                                Map.Entry::getKey,
+                                Map.Entry::getValue,
+                                (a, b) -> a,
+                                LinkedHashMap::new
+                        ));
         Map<String, Integer> reslutMap = new HashMap<>();
-        for (String queueName : queueNameBatch) {
-            keyBatch.add(keyspaceHelper.getQueuesPrefix() + queueName);
-        }
-        return redisService.clusterSafeBatch(Command.LLEN, keyBatch, List.of()).compose(responses -> {
-            for (int i = 0; i < queueNameBatch.size(); i++) {
+        return redisService.clusterSafeBatch(Command.LLEN, new ArrayList<>(map.keySet()), List.of()).compose(responses -> {
+            List<String> queueNameList =  new ArrayList<>(map.values());
+            for (int i = 0; i < queueNameList.size(); i++) {
                 Response response = responses.get(i);
-                String queueName = queueNameBatch.get(i);
+                String queueName = queueNameList.get(i);
                 if (response != null && response.type() == ResponseType.NUMBER) {
                     reslutMap.put(queueName, response.toInteger());
                 } else {

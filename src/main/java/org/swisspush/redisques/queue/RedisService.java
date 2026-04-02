@@ -554,7 +554,9 @@ public class RedisService {
         }
 
         Map<Integer, List<Request>> requestsGroupedBySlots = new HashMap<>();
-        Map<Integer, List<Integer>> RequestIndexes = new HashMap<>();
+
+        //Track output ordering, where its responses should go in the final merged result list.
+        Map<Integer, List<Integer>> requestIndexes = new HashMap<>();
 
         if (isClusterMode.get()) {
             // Build requests and group by slot
@@ -566,7 +568,7 @@ public class RedisService {
                     req = req.arg(arg);
                 }
                 requestsGroupedBySlots.computeIfAbsent(slot, s -> new ArrayList<>()).add(req);
-                RequestIndexes.computeIfAbsent(slot, s -> new ArrayList<>()).add(i);
+                requestIndexes.computeIfAbsent(slot, s -> new ArrayList<>()).add(i);
             }
         } else {
             // non-cluster single slot
@@ -577,7 +579,7 @@ public class RedisService {
                     req = req.arg(arg);
                 }
                 requestsGroupedBySlots.computeIfAbsent(1, s -> new ArrayList<>()).add(req);
-                RequestIndexes.computeIfAbsent(1, s -> new ArrayList<>()).add(i);
+                requestIndexes.computeIfAbsent(1, s -> new ArrayList<>()).add(i);
             }
         }
 
@@ -589,12 +591,13 @@ public class RedisService {
         }
         return Future.all(futures)
                 .map(cf -> {
+                    // Create a list large enough to hold all responses.
                     List<Response> finalResponses =
                             new ArrayList<>(Collections.nCopies(keys.size(), null));
                     // merge response from each slot
                     for (int f = 0; f < slots.size(); f++) {
                         Integer slot = slots.get(f);
-                        List<Integer> indexes = RequestIndexes.get(slot);
+                        List<Integer> indexes = requestIndexes.get(slot);
                         List<Response> responses = cf.resultAt(f);
                         for (int i = 0; i < indexes.size(); i++) {
                             finalResponses.set(indexes.get(i), responses.get(i));
