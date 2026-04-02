@@ -189,8 +189,8 @@ public class QueueStatisticsCollector {
             onDone.accept(null, null);
             return;
         }
-        final int redisRequestQuotaTimeout = configurationProvider.configuration().getRedisMonitoringReqQuotaAcquireTimeoutMs();
-        upperBoundParallel.request(redisRequestQuota, redisRequestQuotaTimeout, null, new UpperBoundParallel.Mentor<Void>() {
+        final int redisRequestQuotaAcquireRetryTime = configurationProvider.configuration().getRedisMonitoringReqQuotaAcquireRetryTimeMs();
+        upperBoundParallel.request(redisRequestQuota, redisRequestQuotaAcquireRetryTime, null, new UpperBoundParallel.Mentor<Void>() {
             int i = 0;
             final int size = queues.size();
 
@@ -538,8 +538,8 @@ public class QueueStatisticsCollector {
         assert ctx.queueLengthList == null;
         ctx.queueLengthList = new ArrayList<>(ctx.queueNames.size());
         var upperBoundPromise = Promise.<Void>promise();
-        final int redisRequestQuotaTimeout = configurationProvider.configuration().getRedisMonitoringReqQuotaAcquireTimeoutMs();
-        upperBoundParallel.request(redisRequestQuota, redisRequestQuotaTimeout, ctx, new UpperBoundParallel.Mentor<>() {
+        final int redisRequestQuotaAcquireRetryTime = configurationProvider.configuration().getRedisMonitoringReqQuotaAcquireRetryTimeMs();
+        upperBoundParallel.request(redisRequestQuota, redisRequestQuotaAcquireRetryTime, ctx, new UpperBoundParallel.Mentor<>() {
             Iterator<String> queueNamesIter = ctx.queueNames.iterator();
 
             @Override
