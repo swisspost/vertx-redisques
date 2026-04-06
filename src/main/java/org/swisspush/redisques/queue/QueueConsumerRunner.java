@@ -381,12 +381,17 @@ public class QueueConsumerRunner {
         batch.add(Request.cmd(Command.GET).arg(consumerKey));
         redisService.batch(batch).onComplete(res -> {
             if (res.failed() || res.result().size() != 2){
-                log.warn("refreshRegistrationAndGet faild with queue: {}", queueName, res.cause());
+                log.warn("refreshRegistrationAndGet failed with queue: {}", queueName, res.cause());
                 promise.fail(res.cause().getMessage());
             } else {
                 List<Response> responses = res.result();
                 updateLastRefreshRegistrationTimeStamp(queueName);
-                promise.complete(responses.get(1).toString());
+                if (responses.get(1) != null) {
+                    promise.complete(responses.get(1).toString());
+                } else {
+                    log.warn("refreshRegistrationAndGet failed with queue: {}, queue is not exist in register", queueName);
+                    promise.fail("queue is not exist: " + queueName);
+                }
             }
         });
         return promise.future();

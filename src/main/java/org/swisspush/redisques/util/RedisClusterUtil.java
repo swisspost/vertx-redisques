@@ -1,6 +1,8 @@
 package org.swisspush.redisques.util;
 
 
+import io.vertx.redis.client.impl.ZModem;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -8,20 +10,14 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * A utility class that calculate redis key hash, and group key by hash
+ */
 public class RedisClusterUtil {
-    private static final int[] LOOKUP_TABLE = new int[256];
-    static {
-        for (int i = 0; i < 256; i++) {
-            int crc = i << 8;
-            for (int j = 0; j < 8; j++) {
-                crc = ((crc << 1) ^ (((crc & 0x8000) != 0) ? 0x1021 : 0));
-            }
-            LOOKUP_TABLE[i] = crc & 0xFFFF;
-        }
-    }
 
     /**
      * order all keys by it slot hash
+     *
      * @param keys keys will order
      * @return
      */
@@ -39,6 +35,7 @@ public class RedisClusterUtil {
 
     /**
      * group all keys by it slot hash
+     *
      * @param keys keys will group
      * @return
      */
@@ -80,26 +77,13 @@ public class RedisClusterUtil {
     }
 
     /**
-     * calculate the slot hash of a key
+     * calculate the slot hash of a key by Vertx Redis Client it owen function
+     *
      * @param key will use to calculate
      * @return
      */
     public static int redisSlot(String key) {
-        int start = key.indexOf('{');
-        if (start != -1) {
-            int end = key.indexOf('}', start + 1);
-            if (end != -1 && end > start + 1) {
-                return crc16(key.getBytes(), start + 1, end) % 16384;
-            }
-        }
-        return crc16(key.getBytes(), 0, key.getBytes().length) % 16384;
-    }
-
-    static int crc16(byte[] bytes, int start, int end) {
-        int crc = 0;
-        for (int i = start; i < end; i++) {
-            crc = ((crc << 8) ^ LOOKUP_TABLE[((crc >> 8) ^ (bytes[i] & 0xFF)) & 0xFF]) & 0xFFFF;
-        }
-        return crc;
+        // simple re-use the ZModem in Vertx Redis Client
+        return ZModem.generate(key);
     }
 }

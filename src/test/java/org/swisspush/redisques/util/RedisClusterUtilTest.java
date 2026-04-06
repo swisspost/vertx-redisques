@@ -123,13 +123,13 @@ public class RedisClusterUtilTest {
         List<String> ordered = RedisClusterUtil.orderKeysBySlot(keys);
 
         // Keys with same slot should be adjacent
-        int slotA = RedisClusterUtil.redisSlot("queue:{A}:1");
+        int slotA = redisSlot("queue:{A}:1");
 
         int firstA = -1;
         int lastA = -1;
 
         for (int i = 0; i < ordered.size(); i++) {
-            if (RedisClusterUtil.redisSlot(ordered.get(i)) == slotA) {
+            if (redisSlot(ordered.get(i)) == slotA) {
                 if (firstA == -1) firstA = i;
                 lastA = i;
             }
@@ -151,7 +151,7 @@ public class RedisClusterUtilTest {
 
         int prevSlot = -1;
         for (String key : ordered) {
-            int slot = RedisClusterUtil.redisSlot(key);
+            int slot = redisSlot(key);
             assertTrue(slot >= prevSlot);
             prevSlot = slot;
         }
@@ -193,8 +193,8 @@ public class RedisClusterUtilTest {
 
     @Test
     public void testRedisOfficialHashTagExample() {
-        int slot1 = RedisClusterUtil.redisSlot("{user1000}.following");
-        int slot2 = RedisClusterUtil.redisSlot("{user1000}.followers");
+        int slot1 = redisSlot("{user1000}.following");
+        int slot2 = redisSlot("{user1000}.followers");
 
         assertEquals(slot1, slot2);
     }
