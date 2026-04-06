@@ -5,7 +5,6 @@ import org.slf4j.Logger;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 
 import java.util.concurrent.Semaphore;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
@@ -56,8 +55,8 @@ public class UpperBoundParallel {
         this.exceptionFactory = exceptionFactory;
     }
 
-    public <Ctx> void request(Semaphore limit, int acquireTimeout, Ctx ctx, Mentor<Ctx> mentor) {
-        var req = new Request<>(ctx, mentor, limit, acquireTimeout);
+    public <Ctx> void request(Semaphore limit, int sleepTimeAfterResourceExhaustion, Ctx ctx, Mentor<Ctx> mentor) {
+        var req = new Request<>(ctx, mentor, limit, sleepTimeAfterResourceExhaustion);
         resume(req);
     }
 
@@ -112,13 +111,7 @@ public class UpperBoundParallel {
                     // We still have a token reserved for ourself. Use those first before acquiring
                     // new ones. Explanation see comment in 'onOneDone()'.
                     req.numTokensAvailForOurself -= 1;
-                } else if (req.acquireTimeout > 0 ? !req.limit.tryAcquire(req.acquireTimeout, TimeUnit.MILLISECONDS) : !req.limit.tryAcquire()) {
-                    /* WARNING: whoever enables the feature `acquireTimeout` risks to cause
-                     * latency issues throughout the application! So DO NOT enable this
-                     * feature unless you know exactly what you're doing! If you do, DO NOT
-                     * complain due to latency issues and blocked threads. Because that's
-                     * exactly what that feature causes.
-                     */
+                } else if (!req.limit.tryAcquire()) {
                     log.debug("redis request limit reached. Need to pause now.");
                     break; // Go to end of loop to schedule a run later.
                 }
@@ -174,11 +167,16 @@ public class UpperBoundParallel {
                 if (!req.hasStarted) {
                     // We couldn't even trigger one single task. No resources available to
                     // handle any more requests. This caller has to try later.
-                    req.isFatalError = true;
-                    Exception ex = exceptionFactory.newResourceExhaustionException(
-                            "No more resources to handle yet another request now.", null);
-                    req.mentor.onError(ex, req.ctx);
-                    assert req.numTokensAvailForOurself == 0 : "assert(numTokensAvailForOurself != " + req.numTokensAvailForOurself + ")";
+                    if (req.sleepTimeAfterResourceExhaustion >= 0) {
+                        log.info("redis request limit reached. Need to pause now, will try again after: {}ms", req.sleepTimeAfterResourceExhaustion);
+                        vertx.setTimer(req.sleepTimeAfterResourceExhaustion, nonsense -> resume(req));
+                    } else {
+                        req.isFatalError = true;
+                        Exception ex = exceptionFactory.newResourceExhaustionException(
+                                "No more resources to handle yet another request now.", null);
+                        req.mentor.onError(ex, req.ctx);
+                        assert req.numTokensAvailForOurself == 0 : "assert(numTokensAvailForOurself != " + req.numTokensAvailForOurself + ")";
+                    }
                 } else {
                     log.error("If you see this log, some unreachable code got reached. numInProgress={}, hasStarted={}",
                             req.numInProgress, req.hasStarted);
@@ -257,7 +255,7 @@ public class UpperBoundParallel {
         private final Mentor<Ctx> mentor;
         private final Lock lock = new ReentrantLock();
         private final Semaphore limit;
-        public int acquireTimeout;
+        public final int sleepTimeAfterResourceExhaustion;
         private Thread worker = null;
         private int numInProgress = 0;
         private int numTokensAvailForOurself = 0;
@@ -266,11 +264,11 @@ public class UpperBoundParallel {
         private boolean isFatalError = false;
         private boolean isDoneCalled = false;
 
-        private Request(Ctx ctx, Mentor<Ctx> mentor, Semaphore limit, int acquireTimeout) {
+        private Request(Ctx ctx, Mentor<Ctx> mentor, Semaphore limit, int sleepTimeAfterResourceExhaustion) {
             this.ctx = ctx;
             this.mentor = mentor;
             this.limit = limit;
-            this.acquireTimeout = acquireTimeout;
+            this.sleepTimeAfterResourceExhaustion = sleepTimeAfterResourceExhaustion;
         }
     }
 

@@ -427,7 +427,7 @@ public class QueueRegistryService {
     private void registerActiveQueueRegistrationRefresh() {
         // Periodic refresh of my registrations on active queues.
         final long periodMs = getConfiguration().getRefreshPeriod() * 1000L;
-        final int activeQueueRegRefreshReqQuotaTimeout = getConfiguration().getActiveQueueRegRefreshReqQuotaAcquireTimeoutMs();
+        final int activeQueueRegRefreshReqQuotaAcquireRetryTime = getConfiguration().getActiveQueueRegRefreshReqQuotaAcquireRetryTimeMs();
         periodicSkipScheduler.setPeriodic(periodMs, "registerActiveQueueRegistrationRefresh", new Consumer<Runnable>() {
             Iterator<Map<String, QueueProcessingState>> iter;
 
@@ -438,7 +438,7 @@ public class QueueRegistryService {
                 List<Map<String, QueueProcessingState>> myQueueSplitClone = splitMap(getSortedMyQueueClone(queueConsumerRunner.getMyQueues()), RedisService.MAX_COMMANDS_IN_BATCH);
                 iter = myQueueSplitClone.iterator();
                 // Trigger only a limited amount of requests in parallel.
-                upperBoundParallel.request(activeQueueRegRefreshReqQuota, activeQueueRegRefreshReqQuotaTimeout, iter, new UpperBoundParallel.Mentor<>() {
+                upperBoundParallel.request(activeQueueRegRefreshReqQuota, activeQueueRegRefreshReqQuotaAcquireRetryTime, iter, new UpperBoundParallel.Mentor<>() {
                     @Override
                     public boolean runOneMore(BiConsumer<Throwable, Void> onQueueDone, Iterator<Map<String, QueueProcessingState>> iter) {
                         batchRefreshConsumerRegistration(onQueueDone);
@@ -703,7 +703,7 @@ public class QueueRegistryService {
         // List all queues that look inactive (i.e. that have not been updated since 3 periods).
         final long limit = currentTimeMillis() - 3L * configurationProvider.configuration().getRefreshPeriod() * 1000L;
         final int batchSize = RedisService.MAX_COMMANDS_IN_BATCH;
-        final int checkQueueRequestsQuotaAcquireTimeout = configurationProvider.configuration().getCheckQueueRequestsQuotaAcquireTimeoutMs();
+        final int checkQueueRequestsQuotaAcquireRetryTime = configurationProvider.configuration().getCheckQueueRequestsQuotaAcquireRetryTimeMs();
         log.debug("Checking queues timestamps");
         return redisService.zrangebyscore(keyspaceHelper.getQueuesKey(), "-inf", String.valueOf(limit))
                 .onFailure(new Handler<Throwable>() {
@@ -744,7 +744,7 @@ public class QueueRegistryService {
                     Promise<Void> promise = Promise.promise();
                     Iterator<List<Map.Entry<String, String>>> iter = processQueue.iterator();
                     // limits on process queue size
-                    upperBoundParallel.request(checkQueueRequestsQuota, checkQueueRequestsQuotaAcquireTimeout, iter, new UpperBoundParallel.Mentor<>() {
+                    upperBoundParallel.request(checkQueueRequestsQuota, checkQueueRequestsQuotaAcquireRetryTime, iter, new UpperBoundParallel.Mentor<>() {
                         @Override
                         public boolean runOneMore(BiConsumer<Throwable, Void> onDone, Iterator<List<Map.Entry<String, String>>> iterator) {
                             if (!iterator.hasNext()) {

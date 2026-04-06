@@ -50,7 +50,7 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
     private final UpperBoundParallel upperBoundParallel;
     private final RedisQuesExceptionFactory exceptionFactory;
     private final Semaphore redisRequestQuota;
-    private final int redisRequestQuotaTimeout;
+    private final int redisRequestQuotaAcquireRetryTime;
 
     public GetQueuesItemsCountHandler(
             Vertx vertx,
@@ -60,7 +60,7 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
             RedisService redisService,
             RedisQuesExceptionFactory exceptionFactory,
             Semaphore redisRequestQuota,
-            int redisRequestQuotaTimeout
+            int redisRequestQuotaAcquireRetryTime
     ) {
         this.vertx = vertx;
         this.event = event;
@@ -70,7 +70,7 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
         this.upperBoundParallel = new UpperBoundParallel(vertx, exceptionFactory);
         this.exceptionFactory = exceptionFactory;
         this.redisRequestQuota = redisRequestQuota;
-        this.redisRequestQuotaTimeout = redisRequestQuotaTimeout;
+        this.redisRequestQuotaAcquireRetryTime = redisRequestQuotaAcquireRetryTime;
     }
 
     @Override
@@ -110,7 +110,7 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
             ctx.queueLengths = new int[ctx.keyQueuePair.size()];
             ctx.iter = ctx.keyQueuePair.iterator();
             var p = Promise.<Void>promise();
-            upperBoundParallel.request(redisRequestQuota, redisRequestQuotaTimeout, null, new UpperBoundParallel.Mentor<Void>() {
+            upperBoundParallel.request(redisRequestQuota, redisRequestQuotaAcquireRetryTime, null, new UpperBoundParallel.Mentor<Void>() {
                 @Override
                 public boolean runOneMore(BiConsumer<Throwable, Void> onLLenDone, Void unused) {
                     if (!ctx.iter.hasNext()) {
