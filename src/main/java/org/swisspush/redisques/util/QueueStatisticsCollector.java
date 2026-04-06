@@ -543,7 +543,7 @@ public class QueueStatisticsCollector {
         assert ctx.queueLengthList == null;
         ctx.queueLengthList = new ArrayList<>(ctx.keyQueuePair.size());
         var upperBoundPromise = Promise.<Void>promise();
-        final int redisRequestQuotaTimeout = configurationProvider.configuration().getRedisMonitoringReqQuotaAcquireTimeoutMs();
+        final int redisRequestQuotaAcquireRetryTime = configurationProvider.configuration().getRedisMonitoringReqQuotaAcquireRetryTimeMs();
         upperBoundParallel.request(redisRequestQuota, redisRequestQuotaAcquireRetryTime, ctx, new UpperBoundParallel.Mentor<>() {
             Iterator<Entry<String, String>> queueKeyWithNameIter = ctx.keyQueuePair.iterator();
 
@@ -708,7 +708,7 @@ public class QueueStatisticsCollector {
     }
 
     /**
-     * <p>Holds intermediate state related to a {@link #getQueueStatistics(List)}
+     * <p>Holds intermediate state related to a {@link #getQueueStatistics(List, boolean)}}
      * request.</p>
      */
     private static class RequestCtx {
