@@ -7,10 +7,13 @@ public class KeyspaceHelper {
     private final String queuesKey;
     private final String queuesPrefix;
     private final String consumersPrefix;
+    private final String clusterSafeConsumersPrefix;
     private final String dequeueStatisticKey;
     private final String dequeueStatisticTsKey;
     private final String locksKey;
     private final String queueCheckLastexecKey;
+    private final String dataMigrationKey;
+    private final String dataMigrationLockKey;
 
     private final String verticleUid;
     private final String verticleNotifyConsumerKey;
@@ -26,10 +29,13 @@ public class KeyspaceHelper {
         queuesKey = configuration.getRedisPrefix() + "queues";
         queuesPrefix = configuration.getRedisPrefix() + "queues:";
         consumersPrefix = configuration.getRedisPrefix() + "consumers:";
+        clusterSafeConsumersPrefix = configuration.getRedisPrefix() + "{consumers}:";
         dequeueStatisticKey =  configuration.getRedisPrefix() + "dequeueStatistic";
         dequeueStatisticTsKey =  dequeueStatisticKey + ":ts";
         locksKey = configuration.getRedisPrefix() + "locks";
         queueCheckLastexecKey = configuration.getRedisPrefix() + "check:lastexec";
+        dataMigrationKey =  configuration.getRedisPrefix() + "migration";
+        dataMigrationLockKey =  dataMigrationKey + ":locks";
         verticleNotifyConsumerKey = "notifyConsumer:" + verticleUid;
         trimRequestKey = "trim_request:" + verticleUid;
         consumersAddress = configuration.getAddress() + "-consumers";
@@ -65,6 +71,10 @@ public class KeyspaceHelper {
         return consumersPrefix;
     }
 
+    public String getClusterSafeConsumersPrefix() {
+        return clusterSafeConsumersPrefix;
+    }
+
     public String getDequeueStatisticKey() {
         return dequeueStatisticKey;
     }
@@ -91,5 +101,9 @@ public class KeyspaceHelper {
 
     public  String getMetricsCollectorAddress() {
         return metricsCollectorAddress;
+    }
+
+    public String getDataMigrationLockKey() {
+        return dataMigrationLockKey;
     }
 }

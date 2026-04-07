@@ -12,6 +12,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.handler.RedisquesHttpRequestHandler;
+import org.swisspush.redisques.migration.MigrateTool;
 import org.swisspush.redisques.queue.KeyspaceHelper;
 import org.swisspush.redisques.queue.QueueActionsService;
 import org.swisspush.redisques.queue.QueueConsumerRunner;
@@ -141,6 +142,11 @@ public class RedisQues extends AbstractVerticle {
                 QueueConfigurationProvider.provider(vertx, configurationProvider.configuration().getQueueConfigurations()).get().onComplete(event1 -> {
                     if(event1.succeeded()) {
                         RedisQues.this.queueConfigurationProvider = event1.result();
+                        new MigrateTool(vertx, this.configurationProvider, redisService, keyspaceHelper, uid).start().onComplete(migrateResult -> {
+                            log.info("Migration done, will continue to start the RedisQues");
+//                            initialize();
+//                            promise.complete();
+                        });
                         initialize();
                         promise.complete();
                     }else{
@@ -266,6 +272,11 @@ public class RedisQues extends AbstractVerticle {
     @VisibleForTesting
     public RedisService getRedisService() {
         return redisService;
+    }
+
+    @VisibleForTesting
+    public RedisquesConfigurationProvider getConfigurationProvider() {
+        return configurationProvider;
     }
 
     @Override

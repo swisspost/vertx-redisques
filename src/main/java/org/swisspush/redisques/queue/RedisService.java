@@ -1,9 +1,13 @@
 package org.swisspush.redisques.queue;
 
+import io.vertx.core.CompositeFuture;
 import io.vertx.core.Future;
+import io.vertx.core.Promise;
 import io.vertx.redis.client.Command;
+import io.vertx.redis.client.Redis;
 import io.vertx.redis.client.RedisAPI;
 import io.vertx.redis.client.RedisConnection;
+import io.vertx.redis.client.RedisOptions;
 import io.vertx.redis.client.Request;
 import io.vertx.redis.client.Response;
 import org.slf4j.Logger;
@@ -14,6 +18,8 @@ import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Service wrapper around {@link RedisAPI} providing convenience methods
@@ -27,6 +33,14 @@ public class RedisService {
     private final RedisProvider redisProvider;
     private static final Logger log = LoggerFactory.getLogger(RedisService.class);
     public static final int MAX_COMMANDS_IN_BATCH = 100;
+    private static class RedisNode {
+        String host;
+        int port;
+        RedisNode(String host, int port) {
+            this.host = host;
+            this.port = port;
+        }
+    }
 
     public RedisService(RedisProvider redisProvider) {
         this.redisProvider = redisProvider;
@@ -154,7 +168,6 @@ public class RedisService {
         });
     }
 
-
     /**
      * Sets a key only if it does not already exist, with a TTL.
      *
@@ -172,9 +185,21 @@ public class RedisService {
             } else {
                 return redisAPI.send(Command.SET, key, value, "PX", durationMillisStr);
             }
-        }).map((Response rsp) -> {
-            return rsp != null && "OK".equals(rsp.toString());
-        });
+        }).map((Response rsp) -> rsp != null && "OK".equals(rsp.toString()));
+    }
+
+    /**
+     * update TTL of a key only if existed.
+     *
+     * @param key            Redis key
+     * @param durationMillis expiration duration
+     * @return a {@link Future} indicating whether the key was set
+     */
+    public Future<Boolean> setPExpire(String key, long durationMillis) {
+        return redis().compose((RedisAPI redisAPI) -> {
+            String durationMillisStr = String.valueOf(durationMillis);
+            return redisAPI.send(Command.PEXPIRE, key, durationMillisStr);
+        }).map((Response rsp) -> rsp != null && rsp.toInteger() == 1);
     }
 
     /**
@@ -528,6 +553,7 @@ public class RedisService {
 
     /**
      * get mutiple values of keys
+     *
      * @param keys
      * @return a list of responses
      */
@@ -546,6 +572,7 @@ public class RedisService {
 
     /**
      * execute a list of command in pipeline
+     *
      * @param batchCmd redis commands will execute
      * @return a list of responses
      */
@@ -556,5 +583,114 @@ public class RedisService {
         return redisProvider.redisConnection().compose((RedisConnection connection) ->
                 connection.batch(batchCmd)
         );
+    }
+
+    /**
+     * execute a redis command
+     *
+     * @param request command
+     * @return
+     */
+    public Future<Response> send(Request request) {
+        return redisProvider.redisConnection().compose((RedisConnection connection) ->
+                connection.send(request)
+        );
+    }
+
+    /**
+     * Cluster wide scanner
+     **/
+    public Future<Set<String>> scanCluster(String pattern) {
+        Promise<Set<String>> promise = Promise.promise();
+
+        // 1. Get cluster slots info
+        send(Request.cmd(Command.CLUSTER).arg("SLOTS")).onComplete(slotsRes -> {
+            if (slotsRes.failed()) {
+                promise.fail(slotsRes.cause());
+                return;
+            }
+
+            List<RedisNode> masterNodes = extractMasterNodes(slotsRes.result());
+
+            List<Future> futures = new ArrayList<>();
+            Set<String> allKeys = ConcurrentHashMap.newKeySet();
+
+            // 2. Scan each master node
+            for (RedisNode node : masterNodes) {
+                futures.add(scanSingleNode(redis, node, pattern, allKeys));
+            }
+
+            CompositeFuture.all(futures).onComplete(done -> {
+                if (done.failed()) {
+                    promise.fail(done.cause());
+                } else {
+                    promise.complete(allKeys);
+                }
+            });
+        });
+
+
+        return promise.future();
+    }
+
+    private Future<Void> scanSingleNode(Redis redis, RedisNode node,
+                                        String pattern, Set<String> collector) {
+
+        Promise<Void> promise = Promise.promise();
+
+        RedisOptions options = new RedisOptions()
+                .setConnectionString("redis://" + node.host + ":" + node.port);
+
+        Redis.createClient(vertx, options).connect(ar -> {
+            if (ar.failed()) {
+                promise.fail(ar.cause());
+                return;
+            }
+
+            RedisConnection conn = ar.result();
+            scanRecursive(conn, "0", pattern, collector, promise);
+        });
+
+        return promise.future();
+    }
+
+    private void scanRecursive(RedisConnection conn,
+                               String cursor,
+                               String pattern,
+                               Set<String> collector,
+                               Promise<Void> promise) {
+
+        conn.send(Request.cmd(Command.SCAN)
+                        .arg(cursor)
+                        .arg("MATCH").arg(pattern)
+                        .arg("COUNT").arg(MAX_COMMANDS_IN_BATCH),
+                ar -> {
+                    if (ar.failed()) {
+                        promise.fail(ar.cause());
+                        return;
+                    }
+                    Response res = ar.result();
+                    String nextCursor = res.get(0).toString();
+                    for (Response key : res.get(1)) {
+                        collector.add(key.toString());
+                    }
+
+                    if ("0".equals(nextCursor)) {
+                        promise.complete();
+                    } else {
+                        scanRecursive(conn, nextCursor, pattern, collector, promise);
+                    }
+                });
+    }
+
+    private List<RedisNode> extractMasterNodes(Response slotsResponse) {
+        List<RedisNode> nodes = new ArrayList<>();
+        for (Response slotInfo : slotsResponse) {
+            Response master = slotInfo.get(2); // index 2 = master node info
+            String host = master.get(0).toString();
+            int port = master.get(1).toInteger();
+            nodes.add(new RedisNode(host, port));
+        }
+        return nodes;
     }
 }
