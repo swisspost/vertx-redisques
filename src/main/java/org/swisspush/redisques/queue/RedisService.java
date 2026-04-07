@@ -562,7 +562,7 @@ public class RedisService {
             // Build requests and group by slot
             for (int i = 0; i < keys.size(); i++) {
                 String key = keys.get(i);
-                int slot = RedisClusterUtil.redisSlot(key);
+                int slot = RedisClusterUtil.calcRedisSlot(key);
                 Request req = Request.cmd(cmd).arg(key);
                 for(String arg : additionalArgs) {
                     req = req.arg(arg);
@@ -628,7 +628,7 @@ public class RedisService {
             // Group keys by slot
             for (int i = 0; i < keys.size(); i++) {
                 String key = keys.get(i);
-                int slot = RedisClusterUtil.redisSlot(key);
+                int slot = RedisClusterUtil.calcRedisSlot(key);
 
                 keysGroupedBySlots.computeIfAbsent(slot, s -> new ArrayList<>()).add(key);
                 keyIndexes.computeIfAbsent(slot, s -> new ArrayList<>()).add(i);

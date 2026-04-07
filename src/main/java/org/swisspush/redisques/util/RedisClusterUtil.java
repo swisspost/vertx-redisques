@@ -42,7 +42,7 @@ public class RedisClusterUtil {
     public static Map<Integer, List<String>> groupKeysBySlot(List<String> keys) {
         Map<Integer, List<String>> slotKeys = new HashMap<>();
         for (String key : keys) {
-            int slot = redisSlot(key);
+            int slot = calcRedisSlot(key);
             slotKeys.computeIfAbsent(slot, s -> new ArrayList<>()).add(key);
         }
         return slotKeys;
@@ -60,7 +60,7 @@ public class RedisClusterUtil {
         Map<Integer, LinkedHashMap<String, T>> slotGroups = new HashMap<>();
 
         for (Map.Entry<String, T> entry : queues.entrySet()) {
-            int slot = redisSlot(entry.getKey());
+            int slot = calcRedisSlot(entry.getKey());
             slotGroups
                     .computeIfAbsent(slot, s -> new LinkedHashMap<>())
                     .put(entry.getKey(), entry.getValue());
@@ -82,8 +82,9 @@ public class RedisClusterUtil {
      * @param key will use to calculate
      * @return
      */
-    public static int redisSlot(String key) {
-        // simple re-use the ZModem in Vertx Redis Client
+    public static int calcRedisSlot(String key) {
+        //Despite its name, it is not an implementation of the classic ZMODEM file transfer protocol.
+        // Instead, it is a specific CRC16 implementation used to determine which "hash slot" a specific key belongs to in a Redis Cluster.
         return ZModem.generate(key);
     }
 }

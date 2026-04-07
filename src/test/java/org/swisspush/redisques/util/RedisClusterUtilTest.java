@@ -8,7 +8,7 @@ import java.util.List;
 import static org.junit.Assert.*;
 import static org.swisspush.redisques.util.RedisClusterUtil.groupKeysBySlot;
 import static org.swisspush.redisques.util.RedisClusterUtil.orderKeysBySlot;
-import static org.swisspush.redisques.util.RedisClusterUtil.redisSlot;
+import static org.swisspush.redisques.util.RedisClusterUtil.calcRedisSlot;
 
 public class RedisClusterUtilTest {
 
@@ -23,7 +23,7 @@ public class RedisClusterUtilTest {
         long start = System.nanoTime();
         long sum = 0;
         for (String key : keys) {
-            sum += redisSlot(key);
+            sum += calcRedisSlot(key);
         }
         long end = System.nanoTime();
         System.out.println("slots hashing time usage ms: " + (end - start) / 1_000_000.0);
@@ -41,25 +41,25 @@ public class RedisClusterUtilTest {
 
     @Test
     public void testSameKeySameSlot() {
-        int slot1 = redisSlot("mykey");
-        int slot2 = redisSlot("mykey");
+        int slot1 = calcRedisSlot("mykey");
+        int slot2 = calcRedisSlot("mykey");
 
         assertEquals(slot1, slot2);
     }
 
     @Test
     public void testDifferentKeysDifferentSlots() {
-        int slot1 = redisSlot("key1");
-        int slot2 = redisSlot("key2");
+        int slot1 = calcRedisSlot("key1");
+        int slot2 = calcRedisSlot("key2");
 
         assertNotEquals(slot1, slot2);
     }
 
     @Test
     public void testHashTagSameSlot() {
-        int slot1 = redisSlot("queue:{A}:1");
-        int slot2 = redisSlot("queue:{A}:2");
-        int slot3 = redisSlot("{A}");
+        int slot1 = calcRedisSlot("queue:{A}:1");
+        int slot2 = calcRedisSlot("queue:{A}:2");
+        int slot3 = calcRedisSlot("{A}");
 
         assertEquals(slot1, slot2);
         assertEquals(slot1, slot3);
@@ -67,24 +67,24 @@ public class RedisClusterUtilTest {
 
     @Test
     public void testHashTagDifferentSlots() {
-        int slot1 = redisSlot("queue:{A}:1");
-        int slot2 = redisSlot("queue:{B}:1");
+        int slot1 = calcRedisSlot("queue:{A}:1");
+        int slot2 = calcRedisSlot("queue:{B}:1");
 
         assertNotEquals(slot1, slot2);
     }
 
     @Test
     public void testNoClosingBraceUsesFullKey() {
-        int slot1 = redisSlot("queue:{A");
-        int slot2 = redisSlot("queue:{A");
+        int slot1 = calcRedisSlot("queue:{A");
+        int slot2 = calcRedisSlot("queue:{A");
 
         assertEquals(slot1, slot2);
     }
 
     @Test
     public void testEmptyHashTagIgnored() {
-        int slot1 = redisSlot("queue:{}:1");
-        int slot2 = redisSlot("queue:{}:2");
+        int slot1 = calcRedisSlot("queue:{}:1");
+        int slot2 = calcRedisSlot("queue:{}:2");
 
         // Empty {} should hash full key, so different
         assertNotEquals(slot1, slot2);
@@ -92,7 +92,7 @@ public class RedisClusterUtilTest {
 
     @Test
     public void testSlotRange() {
-        int slot = redisSlot("anykey");
+        int slot = calcRedisSlot("anykey");
         assertTrue(slot >= 0);
         assertTrue(slot < 16384);
     }
@@ -123,13 +123,13 @@ public class RedisClusterUtilTest {
         List<String> ordered = RedisClusterUtil.orderKeysBySlot(keys);
 
         // Keys with same slot should be adjacent
-        int slotA = redisSlot("queue:{A}:1");
+        int slotA = calcRedisSlot("queue:{A}:1");
 
         int firstA = -1;
         int lastA = -1;
 
         for (int i = 0; i < ordered.size(); i++) {
-            if (redisSlot(ordered.get(i)) == slotA) {
+            if (calcRedisSlot(ordered.get(i)) == slotA) {
                 if (firstA == -1) firstA = i;
                 lastA = i;
             }
@@ -151,7 +151,7 @@ public class RedisClusterUtilTest {
 
         int prevSlot = -1;
         for (String key : ordered) {
-            int slot = redisSlot(key);
+            int slot = calcRedisSlot(key);
             assertTrue(slot >= prevSlot);
             prevSlot = slot;
         }
@@ -193,8 +193,8 @@ public class RedisClusterUtilTest {
 
     @Test
     public void testRedisOfficialHashTagExample() {
-        int slot1 = redisSlot("{user1000}.following");
-        int slot2 = redisSlot("{user1000}.followers");
+        int slot1 = calcRedisSlot("{user1000}.following");
+        int slot2 = calcRedisSlot("{user1000}.followers");
 
         assertEquals(slot1, slot2);
     }
