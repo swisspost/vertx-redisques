@@ -9,7 +9,6 @@ import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.redis.client.Command;
-import io.vertx.redis.client.Request;
 import io.vertx.redis.client.Response;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,13 +18,16 @@ import org.swisspush.redisques.util.HandlerUtil;
 
 import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.Semaphore;
 import java.util.function.BiConsumer;
 import java.util.regex.Pattern;
 
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
+import org.swisspush.redisques.util.RedisClusterUtil;
 
 import static java.lang.System.currentTimeMillis;
 import static org.swisspush.redisques.util.RedisquesAPI.ERROR;
@@ -78,13 +80,22 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
             event.reply(new JsonObject().put(STATUS, ERROR));
             return;
         }
+
+        Map<String, String> keyQueuePairs = new LinkedHashMap<>();
+        for (String key : HandlerUtil.filterByPattern(handleQueues.result(), filterPattern)) {
+            keyQueuePairs.put(queuesPrefix + key, key);
+        }
+        keyQueuePairs = RedisClusterUtil.groupMapBySlot(keyQueuePairs);
+
+        List<Map.Entry<String, String>> finalKeyQueuePairs = new ArrayList<>(keyQueuePairs.entrySet());
         var ctx = new Object() {
-            Iterator<String> iter;
-            List<String> queues = HandlerUtil.filterByPattern(handleQueues.result(), filterPattern);
+            Iterator<Map.Entry<String, String>> iter;
+            // order all keys by slot so can process almost key in the same slot at once
+            List<Map.Entry<String, String>> keyQueuePair = finalKeyQueuePairs;
             int iNumberResult;
             int[] queueLengths;
         };
-        if (ctx.queues.isEmpty()) {
+        if (ctx.keyQueuePair.isEmpty()) {
             log.debug("Queue count evaluation with empty queues");
             event.reply(new JsonObject().put(STATUS, OK).put(QUEUES, new JsonArray()));
             return;
@@ -96,8 +107,8 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
         }
 
         Future.succeededFuture().compose(o -> {
-            ctx.queueLengths = new int[ctx.queues.size()];
-            ctx.iter = ctx.queues.iterator();
+            ctx.queueLengths = new int[ctx.keyQueuePair.size()];
+            ctx.iter = ctx.keyQueuePair.iterator();
             var p = Promise.<Void>promise();
             upperBoundParallel.request(redisRequestQuota, redisRequestQuotaAcquireRetryTime, null, new UpperBoundParallel.Mentor<Void>() {
                 @Override
@@ -105,17 +116,17 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
                     if (!ctx.iter.hasNext()) {
                         return false;
                     }
-                    List<Request> batch = new ArrayList<>(RedisService.MAX_COMMANDS_IN_BATCH);
+                    List<String> keyBatch = new ArrayList<>(RedisService.MAX_COMMANDS_IN_BATCH);
                     List<Integer> resultIndexes = new ArrayList<>(RedisService.MAX_COMMANDS_IN_BATCH);
                     int count = 0;
                     while (ctx.iter.hasNext() && count < RedisService.MAX_COMMANDS_IN_BATCH) {
-                        String queue = ctx.iter.next();
+                        Map.Entry<String, String> queue = ctx.iter.next();
                         int index = ctx.iNumberResult++;
-                        batch.add(Request.cmd(Command.LLEN).arg(queuesPrefix + queue));
+                        keyBatch.add(queue.getKey());
                         resultIndexes.add(index);
                         count++;
                     }
-                    redisService.batch(batch)
+                    redisService.clusterSafeBatch(Command.LLEN, keyBatch, List.of())
                             .onSuccess(responses -> {
                                 for (int i = 0; i < responses.size(); i++) {
                                     ctx.queueLengths[resultIndexes.get(i)] =
@@ -149,7 +160,7 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
 
                 JsonArray result = new JsonArray();
                 for (int i = 0; i < ctx.queueLengths.length; ++i) {
-                    String queueName = ctx.queues.get(i);
+                    String queueName = ctx.keyQueuePair.get(i).getValue();
                     result.add(new JsonObject()
                             .put(MONITOR_QUEUE_NAME, queueName)
                             .put(MONITOR_QUEUE_SIZE, ctx.queueLengths[i]));
