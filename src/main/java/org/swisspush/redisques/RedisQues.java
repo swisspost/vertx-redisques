@@ -13,6 +13,7 @@ import org.slf4j.LoggerFactory;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.handler.RedisquesHttpRequestHandler;
 import org.swisspush.redisques.migration.MigrateTool;
+import org.swisspush.redisques.migration.tasks.QueueConsumersMigrationTask;
 import org.swisspush.redisques.queue.KeyspaceHelper;
 import org.swisspush.redisques.queue.QueueActionsService;
 import org.swisspush.redisques.queue.QueueConsumerRunner;
@@ -30,7 +31,7 @@ import static org.swisspush.redisques.util.RedisquesAPI.*;
 
 public class RedisQues extends AbstractVerticle {
     private static final Logger log = LoggerFactory.getLogger(RedisQues.class);
-
+    private static volatile boolean migrationToolDisabled = false;
     // Identifies the consumer
     private final String uid = UUID.randomUUID().toString();
 
@@ -82,16 +83,16 @@ public class RedisQues extends AbstractVerticle {
     }
 
     public RedisQues(
-        MemoryUsageProvider memoryUsageProvider,
-        RedisquesConfigurationProvider configurationProvider,
-        RedisProvider redisProvider,
-        RedisQuesExceptionFactory exceptionFactory,
-        Semaphore redisMonitoringReqQuota,
-        Semaphore activeQueueRegRefreshReqQuota,
-        Semaphore checkQueueRequestsQuota,
-        Semaphore queueStatsRequestQuota,
-        Semaphore getQueuesItemsCountRedisRequestQuota,
-        MeterRegistry meterRegistry
+            MemoryUsageProvider memoryUsageProvider,
+            RedisquesConfigurationProvider configurationProvider,
+            RedisProvider redisProvider,
+            RedisQuesExceptionFactory exceptionFactory,
+            Semaphore redisMonitoringReqQuota,
+            Semaphore activeQueueRegRefreshReqQuota,
+            Semaphore checkQueueRequestsQuota,
+            Semaphore queueStatsRequestQuota,
+            Semaphore getQueuesItemsCountRedisRequestQuota,
+            MeterRegistry meterRegistry
     ) {
         this.memoryUsageProvider = memoryUsageProvider;
         this.configurationProvider = configurationProvider;
@@ -134,22 +135,30 @@ public class RedisQues extends AbstractVerticle {
         this.keyspaceHelper = new KeyspaceHelper(modConfig, uid);
 
         redisProvider.redis().onComplete(event -> {
-            if(event.succeeded()) {
-                redisService = new RedisService(redisProvider);
+            if (event.succeeded()) {
+                redisService = new RedisService(vertx, redisProvider, configurationProvider);
                 if (this.dequeueStatisticCollector == null) {
                     this.dequeueStatisticCollector = new DequeueStatisticCollector(vertx, modConfig.isDequeueStatsEnabled(), redisService, keyspaceHelper);
                 }
                 QueueConfigurationProvider.provider(vertx, configurationProvider.configuration().getQueueConfigurations()).get().onComplete(event1 -> {
-                    if(event1.succeeded()) {
+                    if (event1.succeeded()) {
                         RedisQues.this.queueConfigurationProvider = event1.result();
-                        new MigrateTool(vertx, this.configurationProvider, redisService, keyspaceHelper, uid).start().onComplete(migrateResult -> {
+                        if (migrationToolDisabled) {
+                            initialize();
+                            promise.complete();
+                            return;
+                        }
+
+                        MigrateTool migrateTool = new MigrateTool(vertx, this.configurationProvider, redisService, keyspaceHelper, uid);
+
+                        migrateTool.addTask(new QueueConsumersMigrationTask(vertx, redisService, keyspaceHelper));
+
+                        migrateTool.start().onComplete(migrateResult -> {
                             log.info("Migration done, will continue to start the RedisQues");
-//                            initialize();
-//                            promise.complete();
+                            initialize();
+                            promise.complete();
                         });
-                        initialize();
-                        promise.complete();
-                    }else{
+                    } else {
                         log.error("Failed to start Redisques module with configuration: {}", event1.cause().getMessage());
                         promise.fail(new Exception(event1.cause()));
                     }
@@ -184,7 +193,7 @@ public class RedisQues extends AbstractVerticle {
         assert getQueuesItemsCountRedisRequestQuota != null;
 
         this.queueRegistryService = new QueueRegistryService(vertx, redisService, configurationProvider, exceptionFactory,
-                keyspaceHelper, queueMetrics, queueStatsService, queueStatisticsCollector , checkQueueRequestsQuota, activeQueueRegRefreshReqQuota, queueConfigurationProvider);
+                keyspaceHelper, queueMetrics, queueStatsService, queueStatisticsCollector, checkQueueRequestsQuota, activeQueueRegRefreshReqQuota, queueConfigurationProvider);
         this.queueActionsService = new QueueActionsService(vertx, queueRegistryService, redisService, keyspaceHelper, configurationProvider,
                 exceptionFactory, memoryUsageProvider, queueStatisticsCollector, getQueuesItemsCountRedisRequestQuota, meterRegistry, queueConfigurationProvider);
 
@@ -196,7 +205,7 @@ public class RedisQues extends AbstractVerticle {
     private Handler<Message<JsonObject>> operationsHandler() {
         return event -> {
             final JsonObject body = event.body();
-            if( body == null )
+            if (body == null)
                 throw new NullPointerException("Why is body empty? addr=" + event.address() + "  replyAddr=" + event.replyAddress());
             String operation = body.getString(OPERATION);
             log.trace("RedisQues got operation: {}", operation);
@@ -279,10 +288,15 @@ public class RedisQues extends AbstractVerticle {
         return configurationProvider;
     }
 
+    @VisibleForTesting
+    public void disableMigrationTool() {
+        migrationToolDisabled = true;
+    }
+
     @Override
     public void stop() {
         queueRegistryService.stop();
-        if(redisMonitor != null) {
+        if (redisMonitor != null) {
             redisMonitor.stop();
             redisMonitor = null;
         }

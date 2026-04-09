@@ -12,7 +12,8 @@ public class KeyspaceHelper {
     private final String dequeueStatisticTsKey;
     private final String locksKey;
     private final String queueCheckLastexecKey;
-    private final String dataMigrationKey;
+    private final String dataMigrationKeyPrefix;
+    private final String dataMigrationTaskPrefix;
     private final String dataMigrationLockKey;
 
     private final String verticleUid;
@@ -30,17 +31,18 @@ public class KeyspaceHelper {
         queuesPrefix = configuration.getRedisPrefix() + "queues:";
         consumersPrefix = configuration.getRedisPrefix() + "consumers:";
         clusterSafeConsumersPrefix = configuration.getRedisPrefix() + "{consumers}:";
-        dequeueStatisticKey =  configuration.getRedisPrefix() + "dequeueStatistic";
-        dequeueStatisticTsKey =  dequeueStatisticKey + ":ts";
+        dequeueStatisticKey = configuration.getRedisPrefix() + "dequeueStatistic";
+        dequeueStatisticTsKey = dequeueStatisticKey + ":ts";
         locksKey = configuration.getRedisPrefix() + "locks";
         queueCheckLastexecKey = configuration.getRedisPrefix() + "check:lastexec";
-        dataMigrationKey =  configuration.getRedisPrefix() + "migration";
-        dataMigrationLockKey =  dataMigrationKey + ":locks";
+        dataMigrationKeyPrefix = configuration.getRedisPrefix() + "{migration}:";
+        dataMigrationTaskPrefix = dataMigrationKeyPrefix + "tasks:";
+        dataMigrationLockKey = dataMigrationKeyPrefix + "locks";
         verticleNotifyConsumerKey = "notifyConsumer:" + verticleUid;
         trimRequestKey = "trim_request:" + verticleUid;
         consumersAddress = configuration.getAddress() + "-consumers";
-        aliveConsumersKey= configuration.getRedisPrefix() + "-aliveConsumer";
-        metricsCollectorAddress = configuration.getAddress()  + "-" + verticleUid + "-" + QUEUE_STATE_COUNT_KEY;
+        aliveConsumersKey = configuration.getRedisPrefix() + "-aliveConsumer";
+        metricsCollectorAddress = configuration.getAddress() + "-" + verticleUid + "-" + QUEUE_STATE_COUNT_KEY;
     }
 
     public String getAddress() {
@@ -67,6 +69,7 @@ public class KeyspaceHelper {
         return queuesPrefix;
     }
 
+    @Deprecated
     public String getConsumersPrefix() {
         return consumersPrefix;
     }
@@ -99,11 +102,15 @@ public class KeyspaceHelper {
         return aliveConsumersKey;
     }
 
-    public  String getMetricsCollectorAddress() {
+    public String getMetricsCollectorAddress() {
         return metricsCollectorAddress;
     }
 
     public String getDataMigrationLockKey() {
         return dataMigrationLockKey;
+    }
+
+    public String getDataMigrationTaskPrefix() {
+        return dataMigrationTaskPrefix;
     }
 }

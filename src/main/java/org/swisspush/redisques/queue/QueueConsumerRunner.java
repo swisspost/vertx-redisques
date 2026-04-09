@@ -374,7 +374,7 @@ public class QueueConsumerRunner {
     private Future<String> refreshRegistrationAndGet(String queueName) {
         log.debug("RedisQues Refreshing registration of queue consumer {}, expire in {} s", queueName, consumerLockTime);
         Promise<String> promise = Promise.promise();
-        final String consumerKey = keyspaceHelper.getConsumersPrefix() + queueName;
+        final String consumerKey = keyspaceHelper.getClusterSafeConsumersPrefix() + queueName;
 
         List<Request> batch = new ArrayList<>(2);
         batch.add(Request.cmd(Command.EXPIRE).arg(consumerKey).arg(String.valueOf(consumerLockTime)));

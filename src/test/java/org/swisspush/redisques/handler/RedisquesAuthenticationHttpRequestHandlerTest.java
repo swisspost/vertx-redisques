@@ -62,6 +62,7 @@ public class RedisquesAuthenticationHttpRequestHandlerTest extends AbstractTestC
                 .withRedisquesRedisquesConfigurationProvider(new DefaultRedisquesConfigurationProvider(testVertx, config))
                 .build();
 
+        redisQues.disableMigrationTool();
         testVertx.deployVerticle(redisQues, new DeploymentOptions().setConfig(config), context.asyncAssertSuccess(event -> {
             deploymentId = event;
             log.info("vert.x Deploy - " + redisQues.getClass().getSimpleName() + " was successful.");
@@ -95,6 +96,7 @@ public class RedisquesAuthenticationHttpRequestHandlerTest extends AbstractTestC
                 .withRedisquesRedisquesConfigurationProvider(new DefaultRedisquesConfigurationProvider(testVertx, config))
                 .build();
 
+        redisQues.disableMigrationTool();
         testVertx.deployVerticle(redisQues, new DeploymentOptions().setConfig(config), context.asyncAssertSuccess(event -> {
             deploymentId = event;
             log.info("vert.x Deploy - " + redisQues.getClass().getSimpleName() + " was successful.");
@@ -128,6 +130,7 @@ public class RedisquesAuthenticationHttpRequestHandlerTest extends AbstractTestC
                 .withRedisquesRedisquesConfigurationProvider(new DefaultRedisquesConfigurationProvider(testVertx, config))
                 .build();
 
+        redisQues.disableMigrationTool();
         testVertx.deployVerticle(redisQues, new DeploymentOptions().setConfig(config), context.asyncAssertSuccess(event -> {
             deploymentId = event;
             log.info("vert.x Deploy - " + redisQues.getClass().getSimpleName() + " was successful.");
@@ -161,6 +164,7 @@ public class RedisquesAuthenticationHttpRequestHandlerTest extends AbstractTestC
                 .withRedisquesRedisquesConfigurationProvider(new DefaultRedisquesConfigurationProvider(testVertx, config))
                 .build();
 
+        redisQues.disableMigrationTool();
         testVertx.deployVerticle(redisQues, new DeploymentOptions().setConfig(config), context.asyncAssertSuccess(event -> {
             deploymentId = event;
             log.info("vert.x Deploy - " + redisQues.getClass().getSimpleName() + " was successful.");
@@ -194,6 +198,7 @@ public class RedisquesAuthenticationHttpRequestHandlerTest extends AbstractTestC
                 .withRedisquesRedisquesConfigurationProvider(new DefaultRedisquesConfigurationProvider(testVertx, config))
                 .build();
 
+        redisQues.disableMigrationTool();
         testVertx.deployVerticle(redisQues, new DeploymentOptions().setConfig(config), context.asyncAssertSuccess(event -> {
             deploymentId = event;
             log.info("vert.x Deploy - " + redisQues.getClass().getSimpleName() + " was successful.");
@@ -227,6 +232,7 @@ public class RedisquesAuthenticationHttpRequestHandlerTest extends AbstractTestC
                 .withRedisquesRedisquesConfigurationProvider(new DefaultRedisquesConfigurationProvider(testVertx, config))
                 .build();
 
+        redisQues.disableMigrationTool();
         testVertx.deployVerticle(redisQues, new DeploymentOptions().setConfig(config), context.asyncAssertSuccess(event -> {
             deploymentId = event;
             log.info("vert.x Deploy - " + redisQues.getClass().getSimpleName() + " was successful.");

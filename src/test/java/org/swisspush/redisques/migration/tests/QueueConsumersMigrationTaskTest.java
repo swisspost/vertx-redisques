@@ -1,36 +1,38 @@
-package org.swisspush.redisques.migration;
+package org.swisspush.redisques.migration.tests;
 
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
-import io.vertx.core.AsyncResult;
 import io.vertx.core.DeploymentOptions;
-import io.vertx.core.Future;
-import io.vertx.core.Handler;
-import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.ext.unit.Async;
 import io.vertx.ext.unit.TestContext;
+import io.vertx.redis.client.RedisClientType;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.swisspush.redisques.AbstractTestCase;
 import org.swisspush.redisques.RedisQues;
 import org.swisspush.redisques.action.AbstractQueueAction;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
-import org.swisspush.redisques.migration.tasks.Task;
+import org.swisspush.redisques.migration.tasks.QueueConsumersMigrationTask;
 import org.swisspush.redisques.util.DefaultRedisquesConfigurationProvider;
 import org.swisspush.redisques.util.QueueConfiguration;
 import org.swisspush.redisques.util.QueueConfigurationProvider;
 import org.swisspush.redisques.util.RedisquesConfiguration;
 import org.swisspush.redisques.util.TestMemoryUsageProvider;
-import redis.clients.jedis.Jedis;
+import redis.clients.jedis.HostAndPort;
 import redis.clients.jedis.JedisCluster;
 
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.Set;
 
-public class MigrateToolTest extends AbstractTestCase {
+/**
+ * This test need cluster enabled redis to run
+ */
+@Ignore
+public class QueueConsumersMigrationTaskTest extends AbstractTestCase {
     private RedisQues redisQues;
     private TestMemoryUsageProvider memoryUsageProvider;
     private final String metricsIdentifier = "foo";
@@ -58,6 +60,7 @@ public class MigrateToolTest extends AbstractTestCase {
                 .metricRefreshPeriod(2)
                 .memoryUsageLimitPercent(80)
                 .redisReadyCheckIntervalMs(2000)
+                .redisClientType(RedisClientType.CLUSTER)
                 .queueConfigurations(List.of(new QueueConfiguration()
                                 .withPattern("queue.*")
                                 .withRetryIntervals(2, 7, 12, 17, 22, 27, 32, 37, 42, 47, 52),
@@ -82,74 +85,70 @@ public class MigrateToolTest extends AbstractTestCase {
         vertx.deployVerticle(redisQues, new DeploymentOptions().setConfig(rqConfig.asJsonObject()), context.asyncAssertSuccess(event -> {
             deploymentId = event;
             log.info("vert.x Deploy - {} was successful.", redisQues.getClass().getSimpleName());
-            jedis = new Jedis("localhost", 6379, 5000);
+            HostAndPort node = new HostAndPort("localhost", 6379);
+            jedisCluster = new JedisCluster(node, 5000);
             async.complete();
         }));
     }
 
     @Test
-    public void testMigrateToolLeadLock(TestContext context) {
+    public void testMigrationProcess(TestContext context) {
         Async async = context.async();
-        AtomicInteger counter = new AtomicInteger(2);
         flushAllCluster();
-        Task task1 = new Task() {
-            private boolean doneOnce = false;
-            @Override
-            public String getTaskKey() {
-                return "Test-Task-1";
-            }
-
-            @Override
-            public Future<Boolean> run() {
-                Promise<Boolean> promise = Promise.promise();
-                    vertx.setTimer(2000, event -> {
-                        context.assertFalse(doneOnce);
-                        doneOnce = true;
-                        promise.complete(true);
-                    });
-                return promise.future();
-            }
-        };
-
-        Task task2 = new Task() {
-            private boolean doneOnce = false;
-            @Override
-            public String getTaskKey() {
-                return "Test-Task-2";
-            }
-
-            @Override
-            public Future<Boolean> run() {
-                Promise<Boolean> promise = Promise.promise();
-                vertx.setTimer(3000, event -> {
-                    context.assertFalse(doneOnce);
-                    doneOnce = true;
-                    promise.complete(true);
-                });
-                return promise.future();
-            }
-        };
-
-
-        MigrateTool migrateToolA = new MigrateTool(vertx, redisQues.getConfigurationProvider(), redisQues.getRedisService(), redisQues.getKeyspaceHelper(), "MIGRATOR-1");
-        MigrateTool migrateToolB = new MigrateTool(vertx, redisQues.getConfigurationProvider(), redisQues.getRedisService(), redisQues.getKeyspaceHelper(), "MIGRATOR-2");
-        migrateToolA.addTask(task1).addTask(task2);
-        migrateToolB.addTask(task1).addTask(task2);
-
-        migrateToolB.start().onComplete(new Handler<AsyncResult<Void>>() {
-            @Override
-            public void handle(AsyncResult<Void> event) {
-                if(counter.decrementAndGet() == 0) {
-                    async.complete();
-                }
+        jedisCluster.set(redisQues.getKeyspaceHelper().getConsumersPrefix() + "Key1" ,"value1");
+        jedisCluster.set(redisQues.getKeyspaceHelper().getConsumersPrefix() + "Key2" ,"value1");
+        jedisCluster.set(redisQues.getKeyspaceHelper().getConsumersPrefix() + "Key3" ,"value1");
+        jedisCluster.set(redisQues.getKeyspaceHelper().getConsumersPrefix() + "Key4" ,"value1");
+        jedisCluster.set(redisQues.getKeyspaceHelper().getConsumersPrefix() + "Key5" ,"value1");
+        jedisCluster.set(redisQues.getKeyspaceHelper().getConsumersPrefix() + "Key6" ,"value1");
+        jedisCluster.set(redisQues.getKeyspaceHelper().getConsumersPrefix() + "Key7" ,"value1");
+        new QueueConsumersMigrationTask(vertx, redisQues.getRedisService(), redisQues.getKeyspaceHelper()).run().onComplete(event -> {
+            if (event.succeeded()) {
+                Set<String> result = jedisCluster.keys(redisQues.getKeyspaceHelper().getClusterSafeConsumersPrefix() +"*" );
+                context.assertEquals(7, result.size());
+                async.complete();
+            }else {
+                context.fail(event.cause());
             }
         });
-        migrateToolA.start().onComplete(new Handler<AsyncResult<Void>>() {
-            @Override
-            public void handle(AsyncResult<Void> event) {
-                if(counter.decrementAndGet() == 0) {
+    }
+
+    @Test
+    public void testMigrationProcessWithEmptyData(TestContext context) {
+        Async async = context.async();
+        flushAllCluster();
+        new QueueConsumersMigrationTask(vertx, redisQues.getRedisService(), redisQues.getKeyspaceHelper()).run().onComplete(event -> {
+            if (event.succeeded()) {
+                Set<String> result = jedisCluster.keys(redisQues.getKeyspaceHelper().getClusterSafeConsumersPrefix() +"*" );
+                context.assertEquals(0, result.size());
+                async.complete();
+            }else {
+                context.fail(event.cause());
+            }
+        });
+    }
+
+    @Test
+    public void testMigrationNoDoubleProcess(TestContext context) {
+        Async async = context.async();
+        flushAllCluster();
+        jedisCluster.set(redisQues.getKeyspaceHelper().getConsumersPrefix() + "Key1" ,"value1");
+        new QueueConsumersMigrationTask(vertx, redisQues.getRedisService(), redisQues.getKeyspaceHelper()).run().onComplete(event -> {
+            if (event.succeeded()) {
+                Set<String> result = jedisCluster.keys(redisQues.getKeyspaceHelper().getClusterSafeConsumersPrefix() +"*" );
+                context.assertEquals(1, result.size());
+                context.assertEquals("value1", jedisCluster.get(result.stream().findFirst().get()));
+                jedisCluster.set(redisQues.getKeyspaceHelper().getConsumersPrefix() + "Key1" ,"value2");
+                jedisCluster.set(redisQues.getKeyspaceHelper().getConsumersPrefix() + "Key2" ,"value1");
+                if (event.succeeded()) {
+                    result = jedisCluster.keys(redisQues.getKeyspaceHelper().getClusterSafeConsumersPrefix() +"*" );
+                    context.assertEquals(1, result.size());
                     async.complete();
+                }else {
+                    context.fail(event.cause());
                 }
+            }else {
+                context.fail(event.cause());
             }
         });
     }

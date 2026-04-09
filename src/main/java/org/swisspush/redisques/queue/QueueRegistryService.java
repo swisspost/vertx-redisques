@@ -300,7 +300,7 @@ public class QueueRegistryService {
     void registerQueue(String queueName) {
         log.debug("RedisQues Got registration request for queue {} from consumer: {}", queueName, keyspaceHelper.getVerticleUid());
         // Try to register for this queue
-        tryRegister(keyspaceHelper.getConsumersPrefix() + queueName, keyspaceHelper.getVerticleUid()).onComplete(new Handler<AsyncResult<Boolean>>() {
+        tryRegister(keyspaceHelper.getClusterSafeConsumersPrefix() + queueName, keyspaceHelper.getVerticleUid()).onComplete(new Handler<AsyncResult<Boolean>>() {
             @Override
             public void handle(AsyncResult<Boolean> event) {
                 if (event.succeeded()) {
@@ -331,7 +331,7 @@ public class QueueRegistryService {
 
     public void refreshRegistration(String queueName, Handler<AsyncResult<Response>> handler) {
         log.debug("RedisQues Refreshing registration of queue consumer {}, expire in {} s", queueName, consumerLockTime);
-        String consumerKey = keyspaceHelper.getConsumersPrefix() + queueName;
+        String consumerKey = keyspaceHelper.getClusterSafeConsumersPrefix() + queueName;
         if (handler == null) {
             throw new RuntimeException("Handler must be set");
         } else {
@@ -358,7 +358,7 @@ public class QueueRegistryService {
 
         log.debug("RedisQues Refreshing registration of {} queue consumers, expire in {} s",
                 queueNames.size(), consumerLockTime);
-        final String consumersPrefix = keyspaceHelper.getConsumersPrefix();
+        final String consumersPrefix = keyspaceHelper.getClusterSafeConsumersPrefix();
         List<Request> requests = new ArrayList<>(queueNames.size());
         for (String queueName : queueNames) {
             String consumerKey = consumersPrefix + queueName;
@@ -406,7 +406,7 @@ public class QueueRegistryService {
      * @param chunkSize
      * @return a linked list
      */
-    <K, V> List<Map<K, V>> splitMap(Map<K, V> map, int chunkSize) {
+    public static <K, V> List<Map<K, V>> splitMap(Map<K, V> map, int chunkSize) {
         final List<Map<K, V>> result = new ArrayList<>();
         Map<K, V> current = new LinkedHashMap<>();
         int itemCount = 0;
@@ -550,10 +550,10 @@ public class QueueRegistryService {
      */
     Future<Map<String, Boolean>> batchCheckIfImStillTheRegisteredConsumer(List<String> queueNames, String consumerId) {
         List<String> queueConsumersKeys = queueNames.stream()
-                .map(queue -> keyspaceHelper.getConsumersPrefix() + queue)
+                .map(queue -> keyspaceHelper.getClusterSafeConsumersPrefix() + queue)
                 .collect(Collectors.toList());
 
-        return redisService.get(queueConsumersKeys).compose(response -> {
+        return redisService.mget(queueConsumersKeys).compose(response -> {
             Map<String, Boolean> responses = new HashMap<>();
 
             for (int i = 0; i < queueConsumersKeys.size(); i++) {
@@ -615,7 +615,7 @@ public class QueueRegistryService {
             }
             metrics.perQueueMetricsRefresh(queueName);
             // Make sure that I am still the registered consumer
-            final String consumerKey = keyspaceHelper.getConsumersPrefix() + queueName;
+            final String consumerKey = keyspaceHelper.getClusterSafeConsumersPrefix() + queueName;
             log.trace("RedisQues unregister consumers get: {}", consumerKey);
             redisService.get(consumerKey).onComplete(getEvent -> {
                 if (getEvent.failed()) {
@@ -652,7 +652,7 @@ public class QueueRegistryService {
      */
     public void resetConsumers() {
         log.debug("RedisQues Resetting consumers");
-        String keysPattern = keyspaceHelper.getConsumersPrefix() + "*";
+        String keysPattern = keyspaceHelper.getClusterSafeConsumersPrefix() + "*";
         log.trace("RedisQues reset consumers keys: {}", keysPattern);
         redisService.keys(keysPattern).onComplete(keysResult -> {
             if (keysResult.failed() || keysResult.result() == null) {
@@ -993,7 +993,7 @@ public class QueueRegistryService {
         final EventBus eb = vertx.eventBus();
         final Promise<Void> promise = Promise.promise();
         // Find the consumer to notify
-        String key = keyspaceHelper.getConsumersPrefix() + queueName;
+        String key = keyspaceHelper.getClusterSafeConsumersPrefix() + queueName;
         log.trace("RedisQues notify consumer get: {}", key);
         redisService.get(key).onComplete(event -> {
             if (event.failed()) {
@@ -1039,7 +1039,7 @@ public class QueueRegistryService {
             if (!log.isDebugEnabled()) {
                 return;
             }
-            String keysPattern = keyspaceHelper.getConsumersPrefix() + "*";
+            String keysPattern = keyspaceHelper.getClusterSafeConsumersPrefix() + "*";
             log.debug("RedisQues list not expired consumers keys:");
             redisService.scan("0", keysPattern, "1000", null).onComplete(keysResult -> {
                 if (keysResult.failed() || keysResult.result() == null || keysResult.result().size() != 2) {

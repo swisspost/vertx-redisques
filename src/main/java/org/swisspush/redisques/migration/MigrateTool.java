@@ -1,13 +1,11 @@
 package org.swisspush.redisques.migration;
 
 import io.vertx.core.Future;
-import io.vertx.core.Handler;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.redis.client.Response;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.swisspush.redisques.migration.tasks.QueueConsumersMigrationTask;
 import org.swisspush.redisques.migration.tasks.Task;
 import org.swisspush.redisques.queue.KeyspaceHelper;
 import org.swisspush.redisques.queue.RedisService;
@@ -21,8 +19,8 @@ import static java.lang.System.currentTimeMillis;
 
 public class MigrateTool {
     private static final Logger log = LoggerFactory.getLogger(MigrateTool.class);
-    private static final int migrationLockTimeout = 30_000; // 30 seconds
-    private static final int migrationLockUpdateTime = 10_000; // 10 second
+    private static final int migrationLockTimeout = 10_000; // 10 seconds
+    private static final int migrationLockUpdateTime = 2_000; // 2 second
     private final String uid;
     private final RedisService redisService;
     private final RedisquesConfigurationProvider redisquesConfigurationProvider;
@@ -37,10 +35,12 @@ public class MigrateTool {
         this.keyspaceHelper = keyspaceHelper;
         this.vertx = vertx;
         this.uid = uid;
-        // add all tasks, will run each one as it ordered.
-        tasks.add(new QueueConsumersMigrationTask(vertx, redisService));
     }
 
+    public MigrateTool addTask(Task task) {
+        tasks.add(task);
+        return this;
+    }
 
     public Future<Void> start() {
         final Promise<Void> migrateRunnerPromise = Promise.promise();
@@ -53,13 +53,26 @@ public class MigrateTool {
             if (asyncResult.result()) {
                 startRefreshTimer();
                 log.info("migration runner started. (uid:{})", uid);
-                vertx.setTimer(50000, new Handler<Long>() {
-                    @Override
-                    public void handle(Long event) {
-                        migrateTasksDone();
+                Future<Void> future = Future.succeededFuture();
+                for (Task task : tasks) {
+                    future = future.compose(v -> {
+                        log.info("migrating task {} starts. (uid:{})", task.getTaskKey(), uid);
+                        return task.run().map(res -> {
+                            log.info("migrating task {} done. (uid:{})", task.getTaskKey(), uid);
+                            if (!res) {
+                                throw new RuntimeException("Task failed: " + task.getTaskKey());
+                            }
+                            return null;
+                        });
+                    });
+                }
+                future.onComplete(event -> {
+                    if (event.failed()) {
+                        migrateTasksDone().onComplete(unused -> migrateRunnerPromise.fail(event.cause()));
+                    } else {
+                        migrateTasksDone().onComplete(unused -> migrateRunnerPromise.complete());
                     }
                 });
-
 
             } else {
                 log.info("Another migration runner already started. (uid:{})", uid);

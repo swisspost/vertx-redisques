@@ -83,6 +83,7 @@ public class MetricsCollectorTest extends AbstractTestCase {
         metricsCollector = new MetricsCollector(vertx, keyspaceHelper, "foo",
                 meterRegistry, lock, 10);
 
+        redisQues.disableMigrationTool();
         vertx.deployVerticle(redisQues, new DeploymentOptions().setConfig(config), context.asyncAssertSuccess(event -> {
             deploymentId = event;
             log.info("vert.x Deploy - {} was successful.", redisQues.getClass().getSimpleName());

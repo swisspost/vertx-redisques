@@ -4,5 +4,5 @@ import io.vertx.core.Future;
 
 public interface Task {
     public String getTaskKey();
-    public Future<Void> run();
+    public Future<Boolean> run();
 }
