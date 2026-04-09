@@ -1,9 +1,6 @@
 package org.swisspush.redisques.queue;
 
-import io.vertx.core.AsyncResult;
-import io.vertx.core.CompositeFuture;
 import io.vertx.core.Future;
-import io.vertx.core.Handler;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.net.NetClientOptions;
@@ -28,13 +25,10 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
-import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -630,17 +624,6 @@ public class RedisService {
         );
     }
 
-    /**
-     * execute a redis command
-     *
-     * @param request command
-     * @return
-     */
-    public Future<Response> send(Request request) {
-        return redisProvider.redisConnection().compose((RedisConnection connection) ->
-                connection.send(request)
-        );
-    }
 
     /**
      * Cluster wide scanner, if cluster enabled, if not a cluster, will run scan directly
