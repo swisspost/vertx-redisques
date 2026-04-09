@@ -18,6 +18,7 @@ import io.vertx.redis.client.Response;
 import io.vertx.redis.client.impl.ZModem;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.swisspush.redisques.util.RedisClusterUtil;
 import org.swisspush.redisques.util.RedisProvider;
 import org.swisspush.redisques.util.RedisquesConfiguration;
 import org.swisspush.redisques.util.RedisquesConfigurationProvider;
@@ -26,11 +27,15 @@ import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Service wrapper around {@link RedisAPI} providing convenience methods
@@ -45,6 +50,7 @@ public class RedisService {
     private final RedisProvider redisProvider;
     private final Vertx vertx;
     private final RedisquesConfigurationProvider configurationProvider;
+    public static volatile AtomicBoolean isClusterMode = new AtomicBoolean(false);
     public static final int MAX_COMMANDS_IN_BATCH = 100;
 
     private static class RedisNode {
@@ -67,6 +73,17 @@ public class RedisService {
         return redisProvider.redis().onFailure(
                 throwable -> log.warn("Redis: Failed to get RedisAPI", throwable)
         ).compose(Future::succeededFuture);
+    }
+
+    /**
+     * execute a command
+     * @param request redi commands will execute
+     * @return a list of responses
+     */
+    public Future<Response> send(Request request) {
+        return redisProvider.redisConnection().compose((RedisConnection connection) ->
+                connection.send(request)
+        );
     }
 
     /**
@@ -835,4 +852,140 @@ public class RedisService {
                             });
                 });
     }
+
+    /**
+     * cluster safe execute a list of command in pipeline, when in cluster mode
+     * the batch will split into slots by keys
+     * @param cmd redis command will execute as batch
+     * @param keys keys will execute
+     * @param additionalArgs additional arguments will add to command
+     * @return a list of responses
+     */
+    public Future<List<Response>> clusterSafeBatch(Command cmd, List<String> keys, List<String> additionalArgs) {
+
+        if (keys == null || keys.isEmpty()) {
+            return Future.succeededFuture(List.of());
+        }
+        if (keys.size() > MAX_COMMANDS_IN_BATCH) {
+            throw new IllegalArgumentException("batchCmd exceeds max commands in batch");
+        }
+
+        Map<Integer, List<Request>> requestsGroupedBySlots = new HashMap<>();
+
+        //Track output ordering, where its responses should go in the final merged result list.
+        Map<Integer, List<Integer>> requestIndexes = new HashMap<>();
+
+        if (isClusterMode.get()) {
+            // Build requests and group by slot
+            for (int i = 0; i < keys.size(); i++) {
+                String key = keys.get(i);
+                int slot = RedisClusterUtil.calcRedisSlot(key);
+                Request req = Request.cmd(cmd).arg(key);
+                for(String arg : additionalArgs) {
+                    req = req.arg(arg);
+                }
+                requestsGroupedBySlots.computeIfAbsent(slot, s -> new ArrayList<>()).add(req);
+                requestIndexes.computeIfAbsent(slot, s -> new ArrayList<>()).add(i);
+            }
+        } else {
+            // non-cluster single slot
+            for (int i = 0; i < keys.size(); i++) {
+                String key = keys.get(i);
+                Request req = Request.cmd(cmd).arg(key);
+                for(String arg : additionalArgs) {
+                    req = req.arg(arg);
+                }
+                requestsGroupedBySlots.computeIfAbsent(1, s -> new ArrayList<>()).add(req);
+                requestIndexes.computeIfAbsent(1, s -> new ArrayList<>()).add(i);
+            }
+        }
+
+        List<Integer> slots = new ArrayList<>(requestsGroupedBySlots.keySet());
+        List<Future<?>> futures = new ArrayList<>();
+
+        for (Integer slot : slots) {
+            futures.add(this.batch(requestsGroupedBySlots.get(slot)));
+        }
+        return Future.all(futures)
+                .map(cf -> {
+                    // Create a list large enough to hold all responses.
+                    List<Response> finalResponses =
+                            new ArrayList<>(Collections.nCopies(keys.size(), null));
+                    // merge response from each slot
+                    for (int f = 0; f < slots.size(); f++) {
+                        Integer slot = slots.get(f);
+                        List<Integer> indexes = requestIndexes.get(slot);
+                        List<Response> responses = cf.resultAt(f);
+                        for (int i = 0; i < indexes.size(); i++) {
+                            finalResponses.set(indexes.get(i), responses.get(i));
+                        }
+                    }
+                    return finalResponses;
+                });
+    }
+
+    /**
+     * Get the values of keys by mget split into slot.
+     *
+     * @param keys keys to fetch
+     * @return a {@link Future} containing the stored values or null
+     */
+    public Future<List<Response>> clusterSafeMget(List<String> keys) {
+        if (keys.size() > MAX_COMMANDS_IN_BATCH) {
+            throw new IllegalArgumentException("get exceeds max keys in batch");
+        }
+        if (keys == null || keys.isEmpty()) {
+            return Future.succeededFuture(List.of());
+        }
+
+        Map<Integer, List<String>> keysGroupedBySlots = new HashMap<>();
+        Map<Integer, List<Integer>> keyIndexes = new HashMap<>();
+
+        if (isClusterMode.get()) {
+            // Group keys by slot
+            for (int i = 0; i < keys.size(); i++) {
+                String key = keys.get(i);
+                int slot = RedisClusterUtil.calcRedisSlot(key);
+
+                keysGroupedBySlots.computeIfAbsent(slot, s -> new ArrayList<>()).add(key);
+                keyIndexes.computeIfAbsent(slot, s -> new ArrayList<>()).add(i);
+            }
+        } else {
+            // non cluster mode
+            for (int i = 0; i < keys.size(); i++) {
+                String key = keys.get(i);
+                keysGroupedBySlots.computeIfAbsent(1, s -> new ArrayList<>()).add(key);
+                keyIndexes.computeIfAbsent(1, s -> new ArrayList<>()).add(i);
+            }
+        }
+
+        List<Integer> slots = new ArrayList<>(keysGroupedBySlots.keySet());
+        List<Future<?>> futures = new ArrayList<>();
+
+        // Send one MGET per slot
+        for (Integer slot : slots) {
+            Request req = Request.cmd(Command.MGET);
+            for (String key : keysGroupedBySlots.get(slot)) {
+                req = req.arg(key);
+            }
+            futures.add(this.send(req));
+        }
+
+        return Future.all(futures)
+                .map(cf -> {
+                    List<Response> finalResponses =
+                            new ArrayList<>(Collections.nCopies(keys.size(), null));
+                    for (int f = 0; f < slots.size(); f++) {
+                        Integer slot = slots.get(f);
+                        List<Integer> indexes = keyIndexes.get(slot);
+                        Response mgetResponse = cf.resultAt(f);
+                        // combos the responses
+                        for (int i = 0; i < indexes.size(); i++) {
+                            finalResponses.set(indexes.get(i), mgetResponse.get(i));
+                        }
+                    }
+                    return finalResponses;
+                });
+    }
+
 }

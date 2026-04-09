@@ -7,7 +7,6 @@ import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.redis.client.Command;
-import io.vertx.redis.client.Request;
 import io.vertx.redis.client.Response;
 import io.vertx.redis.client.impl.types.NumberType;
 import org.slf4j.Logger;
@@ -19,6 +18,7 @@ import org.swisspush.redisques.queue.RedisService;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -511,10 +511,15 @@ public class QueueStatisticsCollector {
             promise.complete(new JsonObject().put(STATUS, OK).put(RedisquesAPI.QUEUES, new JsonArray()));
             return promise.future();
         }
+        Map<String, String> keyQueuePairs = new LinkedHashMap<>();
+        for (String key : queues) {
+            keyQueuePairs.put(queuePrefix + key, key);
+        }
+        keyQueuePairs = RedisClusterUtil.groupMapBySlot(keyQueuePairs);
+
         var ctx = new RequestCtx();
         ctx.includeQueueSize = includeQueueSize ;
-        ctx.queueNames = queues;
-
+        ctx.keyQueuePair =  new ArrayList<>(keyQueuePairs.entrySet());
         step1(ctx).compose(
                 nothing2 -> step2(ctx).compose(
                         nothing3 -> step3(ctx).compose(
@@ -531,32 +536,31 @@ public class QueueStatisticsCollector {
         if (!ctx.includeQueueSize){
             return Future.succeededFuture();
         }
-        int numQueues = ctx.queueNames.size();
+        int numQueues = ctx.keyQueuePair.size();
         log.debug("About to perform {} requests to redis just for monitoring", numQueues);
         long begRedisRequestsEpochMs = currentTimeMillis();
 
         assert ctx.queueLengthList == null;
-        ctx.queueLengthList = new ArrayList<>(ctx.queueNames.size());
+        ctx.queueLengthList = new ArrayList<>(ctx.keyQueuePair.size());
         var upperBoundPromise = Promise.<Void>promise();
         final int redisRequestQuotaAcquireRetryTime = configurationProvider.configuration().getRedisMonitoringReqQuotaAcquireRetryTimeMs();
         upperBoundParallel.request(redisRequestQuota, redisRequestQuotaAcquireRetryTime, ctx, new UpperBoundParallel.Mentor<>() {
-            Iterator<String> queueNamesIter = ctx.queueNames.iterator();
+            Iterator<Entry<String, String>> queueKeyWithNameIter = ctx.keyQueuePair.iterator();
 
             @Override
             public boolean runOneMore(BiConsumer<Throwable, Void> onDone, RequestCtx ctx) {
-                if (!queueNamesIter.hasNext()) {
+                if (!queueKeyWithNameIter.hasNext()) {
                     return false;
                 }
-                List<Request> batch = new ArrayList<>(RedisService.MAX_COMMANDS_IN_BATCH);
+                List<String> keyBatch = new ArrayList<>(RedisService.MAX_COMMANDS_IN_BATCH);
 
                 int count = 0;
-                while (queueNamesIter.hasNext() && count < RedisService.MAX_COMMANDS_IN_BATCH) {
-                    String queueName = queueNamesIter.next();
-                    batch.add(Request.cmd(Command.LLEN).arg(queuePrefix + queueName));
+                while (queueKeyWithNameIter.hasNext() && count < RedisService.MAX_COMMANDS_IN_BATCH) {
+                    keyBatch.add(queueKeyWithNameIter.next().getKey());
                     count++;
                 }
 
-                redisService.batch(batch)
+                redisService.clusterSafeBatch(Command.LLEN, keyBatch, List.of())
                         .compose(responses -> {
                             for (Response rsp : responses) {
                                 NumberType num = (NumberType) rsp;
@@ -568,7 +572,7 @@ public class QueueStatisticsCollector {
                         .onFailure(ex ->
                                 onDone.accept(exceptionFactory.newException(ex), null)
                         );
-                return queueNamesIter.hasNext();
+                return queueKeyWithNameIter.hasNext();
             }
 
             @Override
@@ -591,9 +595,9 @@ public class QueueStatisticsCollector {
             } else {
                 log.debug(fmt2, numQueues, durRedisRequestsMs);
             }
-            if (ctx.queueLengthList.size() != ctx.queueNames.size()) {
+            if (ctx.queueLengthList.size() != ctx.keyQueuePair.size()) {
                 return failedFuture(exceptionFactory.newException("Unexpected queue length result with unequal size "
-                        + ctx.queueNames.size() + " : " + ctx.queueLengthList.size()));
+                        + ctx.keyQueuePair.size() + " : " + ctx.queueLengthList.size()));
             }
             return succeededFuture();
         }).compose((Void v) -> {
@@ -601,9 +605,9 @@ public class QueueStatisticsCollector {
                 assert false : "TODO I guess this unreachable code could be removed";
                 return failedFuture(exceptionFactory.newException("Unexpected queue length result: null"));
             }
-            if (ctx.queueLengthList.size() != ctx.queueNames.size()) {
+            if (ctx.queueLengthList.size() != ctx.keyQueuePair.size()) {
                 return failedFuture(exceptionFactory.newException("Unexpected queue length result with unequal size "
-                        + ctx.queueNames.size() + " : " + ctx.queueLengthList.size()));
+                        + ctx.keyQueuePair.size() + " : " + ctx.queueLengthList.size()));
             }
             return succeededFuture();
         });
@@ -617,9 +621,9 @@ public class QueueStatisticsCollector {
             assert ctx.queueLengthList != null;
         }
         // populate the list of queue statistics in a Hashmap for later fast merging
-        ctx.statistics = new HashMap<>(ctx.queueNames.size());
-        for (int i = 0; i < ctx.queueNames.size(); i++) {
-            QueueStatistic qs = new QueueStatistic(ctx.queueNames.get(i));
+        ctx.statistics = new HashMap<>(ctx.keyQueuePair.size());
+        for (int i = 0; i < ctx.keyQueuePair.size(); i++) {
+            QueueStatistic qs = new QueueStatistic(ctx.keyQueuePair.get(i).getValue());
             if (ctx.includeQueueSize) {
                 qs.setSize(ctx.queueLengthList.get(i).toLong());
             }
@@ -669,8 +673,8 @@ public class QueueStatisticsCollector {
             // build the final resulting statistics list from the former merged queue
             // values from various sources
             JsonArray result = new JsonArray();
-            for (String queueName : ctx.queueNames) {
-                QueueStatistic stats = ctx.statistics.get(queueName);
+            for (Entry<String, String> queueKeyPair : ctx.keyQueuePair) {
+                QueueStatistic stats = ctx.statistics.get(queueKeyPair.getValue());
                 if (stats != null) {
                     result.add(stats.getAsJsonObject());
                 }
@@ -704,11 +708,11 @@ public class QueueStatisticsCollector {
     }
 
     /**
-     * <p>Holds intermediate state related to a {@link #getQueueStatistics(List)}
+     * <p>Holds intermediate state related to a {@link #getQueueStatistics(List, boolean)}}
      * request.</p>
      */
     private static class RequestCtx {
-        private List<String> queueNames; // Requested queues to analyze
+        private List<Map.Entry<String, String>> keyQueuePair; // Requested queues to analyze
         private List<NumberType> queueLengthList;
         private Boolean includeQueueSize;
         private HashMap<String, QueueStatistic> statistics; // Stats we're going to populate
