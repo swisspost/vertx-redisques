@@ -38,7 +38,6 @@ public class MetricsCollectorTest extends AbstractTestCase {
     private RedisQues redisQues;
     private MeterRegistry meterRegistry;
     private MetricsCollector metricsCollector;
-    private KeyspaceHelper keyspaceHelper;
     private Lock lock;
 
     private final String metricsIdentifier = "foo";
@@ -80,6 +79,7 @@ public class MetricsCollectorTest extends AbstractTestCase {
         when(keyspaceHelper.getVerticleUid()).thenReturn(redisQues.getUid());
         when(keyspaceHelper.getAddress()).thenReturn("redisques");
         when(keyspaceHelper.getMetricsCollectorAddress()).thenReturn( "redisques"  + "-" + redisQues.getUid() + "-" + QUEUE_STATE_COUNT_KEY);
+        when(keyspaceHelper.getQueuesPrefix()).thenReturn("redisques:queues:");
         metricsCollector = new MetricsCollector(vertx, keyspaceHelper, "foo",
                 meterRegistry, lock, 10);
 
