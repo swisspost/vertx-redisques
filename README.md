@@ -88,8 +88,7 @@ The following configuration values are available:
 | queueStatsRequestQuotaAcquireRetryTimeMs               | -1                              | Queue stats requests quota acquire retry delay time [ms]. Use **-1** to reject immediately                                                                                                                       |
 | getQueuesItemsCountRedisRequestQuotaAcquireRetryTimeMs | -1                              | Get queues items count action  requests quota acquire retry delay time [ms]. Use **-1** to reject immediately                                                                                                    |
 | activeQueueRegRefreshReqQuotaAcquireRetryTimeMs        | -1                              | Active queue register refresh requests quota acquire retry delay time [ms]. Use **-1** to reject immediately                                                                                                     |
-
-
+| globalQueuePatrol                                      | -1                              | The global patrol limits for all queues Use **-1** disable the patrol, because the size of queue item update are asynced, so patrol limit may have some delays                                                    |
 
 ### Warning about Quota Timeout Configuration
 

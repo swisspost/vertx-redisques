@@ -770,6 +770,14 @@ public class QueueRegistryService {
                                         } else {
                                             nonEmptyQueue.add(key);
                                         }
+
+                                        //update the newest queue item size
+                                        queueConsumerRunner.getMyQueues().computeIfPresent(key, (s, queueProcessingState) -> {
+                                            if (value != null) {
+                                                queueProcessingState.setQueueItemSize(value);
+                                            }
+                                            return queueProcessingState;
+                                        });
                                     });
 
                                     if (!failedQueue.isEmpty()) {

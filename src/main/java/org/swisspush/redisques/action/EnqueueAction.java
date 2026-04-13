@@ -8,9 +8,12 @@ import io.vertx.core.json.JsonObject;
 import org.slf4j.Logger;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.queue.KeyspaceHelper;
+import org.swisspush.redisques.queue.QueueProcessingState;
 import org.swisspush.redisques.queue.QueueRegistryService;
 import org.swisspush.redisques.queue.RedisService;
 import org.swisspush.redisques.util.*;
+
+import java.util.Map;
 
 import static org.swisspush.redisques.util.RedisquesAPI.*;
 
@@ -19,6 +22,7 @@ public class EnqueueAction extends AbstractQueueAction {
     private final MemoryUsageProvider memoryUsageProvider;
     private final QueueRegistryService queueRegistryService;
     private final int memoryUsageLimitPercent;
+    private final int maxQueueItemsAllowed;
     private Counter enqueueCounterSuccess;
     private Counter enqueueCounterFail;
 
@@ -32,6 +36,7 @@ public class EnqueueAction extends AbstractQueueAction {
         this.memoryUsageLimitPercent = redisquesConfigurationProvider.configuration().getMemoryUsageLimitPercent();
         this.queueRegistryService = queueRegistryService;
         String metricsIdentifier = redisquesConfigurationProvider.configuration().getMicrometerMetricsIdentifier();
+        maxQueueItemsAllowed = redisquesConfigurationProvider.configuration().getGlobalQueuePatrol();
         if (meterRegistry != null) {
             enqueueCounterSuccess = Counter.builder(MetricMeter.ENQUEUE_SUCCESS.getId()).description(MetricMeter.ENQUEUE_SUCCESS.getDescription())
                     .tag(MetricTags.IDENTIFIER.getId(), metricsIdentifier).register(meterRegistry);
@@ -44,6 +49,11 @@ public class EnqueueAction extends AbstractQueueAction {
     public void execute(Message<JsonObject> event) {
         String queueName = event.body().getJsonObject(PAYLOAD).getString(QUEUENAME);
 
+        if (isQueuePatrolLimited(queueName)) {
+            incrEnqueueFailCount();
+            event.reply(createErrorReply().put(MESSAGE, QUEUE_PATROL_LIMITED));
+            return;
+        }
         if (isMemoryUsageLimitReached()) {
             log.warn("Failed to enqueue into queue {} because the memory usage limit is reached", queueName);
             incrEnqueueFailCount();
@@ -106,6 +116,19 @@ public class EnqueueAction extends AbstractQueueAction {
                 }
             });
         });
+    }
+
+    private boolean isQueuePatrolLimited(String queueName) {
+        Map<String, QueueProcessingState> myQueue = queueRegistryService.getQueueConsumerRunner().getMyQueues();
+        if (maxQueueItemsAllowed > 0 && myQueue.containsKey(queueName)) {
+            QueueProcessingState processingState = myQueue.get(queueName);
+            if (processingState.getQueueItemSizeCounter() >= maxQueueItemsAllowed) {
+                log.warn("Failed to enqueue into queue {} because the queue patrol limit is reached, max {} items allowed, and have {} now"
+                        , queueName, maxQueueItemsAllowed, processingState.getQueueItemSizeCounter());
+                return true;
+            }
+        }
+        return false;
     }
 
     private void incrEnqueueSuccessCount() {
