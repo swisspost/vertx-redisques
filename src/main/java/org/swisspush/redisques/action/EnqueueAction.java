@@ -119,13 +119,15 @@ public class EnqueueAction extends AbstractQueueAction {
     }
 
     private boolean isQueuePatrolLimited(String queueName) {
-        Map<String, QueueProcessingState> myQueue = queueRegistryService.getQueueConsumerRunner().getMyQueues();
-        if (maxQueueItemsAllowed > 0 && myQueue.containsKey(queueName)) {
-            QueueProcessingState processingState = myQueue.get(queueName);
-            if (processingState.getQueueItemSizeCounter() >= maxQueueItemsAllowed) {
-                log.warn("Failed to enqueue into queue {} because the queue patrol limit is reached, max {} items allowed, and have {} now"
-                        , queueName, maxQueueItemsAllowed, processingState.getQueueItemSizeCounter());
-                return true;
+        if (maxQueueItemsAllowed > 0 ) {
+            Map<String, QueueProcessingState> myQueue = queueRegistryService.getQueueConsumerRunner().getMyQueues();
+            if (myQueue.containsKey(queueName)) {
+                QueueProcessingState processingState = myQueue.get(queueName);
+                if (processingState.getQueueItemSizeCounter() >= maxQueueItemsAllowed) {
+                    log.warn("Failed to enqueue into queue {} because the queue patrol limit is reached, max {} items allowed, and have {} now"
+                            , queueName, maxQueueItemsAllowed, processingState.getQueueItemSizeCounter());
+                    return true;
+                }
             }
         }
         return false;
