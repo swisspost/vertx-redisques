@@ -44,6 +44,9 @@ public class MigrateTool {
 
     public Future<Void> start() {
         final Promise<Void> migrateRunnerPromise = Promise.promise();
+        if (tasks.isEmpty()) {
+            return Future.succeededFuture();
+        }
         redisService.setNxPx(keyspaceHelper.getDataMigrationLockKey(), String.valueOf(currentTimeMillis()), true, migrationLockTimeout).onComplete(asyncResult -> {
             if (asyncResult.failed()) {
                 log.error("Failed to set lock for migration. (uid:{})", uid);

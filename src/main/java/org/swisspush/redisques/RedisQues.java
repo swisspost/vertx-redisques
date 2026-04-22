@@ -13,7 +13,6 @@ import org.slf4j.LoggerFactory;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.handler.RedisquesHttpRequestHandler;
 import org.swisspush.redisques.migration.MigrateTool;
-import org.swisspush.redisques.migration.tasks.QueueConsumersMigrationTask;
 import org.swisspush.redisques.queue.KeyspaceHelper;
 import org.swisspush.redisques.queue.QueueActionsService;
 import org.swisspush.redisques.queue.QueueConsumerRunner;
@@ -150,8 +149,8 @@ public class RedisQues extends AbstractVerticle {
                         }
 
                         MigrateTool migrateTool = new MigrateTool(vertx, this.configurationProvider, redisService, keyspaceHelper, uid);
-
-                        migrateTool.addTask(new QueueConsumersMigrationTask(vertx, redisService, keyspaceHelper));
+                        // add migration task here
+                        // migrateTool.addTask();
 
                         migrateTool.start().onComplete(migrateResult -> {
                             log.info("Migration done, will continue to start the RedisQues");

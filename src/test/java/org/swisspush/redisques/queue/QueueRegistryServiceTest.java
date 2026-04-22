@@ -121,7 +121,7 @@ public class QueueRegistryServiceTest extends AbstractTestCase {
         final String queueNameForFakeConsumer = "queue-another-consumer-ts-test";
 
         // register the queue item into fake consumer
-        jedis.set(redisQues.getKeyspaceHelper().getClusterSafeConsumersPrefix() + queueNameForFakeConsumer, fakeConsumerId);
+        jedis.set(redisQues.getKeyspaceHelper().getConsumersPrefix() + queueNameForFakeConsumer, fakeConsumerId);
         long rangeStartTs = System.currentTimeMillis();
         queueRegistryService.updateTimestamp(queueNameForFakeConsumer).onComplete(event -> {
             if (event.failed()) {
@@ -164,7 +164,7 @@ public class QueueRegistryServiceTest extends AbstractTestCase {
 
         vertx.eventBus().consumer(fakeConsumerId).handler(event -> fakeConsumerPromise.complete());
         // register the queue item into fake consumer
-        jedis.set(redisQues.getKeyspaceHelper().getClusterSafeConsumersPrefix() + queueNameForFakeConsumer, fakeConsumerId);
+        jedis.set(redisQues.getKeyspaceHelper().getConsumersPrefix() + queueNameForFakeConsumer, fakeConsumerId);
         waitMillis(500);
         // this queue should not in real consumer
         Assert.assertFalse(queueRegistryService.getQueueConsumerRunner().getMyQueues().containsKey(queueNameForFakeConsumer));
@@ -223,7 +223,7 @@ public class QueueRegistryServiceTest extends AbstractTestCase {
         Promise<Void> fakeConsumerPromise = Promise.promise();
         vertx.eventBus().consumer(fakeConsumerId).handler(event -> fakeConsumerPromise.complete());
         // register the queue item into fake consumer
-        jedis.set(redisQues.getKeyspaceHelper().getClusterSafeConsumersPrefix() + queueNameForFakeConsumer, fakeConsumerId);
+        jedis.set(redisQues.getKeyspaceHelper().getConsumersPrefix() + queueNameForFakeConsumer, fakeConsumerId);
         waitMillis(500);
         // this queue should not in real consumer
         Assert.assertFalse(queueRegistryService.getQueueConsumerRunner().getMyQueues().containsKey(queueNameForFakeConsumer));
@@ -280,7 +280,7 @@ public class QueueRegistryServiceTest extends AbstractTestCase {
         vertx.eventBus().consumer(fakeConsumerId).handler(event -> fakeConsumerPromise.complete());
         waitMillis(500);
         // register the queue item into fake consumer
-        jedis.set(redisQues.getKeyspaceHelper().getClusterSafeConsumersPrefix() + queueNameForFakeConsumer, fakeConsumerId);
+        jedis.set(redisQues.getKeyspaceHelper().getConsumersPrefix() + queueNameForFakeConsumer, fakeConsumerId);
 
         // this queue should not in real consumer
         Assert.assertFalse(queueRegistryService.getQueueConsumerRunner().getMyQueues().containsKey(queueNameForFakeConsumer));
@@ -423,9 +423,9 @@ public class QueueRegistryServiceTest extends AbstractTestCase {
         Async async = context.async();
         flushAll();
 
-        jedis.set(redisQues.getKeyspaceHelper().getClusterSafeConsumersPrefix() + "queue2-test-batchregistry", "another-value");
-        jedis.set(redisQues.getKeyspaceHelper().getClusterSafeConsumersPrefix() + "queue5-test-batchregistry", "another-value");
-        jedis.set(redisQues.getKeyspaceHelper().getClusterSafeConsumersPrefix() + "queue9-test-batchregistry", "another-value");
+        jedis.set(redisQues.getKeyspaceHelper().getConsumersPrefix() + "queue2-test-batchregistry", "another-value");
+        jedis.set(redisQues.getKeyspaceHelper().getConsumersPrefix() + "queue5-test-batchregistry", "another-value");
+        jedis.set(redisQues.getKeyspaceHelper().getConsumersPrefix() + "queue9-test-batchregistry", "another-value");
         QueueRegistryService queueRegistryService = redisQues.getQueueRegistryService();
         List<String> queueNames = new ArrayList<>();
         queueNames.add("queue1-test-batchregistry");
@@ -501,12 +501,12 @@ public class QueueRegistryServiceTest extends AbstractTestCase {
     public void testbatchCheckIfImStillTheRegisteredConsumer(TestContext context) {
         Async async = context.async();
         flushAll();
-        jedis.set(redisQues.getKeyspaceHelper().getClusterSafeConsumersPrefix() + "queue-1", "consumer_id_1");
-        jedis.set(redisQues.getKeyspaceHelper().getClusterSafeConsumersPrefix() + "queue-2", "consumer_id_1");
-        jedis.set(redisQues.getKeyspaceHelper().getClusterSafeConsumersPrefix() + "queue-3", "consumer_id_1");
-        jedis.set(redisQues.getKeyspaceHelper().getClusterSafeConsumersPrefix() + "queue-4", "consumer_id_2");
-        jedis.set(redisQues.getKeyspaceHelper().getClusterSafeConsumersPrefix() + "queue-5", "consumer_id_3");
-        jedis.set(redisQues.getKeyspaceHelper().getClusterSafeConsumersPrefix() + "queue-6", "");
+        jedis.set(redisQues.getKeyspaceHelper().getConsumersPrefix() + "queue-1", "consumer_id_1");
+        jedis.set(redisQues.getKeyspaceHelper().getConsumersPrefix() + "queue-2", "consumer_id_1");
+        jedis.set(redisQues.getKeyspaceHelper().getConsumersPrefix() + "queue-3", "consumer_id_1");
+        jedis.set(redisQues.getKeyspaceHelper().getConsumersPrefix() + "queue-4", "consumer_id_2");
+        jedis.set(redisQues.getKeyspaceHelper().getConsumersPrefix() + "queue-5", "consumer_id_3");
+        jedis.set(redisQues.getKeyspaceHelper().getConsumersPrefix() + "queue-6", "");
         List<String> queuesToCheck = List.of("queue-1", "queue-2", "queue-3", "queue-5", "queue-6", "queue-7", "queue-8");
 
         QueueRegistryService queueRegistryService = redisQues.getQueueRegistryService();

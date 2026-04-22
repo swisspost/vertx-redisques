@@ -163,7 +163,7 @@ public abstract class AbstractQueueAction implements QueueAction {
             // we have limit set for this queue
             log.debug("RedisQues Max queue entries {} found for queue {}", maxQueueEntries, queueName);
 
-            String consumerKey = keyspaceHelper.getClusterSafeConsumersPrefix() + queueName;
+            String consumerKey = keyspaceHelper.getConsumersPrefix() + queueName;
             if (log.isTraceEnabled()) {
                 log.trace("RedisQues notify consumer get: {}", consumerKey);
             }

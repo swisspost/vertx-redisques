@@ -52,7 +52,7 @@ public abstract class AbstractTestCase {
 
     protected String getQueuesRedisKeyPrefix(){ return keyspaceHelper.getQueuesPrefix(); }
 
-    protected String getConsumersRedisKeyPrefix(){ return  keyspaceHelper.getClusterSafeConsumersPrefix(); }
+    protected String getConsumersRedisKeyPrefix(){ return  keyspaceHelper.getConsumersPrefix(); }
 
     protected void assertKeyCount(TestContext context, int keyCount){
         assertKeyCount(context, "", keyCount);

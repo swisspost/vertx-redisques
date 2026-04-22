@@ -7,7 +7,6 @@ public class KeyspaceHelper {
     private final String queuesKey;
     private final String queuesPrefix;
     private final String consumersPrefix;
-    private final String clusterSafeConsumersPrefix;
     private final String dequeueStatisticKey;
     private final String dequeueStatisticTsKey;
     private final String locksKey;
@@ -29,8 +28,7 @@ public class KeyspaceHelper {
         this.verticleUid = verticleUid;
         queuesKey = configuration.getRedisPrefix() + "queues";
         queuesPrefix = configuration.getRedisPrefix() + "queues:";
-        consumersPrefix = configuration.getRedisPrefix() + "consumers:";
-        clusterSafeConsumersPrefix = configuration.getRedisPrefix() + "{consumers}:";
+        consumersPrefix = configuration.getRedisPrefix() + "{consumers}:";
         dequeueStatisticKey = configuration.getRedisPrefix() + "dequeueStatistic";
         dequeueStatisticTsKey = dequeueStatisticKey + ":ts";
         locksKey = configuration.getRedisPrefix() + "locks";
@@ -69,13 +67,8 @@ public class KeyspaceHelper {
         return queuesPrefix;
     }
 
-    @Deprecated
     public String getConsumersPrefix() {
         return consumersPrefix;
-    }
-
-    public String getClusterSafeConsumersPrefix() {
-        return clusterSafeConsumersPrefix;
     }
 
     public String getDequeueStatisticKey() {
