@@ -16,6 +16,7 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
+import org.swisspush.redisques.queue.QueueProcessingState;
 import org.swisspush.redisques.util.*;
 import redis.clients.jedis.Jedis;
 
@@ -65,6 +66,7 @@ public class RedisQuesTest extends AbstractTestCase {
                 .metricRefreshPeriod(2)
                 .memoryUsageLimitPercent(80)
                 .redisReadyCheckIntervalMs(2000)
+                .globalQueuePatrol(5)
                 .queueConfigurations(List.of(new QueueConfiguration()
                         .withPattern("queue.*")
                         .withRetryIntervals(2, 7, 12, 17, 22, 27, 32, 37, 42, 47, 52),
@@ -1268,6 +1270,60 @@ public class RedisQuesTest extends AbstractTestCase {
                 });
             });
         });
+    }
+
+    @Test
+    public void enqueueWithQueuePatrolLimit(TestContext context) {
+        Async async = context.async();
+        flushAll();
+        eventBusSend(buildEnqueueOperation("patrol-limited-queue-1.test", "message_1-1"), e1 -> {
+            eventBusSend(buildEnqueueOperation("patrol-limited-queue-1.test", "message_1-2"), e2 -> {
+                eventBusSend(buildEnqueueOperation("patrol-limited-queue-1.test", "message_1-3"), e3 -> {
+                    eventBusSend(buildEnqueueOperation("patrol-limited-queue-1.test", "message_1-4"), e4 -> {
+                        eventBusSend(buildEnqueueOperation("patrol-limited-queue-1.test", "message_1-5"), e5 -> {
+                            QueueProcessingState state = new QueueProcessingState(QueueState.READY, 0);
+                            // simulate queuecheck or queue runner update, we already have 5 items
+                            state.setQueueItemSize(5);
+                            redisQues.getQueueConsumerRunner().getMyQueues().put("patrol-limited-queue-1.test", state);
+                            eventBusSend(buildEnqueueOperation("patrol-limited-queue-4.test", "message_4-3"), e6 -> {
+                                eventBusSend(buildEnqueueOperation("patrol-limited-queue-4.test", "message_4-4"), e7 -> {
+                                    eventBusSend(buildEnqueueOperation("patrol-limited-queue-4.test", "message_4-5"), e8 -> {
+                                        eventBusSend(buildEnqueueOperation("patrol-limited-queue-4.test", "message_4-6"), e9 -> {
+                                                eventBusSend(buildEnqueueOperation("patrol-limited-queue-1.test", "message_1-6"), e11 -> {
+                                                    JsonObject jsonObject = e11.result().body();
+
+                                                    context.assertEquals(jsonObject.getString(STATUS), ERROR);
+                                                    context.assertTrue(jsonObject.getString(MESSAGE).contains(QUEUE_PATROL_LIMITED));
+
+                                                    assertQueuesCount(context, 2);
+                                                    // wait few seconds.
+                                                    try {
+                                                        Thread.sleep(2000);
+                                                    } catch (InterruptedException e) {
+                                                        throw new RuntimeException(e);
+                                                    }
+                                                    assertQueueItemsCount(context, "patrol-limited-queue-1.test", 5);
+                                                    assertQueueItemsCount(context, "patrol-limited-queue-4.test", 4);
+                                                    eventBusSend(buildGetQueueItemsOperation("patrol-limited-queue-1.test", null), event2 -> {
+                                                        context.assertEquals(OK, event2.result().body().getString(STATUS));
+                                                        context.assertEquals(5, event2.result().body().getJsonArray(VALUE).size());
+                                                        context.assertEquals("message_1-1", event2.result().body().getJsonArray(VALUE).getString(0));
+                                                        context.assertEquals("message_1-2", event2.result().body().getJsonArray(VALUE).getString(1));
+                                                        context.assertEquals("message_1-3", event2.result().body().getJsonArray(VALUE).getString(2));
+                                                        context.assertEquals("message_1-4", event2.result().body().getJsonArray(VALUE).getString(3));
+                                                        context.assertEquals("message_1-5", event2.result().body().getJsonArray(VALUE).getString(4));
+                                                        async.complete();
+                                                    });
+                                                });
+                                            });
+                                        });
+                                    });
+                                });
+                            });
+                        });
+                    });
+                });
+            });
     }
 
     private void assertEnqueueCounts(TestContext context, double successCount, double failCount){

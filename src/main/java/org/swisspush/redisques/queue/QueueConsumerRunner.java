@@ -246,6 +246,10 @@ public class QueueConsumerRunner {
                                                     }
                                                     promise.complete();
                                                 }
+                                                myQueues.computeIfPresent(queueName, (s, queueProcessingState) -> {
+                                                    queueProcessingState.setQueueItemSize(answer1.result().toInteger());
+                                                    return queueProcessingState;
+                                                });
                                             } else {
                                                 if (answer1.failed() && log.isWarnEnabled()) {
                                                     log.warn("TODO error handling", exceptionFactory.newException(
