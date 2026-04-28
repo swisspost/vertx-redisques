@@ -218,7 +218,8 @@ public class DefaultRedisProvider implements RedisProvider {
     }
 
     private void doReconnect(int retry) {
-        long backoffMs = (long) (Math.pow(2, Math.min(retry, 10)) * configurationProvider.configuration().getRedisReconnectDelaySec());
+        long configDelayMs = configurationProvider.configuration().getRedisReconnectDelaySec() * 1000L;
+        long backoffMs = (long) (Math.pow(2, Math.min(retry, 10)) * configDelayMs);
         log.debug("Schedule reconnect #{} in {}ms.", retry, backoffMs);
         vertx.setTimer(backoffMs, timer -> connectToRedis().onFailure(ex -> {
             log.info("Reconnect failed. Try again.", ex);
