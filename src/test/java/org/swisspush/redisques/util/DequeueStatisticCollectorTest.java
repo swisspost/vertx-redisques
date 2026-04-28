@@ -86,8 +86,8 @@ public class DequeueStatisticCollectorTest extends AbstractTestCase {
             redisService = redisQues.getRedisService();
             keyspaceHelper = redisQues.getKeyspaceHelper();
             // Initialize DequeueStatisticCollector with enabled/disabled stats collection
-            dequeueStatisticCollectorEnabled = new DequeueStatisticCollector(true, redisService, keyspaceHelper);
-            dequeueStatisticCollectorDisabled = new DequeueStatisticCollector(false, redisService, keyspaceHelper);
+            dequeueStatisticCollectorEnabled = new DequeueStatisticCollector(vertx, true, redisService, keyspaceHelper);
+            dequeueStatisticCollectorDisabled = new DequeueStatisticCollector(vertx, false, redisService, keyspaceHelper);
             async.complete();
         }));
     }

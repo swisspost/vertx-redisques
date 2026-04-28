@@ -52,7 +52,7 @@ public class GetQueuesItemsCountAction extends AbstractQueueAction {
                     String.valueOf(getMaxAgeTimestamp()), "+inf").onComplete(response ->
                     new GetQueuesItemsCountHandler(vertx, event, filterPattern.getOk(),
                             keyspaceHelper.getQueuesPrefix(), redisService, exceptionFactory, redisRequestQuota,
-                            redisquesConfigurationProvider.configuration().getQueuesItemsCountRedisRequestQuotaAcquireTimeoutMs()).handle(response));
+                            redisquesConfigurationProvider.configuration().getQueuesItemsCountRedisRequestQuotaAcquireRetryTimeMs()).handle(response));
         }
     }
 

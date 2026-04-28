@@ -11,6 +11,7 @@ import io.vertx.redis.client.RedisConnection;
 import io.vertx.redis.client.RedisOptions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.swisspush.redisques.queue.RedisService;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -122,6 +123,11 @@ public class DefaultRedisProvider implements RedisProvider {
                     .setPoolRecycleTimeout(redisPoolRecycleTimeoutMs)
                     .setMaxWaitingHandlers(redisMaxPipelineWaitingSize)
                     .setType(config.getRedisClientType());
+
+            if (redisOptions.getType() == RedisClientType.CLUSTER) {
+                // Turn on client side slots group
+                RedisService.isClusterMode.compareAndSet(false, true);
+            }
 
             NetClientOptions netClientOptions = redisOptions.getNetClientOptions();
             netClientOptions.setTcpKeepAlive(redisConnectionTcpKeepAlive);

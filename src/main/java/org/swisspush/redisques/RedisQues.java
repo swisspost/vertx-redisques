@@ -136,7 +136,7 @@ public class RedisQues extends AbstractVerticle {
             if(event.succeeded()) {
                 redisService = new RedisService(redisProvider);
                 if (this.dequeueStatisticCollector == null) {
-                    this.dequeueStatisticCollector = new DequeueStatisticCollector(modConfig.isDequeueStatsEnabled(), redisService, keyspaceHelper);
+                    this.dequeueStatisticCollector = new DequeueStatisticCollector(vertx, modConfig.isDequeueStatsEnabled(), redisService, keyspaceHelper);
                 }
                 QueueConfigurationProvider.provider(vertx, configurationProvider.configuration().getQueueConfigurations()).get().onComplete(event1 -> {
                     if(event1.succeeded()) {

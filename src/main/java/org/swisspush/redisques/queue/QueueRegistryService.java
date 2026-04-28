@@ -22,6 +22,7 @@ import org.swisspush.redisques.performance.UpperBoundParallel;
 import org.swisspush.redisques.scheduling.PeriodicSkipScheduler;
 import org.swisspush.redisques.util.QueueConfigurationProvider;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
+import org.swisspush.redisques.util.RedisClusterUtil;
 import org.swisspush.redisques.util.RedisquesConfiguration;
 import org.swisspush.redisques.util.RedisquesConfigurationProvider;
 
@@ -335,7 +336,7 @@ public class QueueRegistryService {
         if (handler == null) {
             throw new RuntimeException("Handler must be set");
         } else {
-            vertx.executeBlocking(() -> redisService.expire(consumerKey, String.valueOf(consumerLockTime)))
+            vertx.executeBlocking(() -> redisService.expire(consumerKey, String.valueOf(consumerLockTime)), false)
                     .compose((Future<Response> tooManyNestedFutures) -> tooManyNestedFutures)
                     .onComplete(event -> {
                         getQueueConsumerRunner().updateLastRefreshRegistrationTimeStamp(queueName);
@@ -359,16 +360,13 @@ public class QueueRegistryService {
         log.debug("RedisQues Refreshing registration of {} queue consumers, expire in {} s",
                 queueNames.size(), consumerLockTime);
         final String consumersPrefix = keyspaceHelper.getConsumersPrefix();
-        List<Request> requests = new ArrayList<>(queueNames.size());
+        List<String> keyBatch = new ArrayList<>(queueNames.size());
         for (String queueName : queueNames) {
-            String consumerKey = consumersPrefix + queueName;
-            requests.add(Request.cmd(Command.EXPIRE)
-                    .arg(consumerKey)
-                    .arg(String.valueOf(consumerLockTime)));
+            keyBatch.add(consumersPrefix + queueName);
             metrics.perQueueMetricsRefresh(queueName);
         }
 
-        redisService.batch(requests).onComplete(event -> {
+        redisService.clusterSafeBatch(Command.EXPIRE, keyBatch, List.of(String.valueOf(consumerLockTime))).onComplete(event -> {
             if (event.failed()) {
                 log.error("batchRefreshRegistration failed with message: {}", event.cause().getMessage());
                 promise.fail(event.cause());
@@ -429,7 +427,7 @@ public class QueueRegistryService {
     private void registerActiveQueueRegistrationRefresh() {
         // Periodic refresh of my registrations on active queues.
         final long periodMs = getConfiguration().getRefreshPeriod() * 1000L;
-        final int activeQueueRegRefreshReqQuotaTimeout = getConfiguration().getActiveQueueRegRefreshReqQuotaAcquireTimeoutMs();
+        final int activeQueueRegRefreshReqQuotaAcquireRetryTime = getConfiguration().getActiveQueueRegRefreshReqQuotaAcquireRetryTimeMs();
         periodicSkipScheduler.setPeriodic(periodMs, "registerActiveQueueRegistrationRefresh", new Consumer<Runnable>() {
             Iterator<Map<String, QueueProcessingState>> iter;
 
@@ -440,7 +438,7 @@ public class QueueRegistryService {
                 List<Map<String, QueueProcessingState>> myQueueSplitClone = splitMap(getSortedMyQueueClone(queueConsumerRunner.getMyQueues()), RedisService.MAX_COMMANDS_IN_BATCH);
                 iter = myQueueSplitClone.iterator();
                 // Trigger only a limited amount of requests in parallel.
-                upperBoundParallel.request(activeQueueRegRefreshReqQuota, activeQueueRegRefreshReqQuotaTimeout, iter, new UpperBoundParallel.Mentor<>() {
+                upperBoundParallel.request(activeQueueRegRefreshReqQuota, activeQueueRegRefreshReqQuotaAcquireRetryTime, iter, new UpperBoundParallel.Mentor<>() {
                     @Override
                     public boolean runOneMore(BiConsumer<Throwable, Void> onQueueDone, Iterator<Map<String, QueueProcessingState>> iter) {
                         batchRefreshConsumerRegistration(onQueueDone);
@@ -553,7 +551,7 @@ public class QueueRegistryService {
                 .map(queue -> keyspaceHelper.getConsumersPrefix() + queue)
                 .collect(Collectors.toList());
 
-        return redisService.get(queueConsumersKeys).compose(response -> {
+        return redisService.clusterSafeMget(queueConsumersKeys).compose(response -> {
             Map<String, Boolean> responses = new HashMap<>();
 
             for (int i = 0; i < queueConsumersKeys.size(); i++) {
@@ -705,7 +703,7 @@ public class QueueRegistryService {
         // List all queues that look inactive (i.e. that have not been updated since 3 periods).
         final long limit = currentTimeMillis() - 3L * configurationProvider.configuration().getRefreshPeriod() * 1000L;
         final int batchSize = RedisService.MAX_COMMANDS_IN_BATCH;
-        final int checkQueueRequestsQuotaAcquireTimeout = configurationProvider.configuration().getCheckQueueRequestsQuotaAcquireTimeoutMs();
+        final int checkQueueRequestsQuotaAcquireRetryTime = configurationProvider.configuration().getCheckQueueRequestsQuotaAcquireRetryTimeMs();
         log.debug("Checking queues timestamps");
         return redisService.zrangebyscore(keyspaceHelper.getQueuesKey(), "-inf", String.valueOf(limit))
                 .onFailure(new Handler<Throwable>() {
@@ -718,12 +716,21 @@ public class QueueRegistryService {
                     if (log.isDebugEnabled()) {
                         log.debug("zrangebyscore time used is {} ms", System.currentTimeMillis() - startTs);
                     }
-                    List<List<String>> processQueue = new ArrayList<>();
-                    List<String> currentBatch = new ArrayList<>(batchSize);
+                    List<List<Map.Entry<String, String>>> processQueue = new ArrayList<>();
+                    List<Map.Entry<String, String>> currentBatch = new ArrayList<>(batchSize);
+
+                    Map<String, String> queueNamesWithPrefix = new LinkedHashMap<>();
+
+                    for (Response queue : queues) {
+                        queueNamesWithPrefix.put(keyspaceHelper.getQueuesPrefix() + queue.toString(), queue.toString());
+                    }
+
+                    // order by key first
+                    queueNamesWithPrefix = RedisClusterUtil.groupMapBySlot(queueNamesWithPrefix);
 
                     // create a batch with MAX_COMMANDS_IN_BATCH
-                    for (Response queue : queues) {
-                        currentBatch.add(queue.toString());
+                    for (Map.Entry<String, String> entry : queueNamesWithPrefix.entrySet()) {
+                        currentBatch.add(entry);
                         if (currentBatch.size() == batchSize) {
                             processQueue.add(currentBatch);
                             currentBatch = new ArrayList<>(batchSize);
@@ -735,17 +742,17 @@ public class QueueRegistryService {
                         processQueue.add(currentBatch);
                     }
                     Promise<Void> promise = Promise.promise();
-                    Iterator<List<String>> iter = processQueue.iterator();
+                    Iterator<List<Map.Entry<String, String>>> iter = processQueue.iterator();
                     // limits on process queue size
-                    upperBoundParallel.request(checkQueueRequestsQuota, checkQueueRequestsQuotaAcquireTimeout, iter, new UpperBoundParallel.Mentor<>() {
+                    upperBoundParallel.request(checkQueueRequestsQuota, checkQueueRequestsQuotaAcquireRetryTime, iter, new UpperBoundParallel.Mentor<>() {
                         @Override
-                        public boolean runOneMore(BiConsumer<Throwable, Void> onDone, Iterator<List<String>> iterator) {
+                        public boolean runOneMore(BiConsumer<Throwable, Void> onDone, Iterator<List<Map.Entry<String, String>>> iterator) {
                             if (!iterator.hasNext()) {
                                 onDone.accept(null, null);
                                 return false;
                             }
 
-                            List<String> batch = iterator.next();
+                            List<Map.Entry<String, String>> batch = iterator.next();
                             batchCheckQueuesSize(batch).onComplete(asyncResult -> {
                                 if (asyncResult.failed()) {
                                     log.warn("failed to batch check queue exist", asyncResult.cause());
@@ -763,6 +770,14 @@ public class QueueRegistryService {
                                         } else {
                                             nonEmptyQueue.add(key);
                                         }
+
+                                        //update the newest queue item size
+                                        queueConsumerRunner.getMyQueues().computeIfPresent(key, (s, queueProcessingState) -> {
+                                            if (value != null) {
+                                                queueProcessingState.setQueueItemSize(value);
+                                            }
+                                            return queueProcessingState;
+                                        });
                                     });
 
                                     if (!failedQueue.isEmpty()) {
@@ -817,13 +832,13 @@ public class QueueRegistryService {
                         }
 
                         @Override
-                        public boolean onError(Throwable ex, Iterator<List<String>> iterator) {
+                        public boolean onError(Throwable ex, Iterator<List<Map.Entry<String, String>>> iterator) {
                             log.warn("Failed while processing queue batch", exceptionFactory.newException(ex));
                             return true; // true, keep going with other queues batch in queue.
                         }
 
                         @Override
-                        public void onDone(Iterator<List<String>> iterator) {
+                        public void onDone(Iterator<List<Map.Entry<String, String>>> iterator) {
                             log.debug("all queue items time used is {} ms", System.currentTimeMillis() - startTs);
                             removeOldQueues(limit).onComplete(removeOldQueuesEvent -> {
                                 if (removeOldQueuesEvent.failed() && log.isWarnEnabled()) {
@@ -842,22 +857,27 @@ public class QueueRegistryService {
 
     /**
      * check the queue list size in a batch command
-     * @param queueNameBatch a set of queues name will check
+     * @param queueNameWithPrefixBatch a set of queues name already added prefix will check
      * @return a Map continues queue name and result, null means error
      */
-    Future<Map<String, Integer>> batchCheckQueuesSize(List<String> queueNameBatch) {
-        if (queueNameBatch.isEmpty()) {
+    Future<Map<String, Integer>> batchCheckQueuesSize(List<Map.Entry<String, String>>  queueNameWithPrefixBatch) {
+        if (queueNameWithPrefixBatch.isEmpty()) {
             return Future.succeededFuture();
         }
-        List<Request> requests = new ArrayList<>(queueNameBatch.size());
+        LinkedHashMap<String, String> map =
+                queueNameWithPrefixBatch.stream()
+                        .collect(Collectors.toMap(
+                                Map.Entry::getKey,
+                                Map.Entry::getValue,
+                                (a, b) -> a,
+                                LinkedHashMap::new
+                        ));
         Map<String, Integer> reslutMap = new HashMap<>();
-        for (String queueName : queueNameBatch) {
-            requests.add(Request.cmd(Command.LLEN).arg(keyspaceHelper.getQueuesPrefix() + queueName));
-        }
-        return redisService.batch(requests).compose(responses -> {
-            for (int i = 0; i < queueNameBatch.size(); i++) {
+        return redisService.clusterSafeBatch(Command.LLEN, new ArrayList<>(map.keySet()), List.of()).compose(responses -> {
+            List<String> queueNameList =  new ArrayList<>(map.values());
+            for (int i = 0; i < queueNameList.size(); i++) {
                 Response response = responses.get(i);
-                String queueName = queueNameBatch.get(i);
+                String queueName = queueNameList.get(i);
                 if (response != null && response.type() == ResponseType.NUMBER) {
                     reslutMap.put(queueName, response.toInteger());
                 } else {
