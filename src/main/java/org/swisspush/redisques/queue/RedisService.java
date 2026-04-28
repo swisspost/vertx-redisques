@@ -1,23 +1,34 @@
 package org.swisspush.redisques.queue;
 
 import io.vertx.core.Future;
+import io.vertx.core.Promise;
+import io.vertx.core.Vertx;
+import io.vertx.core.net.NetClientOptions;
 import io.vertx.redis.client.Command;
+import io.vertx.redis.client.Redis;
 import io.vertx.redis.client.RedisAPI;
+import io.vertx.redis.client.RedisClientType;
 import io.vertx.redis.client.RedisConnection;
+import io.vertx.redis.client.RedisOptions;
 import io.vertx.redis.client.Request;
 import io.vertx.redis.client.Response;
+import io.vertx.redis.client.impl.ZModem;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.swisspush.redisques.util.RedisClusterUtil;
 import org.swisspush.redisques.util.RedisProvider;
+import org.swisspush.redisques.util.RedisquesConfiguration;
+import org.swisspush.redisques.util.RedisquesConfigurationProvider;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -29,13 +40,27 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * </p>
  */
 public class RedisService {
-    private final RedisProvider redisProvider;
     private static final Logger log = LoggerFactory.getLogger(RedisService.class);
+    private final RedisProvider redisProvider;
+    private final Vertx vertx;
+    private final RedisquesConfigurationProvider configurationProvider;
     public static volatile AtomicBoolean isClusterMode = new AtomicBoolean(false);
     public static final int MAX_COMMANDS_IN_BATCH = 100;
 
-    public RedisService(RedisProvider redisProvider) {
+    private static class RedisNode {
+        String host;
+        int port;
+
+        RedisNode(String host, int port) {
+            this.host = host;
+            this.port = port;
+        }
+    }
+
+    public RedisService(Vertx vertx, RedisProvider redisProvider, RedisquesConfigurationProvider configurationProvider) {
         this.redisProvider = redisProvider;
+        this.vertx = vertx;
+        this.configurationProvider = configurationProvider;
     }
 
     private Future<RedisAPI> redis() {
@@ -152,6 +177,37 @@ public class RedisService {
     }
 
     /**
+     * Get the values of keys.
+     *
+     * @param keys keys to fetch
+     * @return a {@link Future} containing the stored values or null
+     */
+    public Future<List<Response>> get(List<String> keys) {
+        if (keys.size() > MAX_COMMANDS_IN_BATCH) {
+            throw new IllegalArgumentException("get exceeds max keys in batch");
+        }
+        return redisProvider.redisConnection().compose(connection -> {
+            List<Request> requests = new ArrayList<>();
+
+            for (String key : keys) {
+                requests.add(Request.cmd(Command.GET).arg(key));
+            }
+            return this.batch(requests);
+        });
+    }
+
+    /**
+     * Sets a key with value
+     *
+     * @param key            Redis key
+     * @param value          value to store
+     * @return a {@link Future} indicating whether the key was set
+     */
+    public Future<Boolean> set(String key, String value) {
+        return redis().compose((RedisAPI redisAPI) -> redisAPI.send(Command.SET, key, value)).map((Response rsp) -> rsp != null && "OK".equals(rsp.toString()));
+    }
+
+    /**
      * Sets a key only if it does not already exist, with a TTL.
      *
      * @param key            Redis key
@@ -168,9 +224,21 @@ public class RedisService {
             } else {
                 return redisAPI.send(Command.SET, key, value, "PX", durationMillisStr);
             }
-        }).map((Response rsp) -> {
-            return rsp != null && "OK".equals(rsp.toString());
-        });
+        }).map((Response rsp) -> rsp != null && "OK".equals(rsp.toString()));
+    }
+
+    /**
+     * update TTL of a key only if existed.
+     *
+     * @param key            Redis key
+     * @param durationMillis expiration duration
+     * @return a {@link Future} indicating whether the key was set
+     */
+    public Future<Boolean> setPExpire(String key, long durationMillis) {
+        return redis().compose((RedisAPI redisAPI) -> {
+            String durationMillisStr = String.valueOf(durationMillis);
+            return redisAPI.send(Command.PEXPIRE, key, durationMillisStr);
+        }).map((Response rsp) -> rsp != null && rsp.toInteger() == 1);
     }
 
     /**
@@ -523,7 +591,27 @@ public class RedisService {
     }
 
     /**
+     * get mutiple values of keys
+     *
+     * @param keys
+     * @return a list of responses
+     */
+    public Future<Response> mget(List<String> keys) {
+        if (keys.size() > MAX_COMMANDS_IN_BATCH) {
+            throw new IllegalArgumentException("mget exceeds max keys in batch");
+        }
+        Request req = Request.cmd(Command.MGET);
+        for (String key : keys) {
+            req.arg(key);
+        }
+        return redisProvider.redisConnection().compose((RedisConnection connection) ->
+                connection.send(req)
+        );
+    }
+
+    /**
      * execute a list of command in pipeline
+     *
      * @param batchCmd redis commands will execute
      * @return a list of responses
      */
@@ -534,6 +622,218 @@ public class RedisService {
         return redisProvider.redisConnection().compose((RedisConnection connection) ->
                 connection.batch(batchCmd)
         );
+    }
+
+
+    /**
+     * Cluster wide scanner, if cluster enabled, if not a cluster, will run scan directly
+     **/
+    public Future<Map<String, String>> scanCluster(String pattern) {
+        Promise<Map<String, String>> promise = Promise.promise();
+        Map<String, String> allKeysWithValue = new ConcurrentHashMap<>();
+        if (configurationProvider.configuration().getRedisClientType() == RedisClientType.CLUSTER) {
+            // 1. Get cluster slots info
+            send(Request.cmd(Command.CLUSTER).arg("SLOTS")).onComplete(slotsRes -> {
+                if (slotsRes.failed()) {
+                    promise.fail(slotsRes.cause());
+                    return;
+                }
+                //Extract all master node on cluster
+                List<RedisNode> masterNodes = new ArrayList<>();
+                for (Response slotInfo : slotsRes.result()) {
+                    /**
+                     * [0: start_slot, 1: end_slot,
+                     *   2: [0: master_ip, 1: master_port, master_id],
+                     *   [replica1_ip, replica1_port, replica1_id],
+                     *   [replica2_ip, replica2_port, replica2_id],
+                     */
+                    Response master = slotInfo.get(2); // index 2 = master node info
+                    String host = master.get(0).toString();
+                    int port = master.get(1).toInteger();
+                    masterNodes.add(new RedisNode(host, port));
+                }
+
+                List<Future<?>> futures = new ArrayList<>();
+
+                // 2. Scan each master node
+                for (RedisNode node : masterNodes) {
+                    futures.add(scanSingleNode(node, pattern, allKeysWithValue));
+                }
+                Future.all(futures).onComplete(done -> {
+                    if (done.failed()) {
+                        promise.fail(done.cause());
+                    } else {
+                        promise.complete(allKeysWithValue);
+                    }
+                });
+            });
+        } else {
+            Promise<Void> singleScanPromise = Promise.promise();
+            redisProvider.redisConnection().onComplete(connection -> {
+                scanRecursive(connection.result(), "0", pattern, allKeysWithValue, singleScanPromise);
+                singleScanPromise.future().onComplete(done -> {
+                    if (done.failed()) {
+                        promise.fail(done.cause());
+                    } else {
+                        promise.complete(allKeysWithValue);
+                    }
+                });
+            });
+        }
+
+        return promise.future();
+    }
+
+    /**
+     * create a standalone connection config for a redis master node
+     *
+     * @param node
+     * @return
+     */
+    private RedisOptions createDirectConnectionRedisOpt(RedisNode node) {
+        RedisquesConfiguration config = configurationProvider.configuration();
+        String redisAuth = config.getRedisAuth();
+        RedisOptions directConnectionRedisOptions = new RedisOptions()
+                .setPassword((redisAuth == null ? "" : redisAuth))
+                .setType(RedisClientType.STANDALONE); // use a standalone connectio
+        if (config.getRedisEnableTls()) {
+            NetClientOptions netClientOptions = directConnectionRedisOptions.getNetClientOptions();
+            netClientOptions.setSsl(true)
+                    .setHostnameVerificationAlgorithm("HTTPS");
+            directConnectionRedisOptions.setNetClientOptions(netClientOptions);
+        }
+        directConnectionRedisOptions.addConnectionString(createConnectString(node));
+        return directConnectionRedisOptions;
+    }
+
+    private String createConnectString(RedisNode node) {
+        RedisquesConfiguration config = configurationProvider.configuration();
+        String redisPassword = config.getRedisPassword();
+        String redisUser = config.getRedisUser();
+        StringBuilder connectionStringPrefixBuilder = new StringBuilder();
+        // protocol
+        connectionStringPrefixBuilder.append(config.getRedisEnableTls() ? "rediss://" : "redis://");
+        // auth
+        if (redisUser != null && !redisUser.isEmpty()) {
+            connectionStringPrefixBuilder.append(redisUser).append(":")
+                    .append(redisPassword == null ? "" : redisPassword)
+                    .append("@");
+        }
+        connectionStringPrefixBuilder.append(node.host).append(":").append(node.port);
+        return connectionStringPrefixBuilder.toString();
+    }
+
+    /**
+     * connect to a redis node directly
+     *
+     * @param node
+     * @param pattern
+     * @param collector
+     * @return
+     */
+    private Future<Void> scanSingleNode(RedisNode node,
+                                        String pattern, Map<String, String> collector) {
+        Promise<Void> promise = Promise.promise();
+        Redis.createClient(vertx, createDirectConnectionRedisOpt(node)).connect(ar -> {
+            if (ar.failed()) {
+                promise.fail(ar.cause());
+                return;
+            }
+            RedisConnection conn = ar.result();
+            scanRecursive(conn, "0", pattern, collector, promise);
+        });
+
+        return promise.future();
+    }
+
+    /**
+     * scan a node with given pattern
+     *
+     * @param conn
+     * @param cursor
+     * @param pattern
+     * @param collector
+     * @param promise
+     */
+    private void scanRecursive(RedisConnection conn,
+                               String cursor,
+                               String pattern,
+                               Map<String, String> collector,
+                               Promise<Void> promise) {
+
+        conn.send(Request.cmd(Command.SCAN)
+                        .arg(cursor)
+                        .arg("MATCH").arg(pattern)
+                        .arg("COUNT").arg(MAX_COMMANDS_IN_BATCH),
+                ar -> {
+                    if (ar.failed()) {
+                        promise.fail(ar.cause());
+                        return;
+                    }
+                    Response res = ar.result();
+                    String nextCursor = res.get(0).toString();
+                    List<Response> keys = res.get(1).stream().collect(Collectors.toList());
+                    if (keys.isEmpty()) {
+                        // continue scanning
+                        if ("0".equals(nextCursor)) {
+                            promise.complete();
+                        } else {
+                            scanRecursive(conn, nextCursor, pattern, collector, promise);
+                        }
+                        return;
+                    }
+                    // Fetch values (cluster-safe: GET per key batch in slot group)
+                    // Group keys by slot
+                    Map<Integer, List<String>> slotGroups = new HashMap<>();
+                    for (Response key : keys) {
+                        String k = key.toString();
+                        int slot = ZModem.generate(k); // CRC16 slot
+                        slotGroups.computeIfAbsent(slot, s -> new ArrayList<>()).add(k);
+                    }
+
+                    // get all keys in group
+                    List<Future<Map<String, String>>> futures = new ArrayList<>();
+                    for (List<String> groupKeys : slotGroups.values()) {
+
+                        List<Request> batch = new ArrayList<>();
+                        for (String k : groupKeys) {
+                            batch.add(Request.cmd(Command.GET).arg(k));
+                        }
+                        Future<Map<String, String>> f = batch(batch)
+                                .map(responses -> {
+                                    Map<String, String> result = new HashMap<>();
+                                    for (int i = 0; i < groupKeys.size(); i++) {
+                                        Response r = responses.get(i);
+                                        result.put(groupKeys.get(i), r == null ? null : r.toString());
+                                    }
+                                    return result;
+                                });
+
+                        futures.add(f);
+                    }
+
+                    Future.all(new ArrayList<>(futures))
+                            .map(cf -> {
+                                Map<String, String> finalResult = new HashMap<>();
+                                // merge all response
+                                for (int i = 0; i < futures.size(); i++) {
+                                    collector.putAll(futures.get(i).result());
+                                }
+                                return finalResult;
+                            }).onComplete(event -> {
+                                if (event.failed()) {
+                                    log.error("get values from node failed");
+                                    promise.fail(event.cause());
+                                    return;
+                                }
+                                // continue recursion
+                                if ("0".equals(nextCursor)) {
+                                    promise.complete();
+                                } else {
+                                    scanRecursive(conn, nextCursor, pattern, collector, promise);
+                                }
+                            });
+                });
     }
 
     /**
@@ -606,69 +906,4 @@ public class RedisService {
                     return finalResponses;
                 });
     }
-
-    /**
-     * Get the values of keys by mget split into slot.
-     *
-     * @param keys keys to fetch
-     * @return a {@link Future} containing the stored values or null
-     */
-    public Future<List<Response>> clusterSafeMget(List<String> keys) {
-        if (keys.size() > MAX_COMMANDS_IN_BATCH) {
-            throw new IllegalArgumentException("get exceeds max keys in batch");
-        }
-        if (keys == null || keys.isEmpty()) {
-            return Future.succeededFuture(List.of());
-        }
-
-        Map<Integer, List<String>> keysGroupedBySlots = new HashMap<>();
-        Map<Integer, List<Integer>> keyIndexes = new HashMap<>();
-
-        if (isClusterMode.get()) {
-            // Group keys by slot
-            for (int i = 0; i < keys.size(); i++) {
-                String key = keys.get(i);
-                int slot = RedisClusterUtil.calcRedisSlot(key);
-
-                keysGroupedBySlots.computeIfAbsent(slot, s -> new ArrayList<>()).add(key);
-                keyIndexes.computeIfAbsent(slot, s -> new ArrayList<>()).add(i);
-            }
-        } else {
-            // non cluster mode
-            for (int i = 0; i < keys.size(); i++) {
-                String key = keys.get(i);
-                keysGroupedBySlots.computeIfAbsent(1, s -> new ArrayList<>()).add(key);
-                keyIndexes.computeIfAbsent(1, s -> new ArrayList<>()).add(i);
-            }
-        }
-
-        List<Integer> slots = new ArrayList<>(keysGroupedBySlots.keySet());
-        List<Future<?>> futures = new ArrayList<>();
-
-        // Send one MGET per slot
-        for (Integer slot : slots) {
-            Request req = Request.cmd(Command.MGET);
-            for (String key : keysGroupedBySlots.get(slot)) {
-                req = req.arg(key);
-            }
-            futures.add(this.send(req));
-        }
-
-        return Future.all(futures)
-                .map(cf -> {
-                    List<Response> finalResponses =
-                            new ArrayList<>(Collections.nCopies(keys.size(), null));
-                    for (int f = 0; f < slots.size(); f++) {
-                        Integer slot = slots.get(f);
-                        List<Integer> indexes = keyIndexes.get(slot);
-                        Response mgetResponse = cf.resultAt(f);
-                        // combos the responses
-                        for (int i = 0; i < indexes.size(); i++) {
-                            finalResponses.set(indexes.get(i), mgetResponse.get(i));
-                        }
-                    }
-                    return finalResponses;
-                });
-    }
-
 }
