@@ -184,8 +184,10 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
                 .withRedisquesRedisquesConfigurationProvider(new DefaultRedisquesConfigurationProvider(testVertx, config))
                 .build();
 
+        redisQues.disableMigrationTool();
         testVertx.deployVerticle(redisQues, new DeploymentOptions().setConfig(config), context.asyncAssertSuccess(event -> {
             deploymentId = event;
+            keyspaceHelper =  redisQues.getKeyspaceHelper();
             log.info("vert.x Deploy - {} was successful.", redisQues.getClass().getSimpleName());
             jedis = new Jedis("localhost", 6379, 5000);
             delay(1000);

@@ -89,6 +89,7 @@ public class QueueRegistryServiceTest extends AbstractTestCase {
                 .withMeterRegistry(meterRegistry)
                 .build();
 
+        redisQues.disableMigrationTool();
         vertx.deployVerticle(redisQues, new DeploymentOptions().setConfig(config), context.asyncAssertSuccess(event -> {
             deploymentId = event;
             log.info("vert.x Deploy - {} was successful.", redisQues.getClass().getSimpleName());
