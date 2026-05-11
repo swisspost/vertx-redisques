@@ -6,6 +6,7 @@ import io.vertx.core.json.JsonObject;
 import io.vertx.ext.unit.Async;
 import io.vertx.ext.unit.TestContext;
 import io.vertx.ext.unit.junit.VertxUnitRunner;
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mockito;
@@ -24,6 +25,11 @@ import static org.mockito.Mockito.when;
  */
 @RunWith(VertxUnitRunner.class)
 public class DeletePerQueueConfigurationsActionTest {
+    @Before
+    public void setUp() {
+        QueueConfigurationProvider.reset();
+    }
+
     @Test
     public void testQueueConfigurationAction_deleteOneConfig(TestContext context) {
         final Async async = context.async();

@@ -6,6 +6,7 @@ import io.vertx.core.json.JsonObject;
 import io.vertx.ext.unit.Async;
 import io.vertx.ext.unit.TestContext;
 import io.vertx.ext.unit.junit.VertxUnitRunner;
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
@@ -25,6 +26,12 @@ import static org.mockito.Mockito.when;
  */
 @RunWith(VertxUnitRunner.class)
 public class GetPerQueueConfigurationsActionTest {
+
+    @Before
+    public void setUp() {
+        QueueConfigurationProvider.reset();
+    }
+
     @Test
     public void testQueueConfigurationAction_getAll(TestContext context) {
         final Async async = context.async();
