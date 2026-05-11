@@ -33,10 +33,10 @@ public class SetPerQueueConfigurationActionTest {
         payload.put("maxQueueEntries", 11);
         payload.put("enqueueDelayFactorMillis", 22);
         payload.put("enqueueMaxDelayMillis", 33);
-        JsonObject config = RedisquesAPI.buildSetPerQueueConfiguration("my-queue", payload);
+        JsonObject config = RedisquesAPI.buildSetPerQueueConfiguration("test-rule", "my-queue", payload);
         Mockito.when(message.body()).thenReturn(config);
         action.execute(message);
 
-        Mockito.verify(queueConfigurationProvider).updateQueueConfiguration("my-queue", payload);
+        Mockito.verify(queueConfigurationProvider).updateQueueConfiguration("test-rule", payload);
     }
 }

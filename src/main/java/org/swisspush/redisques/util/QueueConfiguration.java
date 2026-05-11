@@ -1,10 +1,12 @@
 package org.swisspush.redisques.util;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import io.vertx.core.json.JsonObject;
 
 import java.util.Arrays;
 import java.util.regex.Pattern;
 
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class QueueConfiguration {
 
     /**
@@ -16,7 +18,7 @@ public class QueueConfiguration {
      * after a failed de-queuing the next try is delayed by the first entry (values are seconds)
      * The 2nd failed de-queue takes the seconds array-entry for delay, the 3rd takes the 3rd, etc...
      */
-    private int[] retryIntervals;
+    private int[] retryIntervals = new int[0];
 
     /**
      * EN-queuing speed can be throttled by delaying the "ok" response.
@@ -42,6 +44,16 @@ public class QueueConfiguration {
      * default "0" means: no limit
      */
     private int maxQueueEntries = 0;
+
+    public QueueConfiguration(String pattern) {
+        this.pattern = Pattern.compile(pattern);
+    }
+
+    /**
+     * constructor use for Json deserialize
+     */
+    QueueConfiguration() {
+    }
 
     public String getPattern() {
         return pattern.pattern();
@@ -76,8 +88,8 @@ public class QueueConfiguration {
     public JsonObject asJsonObject() {
         return JsonObject.mapFrom(this);
     }
-    
-    static QueueConfiguration fromJsonObject(JsonObject jsonObject) {
+
+    public static QueueConfiguration fromJsonObject(JsonObject jsonObject) {
         return jsonObject.mapTo(QueueConfiguration.class);
     }
 
@@ -98,8 +110,8 @@ public class QueueConfiguration {
     }
 
     public QueueConfiguration withEnqueueDelayMillisPerSize(float enqueueDelayFactorMillis) {
-        if (enqueueDelayFactorMillis <= 0f) {
-            throw new IllegalArgumentException("enqueueDelayMillisPerSize must be >0 but is " + enqueueDelayFactorMillis);
+        if (enqueueDelayFactorMillis < 0f) {
+            throw new IllegalArgumentException("enqueueDelayMillisPerSize must be >=0 but is " + enqueueDelayFactorMillis);
         }
         this.enqueueDelayFactorMillis = enqueueDelayFactorMillis;
         return this;

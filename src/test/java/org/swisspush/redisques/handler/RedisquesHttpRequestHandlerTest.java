@@ -169,8 +169,8 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
                 .httpRequestHandlerEnabled(true)
                 .httpRequestHandlerPort(7070)
                 .queueConfigurations(List.of(
-                        new QueueConfiguration().withPattern("queue_1").withRetryIntervals(1, 2, 3, 5),
-                        new QueueConfiguration().withPattern("stat.*").withRetryIntervals(1, 2, 3, 5)
+                        new QueueConfiguration("queue_1").withRetryIntervals(1, 2, 3, 5),
+                        new QueueConfiguration("stat.*").withRetryIntervals(1, 2, 3, 5)
                                 .withEnqueueDelayMillisPerSize(5).withEnqueueMaxDelayMillis(100)
                 ))
                 .queueSpeedIntervalSec(2)
