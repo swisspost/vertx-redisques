@@ -329,7 +329,7 @@ public class RedisquesAPI {
      * set queue config by given payload with follow predefined keys
      *  PER_QUEUE_CONFIG_RETRY_INTERVALS
      *  PER_QUEUE_CONFIG_ENQUEUE_DELAY_FACTOR_MILLIS
-     *  PER_QUEUE_CONFIG_ENQUEUE_MAX_DELAY_MILLI
+     *  PER_QUEUE_CONFIG_ENQUEUE_MAX_DELAY_MILLIS
      *  PER_QUEUE_CONFIG_MAX_QUEUE_ENTRIES
      *
      * @param filterPattern The queues filter for which we would like to set the per queue config
@@ -337,6 +337,7 @@ public class RedisquesAPI {
      */
     @Deprecated
     public static JsonObject buildSetPerQueueConfiguration(String filterPattern, JsonObject payload) {
+        // we don't have config name in here, so use filter pattern as a name
         return buildSetPerQueueConfiguration(filterPattern, filterPattern, payload);
     }
 
@@ -344,7 +345,7 @@ public class RedisquesAPI {
      * set queue config by given payload with follow predefined keys
      *  PER_QUEUE_CONFIG_RETRY_INTERVALS
      *  PER_QUEUE_CONFIG_ENQUEUE_DELAY_FACTOR_MILLIS
-     *  PER_QUEUE_CONFIG_ENQUEUE_MAX_DELAY_MILLI
+     *  PER_QUEUE_CONFIG_ENQUEUE_MAX_DELAY_MILLIS
      *  PER_QUEUE_CONFIG_MAX_QUEUE_ENTRIES
      *
      * @param configName The queue config name for which we would like to set

@@ -34,6 +34,20 @@ public class QueueConfigurationProvider {
         this.defaultQueueConfigurations = defaultQueueConfigurations;
         loadStaticConfigs();
         vertx.eventBus().consumer(QUEUE_CONFIG_EVENTBUS_SYNC_KEY, (Handler<Message<JsonObject>>) event -> {
+
+            // message structure
+            // {
+            //   "queue_config_sender_id": "uid",       #The sender's UID, to prevents sender consumer the message from itself
+            //   "operation": "DELETE",                 #The operation of the message
+            //   "configName": "name fo config set",    #The name to identify the config
+            //   "payload": {                           #The config itself
+            //                "pattern": "queue.filter.regex",
+            //                "maxQueueEntries": 0,
+            //                "enqueueDelayFactorMillis": 0,
+            //                "enqueueMaxDelayMillis": 0,
+            //                "retryIntervals": [1, 2, 3]
+            //              }
+            // }
             if (!event.body().containsKey(QUEUE_CONFIG_SENDER_ID)) {
                 return;
             }
@@ -42,17 +56,17 @@ public class QueueConfigurationProvider {
                 log.debug("publish msg from my self, drop it.");
                 return;
             }
-
-            if(body.containsKey(RedisquesAPI.OPERATION)){
+            if (body.containsKey(RedisquesAPI.OPERATION)) {
                 String operation = body.getString(RedisquesAPI.OPERATION);
                 if (DELETE.equals(operation)) {
                     final String configName = event.body().getString(RedisquesAPI.PER_QUEUE_CONFIG_NAME);
                     queueConfigurations.remove(configName);
                     log.debug("delete config {} from instance {}", configName, uid);
-                } else{
+                } else {
                     log.warn("Unsupported operation: {}", operation);
                 }
             } else {
+                // we need a message have both name and config body for add or update
                 if (body.containsKey(RedisquesAPI.PAYLOAD) && body.containsKey(RedisquesAPI.PER_QUEUE_CONFIG_NAME)) {
                     String name = body.getString(RedisquesAPI.PER_QUEUE_CONFIG_NAME);
                     updateQueueConfigurationInternal(name, body.getJsonObject(RedisquesAPI.PAYLOAD));
@@ -165,6 +179,7 @@ public class QueueConfigurationProvider {
         }
 
         if (queueConfiguration == null) {
+            // we don't have a config with given name.
             queueConfiguration = new QueueConfiguration(pattern);
             isNew = true;
         }
