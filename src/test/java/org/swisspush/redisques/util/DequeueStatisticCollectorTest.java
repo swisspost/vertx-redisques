@@ -57,14 +57,11 @@ public class DequeueStatisticCollectorTest extends AbstractTestCase {
                 .metricRefreshPeriod(2)
                 .memoryUsageLimitPercent(80)
                 .redisReadyCheckIntervalMs(2000)
-                .queueConfigurations(List.of(new QueueConfiguration()
-                                .withPattern("queue.*")
+                .queueConfigurations(List.of(new QueueConfiguration("queue.*")
                                 .withRetryIntervals(2, 7, 12, 17, 22, 27, 32, 37, 42, 47, 52),
-                        new QueueConfiguration()
-                                .withPattern("limited-queue-1.*")
+                        new QueueConfiguration("limited-queue-1.*")
                                 .withMaxQueueEntries(1),
-                        new QueueConfiguration()
-                                .withPattern("limited-queue-4.*")
+                        new QueueConfiguration("limited-queue-4.*")
                                 .withMaxQueueEntries(4))
                 )
                 .build()
@@ -79,6 +76,7 @@ public class DequeueStatisticCollectorTest extends AbstractTestCase {
                 .withMeterRegistry(meterRegistry)
                 .build();
 
+        redisQues.disableMigrationTool();
         vertx.deployVerticle(redisQues, new DeploymentOptions().setConfig(config), context.asyncAssertSuccess(event -> {
             deploymentId = event;
             log.info("vert.x Deploy - {} was successful.", redisQues.getClass().getSimpleName());

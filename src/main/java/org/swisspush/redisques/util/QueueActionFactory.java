@@ -11,11 +11,13 @@ import org.swisspush.redisques.action.BulkPutLocksAction;
 import org.swisspush.redisques.action.DeleteAllLocksAction;
 import org.swisspush.redisques.action.DeleteAllQueueItemsAction;
 import org.swisspush.redisques.action.DeleteLockAction;
+import org.swisspush.redisques.action.DeletePerQueueConfigurationsAction;
 import org.swisspush.redisques.action.DeleteQueueItemAction;
 import org.swisspush.redisques.action.EnqueueAction;
 import org.swisspush.redisques.action.GetAllLocksAction;
 import org.swisspush.redisques.action.GetConfigurationAction;
 import org.swisspush.redisques.action.GetLockAction;
+import org.swisspush.redisques.action.GetPerQueueConfigurationsAction;
 import org.swisspush.redisques.action.GetQueueItemAction;
 import org.swisspush.redisques.action.GetQueueItemsAction;
 import org.swisspush.redisques.action.GetQueueItemsCountAction;
@@ -147,6 +149,10 @@ public class QueueActionFactory {
                 return new MonitorAction(redisquesConfigurationProvider.configuration(), client, log);
             case setPerQueueConfiguration:
                 return new SetPerQueueConfigurationAction(queueConfigurationProvider, log);
+            case getPerQueueConfiguration:
+                return new GetPerQueueConfigurationsAction(queueConfigurationProvider, log);
+            case deleteQueueConfiguration:
+                return new DeletePerQueueConfigurationsAction(queueConfigurationProvider, log);
             default:
                 return new UnsupportedAction(log);
         }

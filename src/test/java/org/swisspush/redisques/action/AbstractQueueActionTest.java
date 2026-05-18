@@ -60,7 +60,7 @@ public abstract class AbstractQueueActionTest {
         when(keyspaceHelper.getConsumersPrefix()).thenReturn("c-");
         when(keyspaceHelper.getLocksKey()).thenReturn("l-");
         exceptionFactory = newWastefulExceptionFactory();
-        redisService = new RedisService(redisProvider);
+        redisService = new RedisService(vertx, redisProvider, redisquesConfigurationProvider);
 
         memoryUsageProvider = Mockito.mock(MemoryUsageProvider.class);
         when(memoryUsageProvider.currentMemoryUsagePercentage()).thenReturn(Optional.empty());

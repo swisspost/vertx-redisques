@@ -11,6 +11,9 @@ public class KeyspaceHelper {
     private final String dequeueStatisticTsKey;
     private final String locksKey;
     private final String queueCheckLastexecKey;
+    private final String dataMigrationKeyPrefix;
+    private final String dataMigrationTaskPrefix;
+    private final String dataMigrationLockKey;
 
     private final String verticleUid;
     private final String verticleNotifyConsumerKey;
@@ -25,16 +28,19 @@ public class KeyspaceHelper {
         this.verticleUid = verticleUid;
         queuesKey = configuration.getRedisPrefix() + "queues";
         queuesPrefix = configuration.getRedisPrefix() + "queues:";
-        consumersPrefix = configuration.getRedisPrefix() + "consumers:";
-        dequeueStatisticKey =  configuration.getRedisPrefix() + "dequeueStatistic";
-        dequeueStatisticTsKey =  dequeueStatisticKey + ":ts";
+        consumersPrefix = configuration.getRedisPrefix() + "{consumers}:";
+        dequeueStatisticKey = configuration.getRedisPrefix() + "dequeueStatistic";
+        dequeueStatisticTsKey = dequeueStatisticKey + ":ts";
         locksKey = configuration.getRedisPrefix() + "locks";
         queueCheckLastexecKey = configuration.getRedisPrefix() + "check:lastexec";
+        dataMigrationKeyPrefix = configuration.getRedisPrefix() + "{migration}:";
+        dataMigrationTaskPrefix = dataMigrationKeyPrefix + "tasks:";
+        dataMigrationLockKey = dataMigrationKeyPrefix + "locks";
         verticleNotifyConsumerKey = "notifyConsumer:" + verticleUid;
         trimRequestKey = "trim_request:" + verticleUid;
         consumersAddress = configuration.getAddress() + "-consumers";
-        aliveConsumersKey= configuration.getRedisPrefix() + "-aliveConsumer";
-        metricsCollectorAddress = configuration.getAddress()  + "-" + verticleUid + "-" + QUEUE_STATE_COUNT_KEY;
+        aliveConsumersKey = configuration.getRedisPrefix() + "-aliveConsumer";
+        metricsCollectorAddress = configuration.getAddress() + "-" + verticleUid + "-" + QUEUE_STATE_COUNT_KEY;
     }
 
     public String getAddress() {
@@ -89,7 +95,15 @@ public class KeyspaceHelper {
         return aliveConsumersKey;
     }
 
-    public  String getMetricsCollectorAddress() {
+    public String getMetricsCollectorAddress() {
         return metricsCollectorAddress;
+    }
+
+    public String getDataMigrationLockKey() {
+        return dataMigrationLockKey;
+    }
+
+    public String getDataMigrationTaskPrefix() {
+        return dataMigrationTaskPrefix;
     }
 }

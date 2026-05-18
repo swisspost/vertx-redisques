@@ -11,9 +11,18 @@ import org.junit.runner.RunWith;
 public class QueueConfigurationTest {
 
     @Test
+    public void testQueueConfiguration_defaultValue(TestContext context) {
+        QueueConfiguration queueConfiguration = new QueueConfiguration(".*");
+        context.assertEquals(".*", queueConfiguration.getPattern());
+        context.assertEquals(0, queueConfiguration.getRetryIntervals().length);
+        context.assertEquals(0, queueConfiguration.getMaxQueueEntries());
+        context.assertEquals(0.0F, queueConfiguration.getEnqueueDelayFactorMillis());
+        context.assertEquals(0, queueConfiguration.getEnqueueMaxDelayMillis());
+    }
+
+    @Test
     public void testQueueConfiguration_toJsonObject(TestContext context) {
-        QueueConfiguration queueConfiguration = new QueueConfiguration()
-                .withPattern("queue-in-myserver.*")
+        QueueConfiguration queueConfiguration = new QueueConfiguration("queue-in-myserver.*")
                 .withRetryIntervals(10)
                 .withMaxQueueEntries(1)
                 .withEnqueueDelayMillisPerSize(22)

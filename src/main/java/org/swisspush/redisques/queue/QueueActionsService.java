@@ -27,9 +27,11 @@ import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.bulkPutLo
 import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.deleteAllLocks;
 import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.deleteAllQueueItems;
 import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.deleteLock;
+import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.deleteQueueConfiguration;
 import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.deleteQueueItem;
 import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.enqueue;
 import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.getAllLocks;
+import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.getPerQueueConfiguration;
 import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.getConfiguration;
 import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.getLock;
 import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.getQueueItem;
@@ -96,7 +98,8 @@ public class QueueActionsService {
         queueActions.put(getConfiguration, queueActionFactory.buildQueueAction(getConfiguration));
         queueActions.put(monitor, queueActionFactory.buildQueueAction(monitor));
         queueActions.put(setPerQueueConfiguration, queueActionFactory.buildQueueAction(setPerQueueConfiguration));
-
+        queueActions.put(getPerQueueConfiguration, queueActionFactory.buildQueueAction(getPerQueueConfiguration));
+        queueActions.put(deleteQueueConfiguration, queueActionFactory.buildQueueAction(deleteQueueConfiguration));
     }
 
     public void handle(RedisquesAPI.QueueOperation queueOperation, Message<JsonObject> event) {

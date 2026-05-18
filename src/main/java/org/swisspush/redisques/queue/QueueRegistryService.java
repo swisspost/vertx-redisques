@@ -360,13 +360,17 @@ public class QueueRegistryService {
         log.debug("RedisQues Refreshing registration of {} queue consumers, expire in {} s",
                 queueNames.size(), consumerLockTime);
         final String consumersPrefix = keyspaceHelper.getConsumersPrefix();
-        List<String> keyBatch = new ArrayList<>(queueNames.size());
+        List<Request> requests = new ArrayList<>(queueNames.size());
         for (String queueName : queueNames) {
-            keyBatch.add(consumersPrefix + queueName);
+            String consumerKey = consumersPrefix + queueName;
+            requests.add(Request.cmd(Command.EXPIRE)
+                    .arg(consumerKey)
+                    .arg(String.valueOf(consumerLockTime)));
             metrics.perQueueMetricsRefresh(queueName);
         }
 
-        redisService.clusterSafeBatch(Command.EXPIRE, keyBatch, List.of(String.valueOf(consumerLockTime))).onComplete(event -> {
+        // consumersPrefix is fixed slot, key, so safe to call with batch command directly.
+        redisService.batch(requests).onComplete(event -> {
             if (event.failed()) {
                 log.error("batchRefreshRegistration failed with message: {}", event.cause().getMessage());
                 promise.fail(event.cause());
@@ -404,7 +408,7 @@ public class QueueRegistryService {
      * @param chunkSize
      * @return a linked list
      */
-    <K, V> List<Map<K, V>> splitMap(Map<K, V> map, int chunkSize) {
+    public static <K, V> List<Map<K, V>> splitMap(Map<K, V> map, int chunkSize) {
         final List<Map<K, V>> result = new ArrayList<>();
         Map<K, V> current = new LinkedHashMap<>();
         int itemCount = 0;
@@ -551,7 +555,7 @@ public class QueueRegistryService {
                 .map(queue -> keyspaceHelper.getConsumersPrefix() + queue)
                 .collect(Collectors.toList());
 
-        return redisService.clusterSafeMget(queueConsumersKeys).compose(response -> {
+        return redisService.mget(queueConsumersKeys).compose(response -> {
             Map<String, Boolean> responses = new HashMap<>();
 
             for (int i = 0; i < queueConsumersKeys.size(); i++) {

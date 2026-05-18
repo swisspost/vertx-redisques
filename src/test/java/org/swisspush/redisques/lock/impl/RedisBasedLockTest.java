@@ -11,6 +11,7 @@ import io.vertx.ext.unit.junit.VertxUnitRunner;
 import io.vertx.redis.client.PoolOptions;
 import io.vertx.redis.client.RedisAPI;
 import io.vertx.redis.client.RedisConnection;
+import io.vertx.redis.client.RedisOptions;
 import io.vertx.redis.client.RedisStandaloneConnectOptions;
 import io.vertx.redis.client.impl.RedisClient;
 import org.junit.After;
@@ -18,8 +19,10 @@ import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.Mockito;
 import org.swisspush.redisques.queue.RedisService;
 import org.swisspush.redisques.util.RedisProvider;
+import org.swisspush.redisques.util.RedisquesConfigurationProvider;
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.exceptions.JedisConnectionException;
 
@@ -64,7 +67,7 @@ public class RedisBasedLockTest {
                 return client.connect();
             }
         };
-        redisBasedLock = new RedisBasedLock(new RedisService(redisProvider), newWastefulExceptionFactory());
+        redisBasedLock = new RedisBasedLock(new RedisService(vertx, redisProvider, Mockito.mock(RedisquesConfigurationProvider.class)), newWastefulExceptionFactory());
     }
 
     @Before

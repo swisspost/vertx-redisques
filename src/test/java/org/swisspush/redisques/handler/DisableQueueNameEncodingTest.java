@@ -62,6 +62,7 @@ public class DisableQueueNameEncodingTest extends AbstractTestCase {
                 .asJsonObject();
 
         RedisQues redisQues = new RedisQues();
+        redisQues.disableMigrationTool();
 
         testVertx.deployVerticle(redisQues, new DeploymentOptions().setConfig(config), context.asyncAssertSuccess(event -> {
             deploymentId = event;
