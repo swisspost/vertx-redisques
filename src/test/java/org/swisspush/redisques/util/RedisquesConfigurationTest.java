@@ -94,7 +94,7 @@ public class RedisquesConfigurationTest {
                 .httpRequestHandlerMaxInitialLineLength(9999)
                 .httpRequestHandlerUserHeader("x-custom-user-header")
                 .queueConfigurations(Collections.singletonList(
-                        new QueueConfiguration().withPattern("vehicle-.*").withRetryIntervals(10, 20, 30, 60)
+                        new QueueConfiguration("vehicle-.*").withRetryIntervals(10, 20, 30, 60)
                 ))
                 .queueSpeedIntervalSec(1)
                 .consumerLockMultiplier(9)
@@ -236,7 +236,7 @@ public class RedisquesConfigurationTest {
                 .httpRequestHandlerPassword("bar")
                 .httpRequestHandlerUserHeader("x-custom-user-header")
                 .queueConfigurations(Collections.singletonList(
-                        new QueueConfiguration().withPattern("vehicle-.*").withRetryIntervals(10, 20, 30, 60)
+                        new QueueConfiguration("vehicle-.*").withRetryIntervals(10, 20, 30, 60)
                 ))
                 .queueSpeedIntervalSec(1)
                 .memoryUsageLimitPercent(55)
@@ -401,7 +401,7 @@ public class RedisquesConfigurationTest {
         json.put(PROP_PUBLISH_METRICS_ADDRESS, "eventbus-addr-1");
         json.put(PROP_EMPTY_QUEUE_LIVE_TIME_MS, 1500);
         json.put(PROP_QUEUE_CONFIGURATIONS, new JsonArray(Collections.singletonList(
-                new QueueConfiguration().withPattern("vehicle-.*")
+                new QueueConfiguration("vehicle-.*")
                         .withRetryIntervals(10, 20, 30, 60)
                         .asJsonObject()
         )));

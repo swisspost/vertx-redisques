@@ -54,7 +54,7 @@ public class EnqueueThrottleTest {
                 .refreshPeriod(2)
                 .checkInterval(10)
                 .queueConfigurations(Collections.singletonList(
-                        new QueueConfiguration().withPattern(QUEUE_NAME).withEnqueueDelayMillisPerSize(500).withEnqueueMaxDelayMillis(1700)
+                        new QueueConfiguration(QUEUE_NAME).withEnqueueDelayMillisPerSize(500).withEnqueueMaxDelayMillis(1700)
                 ))
                 .build();
 
