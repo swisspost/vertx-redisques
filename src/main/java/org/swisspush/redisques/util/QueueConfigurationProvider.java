@@ -39,7 +39,7 @@ public class QueueConfigurationProvider {
             // {
             //   "queue_config_sender_id": "uid",       #The sender's UID, to prevents sender consumer the message from itself
             //   "operation": "DELETE",                 #The operation of the message
-            //   "configName": "name fo config set",    #The name to identify the config
+            //   "configName": "name for config set",   #The name to identify the config
             //   "payload": {                           #The config itself
             //                "pattern": "queue.filter.regex",
             //                "maxQueueEntries": 0,
