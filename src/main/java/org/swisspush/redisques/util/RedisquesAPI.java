@@ -26,6 +26,7 @@ public class RedisquesAPI {
     public static final String MESSAGE = "message";
 
     public static final String MEMORY_FULL = "memory usage limit reached";
+    public static final String QUEUE_PATROL_LIMITED = "patrol limit reached";
     public static final String PAYLOAD = "payload";
     public static final String QUEUENAME = "queuename";
     public static final String FILTER = "filter";
@@ -53,6 +54,8 @@ public class RedisquesAPI {
     public static final String PER_QUEUE_CONFIG_ENQUEUE_DELAY_FACTOR_MILLIS =  "enqueueDelayFactorMillis";
     public static final String PER_QUEUE_CONFIG_ENQUEUE_MAX_DELAY_MILLIS =  "enqueueMaxDelayMillis";
     public static final String PER_QUEUE_CONFIG_MAX_QUEUE_ENTRIES =  "maxQueueEntries";
+    public static final String PER_QUEUE_CONFIG_NAME =  "configName";
+    public static final String PER_QUEUE_CONFIG_PATTERN =  "pattern";
 
 
     private static final Logger log = LoggerFactory.getLogger(RedisquesAPI.class);
@@ -86,7 +89,10 @@ public class RedisquesAPI {
         getQueuesStatistics(null),
         getQueuesSpeed(null),
         monitor(null),
-        setPerQueueConfiguration(null);
+        setPerQueueConfiguration(null),
+        getPerQueueConfiguration(null),
+        deleteQueueConfiguration(null);
+
 
         private final String legacyName;
 
@@ -323,21 +329,65 @@ public class RedisquesAPI {
      * set queue config by given payload with follow predefined keys
      *  PER_QUEUE_CONFIG_RETRY_INTERVALS
      *  PER_QUEUE_CONFIG_ENQUEUE_DELAY_FACTOR_MILLIS
-     *  PER_QUEUE_CONFIG_ENQUEUE_MAX_DELAY_MILLI
+     *  PER_QUEUE_CONFIG_ENQUEUE_MAX_DELAY_MILLIS
      *  PER_QUEUE_CONFIG_MAX_QUEUE_ENTRIES
      *
-     * @param filterPattern The queues filter for which we would like to get the total speed
-     *                      Filter pattern. Method handles {@code null} gracefully.
+     * @param filterPattern The queues filter for which we would like to set the per queue config
      * @param payload  the configuration
      */
+    @Deprecated
     public static JsonObject buildSetPerQueueConfiguration(String filterPattern, JsonObject payload) {
+        // we don't have config name in here, so use filter pattern as a name
+        return buildSetPerQueueConfiguration(filterPattern, filterPattern, payload);
+    }
+
+    /**
+     * set queue config by given payload with follow predefined keys
+     *  PER_QUEUE_CONFIG_RETRY_INTERVALS
+     *  PER_QUEUE_CONFIG_ENQUEUE_DELAY_FACTOR_MILLIS
+     *  PER_QUEUE_CONFIG_ENQUEUE_MAX_DELAY_MILLIS
+     *  PER_QUEUE_CONFIG_MAX_QUEUE_ENTRIES
+     *
+     * @param configName The queue config name for which we would like to set
+     * @param filterPattern The queues filter for which we would like to set the per queue config
+     * @param payload  the configuration
+     */
+    public static JsonObject buildSetPerQueueConfiguration(String configName, String filterPattern, JsonObject payload) {
+        if (configName == null) {
+            throw new IllegalArgumentException("configName cannot be null");
+        }
         if (filterPattern == null) {
-           throw new IllegalArgumentException("filterPattern cannot be null");
+            throw new IllegalArgumentException("filterPattern cannot be null");
         }
         if (payload == null) {
             throw new IllegalArgumentException("payload cannot be null");
         }
         payload.put(FILTER, filterPattern);
+        payload.put(RedisquesAPI.PER_QUEUE_CONFIG_NAME, configName);
         return buildOperation(QueueOperation.setPerQueueConfiguration, payload);
+    }
+
+    /**
+     * get queue config by given config name
+     *
+     * @param configName The queue config name for which we would like to get the per queue config
+     */
+    public static JsonObject buildGetPerQueueConfiguration(String configName) {
+        if (configName == null) {
+            throw new IllegalArgumentException("configName cannot be null");
+        }
+        return buildOperation(QueueOperation.getPerQueueConfiguration, new JsonObject().put(RedisquesAPI.PER_QUEUE_CONFIG_NAME, configName));
+    }
+
+    /**
+     * get queue config by given payload with follow predefined keys
+     *
+     * @param configName The queue name for which we would like to remove
+     */
+    public static JsonObject buildDeletePerQueueConfiguration(String configName) {
+        if (configName == null) {
+            throw new IllegalArgumentException("configName cannot be null");
+        }
+        return buildOperation(QueueOperation.deleteQueueConfiguration, new JsonObject().put(RedisquesAPI.PER_QUEUE_CONFIG_NAME, configName));
     }
 }

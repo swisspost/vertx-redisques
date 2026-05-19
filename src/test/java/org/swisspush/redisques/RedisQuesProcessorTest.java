@@ -79,8 +79,10 @@ public class RedisQuesProcessorTest extends AbstractTestCase {
                 .asJsonObject();
 
         RedisQues redisQues = new RedisQues();
+        redisQues.disableMigrationTool();
         vertx.deployVerticle(redisQues, new DeploymentOptions().setConfig(config), context.asyncAssertSuccess(event -> {
             deploymentId = event;
+            keyspaceHelper =  redisQues.getKeyspaceHelper();
             log.info("vert.x Deploy - {} was successful.", redisQues.getClass().getSimpleName());
             jedis = new Jedis("localhost", 6379, 5000);
             async.complete();

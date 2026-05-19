@@ -3,6 +3,7 @@ package org.swisspush.redisques.util;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
+import io.vertx.core.net.NetClientOptions;
 import io.vertx.redis.client.Redis;
 import io.vertx.redis.client.RedisAPI;
 import io.vertx.redis.client.RedisClientType;
@@ -11,6 +12,7 @@ import io.vertx.redis.client.RedisOptions;
 import io.vertx.redis.client.RedisReplicas;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.swisspush.redisques.queue.RedisService;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -106,6 +108,8 @@ public class DefaultRedisProvider implements RedisProvider {
         int redisPoolRecycleTimeoutMs = config.getRedisPoolRecycleTimeoutMs();
         RedisReplicas redisReplicasType = config.getRedisReplicasType();
 
+        boolean redisConnectionTcpKeepAlive = config.getTcpKeepAlive();
+
         Promise<RedisAPI> promise = Promise.promise();
 
         // make sure to invalidate old connection if present
@@ -123,11 +127,20 @@ public class DefaultRedisProvider implements RedisProvider {
                     .setUseReplicas(redisReplicasType)
                     .setType(config.getRedisClientType());
 
-            if (config.getRedisEnableTls()) {
-                redisOptions.setNetClientOptions(redisOptions.getNetClientOptions()
-                        .setSsl(true)
-                        .setHostnameVerificationAlgorithm("HTTPS"));
+            if (redisOptions.getType() == RedisClientType.CLUSTER) {
+                // Turn on client side slots group
+                RedisService.isClusterMode.compareAndSet(false, true);
             }
+
+            NetClientOptions netClientOptions = redisOptions.getNetClientOptions();
+            netClientOptions.setTcpKeepAlive(redisConnectionTcpKeepAlive);
+
+            if (config.getRedisEnableTls()) {
+                netClientOptions.setSsl(true)
+                        .setHostnameVerificationAlgorithm("HTTPS");
+            }
+
+            redisOptions.setNetClientOptions(netClientOptions);
 
             createConnectStrings().forEach(redisOptions::addConnectionString);
 

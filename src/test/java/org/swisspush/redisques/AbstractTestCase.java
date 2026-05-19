@@ -12,7 +12,10 @@ import io.vertx.ext.unit.junit.VertxUnitRunner;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.runner.RunWith;
+import org.swisspush.redisques.queue.KeyspaceHelper;
 import redis.clients.jedis.Jedis;
+import redis.clients.jedis.JedisCluster;
+import redis.clients.jedis.JedisPool;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -26,9 +29,10 @@ public abstract class AbstractTestCase {
     protected static final String PROCESSOR_ADDRESS = "processor-address";
 
     protected static Logger log = LoggerFactory.getLogger(AbstractTestCase.class);
-
+    protected static KeyspaceHelper keyspaceHelper;
     protected static Vertx vertx;
     protected static Jedis jedis;
+    protected static JedisCluster jedisCluster;
 
     protected static String deploymentId = "";
 
@@ -43,12 +47,12 @@ public abstract class AbstractTestCase {
     protected String getRedisPrefix() {return "redisques:"; }
 
     protected String getLocksRedisKey(){
-        return getRedisPrefix() + "locks";
+        return keyspaceHelper.getLocksKey();
     }
 
-    protected String getQueuesRedisKeyPrefix(){ return getRedisPrefix() + "queues:"; }
+    protected String getQueuesRedisKeyPrefix(){ return keyspaceHelper.getQueuesPrefix(); }
 
-    protected String getConsumersRedisKeyPrefix(){ return  getRedisPrefix() + "consumers:"; }
+    protected String getConsumersRedisKeyPrefix(){ return  keyspaceHelper.getConsumersPrefix(); }
 
     protected void assertKeyCount(TestContext context, int keyCount){
         assertKeyCount(context, "", keyCount);
@@ -80,7 +84,33 @@ public abstract class AbstractTestCase {
 
     @AfterClass
     public static void stopRedis(TestContext context) {
-        jedis.close();
+        if (jedis != null) {
+            jedis.close();
+        }
+        if (jedisCluster != null) {
+            jedisCluster.close();
+        }
+    }
+
+    public static void flushAllCluster() {
+        if (jedisCluster != null) {
+            Map<String, JedisPool> clusterNodes = jedisCluster.getClusterNodes();
+            for (Map.Entry<String, JedisPool> entry : clusterNodes.entrySet()) {
+                Jedis jedis = entry.getValue().getResource();
+                try {
+                    String info = jedis.info("replication");
+
+                    // Only flush master nodes
+                    if (info.contains("role:master")) {
+                        jedis.flushAll();
+                        System.out.println("Flushed node: " + entry.getKey());
+                    }
+                } catch (Exception e) {
+                    System.err.println("Failed on node: " + entry.getKey());
+                    e.printStackTrace();
+                }
+            }
+        }
     }
 
     @Before

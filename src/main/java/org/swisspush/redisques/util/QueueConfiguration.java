@@ -1,10 +1,12 @@
 package org.swisspush.redisques.util;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import io.vertx.core.json.JsonObject;
 
 import java.util.Arrays;
 import java.util.regex.Pattern;
 
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class QueueConfiguration {
 
     /**
@@ -16,15 +18,15 @@ public class QueueConfiguration {
      * after a failed de-queuing the next try is delayed by the first entry (values are seconds)
      * The 2nd failed de-queue takes the seconds array-entry for delay, the 3rd takes the 3rd, etc...
      */
-    private int[] retryIntervals;
+    private int[] retryIntervals = new int[0];
 
     /**
      * EN-queuing speed can be throttled by delaying the "ok" response.
-     *
+     * <p>
      * This is a simple linear factor. E.g. when set to "300" this means that
      * "success" enqueuing-reply is delayed for 300 ms (0.3 seconds= when queue is of
      * length 1000 (0.6 seconds when length is 2000 etc...)
-     *
+     * <p>
      * "0" means: turn of this feature
      */
     private float enqueueDelayFactorMillis = 0f;
@@ -32,7 +34,7 @@ public class QueueConfiguration {
     /**
      * When EN-queue slowdown is used ({@link #enqueueDelayFactorMillis}) you can limit the maximum delay here.
      * E.g. when set to "1000" you still have a maximum EN-queuing rate of "one per second" - even when the queue already is very large
-     *
+     * <p>
      * default "0" means: no limit
      */
     private int enqueueMaxDelayMillis = 0;
@@ -42,6 +44,16 @@ public class QueueConfiguration {
      * default "0" means: no limit
      */
     private int maxQueueEntries = 0;
+
+    public QueueConfiguration(String pattern) {
+        this.pattern = Pattern.compile(pattern);
+    }
+
+    /**
+     * constructor use for Json deserialize
+     */
+    QueueConfiguration() {
+    }
 
     public String getPattern() {
         return pattern.pattern();
@@ -76,17 +88,29 @@ public class QueueConfiguration {
     public JsonObject asJsonObject() {
         return JsonObject.mapFrom(this);
     }
-    
-    static QueueConfiguration fromJsonObject(JsonObject jsonObject) {
+
+    public static QueueConfiguration fromJsonObject(JsonObject jsonObject) {
         return jsonObject.mapTo(QueueConfiguration.class);
     }
 
+    /**
+     * set the config filter regex pattern
+     *
+     * @param pattern
+     * @return
+     */
     public QueueConfiguration withPattern(String pattern) {
         // this also checks for correct RegEx-Pattern
         this.pattern = Pattern.compile(pattern);
         return this;
     }
 
+    /**
+     * set the queue slowdown retry intervals. empty array to disable this function
+     *
+     * @param retryIntervals
+     * @return
+     */
     public QueueConfiguration withRetryIntervals(int... retryIntervals) {
         for (int retryInterval : retryIntervals) {
             if (retryInterval < 1) {
@@ -97,14 +121,27 @@ public class QueueConfiguration {
         return this;
     }
 
+    /**
+     * set the enqueue delay factor, set to 0 to disable this function. if set to 0, the value in enqueue max delay will ignore,
+     * enqueue reply will not delay
+     *
+     * @param enqueueDelayFactorMillis
+     * @return
+     */
     public QueueConfiguration withEnqueueDelayMillisPerSize(float enqueueDelayFactorMillis) {
-        if (enqueueDelayFactorMillis <= 0f) {
-            throw new IllegalArgumentException("enqueueDelayMillisPerSize must be >0 but is " + enqueueDelayFactorMillis);
+        if (enqueueDelayFactorMillis < 0f) {
+            throw new IllegalArgumentException("enqueueDelayMillisPerSize must be >=0 but is " + enqueueDelayFactorMillis);
         }
         this.enqueueDelayFactorMillis = enqueueDelayFactorMillis;
         return this;
     }
 
+    /**
+     * set the enqueue max delay, if set to 0, will take delay value calculated from enqueueDelayFactorMillis without limit
+     *
+     * @param enqueueMaxDelayMillis
+     * @return
+     */
     public QueueConfiguration withEnqueueMaxDelayMillis(int enqueueMaxDelayMillis) {
         if (enqueueMaxDelayMillis < 0) {
             throw new IllegalArgumentException("enqueueMaxDelayMillis must be >=0 but is " + enqueueMaxDelayMillis);
@@ -113,6 +150,12 @@ public class QueueConfiguration {
         return this;
     }
 
+    /**
+     * set the max queue items can retain in a queue, the new item can still enqueued, but old item will be removed if limits reached
+     *
+     * @param maxQueueEntries
+     * @return
+     */
     public QueueConfiguration withMaxQueueEntries(int maxQueueEntries) {
         if (maxQueueEntries < 0) {
             throw new IllegalArgumentException("maxQueueEntries must be >=0 but is " + maxQueueEntries);

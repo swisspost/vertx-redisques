@@ -7,7 +7,6 @@ import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.redis.client.Command;
-import io.vertx.redis.client.Request;
 import io.vertx.redis.client.Response;
 import io.vertx.redis.client.impl.types.NumberType;
 import org.slf4j.Logger;
@@ -19,6 +18,7 @@ import org.swisspush.redisques.queue.RedisService;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -152,7 +152,8 @@ public class QueueStatisticsCollector {
      *
      * @param queueName The queue name for which the statistic values must be reset.
      */
-    public void resetQueueFailureStatistics(String queueName, BiConsumer<Throwable, Void> onDone) {
+    public Future<Void> resetQueueFailureStatistics(String queueName) {
+        Promise<Void> promise = Promise.promise();
         try {
             AtomicLong failureCount = queueFailureCount.remove(queueName);
             queueSlowDownTime.remove(queueName);
@@ -161,13 +162,20 @@ public class QueueStatisticsCollector {
                 // there was a real failure before, therefore we will execute this
                 // cleanup as well on Redis itself as we would like to do redis operations
                 // only if necessary of course.
-                updateStatisticsInRedis(queueName, onDone);
+                updateStatisticsInRedis(queueName).onComplete(event -> {
+                    if (event.failed()) {
+                        promise.fail(event.cause());
+                    }else {
+                        promise.complete();
+                    }
+                });
             } else {
-                vertx.runOnContext(nonsense -> onDone.accept(null, null));
+                vertx.runOnContext(nonsense -> promise.complete());
             }
         } catch (Exception ex) {
-            onDone.accept(ex, null);
+            promise.fail(ex);
         }
+        return promise.future();
     }
 
     /**
@@ -181,21 +189,26 @@ public class QueueStatisticsCollector {
             onDone.accept(null, null);
             return;
         }
-        final int redisRequestQuotaTimeout = configurationProvider.configuration().getRedisMonitoringReqQuotaAcquireTimeoutMs();
-        upperBoundParallel.request(redisRequestQuota, redisRequestQuotaTimeout, null, new UpperBoundParallel.Mentor<Void>() {
+        final int redisRequestQuotaAcquireRetryTime = configurationProvider.configuration().getRedisMonitoringReqQuotaAcquireRetryTimeMs();
+        upperBoundParallel.request(redisRequestQuota, redisRequestQuotaAcquireRetryTime, null, new UpperBoundParallel.Mentor<Void>() {
             int i = 0;
             final int size = queues.size();
 
             @Override
             public boolean runOneMore(BiConsumer<Throwable, Void> onDone, Void ctx) {
                 String queueName = queues.getString(i++);
-                resetQueueFailureStatistics(queueName, onDone);
+                resetQueueFailureStatistics(queueName).onComplete(event -> {
+                    if (event.failed()) {
+                        onDone.accept(event.cause(), null);
+                    } else {
+                        onDone.accept(null, null);
+                    }
+                });
                 return i >= size;
             }
 
             @Override
             public boolean onError(Throwable ex, Void ctx) {
-                onDone.accept(ex, null);
                 return false;
             }
 
@@ -219,7 +232,13 @@ public class QueueStatisticsCollector {
             messageCtr.incrementAndGet();
         }
         // whenever there is a message successfully sent, our failure statistics could be reset as well
-        resetQueueFailureStatistics(queueName, onDone);
+        resetQueueFailureStatistics(queueName).onComplete(event -> {
+            if (event.failed()) {
+                onDone.accept(event.cause(), null);
+            } else {
+                onDone.accept(null, null);
+            }
+        });
     }
 
     /**
@@ -256,8 +275,10 @@ public class QueueStatisticsCollector {
         if (failureCount != null) {
             newFailureCount = failureCount.addAndGet(1);
         }
-        updateStatisticsInRedis(queueName, (ex, nothing) -> {
-            if (ex != null) log.warn("TODO error handling", ex);
+        updateStatisticsInRedis(queueName).onComplete(event -> {
+            if (event.failed()) {
+                log.warn("failed to update statistics", event.cause());
+            }
         });
         return newFailureCount;
     }
@@ -291,14 +312,18 @@ public class QueueStatisticsCollector {
     public void setQueueBackPressureTime(String queueName, long time) {
         if (time > 0) {
             queueBackpressureTime.put(queueName, time);
-            updateStatisticsInRedis(queueName, (ex, v) -> {
-                if (ex != null) log.warn("TODO error handling (findme_q39h8ugjoh)", ex);
+            updateStatisticsInRedis(queueName).onComplete(event -> {
+                if (event.failed()) {
+                    log.warn("failed to update statistics", event.cause());
+                }
             });
         } else {
             Long lastTime = queueBackpressureTime.remove(queueName);
             if (lastTime != null) {
-                updateStatisticsInRedis(queueName, (ex, v) -> {
-                    if (ex != null) log.warn("TODO error handling (findme_39587zg)", ex);
+                updateStatisticsInRedis(queueName).onComplete(event -> {
+                    if (event.failed()) {
+                        log.warn("failed to update statistics", event.cause());
+                    }
                 });
             }
         }
@@ -326,16 +351,21 @@ public class QueueStatisticsCollector {
      * @param time      The slowdown time in ms
      */
     public void setQueueSlowDownTime(String queueName, long time) {
-        BiConsumer<Throwable, Void> onDone = (ex, v) -> {
-            if (ex != null) log.warn("TODO_q9587hg3otuhj error handling", ex);
-        };
         if (time > 0) {
             queueSlowDownTime.put(queueName, time);
-            updateStatisticsInRedis(queueName, onDone);
+                updateStatisticsInRedis(queueName).onComplete(event -> {
+                    if (event.failed()) {
+                        log.warn("failed to update statistics", event.cause());
+                    }
+                });
         } else {
             Long lastTime = queueSlowDownTime.remove(queueName);
             if (lastTime != null) {
-                updateStatisticsInRedis(queueName, onDone);
+                updateStatisticsInRedis(queueName).onComplete(event -> {
+                    if (event.failed()) {
+                        log.warn("failed to update statistics", event.cause());
+                    }
+                });
             }
         }
     }
@@ -360,7 +390,8 @@ public class QueueStatisticsCollector {
      * If there are no valid useful data available eg. all 0, the corresponding
      * statistics entry is removed from redis
      */
-    private void updateStatisticsInRedis(String queueName, BiConsumer<Throwable, Void> onDone) {
+    private Future<Void> updateStatisticsInRedis(String queueName) {
+        Promise<Void> promise = Promise.promise();
         try {
             long failures = getQueueFailureCount(queueName);
             long slowDownTime = getQueueSlowDownTime(queueName);
@@ -372,21 +403,27 @@ public class QueueStatisticsCollector {
                 obj.put(QUEUE_SLOWDOWNTIME, slowDownTime);
                 obj.put(QUEUE_BACKPRESSURE, backpressureTime);
                 redisService.hset(STATSKEY, queueName, obj.toString())
-                        .onComplete(event ->
-                                onDone.accept(event.failed() ? exceptionFactory.newException("redisAPI.hset() failed", event.cause()) : null, null))
-                        .onFailure(ex ->
-                                onDone.accept(exceptionFactory.newException("redisProvider.redis() failed", ex), null));
-
+                        .onComplete(event -> {
+                            if (event.failed()) {
+                                promise.fail(exceptionFactory.newException("redisProvider.redis() failed", event.cause()));
+                            } else {
+                                promise.complete();
+                            }
+                        });
             } else {
                 redisService.hdel(STATSKEY, queueName)
-                        .onComplete(ev ->
-                                onDone.accept(ev.failed() ? exceptionFactory.newException("redisAPI.hdel() failed", ev.cause()) : null, null))
-                        .onFailure(ex ->
-                                onDone.accept(exceptionFactory.newException("redisProvider.redis() failed", ex), null));
+                        .onComplete(event -> {
+                            if (event.failed()) {
+                                promise.fail(exceptionFactory.newException("redisProvider.hdel() failed", event.cause()));
+                            } else {
+                                promise.complete();
+                            }
+                        });
             }
         } catch (RuntimeException ex) {
-            onDone.accept(ex, null);
+            promise.fail(ex);
         }
+        return promise.future();
     }
 
     /**
@@ -474,10 +511,15 @@ public class QueueStatisticsCollector {
             promise.complete(new JsonObject().put(STATUS, OK).put(RedisquesAPI.QUEUES, new JsonArray()));
             return promise.future();
         }
+        Map<String, String> keyQueuePairs = new LinkedHashMap<>();
+        for (String key : queues) {
+            keyQueuePairs.put(queuePrefix + key, key);
+        }
+        keyQueuePairs = RedisClusterUtil.groupMapBySlot(keyQueuePairs);
+
         var ctx = new RequestCtx();
         ctx.includeQueueSize = includeQueueSize ;
-        ctx.queueNames = queues;
-
+        ctx.keyQueuePair =  new ArrayList<>(keyQueuePairs.entrySet());
         step1(ctx).compose(
                 nothing2 -> step2(ctx).compose(
                         nothing3 -> step3(ctx).compose(
@@ -494,32 +536,31 @@ public class QueueStatisticsCollector {
         if (!ctx.includeQueueSize){
             return Future.succeededFuture();
         }
-        int numQueues = ctx.queueNames.size();
+        int numQueues = ctx.keyQueuePair.size();
         log.debug("About to perform {} requests to redis just for monitoring", numQueues);
         long begRedisRequestsEpochMs = currentTimeMillis();
 
         assert ctx.queueLengthList == null;
-        ctx.queueLengthList = new ArrayList<>(ctx.queueNames.size());
+        ctx.queueLengthList = new ArrayList<>(ctx.keyQueuePair.size());
         var upperBoundPromise = Promise.<Void>promise();
-        final int redisRequestQuotaTimeout = configurationProvider.configuration().getRedisMonitoringReqQuotaAcquireTimeoutMs();
-        upperBoundParallel.request(redisRequestQuota, redisRequestQuotaTimeout, ctx, new UpperBoundParallel.Mentor<>() {
-            Iterator<String> queueNamesIter = ctx.queueNames.iterator();
+        final int redisRequestQuotaAcquireRetryTime = configurationProvider.configuration().getRedisMonitoringReqQuotaAcquireRetryTimeMs();
+        upperBoundParallel.request(redisRequestQuota, redisRequestQuotaAcquireRetryTime, ctx, new UpperBoundParallel.Mentor<>() {
+            Iterator<Entry<String, String>> queueKeyWithNameIter = ctx.keyQueuePair.iterator();
 
             @Override
             public boolean runOneMore(BiConsumer<Throwable, Void> onDone, RequestCtx ctx) {
-                if (!queueNamesIter.hasNext()) {
+                if (!queueKeyWithNameIter.hasNext()) {
                     return false;
                 }
-                List<Request> batch = new ArrayList<>(RedisService.MAX_COMMANDS_IN_BATCH);
+                List<String> keyBatch = new ArrayList<>(RedisService.MAX_COMMANDS_IN_BATCH);
 
                 int count = 0;
-                while (queueNamesIter.hasNext() && count < RedisService.MAX_COMMANDS_IN_BATCH) {
-                    String queueName = queueNamesIter.next();
-                    batch.add(Request.cmd(Command.LLEN).arg(queuePrefix + queueName));
+                while (queueKeyWithNameIter.hasNext() && count < RedisService.MAX_COMMANDS_IN_BATCH) {
+                    keyBatch.add(queueKeyWithNameIter.next().getKey());
                     count++;
                 }
 
-                redisService.batch(batch)
+                redisService.clusterSafeBatch(Command.LLEN, keyBatch, List.of())
                         .compose(responses -> {
                             for (Response rsp : responses) {
                                 NumberType num = (NumberType) rsp;
@@ -531,7 +572,7 @@ public class QueueStatisticsCollector {
                         .onFailure(ex ->
                                 onDone.accept(exceptionFactory.newException(ex), null)
                         );
-                return queueNamesIter.hasNext();
+                return queueKeyWithNameIter.hasNext();
             }
 
             @Override
@@ -554,9 +595,9 @@ public class QueueStatisticsCollector {
             } else {
                 log.debug(fmt2, numQueues, durRedisRequestsMs);
             }
-            if (ctx.queueLengthList.size() != ctx.queueNames.size()) {
+            if (ctx.queueLengthList.size() != ctx.keyQueuePair.size()) {
                 return failedFuture(exceptionFactory.newException("Unexpected queue length result with unequal size "
-                        + ctx.queueNames.size() + " : " + ctx.queueLengthList.size()));
+                        + ctx.keyQueuePair.size() + " : " + ctx.queueLengthList.size()));
             }
             return succeededFuture();
         }).compose((Void v) -> {
@@ -564,9 +605,9 @@ public class QueueStatisticsCollector {
                 assert false : "TODO I guess this unreachable code could be removed";
                 return failedFuture(exceptionFactory.newException("Unexpected queue length result: null"));
             }
-            if (ctx.queueLengthList.size() != ctx.queueNames.size()) {
+            if (ctx.queueLengthList.size() != ctx.keyQueuePair.size()) {
                 return failedFuture(exceptionFactory.newException("Unexpected queue length result with unequal size "
-                        + ctx.queueNames.size() + " : " + ctx.queueLengthList.size()));
+                        + ctx.keyQueuePair.size() + " : " + ctx.queueLengthList.size()));
             }
             return succeededFuture();
         });
@@ -580,9 +621,9 @@ public class QueueStatisticsCollector {
             assert ctx.queueLengthList != null;
         }
         // populate the list of queue statistics in a Hashmap for later fast merging
-        ctx.statistics = new HashMap<>(ctx.queueNames.size());
-        for (int i = 0; i < ctx.queueNames.size(); i++) {
-            QueueStatistic qs = new QueueStatistic(ctx.queueNames.get(i));
+        ctx.statistics = new HashMap<>(ctx.keyQueuePair.size());
+        for (int i = 0; i < ctx.keyQueuePair.size(); i++) {
+            QueueStatistic qs = new QueueStatistic(ctx.keyQueuePair.get(i).getValue());
             if (ctx.includeQueueSize) {
                 qs.setSize(ctx.queueLengthList.get(i).toLong());
             }
@@ -607,7 +648,7 @@ public class QueueStatisticsCollector {
             ctx.redisFailStats = statisticsSet.result();
             assert ctx.redisFailStats != null;
             executeBlockingPromise.complete();
-        }));
+        }), false);
 
     }
 
@@ -632,15 +673,15 @@ public class QueueStatisticsCollector {
             // build the final resulting statistics list from the former merged queue
             // values from various sources
             JsonArray result = new JsonArray();
-            for (String queueName : ctx.queueNames) {
-                QueueStatistic stats = ctx.statistics.get(queueName);
+            for (Entry<String, String> queueKeyPair : ctx.keyQueuePair) {
+                QueueStatistic stats = ctx.statistics.get(queueKeyPair.getValue());
                 if (stats != null) {
                     result.add(stats.getAsJsonObject());
                 }
             }
             executeBlockingPromise.complete(new JsonObject().put(STATUS, OK)
                     .put(RedisquesAPI.QUEUES, result));
-        });
+        }, false);
     }
 
     /**
@@ -667,11 +708,11 @@ public class QueueStatisticsCollector {
     }
 
     /**
-     * <p>Holds intermediate state related to a {@link #getQueueStatistics(List)}
+     * <p>Holds intermediate state related to a {@link #getQueueStatistics(List, boolean)}}
      * request.</p>
      */
     private static class RequestCtx {
-        private List<String> queueNames; // Requested queues to analyze
+        private List<Map.Entry<String, String>> keyQueuePair; // Requested queues to analyze
         private List<NumberType> queueLengthList;
         private Boolean includeQueueSize;
         private HashMap<String, QueueStatistic> statistics; // Stats we're going to populate

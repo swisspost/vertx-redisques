@@ -14,6 +14,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mockito;
 import org.slf4j.Logger;
+import org.swisspush.redisques.queue.QueueConsumerRunner;
 import org.swisspush.redisques.queue.QueueRegistryService;
 import org.swisspush.redisques.util.MetricMeter;
 import org.swisspush.redisques.util.MetricTags;
@@ -21,6 +22,7 @@ import org.swisspush.redisques.util.QueueConfigurationProvider;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.Optional;
 
 import static org.mockito.ArgumentMatchers.anyList;
@@ -37,6 +39,7 @@ public class EnqueueActionTest extends AbstractQueueActionTest {
     private Counter enqueueCounterSuccess;
     private Counter enqueueCounterFail;
     private QueueRegistryService registryService;
+    private QueueConsumerRunner runner;
     private QueueConfigurationProvider queueConfigurationProvider = Mockito.mock(QueueConfigurationProvider.class);
 
     @Before
@@ -44,6 +47,9 @@ public class EnqueueActionTest extends AbstractQueueActionTest {
     public void setup() {
         super.setup();
         registryService = Mockito.mock(QueueRegistryService.class);
+        runner = Mockito.mock(QueueConsumerRunner.class);
+        when(registryService.getQueueConsumerRunner()).thenReturn(runner);
+        when(runner.getMyQueues()).thenReturn(new HashMap<>());
         MeterRegistry meterRegistry = new SimpleMeterRegistry();
         enqueueCounterSuccess = meterRegistry.counter(MetricMeter.ENQUEUE_SUCCESS.getId(), MetricTags.IDENTIFIER.getId(), "foo");
         enqueueCounterFail = meterRegistry.counter(MetricMeter.ENQUEUE_FAIL.getId(), MetricTags.IDENTIFIER.getId(), "foo");
