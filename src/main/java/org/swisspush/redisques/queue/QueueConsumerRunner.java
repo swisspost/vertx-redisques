@@ -425,10 +425,9 @@ public class QueueConsumerRunner {
     private Future<Void> trimQueueItemIfNeeded(final String queueName) {
         final Promise<Void> promise = Promise.promise();
         final String queueKey = keyspaceHelper.getQueuesPrefix() + queueName;
-        final QueueConfiguration queueConfiguration = findQueueConfiguration(queueName);
+        final Integer maxQueueEntries = queueConfigurationProvider.findMaxQueueEntriesConfig(queueName);
         // trim items if limits set
-        if (queueConfiguration != null && queueConfiguration.getMaxQueueEntries() > 0) {
-            final int maxQueueEntries = queueConfiguration.getMaxQueueEntries();
+        if (maxQueueEntries != null && maxQueueEntries > 0) {
             log.debug("RedisQues Max queue entries {} found for queue {}", maxQueueEntries, queueName);
             redisService.ltrim(queueKey, "-" + maxQueueEntries, "-1").onComplete(ltrimResponse -> {
                 if (ltrimResponse.failed()) {
@@ -465,10 +464,6 @@ public class QueueConsumerRunner {
         });
     }
 
-    protected QueueConfiguration findQueueConfiguration(String queueName) {
-        return queueConfigurationProvider.findQueueConfiguration(queueName);
-    }
-
     int updateQueueFailureCountAndGetRetryInterval(final String queueName, boolean sendSuccess) {
         if (sendSuccess) {
             queueStatisticsCollector.queueMessageSuccess(queueName, (ex, v) -> {
@@ -479,16 +474,14 @@ public class QueueConsumerRunner {
             // update the failure count
             long failureCount = queueStatisticsCollector.queueMessageFailed(queueName);
             // find a retry interval from the queue configurations
-            QueueConfiguration queueConfiguration = findQueueConfiguration(queueName);
-            if (queueConfiguration != null) {
-                int[] retryIntervals = queueConfiguration.getRetryIntervals();
-                if (retryIntervals != null && retryIntervals.length > 0) {
-                    int retryIntervalIndex = (int) (failureCount <= retryIntervals.length ? failureCount - 1 : retryIntervals.length - 1);
-                    int retryTime = retryIntervals[retryIntervalIndex];
-                    queueStatisticsCollector.setQueueSlowDownTime(queueName, retryTime);
-                    return retryTime;
-                }
+            List<Integer> retryIntervals = queueConfigurationProvider.findRetryIntervalConfig(queueName);
+            if (retryIntervals != null && !retryIntervals.isEmpty()) {
+                int retryIntervalIndex = (int) (failureCount <= retryIntervals.size() ? failureCount - 1 : retryIntervals.size() - 1);
+                int retryTime = retryIntervals.get(retryIntervalIndex);
+                queueStatisticsCollector.setQueueSlowDownTime(queueName, retryTime);
+                return retryTime;
             }
+
         }
         return configurationProvider.configuration().getRefreshPeriod();
     }

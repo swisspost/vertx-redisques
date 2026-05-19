@@ -21,7 +21,9 @@ import org.swisspush.redisques.util.*;
 import redis.clients.jedis.Jedis;
 
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -66,13 +68,15 @@ public class RedisQuesTest extends AbstractTestCase {
                 .metricRefreshPeriod(2)
                 .memoryUsageLimitPercent(80)
                 .redisReadyCheckIntervalMs(2000)
-                .globalQueuePatrol(5)
                 .queueConfigurations(List.of(new QueueConfiguration("queue.*")
                         .withRetryIntervals(2, 7, 12, 17, 22, 27, 32, 37, 42, 47, 52),
                         new QueueConfiguration("limited-queue-1.*")
                                 .withMaxQueueEntries(1),
                         new QueueConfiguration("limited-queue-4.*")
-                                .withMaxQueueEntries(4))
+                                .withMaxQueueEntries(4),
+                        new QueueConfiguration(".*")
+                                .withEnqueuePatrolLimit(5))
+
                 )
                 .build();
 
@@ -160,7 +164,7 @@ public class RedisQuesTest extends AbstractTestCase {
             context.assertEquals(configuration.getString("httpRequestHandlerPrefix"), "/queuing");
             context.assertEquals(configuration.getString("httpRequestHandlerUserHeader"), "x-rp-usr");
 
-            context.assertEquals(3, configuration.getJsonArray("queueConfigurations").size());
+            context.assertEquals(4, configuration.getJsonArray("queueConfigurations").size());
             context.assertEquals("queue.*", configuration.getJsonArray("queueConfigurations").getJsonObject(0).getString("pattern"));
 
             async.complete();
@@ -1282,7 +1286,19 @@ public class RedisQuesTest extends AbstractTestCase {
                         eventBusSend(buildEnqueueOperation("patrol-limited-queue-1.test", "message_1-5"), e5 -> {
                             QueueProcessingState state = new QueueProcessingState(QueueState.READY, 0);
                             // simulate queuecheck or queue runner update, we already have 5 items
-                            state.setQueueItemSize(5);
+                            Map<String, Map<String, Long>> approximateQueueSize = new HashMap<>();
+                            Map<String, Long> queueSize = new HashMap<>();
+                            queueSize.put("patrol-limited-queue-1.test", 5L);
+                            approximateQueueSize.put("some other id", queueSize);
+                            vertx.eventBus().publish(keyspaceHelper.getQueueStatisticQueueSizeSyncKey(), approximateQueueSize);
+
+                            // wait consumer sync data
+                            try {
+                                Thread.sleep(200);
+                            } catch (InterruptedException e) {
+                                throw new RuntimeException(e);
+                            }
+
                             redisQues.getQueueConsumerRunner().getMyQueues().put("patrol-limited-queue-1.test", state);
                             eventBusSend(buildEnqueueOperation("patrol-limited-queue-4.test", "message_4-3"), e6 -> {
                                 eventBusSend(buildEnqueueOperation("patrol-limited-queue-4.test", "message_4-4"), e7 -> {

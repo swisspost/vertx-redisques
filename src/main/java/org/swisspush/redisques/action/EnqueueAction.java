@@ -8,12 +8,9 @@ import io.vertx.core.json.JsonObject;
 import org.slf4j.Logger;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.queue.KeyspaceHelper;
-import org.swisspush.redisques.queue.QueueProcessingState;
 import org.swisspush.redisques.queue.QueueRegistryService;
 import org.swisspush.redisques.queue.RedisService;
 import org.swisspush.redisques.util.*;
-
-import java.util.Map;
 
 import static org.swisspush.redisques.util.RedisquesAPI.*;
 
@@ -22,7 +19,6 @@ public class EnqueueAction extends AbstractQueueAction {
     private final MemoryUsageProvider memoryUsageProvider;
     private final QueueRegistryService queueRegistryService;
     private final int memoryUsageLimitPercent;
-    private final int maxQueueItemsAllowed;
     private Counter enqueueCounterSuccess;
     private Counter enqueueCounterFail;
 
@@ -36,7 +32,6 @@ public class EnqueueAction extends AbstractQueueAction {
         this.memoryUsageLimitPercent = redisquesConfigurationProvider.configuration().getMemoryUsageLimitPercent();
         this.queueRegistryService = queueRegistryService;
         String metricsIdentifier = redisquesConfigurationProvider.configuration().getMicrometerMetricsIdentifier();
-        maxQueueItemsAllowed = redisquesConfigurationProvider.configuration().getGlobalQueuePatrol();
         if (meterRegistry != null) {
             enqueueCounterSuccess = Counter.builder(MetricMeter.ENQUEUE_SUCCESS.getId()).description(MetricMeter.ENQUEUE_SUCCESS.getDescription())
                     .tag(MetricTags.IDENTIFIER.getId(), metricsIdentifier).register(meterRegistry);
@@ -90,19 +85,7 @@ public class EnqueueAction extends AbstractQueueAction {
                             incrEnqueueSuccessCount();
 
                             // feature EN-queue slow-down (the larger the queue the longer we delay "OK" response)
-                            long delayReplyMillis = 0;
-                            QueueConfiguration queueConfiguration = findQueueConfiguration(queueName);
-                            if (queueConfiguration != null) {
-                                float enqueueDelayFactorMillis = queueConfiguration.getEnqueueDelayFactorMillis();
-                                if (enqueueDelayFactorMillis > 0f) {
-                                    // minus one as we need the queueLength _before_ our en-queue here
-                                    delayReplyMillis = (long) ((queueLength - 1) * enqueueDelayFactorMillis);
-                                    int max = queueConfiguration.getEnqueueMaxDelayMillis();
-                                    if (max > 0 && delayReplyMillis > max) {
-                                        delayReplyMillis = max;
-                                    }
-                                }
-                            }
+                            long delayReplyMillis = queueConfigurationProvider.findEnqueueDelayConfig(queueName, queueLength);
                             if (delayReplyMillis > 0) {
                                 vertx.setTimer(delayReplyMillis, timeIsUp -> event.reply(reply));
                             } else {
@@ -116,21 +99,6 @@ public class EnqueueAction extends AbstractQueueAction {
                 }
             });
         });
-    }
-
-    private boolean isQueuePatrolLimited(String queueName) {
-        if (maxQueueItemsAllowed > 0 ) {
-            Map<String, QueueProcessingState> myQueue = queueRegistryService.getQueueConsumerRunner().getMyQueues();
-            if (myQueue.containsKey(queueName)) {
-                QueueProcessingState processingState = myQueue.get(queueName);
-                if (processingState.getQueueItemSizeCounter() >= maxQueueItemsAllowed) {
-                    log.warn("Failed to enqueue into queue {} because the queue patrol limit is reached, max {} items allowed, and have {} now"
-                            , queueName, maxQueueItemsAllowed, processingState.getQueueItemSizeCounter());
-                    return true;
-                }
-            }
-        }
-        return false;
     }
 
     private void incrEnqueueSuccessCount() {

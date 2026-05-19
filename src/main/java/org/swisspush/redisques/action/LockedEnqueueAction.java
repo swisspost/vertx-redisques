@@ -36,6 +36,13 @@ public class LockedEnqueueAction extends EnqueueAction {
     public void execute(Message<JsonObject> event) {
         log.debug("RedisQues about to lockedEnqueue");
         String queueName = event.body().getJsonObject(PAYLOAD).getString(QUEUENAME);
+
+        if (isQueuePatrolLimited(queueName)) {
+            incrEnqueueFailCount();
+            event.reply(createErrorReply().put(MESSAGE, QUEUE_PATROL_LIMITED));
+            return;
+        }
+
         if (isMemoryUsageLimitReached()) {
             log.warn("Failed to lockedEnqueue into queue {} because the memory usage limit is reached", queueName);
             incrEnqueueFailCount();

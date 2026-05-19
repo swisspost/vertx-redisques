@@ -1,6 +1,7 @@
 package org.swisspush.redisques.util;
 
 import io.vertx.core.Future;
+import io.vertx.core.Handler;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.Message;
@@ -13,6 +14,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.performance.UpperBoundParallel;
+import org.swisspush.redisques.queue.KeyspaceHelper;
+import org.swisspush.redisques.queue.QueueProcessingState;
 import org.swisspush.redisques.queue.RedisService;
 
 import java.util.ArrayList;
@@ -22,8 +25,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
@@ -68,8 +72,10 @@ public class QueueStatisticsCollector {
     private final Map<String, AtomicLong> queueFailureCount = new HashMap<>();
     private final Map<String, Long> queueBackpressureTime = new HashMap<>();
     private final Map<String, Long> queueSlowDownTime = new HashMap<>();
-    private final ConcurrentMap<String, AtomicLong> queueMessageSpeedCtr = new ConcurrentHashMap<>();
+    private final Map<String, AtomicLong> queueMessageSpeedCtr = new ConcurrentHashMap<>();
+    private final Map<String, Map<String, Long>> approximateQueueSize =  new ConcurrentHashMap<>();
     private final RedisquesConfigurationProvider configurationProvider;
+    private final KeyspaceHelper keyspaceHelper;
     private volatile Map<String, Long> queueMessageSpeed = new HashMap<>();
     private final RedisService redisService;
     private final String queuePrefix;
@@ -80,20 +86,29 @@ public class QueueStatisticsCollector {
 
     public QueueStatisticsCollector(
             RedisService redisService,
-            String queuePrefix,
+            KeyspaceHelper keyspaceHelper,
             Vertx vertx,
             RedisQuesExceptionFactory exceptionFactory,
             Semaphore redisRequestQuota,
             int speedIntervalSec,
             RedisquesConfigurationProvider configurationProvider) {
         this.redisService = redisService;
-        this.queuePrefix = queuePrefix;
+        this.queuePrefix = keyspaceHelper.getQueuesPrefix();
         this.vertx = vertx;
         this.exceptionFactory = exceptionFactory;
         this.redisRequestQuota = redisRequestQuota;
         this.upperBoundParallel = new UpperBoundParallel(vertx, exceptionFactory);
         this.configurationProvider = configurationProvider;
+        this.keyspaceHelper = keyspaceHelper;
         speedStatisticsScheduler(speedIntervalSec);
+        vertx.eventBus().consumer(keyspaceHelper.getQueueStatisticQueueSizeSyncKey(),
+                (Handler<Message<Map<String, Map<String, Long>>>>) event ->
+                        event.body().forEach((key, value) -> {
+                            if (!keyspaceHelper.getVerticleUid().equals(key)) {
+                                // update queue item size from other instances
+                                approximateQueueSize.put(key, value);
+                            }
+                        }));
     }
 
     /**
@@ -424,6 +439,38 @@ public class QueueStatisticsCollector {
             promise.fail(ex);
         }
         return promise.future();
+    }
+
+    /**
+     * get a queue item size which updated by queuecheck and queue runner, and synced by eventbus,
+     * which not accurately reflects the current item quantity.
+     * @param queueName
+     * @return approximate queueSize or 0 if not find
+     */
+    public long getApproximateQueueSize(String queueName) {
+        return approximateQueueSize.values().stream()
+                .map(m -> m.get(queueName))
+                .filter(Objects::nonNull)
+                .findFirst()
+                .orElse(0L);
+    }
+
+    /**
+     * update and sync all approximate queue size
+     * @param aliveConsumers
+     * @param myQueues
+     */
+    public void updateApproximateQueueSize(Set<String> aliveConsumers, Map<String, QueueProcessingState> myQueues) {
+        // keep alive consumers
+        approximateQueueSize.keySet().retainAll(aliveConsumers);
+
+        Map<String, Long> queueSizeMap = new HashMap<>();
+        myQueues.forEach((queueName, queueProcessingState) ->
+                queueSizeMap.put(queueName, queueProcessingState.getQueueItemSizeCounter()));
+
+        approximateQueueSize.put(keyspaceHelper.getVerticleUid(), queueSizeMap);
+        // sync to other instances.
+        vertx.eventBus().publish(keyspaceHelper.getQueueStatisticQueueSizeSyncKey(), approximateQueueSize);
     }
 
     /**
