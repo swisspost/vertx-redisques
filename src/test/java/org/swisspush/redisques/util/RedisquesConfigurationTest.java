@@ -4,6 +4,7 @@ import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.ext.unit.TestContext;
 import io.vertx.ext.unit.junit.VertxUnitRunner;
+import io.vertx.redis.client.RedisReplicas;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
@@ -65,6 +66,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getActiveQueueRegRefreshReqQuotaAcquireRetryTimeMs(), -1);
         testContext.assertFalse(config.getTcpKeepAlive());
         testContext.assertEquals(config.getGlobalQueuePatrol(), -1);
+        testContext.assertEquals(config.getRedisReplicasType(), RedisReplicas.NEVER);
     }
 
     @Test
@@ -109,6 +111,7 @@ public class RedisquesConfigurationTest {
                 .queueStatsRequestQuotaAcquireRetryTimeMs(5)
                 .tcpKeepAlive(true)
                 .globalQueuePatrol(9090)
+                .redisReplicasType(RedisReplicas.ALWAYS)
                 .build();
 
         // default values
@@ -154,6 +157,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getActiveQueueRegRefreshReqQuotaAcquireRetryTimeMs(), 3);
         testContext.assertTrue(config.getTcpKeepAlive());
         testContext.assertEquals(config.getGlobalQueuePatrol(), 9090);
+        testContext.assertEquals(config.getRedisReplicasType(), RedisReplicas.ALWAYS);
 
         // queue configurations
         testContext.assertEquals(config.getQueueConfigurations().size(), 1);
@@ -210,6 +214,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(json.getInteger(PROP_QUEUE_STATS_REQUEST_QUOTA_ACQUIRE_RETRY_TIME_MS), -1);
         testContext.assertFalse(json.getBoolean(PROP_REDIS_CONNECTION_KEEP_ALIVE));
         testContext.assertEquals(json.getInteger(PROP_GLOBAL_QUEUE_PATROL), -1);
+        testContext.assertEquals(RedisReplicas.valueOf(json.getString(PROP_REDIS_REPLICAS_TYPE)), RedisReplicas.NEVER);
     }
 
     @Test
@@ -253,6 +258,7 @@ public class RedisquesConfigurationTest {
                 .queueStatsRequestQuotaAcquireRetryTimeMs(5)
                 .tcpKeepAlive(true)
                 .globalQueuePatrol(8080)
+                .redisReplicasType(RedisReplicas.SHARE)
                 .build();
 
         JsonObject json = config.asJsonObject();
@@ -302,6 +308,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(json.getInteger(PROP_QUEUE_STATS_REQUEST_QUOTA_ACQUIRE_RETRY_TIME_MS), 5);
         testContext.assertTrue(json.getBoolean(PROP_REDIS_CONNECTION_KEEP_ALIVE));
         testContext.assertEquals(json.getInteger(PROP_GLOBAL_QUEUE_PATROL), 8080);
+        testContext.assertEquals(RedisReplicas.valueOf(json.getString(PROP_REDIS_REPLICAS_TYPE)), RedisReplicas.SHARE);
 
         // queue configurations
         JsonArray queueConfigurationsJsonArray = json.getJsonArray(PROP_QUEUE_CONFIGURATIONS);
@@ -360,6 +367,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getCheckQueueRequestsQuotaAcquireRetryTimeMs(), -1);
         testContext.assertFalse(config.getTcpKeepAlive());
         testContext.assertEquals(config.getGlobalQueuePatrol(), -1);
+        testContext.assertEquals(config.getRedisReplicasType(), RedisReplicas.NEVER);
     }
 
     @Test
@@ -413,6 +421,7 @@ public class RedisquesConfigurationTest {
         json.put(PROP_QUEUE_STATS_REQUEST_QUOTA_ACQUIRE_RETRY_TIME_MS, 4);
         json.put(PROP_REDIS_CONNECTION_KEEP_ALIVE, true);
         json.put(PROP_GLOBAL_QUEUE_PATROL, 999);
+        json.put(PROP_REDIS_REPLICAS_TYPE, RedisReplicas.ALWAYS);
 
         RedisquesConfiguration config = fromJsonObject(json);
         testContext.assertEquals(config.getAddress(), "new_address");
@@ -456,6 +465,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getCheckQueueRequestsQuotaAcquireRetryTimeMs(), 1);
         testContext.assertTrue(config.getTcpKeepAlive());
         testContext.assertEquals(config.getGlobalQueuePatrol(), 999);
+        testContext.assertEquals(config.getRedisReplicasType(), RedisReplicas.ALWAYS);
 
         // queue configurations
         testContext.assertEquals(config.getQueueConfigurations().size(), 1);
