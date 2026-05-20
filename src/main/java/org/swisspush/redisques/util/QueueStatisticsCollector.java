@@ -456,6 +456,16 @@ public class QueueStatisticsCollector {
     }
 
     /**
+     * Get all queues size from statistics
+     * @return
+     */
+    public Map<String, Long> getAllApproximateQueueSize() {
+        Map<String, Long> merged = new HashMap<>();
+        approximateQueueSize.values().forEach(merged::putAll);
+        return merged;
+    }
+
+    /**
      * update and sync all approximate queue size
      * @param aliveConsumers
      * @param myQueues
@@ -472,6 +482,7 @@ public class QueueStatisticsCollector {
         // sync to other instances.
         vertx.eventBus().publish(keyspaceHelper.getQueueStatisticQueueSizeSyncKey(), approximateQueueSize);
     }
+
 
     /**
      * An internally used class for statistics value storage per queue.

@@ -92,7 +92,8 @@ public class RedisquesAPI {
         monitor(null),
         setPerQueueConfiguration(null),
         getPerQueueConfiguration(null),
-        deleteQueueConfiguration(null);
+        deleteQueueConfiguration(null),
+        getQueuesSizeStatistics(null);
 
 
         private final String legacyName;
@@ -302,6 +303,14 @@ public class RedisquesAPI {
             return buildOperation(QueueOperation.getQueuesStatistics, new JsonObject().put(FILTER, filterPattern));
         }
         return buildGetQueuesStatisticsOperation();
+    }
+
+    /**
+     * Retrieve all queues size from queue statistics
+     *
+     */
+    public static JsonObject buildGetQueuesSizeStatisticsOperation() {
+            return buildOperation(QueueOperation.getQueuesSizeStatistics, new JsonObject());
     }
 
     /**
