@@ -9,6 +9,7 @@ import io.vertx.redis.client.RedisAPI;
 import io.vertx.redis.client.RedisClientType;
 import io.vertx.redis.client.RedisConnection;
 import io.vertx.redis.client.RedisOptions;
+import io.vertx.redis.client.RedisReplicas;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.swisspush.redisques.queue.RedisService;
@@ -105,6 +106,7 @@ public class DefaultRedisProvider implements RedisProvider {
         int redisMaxPoolWaitingSize = config.getMaxPoolWaitSize();
         int redisMaxPipelineWaitingSize = config.getMaxPipelineWaitSize();
         int redisPoolRecycleTimeoutMs = config.getRedisPoolRecycleTimeoutMs();
+        RedisReplicas redisReplicasType = config.getRedisReplicasType();
 
         boolean redisConnectionTcpKeepAlive = config.getTcpKeepAlive();
 
@@ -122,6 +124,7 @@ public class DefaultRedisProvider implements RedisProvider {
                     .setMaxPoolWaiting(redisMaxPoolWaitingSize)
                     .setPoolRecycleTimeout(redisPoolRecycleTimeoutMs)
                     .setMaxWaitingHandlers(redisMaxPipelineWaitingSize)
+                    .setUseReplicas(redisReplicasType)
                     .setType(config.getRedisClientType());
 
             if (redisOptions.getType() == RedisClientType.CLUSTER) {
