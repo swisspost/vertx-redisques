@@ -6,6 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [4.1.41-SNAPSHOT] - 2026-05-21
 ### Major changes
+- From this version the Redis API version requirement change to > 7
 
 ### Minor changes
 - Update [`supercharge/redis-github-action`](https://github.com/supercharge/redis-github-action) from `1.4.0` to `1.8.1`
