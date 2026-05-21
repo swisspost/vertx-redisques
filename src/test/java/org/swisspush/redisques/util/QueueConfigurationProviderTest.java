@@ -55,19 +55,21 @@ public class QueueConfigurationProviderTest {
             jsonObject.put(RedisquesAPI.PER_QUEUE_CONFIG_ENQUEUE_MAX_DELAY_MILLIS, 22);
             jsonObject.put(RedisquesAPI.PER_QUEUE_CONFIG_ENQUEUE_DELAY_FACTOR_MILLIS, 11);
             jsonObject.put(RedisquesAPI.PER_QUEUE_CONFIG_MAX_QUEUE_ENTRIES, 99);
+            jsonObject.put(RedisquesAPI.PER_QUEUE_CONFIG_NUMBER_OF_ITEM_BATCH_DISPATCH, 0);
             provider.updateQueueConfiguration("mytestqueue", jsonObject);
             QueueConfiguration queueConfiguration = provider.findQueueConfiguration("mytestqueue");
 
             context.assertEquals(99,  queueConfiguration.getMaxQueueEntries());
             context.assertEquals(11.0F,  queueConfiguration.getEnqueueDelayFactorMillis());
             context.assertEquals(22,  queueConfiguration.getEnqueueMaxDelayMillis());
+            context.assertEquals(0,  queueConfiguration.getNumberOfBatchItemDispatch());
             context.assertEquals(3,  queueConfiguration.getRetryIntervals().length);
 
             jsonObject.put(RedisquesAPI.PER_QUEUE_CONFIG_ENQUEUE_MAX_DELAY_MILLIS, 212);
             provider.updateQueueConfiguration("mytestqueue", jsonObject);
             QueueConfiguration queueConfigurationNew = provider.findQueueConfiguration("mytestqueue");
 
-            // the onject should be updated, not replaced
+            // the object should be updated, not replaced
             context.assertEquals(queueConfiguration,  queueConfigurationNew);
             context.assertEquals(99,  queueConfiguration.getMaxQueueEntries());
             context.assertEquals(11.0F,  queueConfiguration.getEnqueueDelayFactorMillis());

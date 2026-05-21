@@ -45,6 +45,13 @@ public class QueueConfiguration {
      */
     private int maxQueueEntries = 0;
 
+    /**
+     * Maximum queue items allowed in a process request.
+     * default "0" means: request per item.
+     * Note: if this value set > 1, maxQueueEntries will disable
+     */
+    private int numberOfBatchItemDispatch = 0;
+
     public QueueConfiguration(String pattern) {
         this.pattern = Pattern.compile(pattern);
     }
@@ -83,6 +90,10 @@ public class QueueConfiguration {
 
     public int getMaxQueueEntries() {
         return maxQueueEntries;
+    }
+
+    public int getNumberOfBatchItemDispatch() {
+        return numberOfBatchItemDispatch;
     }
 
     public JsonObject asJsonObject() {
@@ -161,6 +172,20 @@ public class QueueConfiguration {
             throw new IllegalArgumentException("maxQueueEntries must be >=0 but is " + maxQueueEntries);
         }
         this.maxQueueEntries = maxQueueEntries;
+        return this;
+    }
+
+    /**
+     * set the max queue items will dispatch in each request
+     *
+     * @param numberOfBatchItemDispatch
+     * @return
+     */
+    public QueueConfiguration withNumberOfBatchItemDispatch(int numberOfBatchItemDispatch) {
+        if (maxQueueEntries < 0) {
+            throw new IllegalArgumentException("numberOfBatchItemDispatch must be >=0 but is " + maxQueueEntries);
+        }
+        this.numberOfBatchItemDispatch = numberOfBatchItemDispatch;
         return this;
     }
 }

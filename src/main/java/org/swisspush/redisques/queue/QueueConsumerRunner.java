@@ -9,6 +9,7 @@ import io.vertx.core.eventbus.DeliveryOptions;
 import io.vertx.core.eventbus.EventBus;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.eventbus.MessageConsumer;
+import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.redis.client.Command;
 import io.vertx.redis.client.Request;
@@ -26,7 +27,6 @@ import org.swisspush.redisques.util.RedisquesConfigurationProvider;
 
 import java.util.AbstractMap;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Date;
 import java.util.EnumMap;
 import java.util.HashMap;
@@ -190,99 +190,164 @@ public class QueueConsumerRunner {
     private Future<Void> readQueue(final String queueName) {
         final Promise<Void> promise = Promise.promise();
         log.trace("RedisQues read queue: {}", queueName);
-        String queueKey = keyspaceHelper.getQueuesPrefix() + queueName;
-        log.trace("RedisQues read queue lindex: {}", queueKey);
-
         isQueueLocked(queueName).onComplete(lockAnswer -> {
             if (lockAnswer.failed()) {
                 throw exceptionFactory.newRuntimeException("TODO error handling " + queueName, lockAnswer.cause());
             }
             boolean locked = lockAnswer.result();
             if (!locked) {
-                redisService.lindex(queueKey, "0").onComplete(answer -> {
-                    if (answer.failed()) {
-                        log.error("Failed to peek queue '{}'", queueName, answer.cause());
-                        // We should return here. See: "https://softwareengineering.stackexchange.com/a/190535"
-                    }
-                    Response response = answer.result();
-                    log.trace("RedisQues read queue lindex result: {}", response);
-                    if (response != null) {
-                        queueStatsService.createDequeueStatisticIfMissing(queueName);
-                        queueStatsService.dequeueStatisticSetLastDequeueAttemptTimestamp(queueName, System.currentTimeMillis());
-                        processMessageWithTimeout(queueName, response.toString(), processResult -> {
-
-                            // update the queue failure count and get a retry interval
-                            int retryInterval = updateQueueFailureCountAndGetRetryInterval(queueName, processResult.getKey());
-
-                            if (processResult.getKey()) {
-                                // Remove the processed message from the queue
-                                log.trace("RedisQues read queue lpop: {}", queueKey);
-                                redisService.lpop(Collections.singletonList(queueKey)).onComplete(jsonAnswer -> {
-                                    if (jsonAnswer.failed()) {
-                                        log.error("Failed to pop from queue '{}'", queueName, jsonAnswer.cause());
-                                        // We should return here. See: "https://softwareengineering.stackexchange.com/a/190535"
-                                    }
-
-                                    metrics.dequeueCounterIncrement();
-                                    log.debug("RedisQues Message removed, queue {} is ready again", queueName);
-                                    setMyQueuesState(queueName, QueueState.READY);
-
-                                    Handler<Void> nextMsgHandler = event -> {
-                                        // Issue notification to consume next message if any
-                                        log.trace("RedisQues read queue: {}", queueKey);
-                                        redisService.llen(queueKey).onComplete(answer1 -> {
-                                            if (answer1.succeeded() && answer1.result() != null) {
-                                                if ( answer1.result().toInteger() > 0) {
-                                                    notifyConsumer(queueName).onComplete(event1 -> {
-                                                        if (event1.failed())
-                                                            log.warn("TODO error handling", exceptionFactory.newException(
-                                                                    "notifyConsumer(" + queueName + ") failed", event1.cause()));
-                                                        promise.complete();
-                                                    });
-                                                } else {
-                                                    // Notify that we are stopped in case it was the last active consumer
-                                                    if (noQueueMoreItemHandler != null) {
-                                                        noQueueMoreItemHandler.handle(null);
-                                                    }
-                                                    promise.complete();
-                                                }
-                                                myQueues.computeIfPresent(queueName, (s, queueProcessingState) -> {
-                                                    queueProcessingState.setQueueItemSize(answer1.result().toInteger());
-                                                    return queueProcessingState;
-                                                });
-                                            } else {
-                                                if (answer1.failed() && log.isWarnEnabled()) {
-                                                    log.warn("TODO error handling", exceptionFactory.newException(
-                                                            "redisAPI.llen(" + queueKey + ") failed", answer1.cause()));
-                                                }
-                                                promise.complete();
-                                            }
-                                        });
-                                    };
-                                    nextMsgHandler.handle(null);
-                                });
-                            } else {
-                                // Failed. Message will be kept in queue and retried later
-                                log.debug("RedisQues Processing failed for queue {}", queueName);
-                                // reschedule
-                                log.trace("RedisQues will re-send the message to queue '{}' in {} seconds", queueName, retryInterval);
-                                rescheduleSendMessageAfterFailure(queueName, retryInterval, processResult.getValue());
-                                promise.complete();
-                            }
-                        });
-                    } else {
-                        // This can happen when requests to consume happen at the same moment the queue is emptied.
-                        log.debug("Got a request to consume from empty queue {}", queueName);
-                        setMyQueuesState(queueName, QueueState.READY);
-                        queueStatsService.dequeueStatisticMarkedForRemoval(queueName);
-                        promise.complete();
-
-                    }
-                });
+                QueueConfiguration queueConfiguration = queueConfigurationProvider.findQueueConfiguration(queueName);
+                if (queueConfiguration == null || queueConfiguration.getNumberOfBatchItemDispatch() <= 1) {
+                    processSingleItem(queueName).onComplete(event -> {
+                        if (event.failed()) {
+                            log.error("RedisQues failed to process single item {}", queueName, event.cause());
+                            promise.fail(event.cause());
+                        } else {
+                            promise.complete();
+                        }
+                    });
+                } else {
+                    int batchItemDispatchSize = queueConfiguration.getNumberOfBatchItemDispatch();
+                    log.debug("RedisQues process multiple ({}) items of: {}", batchItemDispatchSize, queueName);
+                    processMultipleItems(queueName, batchItemDispatchSize).onComplete(event -> {
+                        if (event.failed()) {
+                            log.error("RedisQues failed to process multiple item {}", queueName, event.cause());
+                            promise.fail(event.cause());
+                        } else {
+                            promise.complete();
+                        }
+                    });
+                }
             } else {
                 log.debug("Got a request to consume from locked queue {}", queueName);
                 setMyQueuesState(queueName, QueueState.READY);
                 promise.complete();
+            }
+        });
+        return promise.future();
+    }
+
+    private Future<Void> processMessage(String queueName, String message, int messageSize) {
+        Promise<Void> promise = Promise.promise();
+        String queueKey = keyspaceHelper.getQueuesPrefix() + queueName;
+        queueStatsService.createDequeueStatisticIfMissing(queueName);
+        queueStatsService.dequeueStatisticSetLastDequeueAttemptTimestamp(queueName, System.currentTimeMillis());
+        processMessageWithTimeout(queueName, message, processResult -> {
+
+            // update the queue failure count and get a retry interval
+            int retryInterval = updateQueueFailureCountAndGetRetryInterval(queueName, processResult.getKey());
+
+            if (processResult.getKey()) {
+                // Remove the processed message from the queue
+                log.trace("RedisQues read queue lmpop: {}", queueKey);
+                redisService.lpop(List.of(queueKey, String.valueOf(messageSize))).onComplete(jsonAnswer -> {
+                    if (jsonAnswer.failed()) {
+                        log.error("Failed to pop from queue '{}'", queueName, jsonAnswer.cause());
+                        // We should return here. See: "https://softwareengineering.stackexchange.com/a/190535"
+                    }
+
+                    metrics.dequeueCounterIncrement();
+                    log.debug("RedisQues Message removed, queue {} is ready again", queueName);
+                    setMyQueuesState(queueName, QueueState.READY);
+
+                    Handler<Void> nextMsgHandler = event -> {
+                        // Issue notification to consume next message if any
+                        log.trace("RedisQues read queue: {}", queueKey);
+                        redisService.llen(queueKey).onComplete(answer1 -> {
+                            if (answer1.succeeded() && answer1.result() != null) {
+                                if ( answer1.result().toInteger() > 0) {
+                                    notifyConsumer(queueName).onComplete(event1 -> {
+                                        if (event1.failed())
+                                            log.warn("TODO error handling", exceptionFactory.newException(
+                                                    "notifyConsumer(" + queueName + ") failed", event1.cause()));
+                                        promise.complete();
+                                    });
+                                } else {
+                                    // Notify that we are stopped in case it was the last active consumer
+                                    if (noQueueMoreItemHandler != null) {
+                                        noQueueMoreItemHandler.handle(null);
+                                    }
+                                    promise.complete();
+                                }
+                                myQueues.computeIfPresent(queueName, (s, queueProcessingState) -> {
+                                    queueProcessingState.setQueueItemSize(answer1.result().toInteger());
+                                    return queueProcessingState;
+                                });
+                            } else {
+                                if (answer1.failed() && log.isWarnEnabled()) {
+                                    log.warn("TODO error handling", exceptionFactory.newException(
+                                            "redisAPI.llen(" + queueKey + ") failed", answer1.cause()));
+                                }
+                                promise.complete();
+                            }
+                        });
+                    };
+                    nextMsgHandler.handle(null);
+                });
+            } else {
+                // Failed. Message will be kept in queue and retried later
+                log.debug("RedisQues Processing failed for queue {}", queueName);
+                // reschedule
+                log.trace("RedisQues will re-send the message to queue '{}' in {} seconds", queueName, retryInterval);
+                rescheduleSendMessageAfterFailure(queueName, retryInterval, processResult.getValue());
+                promise.complete();
+            }
+        });
+        return promise.future();
+    }
+
+    Future<Void> processMultipleItems(String queueName, int itemsInBatch) {
+        Promise<Void> promise = Promise.promise();
+        String queueKey = keyspaceHelper.getQueuesPrefix() + queueName;
+        redisService.lrange(queueKey, "0", String.valueOf(itemsInBatch - 1)).onComplete(answer -> {
+            if (answer.failed()) {
+                log.error("Failed to peek queues '{}'", queueName, answer.cause());
+                // We should return here. See: "https://softwareengineering.stackexchange.com/a/190535"
+            }
+            Response response = answer.result();
+            log.trace("RedisQues read queue lrange item size: {}", response.size());
+            JsonArray itemsJsonArray = new JsonArray();
+            for (Response res : response) {
+                itemsJsonArray.add(res.toString());
+            }
+            processMessage(queueName, itemsJsonArray.toString(), itemsInBatch).onComplete(processMessageAnswer -> {
+                if (processMessageAnswer.failed()) {
+                    log.error("Failed to process queue '{}'", queueName, processMessageAnswer.cause());
+                    promise.fail(processMessageAnswer.cause());
+                } else {
+                    promise.complete();
+                }
+            });
+        });
+        return promise.future();
+    }
+
+    Future<Void> processSingleItem(String queueName) {
+        Promise<Void> promise = Promise.promise();
+        String queueKey = keyspaceHelper.getQueuesPrefix() + queueName;
+        redisService.lindex(queueKey, "0").onComplete(answer -> {
+            if (answer.failed()) {
+                log.error("Failed to peek queue '{}'", queueName, answer.cause());
+                // We should return here. See: "https://softwareengineering.stackexchange.com/a/190535"
+            }
+            Response response = answer.result();
+            log.trace("RedisQues read queue lindex result: {}", response);
+            if (response != null) {
+                processMessage(queueName, response.toString(), 1).onComplete(processMessageAnswer -> {
+                    if (processMessageAnswer.failed()) {
+                        log.error("Failed to process queue '{}'", queueName, processMessageAnswer.cause());
+                        promise.fail(processMessageAnswer.cause());
+                    } else {
+                        promise.complete();
+                    }
+                });
+            } else {
+                // This can happen when requests to consume happen at the same moment the queue is emptied.
+                log.debug("Got a request to consume from empty queue {}", queueName);
+                setMyQueuesState(queueName, QueueState.READY);
+                queueStatsService.dequeueStatisticMarkedForRemoval(queueName);
+                promise.complete();
+
             }
         });
         return promise.future();
