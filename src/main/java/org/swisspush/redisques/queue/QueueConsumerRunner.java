@@ -243,7 +243,8 @@ public class QueueConsumerRunner {
                 redisService.lpop(List.of(queueKey, String.valueOf(messageSize))).onComplete(jsonAnswer -> {
                     if (jsonAnswer.failed()) {
                         log.error("Failed to pop from queue '{}'", queueName, jsonAnswer.cause());
-                        // We should return here. See: "https://softwareengineering.stackexchange.com/a/190535"
+                        promise.fail(jsonAnswer.cause());
+                        return;
                     }
 
                     metrics.dequeueCounterIncrement();
@@ -275,7 +276,7 @@ public class QueueConsumerRunner {
                                 });
                             } else {
                                 if (answer1.failed() && log.isWarnEnabled()) {
-                                    log.warn("TODO error handling", exceptionFactory.newException(
+                                    log.warn("Failed to get queue item size of {}", queueName, exceptionFactory.newException(
                                             "redisAPI.llen(" + queueKey + ") failed", answer1.cause()));
                                 }
                                 promise.complete();
@@ -302,7 +303,8 @@ public class QueueConsumerRunner {
         redisService.lrange(queueKey, "0", String.valueOf(itemsInBatch - 1)).onComplete(answer -> {
             if (answer.failed()) {
                 log.error("Failed to peek queues '{}'", queueName, answer.cause());
-                // We should return here. See: "https://softwareengineering.stackexchange.com/a/190535"
+                promise.fail(answer.cause());
+                return;
             }
             Response response = answer.result();
             log.trace("RedisQues read queue lrange item size: {}", response.size());
@@ -328,7 +330,8 @@ public class QueueConsumerRunner {
         redisService.lindex(queueKey, "0").onComplete(answer -> {
             if (answer.failed()) {
                 log.error("Failed to peek queue '{}'", queueName, answer.cause());
-                // We should return here. See: "https://softwareengineering.stackexchange.com/a/190535"
+                promise.fail(answer.cause());
+                return;
             }
             Response response = answer.result();
             log.trace("RedisQues read queue lindex result: {}", response);
