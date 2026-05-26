@@ -54,6 +54,7 @@ public class RedisquesAPI {
     public static final String PER_QUEUE_CONFIG_ENQUEUE_DELAY_FACTOR_MILLIS =  "enqueueDelayFactorMillis";
     public static final String PER_QUEUE_CONFIG_ENQUEUE_MAX_DELAY_MILLIS =  "enqueueMaxDelayMillis";
     public static final String PER_QUEUE_CONFIG_MAX_QUEUE_ENTRIES =  "maxQueueEntries";
+    public static final String PER_QUEUE_CONFIG_MAX_QUEUE_PATROL_LIMIT =  "queuePatrolLimit";
     public static final String PER_QUEUE_CONFIG_NAME =  "configName";
     public static final String PER_QUEUE_CONFIG_PATTERN =  "pattern";
 
@@ -91,7 +92,8 @@ public class RedisquesAPI {
         monitor(null),
         setPerQueueConfiguration(null),
         getPerQueueConfiguration(null),
-        deleteQueueConfiguration(null);
+        deleteQueueConfiguration(null),
+        getQueuesSizeStatistics(null);
 
 
         private final String legacyName;
@@ -301,6 +303,14 @@ public class RedisquesAPI {
             return buildOperation(QueueOperation.getQueuesStatistics, new JsonObject().put(FILTER, filterPattern));
         }
         return buildGetQueuesStatisticsOperation();
+    }
+
+    /**
+     * Retrieve all queues size from queue statistics
+     *
+     */
+    public static JsonObject buildGetQueuesSizeStatisticsOperation() {
+            return buildOperation(QueueOperation.getQueuesSizeStatistics, new JsonObject());
     }
 
     /**
