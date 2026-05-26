@@ -46,6 +46,12 @@ public class QueueConfiguration {
     private int maxQueueEntries = 0;
 
     /**
+     * Maximum queue items allow to be enqueued, over limit, the newly coming will reject
+     * default "0" means: no limit
+     */
+    private long enqueuePatrolLimit = 0l;
+
+    /**
      * Maximum queue items allowed in a batch request.
      * default "0" means: request per item.
      */
@@ -101,6 +107,10 @@ public class QueueConfiguration {
 
     public int getMaxQueueEntries() {
         return maxQueueEntries;
+    }
+
+    public Long getEnqueuePatrolLimit() {
+        return enqueuePatrolLimit;
     }
 
     public int getMaximumItemInBatchDispatch() {
@@ -191,6 +201,20 @@ public class QueueConfiguration {
             throw new IllegalArgumentException("maxQueueEntries must be >=0 but is " + maxQueueEntries);
         }
         this.maxQueueEntries = maxQueueEntries;
+        return this;
+    }
+
+    /**
+     * set the max queue items can enqueue in a queue, the new item will reject if limits reached
+     *
+     * @param enqueuePatrolLimit
+     * @return
+     */
+    public QueueConfiguration withEnqueuePatrolLimit(int enqueuePatrolLimit) {
+        if (enqueuePatrolLimit < 0) {
+            throw new IllegalArgumentException("enqueuePatrolLimit must be >=0 but is " + enqueuePatrolLimit);
+        }
+        this.enqueuePatrolLimit = enqueuePatrolLimit;
         return this;
     }
 

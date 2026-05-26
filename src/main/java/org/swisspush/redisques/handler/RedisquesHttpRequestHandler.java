@@ -171,6 +171,11 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
         router.get(prefix + "/statistics").handler(this::getQueuesStatistics);
 
         /*
+         * Get statistic information
+         */
+        router.get(prefix + "/statistics/queuesize").handler(this::getQueuesSizeStatistics);
+
+        /*
          * Get queue speed information
          */
         router.get(prefix + "/speed").handler(this::getQueuesSpeed);
@@ -1026,6 +1031,20 @@ public class RedisquesHttpRequestHandler implements Handler<HttpServerRequest> {
                         }
                     } else {
                         String error = "Error gathering names of active queues";
+                        log.error(error, exceptionFactory.newException(reply.cause()));
+                        respondWith(StatusCode.INTERNAL_SERVER_ERROR, error, ctx.request());
+                    }
+                });
+    }
+
+    private void getQueuesSizeStatistics(RoutingContext ctx) {
+        eventBus.request(redisquesAddress, buildGetQueuesSizeStatisticsOperation(),
+                (Handler<AsyncResult<Message<JsonObject>>>) reply -> {
+                    if (reply.succeeded() && OK.equals(reply.result().body().getString(STATUS))) {
+                        JsonObject payload = reply.result().body().getJsonObject("payload");
+                        jsonResponse(ctx.response(), payload);
+                    } else {
+                        String error = "Error gathering queues szie from statistics";
                         log.error(error, exceptionFactory.newException(reply.cause()));
                         respondWith(StatusCode.INTERNAL_SERVER_ERROR, error, ctx.request());
                     }

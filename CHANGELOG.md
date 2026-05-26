@@ -14,16 +14,44 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 
 ### New features
-- Add support batch queue items dispatch 
-To enable this feature, you need set it via QueueConfiguration.withMaximumItemInBatchDispatch. once you have item in batch > 2, 
-the payload in message will change from a normal string to a JsonArray which contains mutilple items.
-  - Additional parameter:
-    - minimumItemInBatchDispatch: Minimum queue items required to do a batch, if not enough items, will wait until reach the condition, '0' means not in use
-    - maxBatchItemDispatchWaitTimeout: How many seconds need to wait the queue items reach the condition, '0' means always wait
-  - Example:
+- Add support batch queue items dispatch
+  To enable this feature, you need set it via QueueConfiguration.withMaximumItemInBatchDispatch. once you have item in batch > 2,
+  the payload in message will change from a normal string to a JsonArray which contains mutilple items.
+    - Additional parameter:
+        - minimumItemInBatchDispatch: Minimum queue items required to do a batch, if not enough items, will wait until reach the condition, '0' means not in use
+        - maxBatchItemDispatchWaitTimeout: How many seconds need to wait the queue items reach the condition, '0' means always wait
+    - Example:
 ```json
 {
   "queue": "batch-queue",
   "payload": "[\"message-1\", \"message-2\", \"message-3\"]"
 }
 ```
+
+## [4.1.41-SNAPSHOT] - 2026-05-20
+### Major changes
+- removed "globalQueuePatrol" from RedisquesConfiguration, queue patrol replaced with Per-Queue config
+
+### New features
+- Add rule based queue patrol
+
+Can config by QueueConfiguration or use setPerQueueConfiguration action
+```json
+{
+  "operation": "setPerQueueConfiguration",
+  "payload": {
+    "configName": "queu-limiter-5k",
+    "filter": "queue.*",
+    "enqueuePatrolLimit": 5000
+  }
+}
+```
+
+- Added new actions:
+    - getPerQueueConfiguration
+    - deleteQueueConfiguration
+    - getQueuesSizeStatistics
+
+
+- Added new endpoint to get all approximate queue size:
+    - GET /queuing/statistics/queuesize

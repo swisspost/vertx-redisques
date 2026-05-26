@@ -88,7 +88,6 @@ The following configuration values are available:
 | queueStatsRequestQuotaAcquireRetryTimeMs               | -1                              | Queue stats requests quota acquire retry delay time [ms]. Use **-1** to reject immediately                                                                                                                       |
 | getQueuesItemsCountRedisRequestQuotaAcquireRetryTimeMs | -1                              | Get queues items count action  requests quota acquire retry delay time [ms]. Use **-1** to reject immediately                                                                                                    |
 | activeQueueRegRefreshReqQuotaAcquireRetryTimeMs        | -1                              | Active queue register refresh requests quota acquire retry delay time [ms]. Use **-1** to reject immediately                                                                                                     |
-| globalQueuePatrol                                      | -1                              | The global patrol limits for all queues Use **-1** disable the patrol, because the size of queue item update are asynced, so patrol limit may have some delays                                                    |
 
 ### Warning about Quota Timeout Configuration
 
@@ -699,6 +698,7 @@ Request Data
 {
     "operation": "setPerQueueConfiguration",
     "payload": {
+        "configName": <string of a queue config (request)>,
         "filter": <str regex pattern to apply to queues (request)>,
         "retryIntervals": <de queue retry intervals array (optional)>,
         "maxQueueEntries": <max queue items will keep (optional)>,
@@ -717,6 +717,105 @@ Response Data
     "status": "ok" / "error"
 }
 ```
+
+#### getPerQueueConfiguration
+Request Data
+```
+{
+    "operation": "getPerQueueConfiguration",
+    "payload": {
+        "configName": <string of a queue config (optional)>
+    }
+}
+```
+
+Response Data (Empty configName, will return all configs)
+```
+{
+    "queues-10s-fix-delay":
+    {
+        "pattern":"listener-hook-http.*",
+        "retryIntervals":[10],
+        "enqueueDelayFactorMillis":0.0,
+        "enqueueMaxDelayMillis":0,
+        "maxQueueEntries":0,
+        "enqueuePatrolLimit":0
+    }, 
+    "queues-20s-fix-delay":
+    {
+        "pattern":"listener-hook-http-more-delay.*",
+        "retryIntervals":[20],
+        "enqueueDelayFactorMillis":0.0,
+        "enqueueMaxDelayMillis":0,
+        "maxQueueEntries":0,
+        "enqueuePatrolLimit":0
+    }, 
+    .
+    .
+}
+```
+
+Response Data (with a exist configName)
+```
+{
+    "queues-10s-fix-delay":
+    {
+        "pattern":"listener-hook-http.*",
+        "retryIntervals":[10],
+        "enqueueDelayFactorMillis":0.0,
+        "enqueueMaxDelayMillis":0,
+        "maxQueueEntries":0,
+        "enqueuePatrolLimit":0
+    }
+}
+```
+
+Response Data (with a not-exist configName)
+```
+{
+}
+```
+
+#### deleteQueueConfiguration
+
+Request Data
+```
+{
+    "operation": "deleteQueueConfiguration",
+    "payload": {
+        "configName": <string of a queue config (request)>
+    }
+}
+```
+
+Response Data
+```
+{
+    "status": "ok" / "error"
+}
+```
+
+#### getQueuesSizeStatistics
+
+Request Data
+```
+{
+    "operation": "getQueuesSizeStatistics",
+    "payload": {}
+}
+```
+
+Response Data
+```
+{
+    "status": "ok" / "error",
+    "payload": {
+      "queue_1": 10,
+      "queue_2": 25
+    }
+}
+```
+
 
 ## RedisQues HTTP API
 RedisQues provides a HTTP API to modify queues, queue items and get information about queue counts and queue item counts.
@@ -1076,6 +1175,20 @@ The result will be a json object with the statistics information like the exampl
       "backpressureTime": 0
     }
     ]    
+}
+```
+
+### Get statistics queues item size
+The statistics queues size information contains all queue's size from all instances. but queues size here are collected while the queue processing,
+so can not use as a realtime time reference.
+> GET /queuing/statistics/queuesize
+
+The result will be a json object with the queue name and size.
+
+```json
+{
+  "queue_1": 10,
+  "queue_2": 25
 }
 ```
 

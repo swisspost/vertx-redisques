@@ -40,6 +40,7 @@ import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.getQueueI
 import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.getQueues;
 import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.getQueuesCount;
 import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.getQueuesItemsCount;
+import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.getQueuesSizeStatistics;
 import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.getQueuesSpeed;
 import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.getQueuesStatistics;
 import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.lockedEnqueue;
@@ -53,8 +54,6 @@ public class QueueActionsService {
     private static final Logger log = LoggerFactory.getLogger(QueueActionsService.class);
     private final QueueActionFactory queueActionFactory;
     private final Map<RedisquesAPI.QueueOperation, QueueAction> queueActions = new HashMap<>();
-    private final RedisQuesExceptionFactory exceptionFactory;
-    private final QueueConfigurationProvider queueConfigurationProvider;
 
     public QueueActionsService(Vertx vertx, QueueRegistryService queueRegistryService, RedisService redisService, KeyspaceHelper keyspaceHelper,
                                RedisquesConfigurationProvider configurationProvider,
@@ -62,8 +61,6 @@ public class QueueActionsService {
                                QueueStatisticsCollector queueStatisticsCollector,
                                Semaphore getQueuesItemsCountRedisRequestQuota,
                                MeterRegistry meterRegistry, QueueConfigurationProvider queueConfigurationProvider) {
-        this.exceptionFactory = exceptionFactory;
-        this.queueConfigurationProvider = queueConfigurationProvider;
         HttpClient client = vertx.createHttpClient();
 
         this.queueActionFactory = new QueueActionFactory(
@@ -100,6 +97,7 @@ public class QueueActionsService {
         queueActions.put(setPerQueueConfiguration, queueActionFactory.buildQueueAction(setPerQueueConfiguration));
         queueActions.put(getPerQueueConfiguration, queueActionFactory.buildQueueAction(getPerQueueConfiguration));
         queueActions.put(deleteQueueConfiguration, queueActionFactory.buildQueueAction(deleteQueueConfiguration));
+        queueActions.put(getQueuesSizeStatistics, queueActionFactory.buildQueueAction(getQueuesSizeStatistics));
     }
 
     public void handle(RedisquesAPI.QueueOperation queueOperation, Message<JsonObject> event) {

@@ -10,10 +10,13 @@ import io.vertx.core.json.JsonObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.AbstractMap;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 public class QueueConfigurationProvider {
@@ -27,6 +30,19 @@ public class QueueConfigurationProvider {
     private final Vertx vertx;
     private final Map<String, QueueConfiguration> queueConfigurations = new ConcurrentHashMap<>();
     public final List<QueueConfiguration> defaultQueueConfigurations;
+
+    // For max the performance, split all configs in to different categories, so not in use setting will
+    // not into loop
+    private final Map<String, AbstractMap.SimpleEntry<Pattern, List<Integer>>> retryIntervalConfig = new ConcurrentHashMap<>();
+    private final Map<String, AbstractMap.SimpleEntry<Pattern, Integer>> maxQueueEntriesConfig = new ConcurrentHashMap<>();
+    private final Map<String, AbstractMap.SimpleEntry<Pattern, EnqueueDelayPair>> enqueueDelayConfig = new ConcurrentHashMap<>();
+    private final Map<String, AbstractMap.SimpleEntry<Pattern, Long>> enqueuePatrolConfig = new ConcurrentHashMap<>();
+
+    private static class EnqueueDelayPair {
+        public float enqueueDelayFactorMillis = 0;
+        public long enqueueDelayMillis = 0;
+    }
+
 
     private QueueConfigurationProvider(Vertx vertx, List<QueueConfiguration> defaultQueueConfigurations) {
         this.vertx = vertx;
@@ -59,7 +75,8 @@ public class QueueConfigurationProvider {
                 String operation = body.getString(RedisquesAPI.OPERATION);
                 if (DELETE.equals(operation)) {
                     final String configName = event.body().getString(RedisquesAPI.PER_QUEUE_CONFIG_NAME);
-                    queueConfigurations.remove(configName);
+                    QueueConfiguration removedConfig = queueConfigurations.remove(configName);
+                    removeQueueConfigurationCategories(removedConfig);
                     log.debug("delete config {} from instance {}", configName, uid);
                 } else {
                     log.warn("Unsupported operation: {}", operation);
@@ -96,7 +113,7 @@ public class QueueConfigurationProvider {
      * @param queueName search first configuration for that queue-name
      * @return null when no queueConfiguration's RegEx matches given queueName - else the QueueConfiguration
      */
-    public QueueConfiguration findQueueConfiguration(String queueName) {
+    QueueConfiguration findQueueConfiguration(String queueName) {
         for (QueueConfiguration queueConfiguration : queueConfigurations.values()) {
             if (queueConfiguration.compiledPattern().matcher(queueName).matches()) {
                 return queueConfiguration;
@@ -104,6 +121,55 @@ public class QueueConfigurationProvider {
         }
         return null;
     }
+
+    public List<Integer> findRetryIntervalConfig(String queueName) {
+        for (Map.Entry<Pattern, List<Integer>> entry : retryIntervalConfig.values()) {
+            if (entry.getKey().matcher(queueName).matches()) {
+                return entry.getValue();
+            }
+        }
+        return null;
+    }
+
+    public long findEnqueueDelayConfig(String queueName, long queueLength) {
+        for (Map.Entry<Pattern, EnqueueDelayPair> entry : enqueueDelayConfig.values()) {
+            if (entry.getKey().matcher(queueName).matches()) {
+                EnqueueDelayPair enqueueDelayPair = entry.getValue();
+
+                float enqueueDelayFactorMillis = enqueueDelayPair.enqueueDelayFactorMillis;
+                if (enqueueDelayFactorMillis > 0f) {
+                    // minus one as we need the queueLength _before_ our en-queue here
+                    long delayReplyMillis = (long) ((queueLength - 1) * enqueueDelayFactorMillis);
+                    long max = enqueueDelayPair.enqueueDelayMillis;
+                    if (max > 0 && delayReplyMillis > max) {
+                        return max;
+                    }
+                    return delayReplyMillis;
+                }
+                return 0L;
+            }
+        }
+        return 0L;
+    }
+
+    public Integer findMaxQueueEntriesConfig(String queueName) {
+        for (Map.Entry<Pattern, Integer> entry : maxQueueEntriesConfig.values()) {
+            if (entry.getKey().matcher(queueName).matches()) {
+                return entry.getValue();
+            }
+        }
+        return null;
+    }
+
+    public long findEnqueuePatrolConfig(String queueName) {
+        for (Map.Entry<Pattern, Long> entry : enqueuePatrolConfig.values()) {
+            if (entry.getKey().matcher(queueName).matches()) {
+                return entry.getValue();
+            }
+        }
+        return 0;
+    }
+
 
     /**
      * return an exist queue configuration by filter pattern
@@ -206,11 +272,67 @@ public class QueueConfigurationProvider {
                     .mapToInt(v -> ((Number) v).intValue())
                     .toArray());
         }
+        if (jsonObject.containsKey(RedisquesAPI.PER_QUEUE_CONFIG_MAX_QUEUE_PATROL_LIMIT)) {
+            queueConfiguration.withEnqueuePatrolLimit(jsonObject.getInteger(RedisquesAPI.PER_QUEUE_CONFIG_MAX_QUEUE_PATROL_LIMIT));
+        }
 
         // exists one is updates by reference
         if (isNew) {
             queueConfigurations.put(name, queueConfiguration);
         }
+        updateQueueConfigurationCategories(queueConfiguration);
+    }
+
+    // remove config from all categories
+    private void updateQueueConfigurationCategories(QueueConfiguration queueConfiguration) {
+        final String patternString = queueConfiguration.getPattern();
+        final Pattern pattern = queueConfiguration.compiledPattern();
+        // Retry intervals
+        if (queueConfiguration.getRetryIntervals() == null || queueConfiguration.getRetryIntervals().length == 0 ) {
+            // We don't have a setting for this
+            retryIntervalConfig.remove(patternString);
+        } else {
+            List<Integer> retryIntervalsList = Arrays.stream(queueConfiguration.getRetryIntervals())
+                    .boxed()
+                    .collect(Collectors.toList());
+
+            retryIntervalConfig.put(patternString, new AbstractMap.SimpleEntry<>(pattern, retryIntervalsList));
+        }
+
+        // Max Queue Entries
+        if (queueConfiguration.getMaxQueueEntries() <= 0 ) {
+            // We don't have a setting for this
+            maxQueueEntriesConfig.remove(patternString);
+        } else {
+            maxQueueEntriesConfig.put(patternString, new AbstractMap.SimpleEntry<>(pattern, queueConfiguration.getMaxQueueEntries()));
+        }
+
+        //Enqueue Patrol
+        if (queueConfiguration.getEnqueuePatrolLimit() <= 0 ) {
+            // We don't have a setting for this
+            enqueuePatrolConfig.remove(patternString);
+        } else {
+            enqueuePatrolConfig.put(patternString, new AbstractMap.SimpleEntry<>(pattern, queueConfiguration.getEnqueuePatrolLimit()));
+        }
+
+        // Enqueue Delay
+        if (queueConfiguration.getEnqueueDelayFactorMillis() <= 0 ) {
+            // We don't have a setting for this
+            enqueueDelayConfig.remove(patternString);
+        } else {
+            EnqueueDelayPair enqueueDelayPair = new  EnqueueDelayPair();
+            enqueueDelayPair.enqueueDelayFactorMillis = queueConfiguration.getEnqueueDelayFactorMillis();
+            enqueueDelayPair.enqueueDelayMillis = queueConfiguration.getEnqueueMaxDelayMillis();
+            enqueueDelayConfig.put(patternString, new AbstractMap.SimpleEntry<>(pattern, enqueueDelayPair));
+        }
+    }
+
+    // remove config from all categories
+    private void removeQueueConfigurationCategories(QueueConfiguration removedConfig) {
+        retryIntervalConfig.remove(removedConfig.getPattern());
+        maxQueueEntriesConfig.remove(removedConfig.getPattern());
+        enqueueDelayConfig.remove(removedConfig.getPattern());
+        enqueuePatrolConfig.remove(removedConfig.getPattern());
     }
 
     @VisibleForTesting
@@ -220,8 +342,10 @@ public class QueueConfigurationProvider {
 
     private void loadStaticConfigs() {
         if (defaultQueueConfigurations != null) {
-            defaultQueueConfigurations.forEach(queueConfiguration ->
-                    queueConfigurations.put(queueConfiguration.getPattern(), queueConfiguration));
+            defaultQueueConfigurations.forEach(queueConfiguration -> {
+                queueConfigurations.put(queueConfiguration.getPattern(), queueConfiguration);
+                updateQueueConfigurationCategories(queueConfiguration);
+            });
         }
     }
 }

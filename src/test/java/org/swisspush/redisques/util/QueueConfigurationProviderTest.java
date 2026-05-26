@@ -141,6 +141,59 @@ public class QueueConfigurationProviderTest {
         });
     }
 
+    @Test
+    public void testQueueConfigCategoryRead(TestContext context) {
+        Async async = context.async();
+        Vertx vertx = Vertx.vertx();
+        QueueConfigurationProvider.provider(vertx, List.of()).get().onComplete(event -> {
+            QueueConfigurationProvider provider = event.result();
+            context.assertNull(provider.findQueueConfiguration("mytestqueue"));
+            JsonObject jsonObject = new JsonObject();
+            JsonArray jsonArray = new JsonArray();
+            jsonArray.add(1);
+            jsonArray.add(3);
+            jsonArray.add(5);
+
+            jsonObject.put(RedisquesAPI.PER_QUEUE_CONFIG_PATTERN, ".*mytestqueue*");
+            jsonObject.put(RedisquesAPI.PER_QUEUE_CONFIG_RETRY_INTERVALS, jsonArray);
+            jsonObject.put(RedisquesAPI.PER_QUEUE_CONFIG_ENQUEUE_MAX_DELAY_MILLIS, 22);
+            jsonObject.put(RedisquesAPI.PER_QUEUE_CONFIG_ENQUEUE_DELAY_FACTOR_MILLIS, 11);
+            jsonObject.put(RedisquesAPI.PER_QUEUE_CONFIG_MAX_QUEUE_ENTRIES, 99);
+            jsonObject.put(RedisquesAPI.PER_QUEUE_CONFIG_MAX_QUEUE_PATROL_LIMIT, 42);
+            provider.updateQueueConfiguration("mytestqueue", jsonObject);
+            QueueConfiguration queueConfiguration = provider.findQueueConfiguration("mytestqueue");
+
+            context.assertEquals(99, queueConfiguration.getMaxQueueEntries());
+            context.assertEquals(11.0F, queueConfiguration.getEnqueueDelayFactorMillis());
+            context.assertEquals(22, queueConfiguration.getEnqueueMaxDelayMillis());
+            context.assertEquals(3, queueConfiguration.getRetryIntervals().length);
+            context.assertEquals(42L, queueConfiguration.getEnqueuePatrolLimit());
+
+            context.assertEquals(99, provider.findMaxQueueEntriesConfig("mytestqueue"));
+            context.assertEquals(22L, provider.findEnqueueDelayConfig("mytestqueue", 4));
+            context.assertEquals(42L, provider.findEnqueuePatrolConfig("mytestqueue"));
+            context.assertEquals(3, provider.findRetryIntervalConfig("mytestqueue").size());
+
+
+            jsonObject.put(RedisquesAPI.PER_QUEUE_CONFIG_ENQUEUE_DELAY_FACTOR_MILLIS, 0);
+            provider.updateQueueConfiguration("mytestqueue", jsonObject);
+
+            context.assertEquals(99, provider.findMaxQueueEntriesConfig("mytestqueue"));
+            context.assertEquals(0L, provider.findEnqueueDelayConfig("mytestqueue", 4));
+            context.assertEquals(42L, provider.findEnqueuePatrolConfig("mytestqueue"));
+            context.assertEquals(3, provider.findRetryIntervalConfig("mytestqueue").size());
+
+            jsonObject.put(RedisquesAPI.PER_QUEUE_CONFIG_MAX_QUEUE_PATROL_LIMIT, 0);
+            provider.updateQueueConfiguration("mytestqueue", jsonObject);
+            context.assertEquals(99, provider.findMaxQueueEntriesConfig("mytestqueue"));
+            context.assertEquals(0L, provider.findEnqueueDelayConfig("mytestqueue", 4));
+            context.assertEquals(0L, provider.findEnqueuePatrolConfig("mytestqueue"));
+            context.assertEquals(3, provider.findRetryIntervalConfig("mytestqueue").size());
+
+            async.complete();
+        });
+    }
+
     private QueueConfiguration createQueueConfiguration(String pattern) {
         QueueConfiguration queueConfiguration = new QueueConfiguration(pattern);
         queueConfiguration.withEnqueueDelayMillisPerSize(99).withMaxQueueEntries(12).withEnqueueMaxDelayMillis(33).withRetryIntervals(1, 2, 3);
