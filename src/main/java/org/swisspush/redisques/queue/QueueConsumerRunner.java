@@ -19,7 +19,6 @@ import org.slf4j.LoggerFactory;
 import org.swisspush.redisques.QueueState;
 import org.swisspush.redisques.QueueStatsService;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
-import org.swisspush.redisques.util.QueueConfiguration;
 import org.swisspush.redisques.util.QueueConfigurationProvider;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 import org.swisspush.redisques.util.RedisQuesTimer;
@@ -196,8 +195,8 @@ public class QueueConsumerRunner {
             }
             boolean locked = lockAnswer.result();
             if (!locked) {
-                QueueConfiguration queueConfiguration = queueConfigurationProvider.findQueueConfiguration(queueName);
-                if (queueConfiguration == null || queueConfiguration.getMaximumItemInBatchDispatch() <= 1) {
+                QueueConfigurationProvider.BatchQueueItemsConfig batchQueueItemsConfig = queueConfigurationProvider.findBatchQueueItemsConfig(queueName);
+                if (batchQueueItemsConfig == null || batchQueueItemsConfig.maximumItemInBatchDispatch <= 1) {
                     processSingleItem(queueName).onComplete(event -> {
                         if (event.failed()) {
                             log.error("RedisQues failed to process single item {}", queueName, event.cause());
@@ -207,9 +206,9 @@ public class QueueConsumerRunner {
                         }
                     });
                 } else {
-                    final int maximumItemInBatchDispatch = queueConfiguration.getMaximumItemInBatchDispatch();
-                    final int minimumItemInBatchDispatch = queueConfiguration.getMinimumItemInBatchDispatch();
-                    final int maxBatchItemDispatchWaitTimeout = queueConfiguration.getMaxBatchItemDispatchWaitTimeout();
+                    final int maximumItemInBatchDispatch = batchQueueItemsConfig.maximumItemInBatchDispatch;
+                    final int minimumItemInBatchDispatch = batchQueueItemsConfig.minimumItemInBatchDispatch;
+                    final int maxBatchItemDispatchWaitTimeout = batchQueueItemsConfig.maxBatchItemDispatchWaitTimeout;
 
                     log.debug("RedisQues process multiple (Max: {}, Min: {}, Timeout(Sec): {}) items of: {}", maximumItemInBatchDispatch, minimumItemInBatchDispatch, maxBatchItemDispatchWaitTimeout, queueName);
                     processMultipleItems(queueName, maximumItemInBatchDispatch, minimumItemInBatchDispatch, maxBatchItemDispatchWaitTimeout).onComplete(event -> {

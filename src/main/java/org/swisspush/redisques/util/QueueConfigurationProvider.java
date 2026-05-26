@@ -33,14 +33,22 @@ public class QueueConfigurationProvider {
 
     // For max the performance, split all configs in to different categories, so not in use setting will
     // not into loop
-    private final Map<String, AbstractMap.SimpleEntry<Pattern, List<Integer>>> retryIntervalConfig = new ConcurrentHashMap<>();
-    private final Map<String, AbstractMap.SimpleEntry<Pattern, Integer>> maxQueueEntriesConfig = new ConcurrentHashMap<>();
-    private final Map<String, AbstractMap.SimpleEntry<Pattern, EnqueueDelayPair>> enqueueDelayConfig = new ConcurrentHashMap<>();
-    private final Map<String, AbstractMap.SimpleEntry<Pattern, Long>> enqueuePatrolConfig = new ConcurrentHashMap<>();
+    private final Map<String, AbstractMap.SimpleEntry<Pattern, List<Integer>>> retryIntervalConfigs = new ConcurrentHashMap<>();
+    private final Map<String, AbstractMap.SimpleEntry<Pattern, Integer>> maxQueueEntriesConfigs = new ConcurrentHashMap<>();
+    private final Map<String, AbstractMap.SimpleEntry<Pattern, EnqueueDelayPair>> enqueueDelayConfigs = new ConcurrentHashMap<>();
+    private final Map<String, AbstractMap.SimpleEntry<Pattern, Long>> enqueuePatrolConfigs = new ConcurrentHashMap<>();
+    private final Map<String, AbstractMap.SimpleEntry<Pattern, BatchQueueItemsConfig>> batchQueueItemsConfigs = new ConcurrentHashMap<>();
+
 
     private static class EnqueueDelayPair {
         public float enqueueDelayFactorMillis = 0;
         public long enqueueDelayMillis = 0;
+    }
+
+    public static class BatchQueueItemsConfig {
+        public int maximumItemInBatchDispatch = 0;
+        public int minimumItemInBatchDispatch = 0;
+        public int maxBatchItemDispatchWaitTimeout = 0;
     }
 
 
@@ -122,8 +130,17 @@ public class QueueConfigurationProvider {
         return null;
     }
 
+    public BatchQueueItemsConfig findBatchQueueItemsConfig(String queueName) {
+        for (Map.Entry<Pattern, BatchQueueItemsConfig> entry : batchQueueItemsConfigs.values()) {
+            if (entry.getKey().matcher(queueName).matches()) {
+                return entry.getValue();
+            }
+        }
+        return null;
+    }
+
     public List<Integer> findRetryIntervalConfig(String queueName) {
-        for (Map.Entry<Pattern, List<Integer>> entry : retryIntervalConfig.values()) {
+        for (Map.Entry<Pattern, List<Integer>> entry : retryIntervalConfigs.values()) {
             if (entry.getKey().matcher(queueName).matches()) {
                 return entry.getValue();
             }
@@ -132,7 +149,7 @@ public class QueueConfigurationProvider {
     }
 
     public long findEnqueueDelayConfig(String queueName, long queueLength) {
-        for (Map.Entry<Pattern, EnqueueDelayPair> entry : enqueueDelayConfig.values()) {
+        for (Map.Entry<Pattern, EnqueueDelayPair> entry : enqueueDelayConfigs.values()) {
             if (entry.getKey().matcher(queueName).matches()) {
                 EnqueueDelayPair enqueueDelayPair = entry.getValue();
 
@@ -153,7 +170,7 @@ public class QueueConfigurationProvider {
     }
 
     public Integer findMaxQueueEntriesConfig(String queueName) {
-        for (Map.Entry<Pattern, Integer> entry : maxQueueEntriesConfig.values()) {
+        for (Map.Entry<Pattern, Integer> entry : maxQueueEntriesConfigs.values()) {
             if (entry.getKey().matcher(queueName).matches()) {
                 return entry.getValue();
             }
@@ -162,7 +179,7 @@ public class QueueConfigurationProvider {
     }
 
     public long findEnqueuePatrolConfig(String queueName) {
-        for (Map.Entry<Pattern, Long> entry : enqueuePatrolConfig.values()) {
+        for (Map.Entry<Pattern, Long> entry : enqueuePatrolConfigs.values()) {
             if (entry.getKey().matcher(queueName).matches()) {
                 return entry.getValue();
             }
@@ -201,6 +218,7 @@ public class QueueConfigurationProvider {
 
     /**
      * remove a config from current instance, also publish to all other instances
+     *
      * @param configName the config name will delete
      */
     public void removeQueueConfiguration(String configName) {
@@ -216,6 +234,7 @@ public class QueueConfigurationProvider {
     /**
      * get one or all configurations, if a name is passed in, the matched one will return, if exists.
      * if "*" passed in all will return.
+     *
      * @param name a config name or a "*" to match all.
      * @return
      */
@@ -288,51 +307,64 @@ public class QueueConfigurationProvider {
         final String patternString = queueConfiguration.getPattern();
         final Pattern pattern = queueConfiguration.compiledPattern();
         // Retry intervals
-        if (queueConfiguration.getRetryIntervals() == null || queueConfiguration.getRetryIntervals().length == 0 ) {
+        if (queueConfiguration.getRetryIntervals() == null || queueConfiguration.getRetryIntervals().length == 0) {
             // We don't have a setting for this
-            retryIntervalConfig.remove(patternString);
+            retryIntervalConfigs.remove(patternString);
         } else {
             List<Integer> retryIntervalsList = Arrays.stream(queueConfiguration.getRetryIntervals())
                     .boxed()
                     .collect(Collectors.toList());
 
-            retryIntervalConfig.put(patternString, new AbstractMap.SimpleEntry<>(pattern, retryIntervalsList));
+            retryIntervalConfigs.put(patternString, new AbstractMap.SimpleEntry<>(pattern, retryIntervalsList));
         }
 
         // Max Queue Entries
-        if (queueConfiguration.getMaxQueueEntries() <= 0 ) {
+        if (queueConfiguration.getMaxQueueEntries() <= 0) {
             // We don't have a setting for this
-            maxQueueEntriesConfig.remove(patternString);
+            maxQueueEntriesConfigs.remove(patternString);
         } else {
-            maxQueueEntriesConfig.put(patternString, new AbstractMap.SimpleEntry<>(pattern, queueConfiguration.getMaxQueueEntries()));
+            maxQueueEntriesConfigs.put(patternString, new AbstractMap.SimpleEntry<>(pattern, queueConfiguration.getMaxQueueEntries()));
         }
 
         //Enqueue Patrol
-        if (queueConfiguration.getEnqueuePatrolLimit() <= 0 ) {
+        if (queueConfiguration.getEnqueuePatrolLimit() <= 0) {
             // We don't have a setting for this
-            enqueuePatrolConfig.remove(patternString);
+            enqueuePatrolConfigs.remove(patternString);
         } else {
-            enqueuePatrolConfig.put(patternString, new AbstractMap.SimpleEntry<>(pattern, queueConfiguration.getEnqueuePatrolLimit()));
+            enqueuePatrolConfigs.put(patternString, new AbstractMap.SimpleEntry<>(pattern, queueConfiguration.getEnqueuePatrolLimit()));
         }
 
         // Enqueue Delay
-        if (queueConfiguration.getEnqueueDelayFactorMillis() <= 0 ) {
+        if (queueConfiguration.getEnqueueDelayFactorMillis() <= 0) {
             // We don't have a setting for this
-            enqueueDelayConfig.remove(patternString);
+            enqueueDelayConfigs.remove(patternString);
         } else {
-            EnqueueDelayPair enqueueDelayPair = new  EnqueueDelayPair();
+            EnqueueDelayPair enqueueDelayPair = new EnqueueDelayPair();
             enqueueDelayPair.enqueueDelayFactorMillis = queueConfiguration.getEnqueueDelayFactorMillis();
             enqueueDelayPair.enqueueDelayMillis = queueConfiguration.getEnqueueMaxDelayMillis();
-            enqueueDelayConfig.put(patternString, new AbstractMap.SimpleEntry<>(pattern, enqueueDelayPair));
+            enqueueDelayConfigs.put(patternString, new AbstractMap.SimpleEntry<>(pattern, enqueueDelayPair));
+        }
+
+        // batch queue item dispatch
+        if (queueConfiguration.getMaximumItemInBatchDispatch() <= 0) {
+            // We don't have a setting for this
+            batchQueueItemsConfigs.remove(patternString);
+        } else {
+            BatchQueueItemsConfig batchQueueItemsConfig = new BatchQueueItemsConfig();
+            batchQueueItemsConfig.maximumItemInBatchDispatch = queueConfiguration.getMaximumItemInBatchDispatch();
+            batchQueueItemsConfig.minimumItemInBatchDispatch = queueConfiguration.getMinimumItemInBatchDispatch();
+            batchQueueItemsConfig.maxBatchItemDispatchWaitTimeout = queueConfiguration.getMaxBatchItemDispatchWaitTimeout();
+            batchQueueItemsConfigs.put(patternString, new AbstractMap.SimpleEntry<>(pattern, batchQueueItemsConfig));
         }
     }
 
     // remove config from all categories
     private void removeQueueConfigurationCategories(QueueConfiguration removedConfig) {
-        retryIntervalConfig.remove(removedConfig.getPattern());
-        maxQueueEntriesConfig.remove(removedConfig.getPattern());
-        enqueueDelayConfig.remove(removedConfig.getPattern());
-        enqueuePatrolConfig.remove(removedConfig.getPattern());
+        retryIntervalConfigs.remove(removedConfig.getPattern());
+        maxQueueEntriesConfigs.remove(removedConfig.getPattern());
+        enqueueDelayConfigs.remove(removedConfig.getPattern());
+        enqueuePatrolConfigs.remove(removedConfig.getPattern());
+        batchQueueItemsConfigs.remove(removedConfig.getPattern());
     }
 
     @VisibleForTesting

@@ -160,6 +160,10 @@ public class QueueConfigurationProviderTest {
             jsonObject.put(RedisquesAPI.PER_QUEUE_CONFIG_ENQUEUE_DELAY_FACTOR_MILLIS, 11);
             jsonObject.put(RedisquesAPI.PER_QUEUE_CONFIG_MAX_QUEUE_ENTRIES, 99);
             jsonObject.put(RedisquesAPI.PER_QUEUE_CONFIG_MAX_QUEUE_PATROL_LIMIT, 42);
+            jsonObject.put(RedisquesAPI.PER_QUEUE_CONFIG_MAXIMUM_ITEM_IN_BATCH_DISPATCH, 99);
+            jsonObject.put(RedisquesAPI.PER_QUEUE_CONFIG_MINIMUM_ITEM_IN_BATCH_DISPATCH, 20);
+            jsonObject.put(RedisquesAPI.PER_QUEUE_CONFIG_MAX_BATCH_DISPATCH_WAIT_TIMEOUT, 10);
+
             provider.updateQueueConfiguration("mytestqueue", jsonObject);
             QueueConfiguration queueConfiguration = provider.findQueueConfiguration("mytestqueue");
 
@@ -173,6 +177,11 @@ public class QueueConfigurationProviderTest {
             context.assertEquals(22L, provider.findEnqueueDelayConfig("mytestqueue", 4));
             context.assertEquals(42L, provider.findEnqueuePatrolConfig("mytestqueue"));
             context.assertEquals(3, provider.findRetryIntervalConfig("mytestqueue").size());
+
+            QueueConfigurationProvider.BatchQueueItemsConfig batchQueueItemsConfig = provider.findBatchQueueItemsConfig("mytestqueue");
+            context.assertEquals(99, batchQueueItemsConfig.maximumItemInBatchDispatch);
+            context.assertEquals(20, batchQueueItemsConfig.minimumItemInBatchDispatch);
+            context.assertEquals(10, batchQueueItemsConfig.maxBatchItemDispatchWaitTimeout);
 
 
             jsonObject.put(RedisquesAPI.PER_QUEUE_CONFIG_ENQUEUE_DELAY_FACTOR_MILLIS, 0);
@@ -189,6 +198,10 @@ public class QueueConfigurationProviderTest {
             context.assertEquals(0L, provider.findEnqueueDelayConfig("mytestqueue", 4));
             context.assertEquals(0L, provider.findEnqueuePatrolConfig("mytestqueue"));
             context.assertEquals(3, provider.findRetryIntervalConfig("mytestqueue").size());
+
+            jsonObject.put(RedisquesAPI.PER_QUEUE_CONFIG_MAXIMUM_ITEM_IN_BATCH_DISPATCH, 0);
+            provider.updateQueueConfiguration("mytestqueue", jsonObject);
+            context.assertNull(provider.findBatchQueueItemsConfig("mytestqueue"));
 
             async.complete();
         });
