@@ -317,7 +317,7 @@ public class QueueConsumerRunner {
         Handler<Void> nextMsgsHandler = event -> {
             redisService.lrange(queueKey, "0", String.valueOf(maximumItemInBatchDispatch - 1)).onComplete(answer -> {
                 if (answer.failed()) {
-                    log.error("Failed to peek queues '{}'", queueName, answer.cause());
+                    log.error("Failed to peek items of queue '{}'", queueName, answer.cause());
                     promise.fail(answer.cause());
                     return;
                 }
@@ -353,6 +353,7 @@ public class QueueConsumerRunner {
                 // timeout, just send what we have with itemsInBatch
                 nextMsgsHandler.handle(null);
             } else {
+                // check do we have enough items in the queue for minimum batch request
                 redisService.llen(queueKey).onComplete(answer1 -> {
                     if (answer1.succeeded() && answer1.result() != null) {
                         final long itemSize = answer1.result().toLong();

@@ -45,9 +45,26 @@ public class QueueConfigurationProvider {
         public long enqueueDelayMillis = 0;
     }
 
+    /**
+     * Config use for batch queue items dispatch
+     */
     public static class BatchQueueItemsConfig {
+        /**
+         * Maximum queue items allowed in a batch request.
+         * default "0" means: request per item.
+         */
         public int maximumItemInBatchDispatch = 0;
+
+        /**
+         * Minimum queue items required to do a batch, if not enough items, will wait until reach the condition or {@link #maxBatchItemDispatchWaitTimeout} reached
+         * default "0" means: disabled, just send what we can in a batch but not more than {@link #maximumItemInBatchDispatch}
+         */
         public int minimumItemInBatchDispatch = 0;
+
+        /**
+         * Seconds need to wait the queue items reach the condition {@link #minimumItemInBatchDispatch}, if condition can't reach within time, the batch queue will send what they have, not just wait.
+         * default "0" means: disabled, if you have a number > 0 in {@link #minimumItemInBatchDispatch}, may block the queue
+         */
         public int maxBatchItemDispatchWaitTimeout = 0;
     }
 
