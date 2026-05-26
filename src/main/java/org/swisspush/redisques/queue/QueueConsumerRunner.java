@@ -192,12 +192,12 @@ public class QueueConsumerRunner {
         log.trace("RedisQues read queue: {}", queueName);
         isQueueLocked(queueName).onComplete(lockAnswer -> {
             if (lockAnswer.failed()) {
-                throw exceptionFactory.newRuntimeException("TODO error handling " + queueName, lockAnswer.cause());
+                throw exceptionFactory.newRuntimeException("failed to check lock for queue: " + queueName, lockAnswer.cause());
             }
             boolean locked = lockAnswer.result();
             if (!locked) {
                 QueueConfiguration queueConfiguration = queueConfigurationProvider.findQueueConfiguration(queueName);
-                if (queueConfiguration == null || queueConfiguration.getNumberOfBatchItemDispatch() <= 1) {
+                if (queueConfiguration == null || queueConfiguration.getMaximumItemInBatchDispatch() <= 1) {
                     processSingleItem(queueName).onComplete(event -> {
                         if (event.failed()) {
                             log.error("RedisQues failed to process single item {}", queueName, event.cause());
@@ -207,9 +207,12 @@ public class QueueConsumerRunner {
                         }
                     });
                 } else {
-                    int batchItemDispatchSize = queueConfiguration.getNumberOfBatchItemDispatch();
-                    log.debug("RedisQues process multiple ({}) items of: {}", batchItemDispatchSize, queueName);
-                    processMultipleItems(queueName, batchItemDispatchSize).onComplete(event -> {
+                    final int maximumItemInBatchDispatch = queueConfiguration.getMaximumItemInBatchDispatch();
+                    final int minimumItemInBatchDispatch = queueConfiguration.getMinimumItemInBatchDispatch();
+                    final int maxBatchItemDispatchWaitTimeout = queueConfiguration.getMaxBatchItemDispatchWaitTimeout();
+
+                    log.debug("RedisQues process multiple (Max: {}, Min: {}, Timeout(Sec): {}) items of: {}", maximumItemInBatchDispatch, minimumItemInBatchDispatch, maxBatchItemDispatchWaitTimeout, queueName);
+                    processMultipleItems(queueName, maximumItemInBatchDispatch, minimumItemInBatchDispatch, maxBatchItemDispatchWaitTimeout).onComplete(event -> {
                         if (event.failed()) {
                             log.error("RedisQues failed to process multiple item {}", queueName, event.cause());
                             promise.fail(event.cause());
@@ -256,7 +259,7 @@ public class QueueConsumerRunner {
                         log.trace("RedisQues read queue: {}", queueKey);
                         redisService.llen(queueKey).onComplete(answer1 -> {
                             if (answer1.succeeded() && answer1.result() != null) {
-                                if ( answer1.result().toInteger() > 0) {
+                                if ( answer1.result().toLong() > 0L) {
                                     notifyConsumer(queueName).onComplete(event1 -> {
                                         if (event1.failed())
                                             log.warn("TODO error handling", exceptionFactory.newException(
@@ -297,30 +300,94 @@ public class QueueConsumerRunner {
         return promise.future();
     }
 
-    Future<Void> processMultipleItems(String queueName, int itemsInBatch) {
+    /**
+     * dispatch mutilple queue items of a queue at once,
+     * @param queueName     queue name
+     * @param maximumItemInBatchDispatch    max items allowed in a batch, if condition reached, will dispatch immediately
+     * @param minimumItemInBatchDispatch    min items needed in a batch, if not enough will wait until have enough item
+     * @param maxBatchItemDispatchWaitTimeout wait timeout for the queue item, if timeout occurred will dispatch what we have now, ignore the minimumItemInBatchDispatch
+     * @return
+     */
+    Future<Void> processMultipleItems(final String queueName,
+                                      final int maximumItemInBatchDispatch,
+                                      final int minimumItemInBatchDispatch,
+                                      final int maxBatchItemDispatchWaitTimeout) {
         Promise<Void> promise = Promise.promise();
-        String queueKey = keyspaceHelper.getQueuesPrefix() + queueName;
-        redisService.lrange(queueKey, "0", String.valueOf(itemsInBatch - 1)).onComplete(answer -> {
-            if (answer.failed()) {
-                log.error("Failed to peek queues '{}'", queueName, answer.cause());
-                promise.fail(answer.cause());
-                return;
-            }
-            Response response = answer.result();
-            log.trace("RedisQues read queue lrange item size: {}", response.size());
-            JsonArray itemsJsonArray = new JsonArray();
-            for (Response res : response) {
-                itemsJsonArray.add(res.toString());
-            }
-            processMessage(queueName, itemsJsonArray.toString(), itemsInBatch).onComplete(processMessageAnswer -> {
-                if (processMessageAnswer.failed()) {
-                    log.error("Failed to process queue '{}'", queueName, processMessageAnswer.cause());
-                    promise.fail(processMessageAnswer.cause());
-                } else {
-                    promise.complete();
+        final String queueKey = keyspaceHelper.getQueuesPrefix() + queueName;
+
+        Handler<Void> nextMsgsHandler = event -> {
+            redisService.lrange(queueKey, "0", String.valueOf(maximumItemInBatchDispatch - 1)).onComplete(answer -> {
+                if (answer.failed()) {
+                    log.error("Failed to peek queues '{}'", queueName, answer.cause());
+                    promise.fail(answer.cause());
+                    return;
                 }
+                Response response = answer.result();
+                log.trace("RedisQues read queue lrange item size: {}", response.size());
+                JsonArray itemsJsonArray = new JsonArray();
+                for (Response res : response) {
+                    itemsJsonArray.add(res.toString());
+                }
+                processMessage(queueName, itemsJsonArray.toString(), maximumItemInBatchDispatch).onComplete(processMessageAnswer -> {
+                    if (processMessageAnswer.failed()) {
+                        log.error("Failed to process queue '{}'", queueName, processMessageAnswer.cause());
+                        promise.fail(processMessageAnswer.cause());
+                    } else {
+                        promise.complete();
+                    }
+                });
             });
-        });
+        };
+
+        if (minimumItemInBatchDispatch > 0) {
+            // have minimum item limit
+            long lastConsumedTimestamp = System.currentTimeMillis();
+            if (myQueues.containsKey(queueName)) {
+                // we have lastConsumedTimestamp in list
+                lastConsumedTimestamp = myQueues.get(queueName).getLastConsumedTimestampMillis() != 0 ?
+                        myQueues.get(queueName).getLastConsumedTimestampMillis() : lastConsumedTimestamp;
+            }
+
+            final long timeFromLastConsumed = currentTimeMillis() - lastConsumedTimestamp;
+
+            if (maxBatchItemDispatchWaitTimeout > 0 && timeFromLastConsumed >= maxBatchItemDispatchWaitTimeout * 1000L) {
+                // timeout, just send what we have with itemsInBatch
+                nextMsgsHandler.handle(null);
+            } else {
+                redisService.llen(queueKey).onComplete(answer1 -> {
+                    if (answer1.succeeded() && answer1.result() != null) {
+                        final long itemSize = answer1.result().toLong();
+                        myQueues.computeIfPresent(queueName, (s, queueProcessingState) -> {
+                            queueProcessingState.setQueueItemSize(itemSize);
+                            return queueProcessingState;
+                        });
+                        if (itemSize >= minimumItemInBatchDispatch) {
+                            //we reached the minimum limit, dispatch
+                            nextMsgsHandler.handle(null);
+                        } else {
+                            // not time out, not reach the limit, just continue with default process delay
+                            long processorDelayMax = configurationProvider.configuration().getProcessorDelayMax();
+                            timer.executeDelayedMax(processorDelayMax).onComplete(delayed -> {
+                                if (delayed.failed()) {
+                                    log.error("Delayed execution has failed.", exceptionFactory.newException(delayed.cause()));
+                                }
+                                promise.complete();
+                            });
+                        }
+                    } else {
+                        if (answer1.failed() && log.isWarnEnabled()) {
+                            log.warn("Failed to get queue item size of {}", queueName, exceptionFactory.newException(
+                                    "redisAPI.llen(" + queueKey + ") failed", answer1.cause()));
+                        }
+                        promise.fail(answer1.cause());
+                    }
+                });
+            }
+        } else {
+            // no minimum limit, just dispatch in batch, also ignore timeout
+            nextMsgsHandler.handle(null);
+        }
+
         return promise.future();
     }
 

@@ -46,11 +46,22 @@ public class QueueConfiguration {
     private int maxQueueEntries = 0;
 
     /**
-     * Maximum queue items allowed in a process request.
+     * Maximum queue items allowed in a batch request.
      * default "0" means: request per item.
-     * Note: if this value set > 1, maxQueueEntries will disable
      */
-    private int numberOfBatchItemDispatch = 0;
+    private int maximumItemInBatchDispatch = 0;
+
+    /**
+     * minimum queue items required to do a batch, if not enough items, will wait until reach the condition or {@link #maxBatchItemDispatchWaitTimeout} reached
+     * default "0" means: disabled, just send what we can in a batch but not more than {@link #maximumItemInBatchDispatch}
+     */
+    private int minimumItemInBatchDispatch = 0;
+
+    /**
+     * how many seconds need to wait the queue items reach the condition {@link #minimumItemInBatchDispatch}, if condition can't reach within time, the batch queue will send what they have, not just wait.
+     * default "0" means: disabled, if you have a number > 0 in {@link #minimumItemInBatchDispatch}, may block the queue
+     */
+    private int maxBatchItemDispatchWaitTimeout = 0;
 
     public QueueConfiguration(String pattern) {
         this.pattern = Pattern.compile(pattern);
@@ -92,8 +103,16 @@ public class QueueConfiguration {
         return maxQueueEntries;
     }
 
-    public int getNumberOfBatchItemDispatch() {
-        return numberOfBatchItemDispatch;
+    public int getMaximumItemInBatchDispatch() {
+        return maximumItemInBatchDispatch;
+    }
+
+    public int getMinimumItemInBatchDispatch() {
+        return minimumItemInBatchDispatch;
+    }
+
+    public int getMaxBatchItemDispatchWaitTimeout() {
+        return maxBatchItemDispatchWaitTimeout;
     }
 
     public JsonObject asJsonObject() {
@@ -178,14 +197,42 @@ public class QueueConfiguration {
     /**
      * set the max queue items will dispatch in each request
      *
-     * @param numberOfBatchItemDispatch
+     * @param maximumItemInBatchDispatch
      * @return
      */
-    public QueueConfiguration withNumberOfBatchItemDispatch(int numberOfBatchItemDispatch) {
-        if (maxQueueEntries < 0) {
-            throw new IllegalArgumentException("numberOfBatchItemDispatch must be >=0 but is " + maxQueueEntries);
+    public QueueConfiguration withMaximumItemInBatchDispatch(int maximumItemInBatchDispatch) {
+        if (maximumItemInBatchDispatch < 0) {
+            throw new IllegalArgumentException("maximumItemInBatchDispatch must be >=0 but is " + maximumItemInBatchDispatch);
         }
-        this.numberOfBatchItemDispatch = numberOfBatchItemDispatch;
+        this.maximumItemInBatchDispatch = maximumItemInBatchDispatch;
+        return this;
+    }
+
+    /**
+     * set the minimum item size in a batch dispatch request
+     *
+     * @param minimumItemInBatchDispatch
+     * @return
+     */
+    public QueueConfiguration withMinimumItemInBatchDispatch(int minimumItemInBatchDispatch) {
+        if (minimumItemInBatchDispatch < 0) {
+            throw new IllegalArgumentException("minimumItemInBatchDispatch must be >=0 but is " + minimumItemInBatchDispatch);
+        }
+        this.minimumItemInBatchDispatch = minimumItemInBatchDispatch;
+        return this;
+    }
+
+    /**
+     * set the max wait time for wait a batch request reach the {@link #minimumItemInBatchDispatch}
+     *
+     * @param maxBatchItemDispatchWaitTimeout
+     * @return
+     */
+    public QueueConfiguration withMaxBatchItemDispatchWaitTimeout(int maxBatchItemDispatchWaitTimeout) {
+        if (maxBatchItemDispatchWaitTimeout < 0) {
+            throw new IllegalArgumentException("maxBatchItemDispatchWaitTimeout must be >=0 but is " + maxBatchItemDispatchWaitTimeout);
+        }
+        this.maxBatchItemDispatchWaitTimeout = maxBatchItemDispatchWaitTimeout;
         return this;
     }
 }

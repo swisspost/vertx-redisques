@@ -183,8 +183,14 @@ public class QueueConfigurationProvider {
             isNew = true;
         }
 
-        if (jsonObject.containsKey(RedisquesAPI.PER_QUEUE_CONFIG_NUMBER_OF_ITEM_BATCH_DISPATCH)) {
-            queueConfiguration.withNumberOfBatchItemDispatch(jsonObject.getInteger(RedisquesAPI.PER_QUEUE_CONFIG_NUMBER_OF_ITEM_BATCH_DISPATCH));
+        if (jsonObject.containsKey(RedisquesAPI.PER_QUEUE_CONFIG_MAXIMUM_ITEM_IN_BATCH_DISPATCH)) {
+            queueConfiguration.withMaximumItemInBatchDispatch(jsonObject.getInteger(RedisquesAPI.PER_QUEUE_CONFIG_MAXIMUM_ITEM_IN_BATCH_DISPATCH));
+        }
+        if (jsonObject.containsKey(RedisquesAPI.PER_QUEUE_CONFIG_MINIMUM_ITEM_IN_BATCH_DISPATCH)) {
+            queueConfiguration.withMinimumItemInBatchDispatch(jsonObject.getInteger(RedisquesAPI.PER_QUEUE_CONFIG_MINIMUM_ITEM_IN_BATCH_DISPATCH));
+        }
+        if (jsonObject.containsKey(RedisquesAPI.PER_QUEUE_CONFIG_MAX_BATCH_DISPATCH_WAIT_TIMEOUT)) {
+            queueConfiguration.withMaxBatchItemDispatchWaitTimeout(jsonObject.getInteger(RedisquesAPI.PER_QUEUE_CONFIG_MAX_BATCH_DISPATCH_WAIT_TIMEOUT));
         }
         if (jsonObject.containsKey(RedisquesAPI.PER_QUEUE_CONFIG_MAX_QUEUE_ENTRIES)) {
             queueConfiguration.withMaxQueueEntries(jsonObject.getInteger(RedisquesAPI.PER_QUEUE_CONFIG_MAX_QUEUE_ENTRIES));

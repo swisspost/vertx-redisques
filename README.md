@@ -703,7 +703,10 @@ Request Data
         "retryIntervals": <de queue retry intervals array (optional)>,
         "maxQueueEntries": <max queue items will keep (optional)>,
         "enqueueDelayFactorMillis": <max enqueue delay factor (optional)>,
-        "enqueueMaxDelayMillis": <max enqueue delay in millis (optional)>
+        "enqueueMaxDelayMillis": <max enqueue delay in millis (optional)>,
+        "maximumItemInBatchDispatch": <Maximum queue items allowed in a batch request (optional)>,
+        "minimumItemInBatchDispatch": <Minimum queue items required to do a batch (optional)>,
+        "maxBatchItemDispatchWaitTimeout": <How many seconds need to wait the queue items reach the minimum queue items required (optional)>
     }
 }
 ```

@@ -4,7 +4,9 @@ import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.DeploymentOptions;
+import io.vertx.core.Future;
 import io.vertx.core.Handler;
+import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonArray;
@@ -17,6 +19,7 @@ import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.swisspush.redisques.AbstractTestCase;
+import org.swisspush.redisques.QueueState;
 import org.swisspush.redisques.RedisQues;
 import org.swisspush.redisques.util.DefaultRedisquesConfigurationProvider;
 import org.swisspush.redisques.util.QueueConfiguration;
@@ -85,11 +88,12 @@ public class QueueConsumerRunnerTest extends AbstractTestCase {
         redisQues.disableMigrationTool();
         vertx.deployVerticle(redisQues, new DeploymentOptions().setConfig(config), context.asyncAssertSuccess(event -> {
             deploymentId = event;
-            keyspaceHelper =  redisQues.getKeyspaceHelper();
+            keyspaceHelper = redisQues.getKeyspaceHelper();
             log.info("vert.x Deploy - {} was successful.", redisQues.getClass().getSimpleName());
             jedis = new Jedis("localhost", 6379, 5000);
         }));
     }
+
     @Test
     public void getQueueRescheduleRefreshPeriodWhileFailureCountIncreasedUntilExceedMaxRetryInterval(TestContext context) {
         final String queue = "queue1";
@@ -180,78 +184,70 @@ public class QueueConsumerRunnerTest extends AbstractTestCase {
     }
 
     @Test
-    public void testMultipleItemBatchDispatchSuccess(TestContext context) {
+    public void testMultipleItemBatchDispatchSuccessWithoutLimit(TestContext context) {
         Async async = context.async();
         final AtomicInteger index = new AtomicInteger(0);
         flushAll();
-        vertx.eventBus().consumer(RedisquesConfiguration.PROP_PROCESSOR_ADDRESS, new Handler<Message<JsonObject>>() {
-            @Override
-            public void handle(Message<JsonObject> event) {
-                log.info("Received '{}'", event.body());
-                if (index.get() == 0 ){
-                    context.assertEquals("batch-queue-1.test", event.body().getString("queue"));
-                    JsonArray itemsJsonArray = new JsonArray(event.body().getString("payload"));
-                    context.assertEquals(3, itemsJsonArray.size());
-                    // the order is important
-                    context.assertEquals("message_1-1", itemsJsonArray.getString(0));
-                    context.assertEquals("message_1-2", itemsJsonArray.getString(1));
-                    context.assertEquals("message_1-3", itemsJsonArray.getString(2));
-                }else if (index.get() == 1 ){
-                    context.assertEquals("batch-queue-4.test", event.body().getString("queue"));
-                    JsonArray itemsJsonArray = new JsonArray(event.body().getString("payload"));
-                    context.assertEquals(5, itemsJsonArray.size());
-                    // the order is important
-                    context.assertEquals("message_4-1", itemsJsonArray.getString(0));
-                    context.assertEquals("message_4-2", itemsJsonArray.getString(1));
-                    context.assertEquals("message_4-3", itemsJsonArray.getString(2));
-                    context.assertEquals("message_4-4", itemsJsonArray.getString(3));
-                    context.assertEquals("message_4-5", itemsJsonArray.getString(4));
-                } else {
-                    context.fail("unexpected index " + index);
-                }
-                event.reply(new JsonObject().put(STATUS, OK));
+        vertx.eventBus().consumer(RedisquesConfiguration.PROP_PROCESSOR_ADDRESS, (Handler<Message<JsonObject>>) event -> {
+            log.info("Received '{}'", event.body());
+            if (index.get() == 0) {
+                context.assertEquals("batch-queue-1.test", event.body().getString("queue"));
+                JsonArray itemsJsonArray = new JsonArray(event.body().getString("payload"));
+                context.assertEquals(3, itemsJsonArray.size());
+                // the order is important
+                context.assertEquals("message_1-1", itemsJsonArray.getString(0));
+                context.assertEquals("message_1-2", itemsJsonArray.getString(1));
+                context.assertEquals("message_1-3", itemsJsonArray.getString(2));
+            } else if (index.get() == 1) {
+                context.assertEquals("batch-queue-4.test", event.body().getString("queue"));
+                JsonArray itemsJsonArray = new JsonArray(event.body().getString("payload"));
+                context.assertEquals(5, itemsJsonArray.size());
+                // the order is important
+                context.assertEquals("message_4-1", itemsJsonArray.getString(0));
+                context.assertEquals("message_4-2", itemsJsonArray.getString(1));
+                context.assertEquals("message_4-3", itemsJsonArray.getString(2));
+                context.assertEquals("message_4-4", itemsJsonArray.getString(3));
+                context.assertEquals("message_4-5", itemsJsonArray.getString(4));
+            } else {
+                context.fail("unexpected index " + index);
             }
+            event.reply(new JsonObject().put(STATUS, OK));
         });
-        eventBusSend(buildAddQueueItemOperation("batch-queue-1.test", "message_1-1"), e1 -> {
-            eventBusSend(buildAddQueueItemOperation("batch-queue-1.test", "message_1-2"), e2 -> {
-                eventBusSend(buildAddQueueItemOperation("batch-queue-1.test", "message_1-3"), e3 -> {
-                    eventBusSend(buildAddQueueItemOperation("batch-queue-4.test", "message_4-1"), e4 -> {
-                        eventBusSend(buildAddQueueItemOperation("batch-queue-4.test", "message_4-2"), e5 -> {
-                            eventBusSend(buildAddQueueItemOperation("batch-queue-4.test", "message_4-3"), e6 -> {
-                                eventBusSend(buildAddQueueItemOperation("batch-queue-4.test", "message_4-4"), e7 -> {
-                                    eventBusSend(buildAddQueueItemOperation("batch-queue-4.test", "message_4-5"), e8 -> {
-                                        eventBusSend(buildAddQueueItemOperation("batch-queue-4.test", "message_4-6"), e9 -> {
-                                            eventBusSend(buildAddQueueItemOperation("batch-queue-4.test", "message_4-7"), e10 -> {
-                                                eventBusSend(buildAddQueueItemOperation("batch-queue-4.test", "message_4-8"), e11 -> {
-                                                    assertQueuesCount(context, 2);
-                                                    assertQueueItemsCount(context, "batch-queue-1.test", 3);
-                                                    assertQueueItemsCount(context, "batch-queue-4.test", 8);
-                                                    String queueName = "batch-queue-1.test";
-                                                    redisQues.getQueueConsumerRunner().processMultipleItems(queueName, 5).onComplete(new Handler<AsyncResult<Void>>() {
-                                                        @Override
-                                                        public void handle(AsyncResult<Void> event) {
-                                                            index.incrementAndGet();
-                                                            String queueName = "batch-queue-4.test";
-                                                            redisQues.getQueueConsumerRunner().processMultipleItems(queueName, 5).onComplete(new Handler<AsyncResult<Void>>() {
-                                                                @Override
-                                                                public void handle(AsyncResult<Void> event) {
-                                                                    assertQueuesCount(context, 1);
-                                                                    assertQueueItemsCount(context, "batch-queue-1.test", 0);
-                                                                    assertQueueItemsCount(context, "batch-queue-4.test", 3);
-                                                                    async.complete();
-                                                                }
-                                                            });
-                                                        }
-                                                    });
-                                                });
-                                            });
-                                        });
-                                    });
-                                });
-                            });
-                        });
+
+        List<String[]> items = List.of(
+                new String[]{"batch-queue-1.test", "message_1-1"},
+                new String[]{"batch-queue-1.test", "message_1-2"},
+                new String[]{"batch-queue-1.test", "message_1-3"},
+                new String[]{"batch-queue-4.test", "message_4-1"},
+                new String[]{"batch-queue-4.test", "message_4-2"},
+                new String[]{"batch-queue-4.test", "message_4-3"},
+                new String[]{"batch-queue-4.test", "message_4-4"},
+                new String[]{"batch-queue-4.test", "message_4-5"},
+                new String[]{"batch-queue-4.test", "message_4-6"},
+                new String[]{"batch-queue-4.test", "message_4-7"},
+                new String[]{"batch-queue-4.test", "message_4-8"}
+        );
+
+        addQueueItemsSequentially(items).onComplete(e11 -> {
+            assertQueuesCount(context, 2);
+            assertQueueItemsCount(context, "batch-queue-1.test", 3);
+            assertQueueItemsCount(context, "batch-queue-4.test", 8);
+            String queueName = "batch-queue-1.test";
+            redisQues.getQueueConsumerRunner().processMultipleItems(queueName, 5, 0, 0).onComplete(new Handler<AsyncResult<Void>>() {
+                @Override
+                public void handle(AsyncResult<Void> event) {
+                    index.incrementAndGet();
+                    String queueName = "batch-queue-4.test";
+                    redisQues.getQueueConsumerRunner().processMultipleItems(queueName, 5, 0, 0).onComplete(new Handler<AsyncResult<Void>>() {
+                        @Override
+                        public void handle(AsyncResult<Void> event) {
+                            assertQueuesCount(context, 1);
+                            assertQueueItemsCount(context, "batch-queue-1.test", 0);
+                            assertQueueItemsCount(context, "batch-queue-4.test", 3);
+                            async.complete();
+                        }
                     });
-                });
+                }
             });
         });
     }
@@ -265,7 +261,7 @@ public class QueueConsumerRunnerTest extends AbstractTestCase {
             @Override
             public void handle(Message<JsonObject> event) {
                 log.info("Received '{}'", event.body());
-                if (index.get() == 0 ){
+                if (index.get() == 0) {
                     context.assertEquals("batch-queue-1.test", event.body().getString("queue"));
                     JsonArray itemsJsonArray = new JsonArray(event.body().getString("payload"));
                     context.assertEquals(3, itemsJsonArray.size());
@@ -273,7 +269,7 @@ public class QueueConsumerRunnerTest extends AbstractTestCase {
                     context.assertEquals("message_1-1", itemsJsonArray.getString(0));
                     context.assertEquals("message_1-2", itemsJsonArray.getString(1));
                     context.assertEquals("message_1-3", itemsJsonArray.getString(2));
-                }else if (index.get() == 1 ){
+                } else if (index.get() == 1) {
                     context.assertEquals("batch-queue-4.test", event.body().getString("queue"));
                     JsonArray itemsJsonArray = new JsonArray(event.body().getString("payload"));
                     context.assertEquals(5, itemsJsonArray.size());
@@ -289,47 +285,187 @@ public class QueueConsumerRunnerTest extends AbstractTestCase {
                 event.reply(new JsonObject().put(STATUS, ERROR));
             }
         });
-        eventBusSend(buildAddQueueItemOperation("batch-queue-1.test", "message_1-1"), e1 -> {
-            eventBusSend(buildAddQueueItemOperation("batch-queue-1.test", "message_1-2"), e2 -> {
-                eventBusSend(buildAddQueueItemOperation("batch-queue-1.test", "message_1-3"), e3 -> {
-                    eventBusSend(buildAddQueueItemOperation("batch-queue-4.test", "message_4-1"), e4 -> {
-                        eventBusSend(buildAddQueueItemOperation("batch-queue-4.test", "message_4-2"), e5 -> {
-                            eventBusSend(buildAddQueueItemOperation("batch-queue-4.test", "message_4-3"), e6 -> {
-                                eventBusSend(buildAddQueueItemOperation("batch-queue-4.test", "message_4-4"), e7 -> {
-                                    eventBusSend(buildAddQueueItemOperation("batch-queue-4.test", "message_4-5"), e8 -> {
-                                        eventBusSend(buildAddQueueItemOperation("batch-queue-4.test", "message_4-6"), e9 -> {
-                                            eventBusSend(buildAddQueueItemOperation("batch-queue-4.test", "message_4-7"), e10 -> {
-                                                eventBusSend(buildAddQueueItemOperation("batch-queue-4.test", "message_4-8"), e11 -> {
-                                                    assertQueuesCount(context, 2);
-                                                    assertQueueItemsCount(context, "batch-queue-1.test", 3);
-                                                    assertQueueItemsCount(context, "batch-queue-4.test", 8);
-                                                    String queueName = "batch-queue-1.test";
-                                                    redisQues.getQueueConsumerRunner().processMultipleItems(queueName, 5).onComplete(new Handler<AsyncResult<Void>>() {
-                                                        @Override
-                                                        public void handle(AsyncResult<Void> event) {
-                                                            index.incrementAndGet();
-                                                            String queueName = "batch-queue-4.test";
-                                                            redisQues.getQueueConsumerRunner().processMultipleItems(queueName, 5).onComplete(new Handler<AsyncResult<Void>>() {
-                                                                @Override
-                                                                public void handle(AsyncResult<Void> event) {
-                                                                    assertQueuesCount(context, 2);
-                                                                    assertQueueItemsCount(context, "batch-queue-1.test", 3);
-                                                                    assertQueueItemsCount(context, "batch-queue-4.test", 8);
-                                                                    async.complete();
-                                                                }
-                                                            });
-                                                        }
-                                                    });
-                                                });
-                                            });
-                                        });
-                                    });
-                                });
-                            });
+        List<String[]> items = List.of(
+                new String[]{"batch-queue-1.test", "message_1-1"},
+                new String[]{"batch-queue-1.test", "message_1-2"},
+                new String[]{"batch-queue-1.test", "message_1-3"},
+                new String[]{"batch-queue-4.test", "message_4-1"},
+                new String[]{"batch-queue-4.test", "message_4-2"},
+                new String[]{"batch-queue-4.test", "message_4-3"},
+                new String[]{"batch-queue-4.test", "message_4-4"},
+                new String[]{"batch-queue-4.test", "message_4-5"},
+                new String[]{"batch-queue-4.test", "message_4-6"},
+                new String[]{"batch-queue-4.test", "message_4-7"},
+                new String[]{"batch-queue-4.test", "message_4-8"}
+        );
+
+        addQueueItemsSequentially(items).onComplete(e11 -> {
+            assertQueuesCount(context, 2);
+            assertQueueItemsCount(context, "batch-queue-1.test", 3);
+            assertQueueItemsCount(context, "batch-queue-4.test", 8);
+            String queueName = "batch-queue-1.test";
+            redisQues.getQueueConsumerRunner().processMultipleItems(queueName, 5, 0, 0).onComplete(new Handler<AsyncResult<Void>>() {
+                @Override
+                public void handle(AsyncResult<Void> event) {
+                    index.incrementAndGet();
+                    String queueName = "batch-queue-4.test";
+                    redisQues.getQueueConsumerRunner().processMultipleItems(queueName, 5, 0, 0).onComplete(new Handler<AsyncResult<Void>>() {
+                        @Override
+                        public void handle(AsyncResult<Void> event) {
+                            assertQueuesCount(context, 2);
+                            assertQueueItemsCount(context, "batch-queue-1.test", 3);
+                            assertQueueItemsCount(context, "batch-queue-4.test", 8);
+                            async.complete();
+                        }
+                    });
+                }
+            });
+        });
+    }
+
+
+    @Test
+    public void testMultipleItemBatchDispatchSuccessWithMinimum(TestContext context) {
+        Async async = context.async();
+        final AtomicInteger index = new AtomicInteger(0);
+        final String queueName = "batch-queue-1.test";
+        flushAll();
+        vertx.eventBus().consumer(RedisquesConfiguration.PROP_PROCESSOR_ADDRESS, (Handler<Message<JsonObject>>) event -> {
+            log.info("Received '{}'", event.body());
+            if (index.get() == 0) {
+                context.fail("Should no dispatch");
+            } else if (index.get() == 1) {
+                context.assertEquals(queueName, event.body().getString("queue"));
+                JsonArray itemsJsonArray = new JsonArray(event.body().getString("payload"));
+                context.assertEquals(4, itemsJsonArray.size());
+                // the order is important
+                context.assertEquals("message_1-1", itemsJsonArray.getString(0));
+                context.assertEquals("message_1-2", itemsJsonArray.getString(1));
+                context.assertEquals("message_1-3", itemsJsonArray.getString(2));
+                context.assertEquals("message_1-4", itemsJsonArray.getString(3));
+            } else {
+                context.fail("unexpected index " + index);
+            }
+            event.reply(new JsonObject().put(STATUS, OK));
+        });
+
+        List<String[]> items = List.of(
+                new String[]{queueName, "message_1-1"},
+                new String[]{queueName, "message_1-2"},
+                new String[]{queueName, "message_1-3"}
+        );
+
+        addQueueItemsSequentially(items).onComplete(e11 -> {
+            assertQueuesCount(context, 1);
+            assertQueueItemsCount(context, queueName, 3);
+            redisQues.getQueueConsumerRunner().processMultipleItems(queueName, 5, 4, 0).onComplete(new Handler<AsyncResult<Void>>() {
+                @Override
+                public void handle(AsyncResult<Void> event) {
+                    index.incrementAndGet();
+                    eventBusSend(buildAddQueueItemOperation(queueName, "message_1-4"), e1 -> {
+                        redisQues.getQueueConsumerRunner().processMultipleItems(queueName, 5, 4, 0).onComplete(new Handler<AsyncResult<Void>>() {
+                            @Override
+                            public void handle(AsyncResult<Void> event) {
+                                assertQueuesCount(context, 0);
+                                assertQueueItemsCount(context, queueName, 0);
+                                async.complete();
+                            }
                         });
                     });
+                }
+            });
+        });
+    }
+
+    @Test
+    public void testMultipleItemBatchDispatchSuccessWithMinimumAndTimeout(TestContext context) {
+        Async async = context.async();
+        final AtomicInteger index = new AtomicInteger(0);
+        final String queueName = "batch-queue-1.test";
+        flushAll();
+        vertx.eventBus().consumer(RedisquesConfiguration.PROP_PROCESSOR_ADDRESS, (Handler<Message<JsonObject>>) event -> {
+            log.info("Received '{}'", event.body());
+            if (index.get() == 0) {
+                context.fail("Should no dispatch");
+            } else if (index.get() == 1) {
+                context.fail("Should no dispatch");
+            } else if (index.get() == 2) {
+                context.fail("Should no dispatch");
+            } else if (index.get() == 3) {
+                context.assertEquals(queueName, event.body().getString("queue"));
+                JsonArray itemsJsonArray = new JsonArray(event.body().getString("payload"));
+                context.assertEquals(3, itemsJsonArray.size());
+                // the order is important
+                context.assertEquals("message_1-1", itemsJsonArray.getString(0));
+                context.assertEquals("message_1-2", itemsJsonArray.getString(1));
+                context.assertEquals("message_1-3", itemsJsonArray.getString(2));
+            } else {
+                context.fail("unexpected index " + index);
+            }
+            event.reply(new JsonObject().put(STATUS, OK));
+        });
+
+        List<String[]> items = List.of(
+                new String[]{queueName, "message_1-1"},
+                new String[]{queueName, "message_1-2"},
+                new String[]{queueName, "message_1-3"}
+        );
+        // mock the consume function mark this queue is in consuming
+        redisQues.getQueueConsumerRunner().getMyQueues().put(queueName, new QueueProcessingState(QueueState.CONSUMING, System.currentTimeMillis()));
+        addQueueItemsSequentially(items).onComplete(e11 -> {
+            assertQueuesCount(context, 1);
+            assertQueueItemsCount(context, queueName, 3);
+            redisQues.getQueueConsumerRunner().processMultipleItems(queueName, 5, 4, 3).onComplete(event -> {
+                index.incrementAndGet();
+                vertx.setTimer(1000, new Handler<Long>() {
+                    @Override
+                    public void handle(Long event) {
+                        index.incrementAndGet();
+                        vertx.setTimer(1000, new Handler<Long>() {
+                            @Override
+                            public void handle(Long event) {
+                                index.incrementAndGet();
+                                vertx.setTimer(1100, new Handler<Long>() {
+                                    @Override
+                                    public void handle(Long event) {
+                                        redisQues.getQueueConsumerRunner().processMultipleItems(queueName, 5, 4, 3).onComplete(event1 -> {
+                                            assertQueuesCount(context, 0);
+                                            assertQueueItemsCount(context, queueName, 0);
+                                            async.complete();
+                                        });
+                                    }
+                                });
+                            }
+                        });
+                    }
                 });
             });
+        });
+    }
+
+
+    private Future<Void> addQueueItemsSequentially(List<String[]> items) {
+        Promise<Void> promise = Promise.promise();
+        addQueueItemsSequentially(items, 0, promise);
+        return promise.future();
+    }
+
+    private void addQueueItemsSequentially(List<String[]> items, int index, Promise<Void> promise) {
+        if (index >= items.size()) {
+            promise.complete();
+            return;
+        }
+
+        String queue = items.get(index)[0];
+        String message = items.get(index)[1];
+
+        eventBusSend(buildAddQueueItemOperation(queue, message), ar -> {
+            if (ar.failed()) {
+                promise.fail(ar.cause());
+                return;
+            }
+
+            addQueueItemsSequentially(items, index + 1, promise);
         });
     }
 }

@@ -14,11 +14,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 
 ### New features
-- Add support batch queue items dispatch
-  
-To enable this feature, you need set it via QueueConfiguration.withNumberOfBatchItemDispatch. once you have item in batch > 2, 
-the payload in message will change from a normal string to a JsonArray which contains mutilple items, example:
-
+- Add support batch queue items dispatch 
+To enable this feature, you need set it via QueueConfiguration.withMaximumItemInBatchDispatch. once you have item in batch > 2, 
+the payload in message will change from a normal string to a JsonArray which contains mutilple items.
+  - Additional parameter:
+    - minimumItemInBatchDispatch: Minimum queue items required to do a batch, if not enough items, will wait until reach the condition, '0' means not in use
+    - maxBatchItemDispatchWaitTimeout: How many seconds need to wait the queue items reach the condition, '0' means always wait
+  - Example:
 ```json
 {
   "queue": "batch-queue",
