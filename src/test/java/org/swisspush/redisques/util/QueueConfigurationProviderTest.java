@@ -55,19 +55,26 @@ public class QueueConfigurationProviderTest {
             jsonObject.put(RedisquesAPI.PER_QUEUE_CONFIG_ENQUEUE_MAX_DELAY_MILLIS, 22);
             jsonObject.put(RedisquesAPI.PER_QUEUE_CONFIG_ENQUEUE_DELAY_FACTOR_MILLIS, 11);
             jsonObject.put(RedisquesAPI.PER_QUEUE_CONFIG_MAX_QUEUE_ENTRIES, 99);
+            jsonObject.put(RedisquesAPI.PER_QUEUE_CONFIG_MAXIMUM_ITEM_IN_BATCH_DISPATCH, 500);
+            jsonObject.put(RedisquesAPI.PER_QUEUE_CONFIG_MINIMUM_ITEM_IN_BATCH_DISPATCH, 400);
+            jsonObject.put(RedisquesAPI.PER_QUEUE_CONFIG_MAX_BATCH_DISPATCH_WAIT_TIMEOUT, 10);
+
             provider.updateQueueConfiguration("mytestqueue", jsonObject);
             QueueConfiguration queueConfiguration = provider.findQueueConfiguration("mytestqueue");
 
             context.assertEquals(99,  queueConfiguration.getMaxQueueEntries());
             context.assertEquals(11.0F,  queueConfiguration.getEnqueueDelayFactorMillis());
             context.assertEquals(22,  queueConfiguration.getEnqueueMaxDelayMillis());
+            context.assertEquals(500,  queueConfiguration.getMaximumItemInBatchDispatch());
+            context.assertEquals(400,  queueConfiguration.getMinimumItemInBatchDispatch());
+            context.assertEquals(10,  queueConfiguration.getMaxBatchItemDispatchWaitTimeout());
             context.assertEquals(3,  queueConfiguration.getRetryIntervals().length);
 
             jsonObject.put(RedisquesAPI.PER_QUEUE_CONFIG_ENQUEUE_MAX_DELAY_MILLIS, 212);
             provider.updateQueueConfiguration("mytestqueue", jsonObject);
             QueueConfiguration queueConfigurationNew = provider.findQueueConfiguration("mytestqueue");
 
-            // the onject should be updated, not replaced
+            // the object should be updated, not replaced
             context.assertEquals(queueConfiguration,  queueConfigurationNew);
             context.assertEquals(99,  queueConfiguration.getMaxQueueEntries());
             context.assertEquals(11.0F,  queueConfiguration.getEnqueueDelayFactorMillis());
@@ -153,6 +160,10 @@ public class QueueConfigurationProviderTest {
             jsonObject.put(RedisquesAPI.PER_QUEUE_CONFIG_ENQUEUE_DELAY_FACTOR_MILLIS, 11);
             jsonObject.put(RedisquesAPI.PER_QUEUE_CONFIG_MAX_QUEUE_ENTRIES, 99);
             jsonObject.put(RedisquesAPI.PER_QUEUE_CONFIG_MAX_QUEUE_PATROL_LIMIT, 42);
+            jsonObject.put(RedisquesAPI.PER_QUEUE_CONFIG_MAXIMUM_ITEM_IN_BATCH_DISPATCH, 99);
+            jsonObject.put(RedisquesAPI.PER_QUEUE_CONFIG_MINIMUM_ITEM_IN_BATCH_DISPATCH, 20);
+            jsonObject.put(RedisquesAPI.PER_QUEUE_CONFIG_MAX_BATCH_DISPATCH_WAIT_TIMEOUT, 10);
+
             provider.updateQueueConfiguration("mytestqueue", jsonObject);
             QueueConfiguration queueConfiguration = provider.findQueueConfiguration("mytestqueue");
 
@@ -166,6 +177,11 @@ public class QueueConfigurationProviderTest {
             context.assertEquals(22L, provider.findEnqueueDelayConfig("mytestqueue", 4));
             context.assertEquals(42L, provider.findEnqueuePatrolConfig("mytestqueue"));
             context.assertEquals(3, provider.findRetryIntervalConfig("mytestqueue").size());
+
+            QueueConfigurationProvider.BatchQueueItemsConfig batchQueueItemsConfig = provider.findBatchQueueItemsConfig("mytestqueue");
+            context.assertEquals(99, batchQueueItemsConfig.maximumItemInBatchDispatch);
+            context.assertEquals(20, batchQueueItemsConfig.minimumItemInBatchDispatch);
+            context.assertEquals(10, batchQueueItemsConfig.maxBatchItemDispatchWaitTimeout);
 
 
             jsonObject.put(RedisquesAPI.PER_QUEUE_CONFIG_ENQUEUE_DELAY_FACTOR_MILLIS, 0);
@@ -182,6 +198,10 @@ public class QueueConfigurationProviderTest {
             context.assertEquals(0L, provider.findEnqueueDelayConfig("mytestqueue", 4));
             context.assertEquals(0L, provider.findEnqueuePatrolConfig("mytestqueue"));
             context.assertEquals(3, provider.findRetryIntervalConfig("mytestqueue").size());
+
+            jsonObject.put(RedisquesAPI.PER_QUEUE_CONFIG_MAXIMUM_ITEM_IN_BATCH_DISPATCH, 0);
+            provider.updateQueueConfiguration("mytestqueue", jsonObject);
+            context.assertNull(provider.findBatchQueueItemsConfig("mytestqueue"));
 
             async.complete();
         });
