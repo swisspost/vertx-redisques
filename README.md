@@ -88,7 +88,6 @@ The following configuration values are available:
 | queueStatsRequestQuotaAcquireRetryTimeMs               | -1                              | Queue stats requests quota acquire retry delay time [ms]. Use **-1** to reject immediately                                                                                                                       |
 | getQueuesItemsCountRedisRequestQuotaAcquireRetryTimeMs | -1                              | Get queues items count action  requests quota acquire retry delay time [ms]. Use **-1** to reject immediately                                                                                                    |
 | activeQueueRegRefreshReqQuotaAcquireRetryTimeMs        | -1                              | Active queue register refresh requests quota acquire retry delay time [ms]. Use **-1** to reject immediately                                                                                                     |
-| globalQueuePatrol                                      | -1                              | The global patrol limits for all queues Use **-1** disable the patrol, because the size of queue item update are asynced, so patrol limit may have some delays                                                    |
 
 ### Warning about Quota Timeout Configuration
 
@@ -694,16 +693,22 @@ Response Data
 
 #### setPerQueueConfiguration
 
+For more details related to [Queue items batch dispatch](#queue-items-batch-dispatch)
+
 Request Data
 ```
 {
     "operation": "setPerQueueConfiguration",
     "payload": {
+        "configName": <string of a queue config (request)>,
         "filter": <str regex pattern to apply to queues (request)>,
         "retryIntervals": <de queue retry intervals array (optional)>,
         "maxQueueEntries": <max queue items will keep (optional)>,
         "enqueueDelayFactorMillis": <max enqueue delay factor (optional)>,
-        "enqueueMaxDelayMillis": <max enqueue delay in millis (optional)>
+        "enqueueMaxDelayMillis": <max enqueue delay in millis (optional)>,
+        "maximumItemInBatchDispatch": <Maximum queue items allowed in a batch request (optional).>,
+        "minimumItemInBatchDispatch": <Minimum queue items required to do a batch (optional)>,
+        "maxBatchItemDispatchWaitTimeout": <How many seconds need to wait the queue items reach the minimum queue items required (optional)>
     }
 }
 ```
@@ -714,6 +719,105 @@ Response Data
     "status": "ok" / "error"
 }
 ```
+
+#### getPerQueueConfiguration
+Request Data
+```
+{
+    "operation": "getPerQueueConfiguration",
+    "payload": {
+        "configName": <string of a queue config (optional)>
+    }
+}
+```
+
+Response Data (Empty configName, will return all configs)
+```
+{
+    "queues-10s-fix-delay":
+    {
+        "pattern":"listener-hook-http.*",
+        "retryIntervals":[10],
+        "enqueueDelayFactorMillis":0.0,
+        "enqueueMaxDelayMillis":0,
+        "maxQueueEntries":0,
+        "enqueuePatrolLimit":0
+    }, 
+    "queues-20s-fix-delay":
+    {
+        "pattern":"listener-hook-http-more-delay.*",
+        "retryIntervals":[20],
+        "enqueueDelayFactorMillis":0.0,
+        "enqueueMaxDelayMillis":0,
+        "maxQueueEntries":0,
+        "enqueuePatrolLimit":0
+    }, 
+    .
+    .
+}
+```
+
+Response Data (with a exist configName)
+```
+{
+    "queues-10s-fix-delay":
+    {
+        "pattern":"listener-hook-http.*",
+        "retryIntervals":[10],
+        "enqueueDelayFactorMillis":0.0,
+        "enqueueMaxDelayMillis":0,
+        "maxQueueEntries":0,
+        "enqueuePatrolLimit":0
+    }
+}
+```
+
+Response Data (with a not-exist configName)
+```
+{
+}
+```
+
+#### deleteQueueConfiguration
+
+Request Data
+```
+{
+    "operation": "deleteQueueConfiguration",
+    "payload": {
+        "configName": <string of a queue config (request)>
+    }
+}
+```
+
+Response Data
+```
+{
+    "status": "ok" / "error"
+}
+```
+
+#### getQueuesSizeStatistics
+
+Request Data
+```
+{
+    "operation": "getQueuesSizeStatistics",
+    "payload": {}
+}
+```
+
+Response Data
+```
+{
+    "status": "ok" / "error",
+    "payload": {
+      "queue_1": 10,
+      "queue_2": 25
+    }
+}
+```
+
 
 ## RedisQues HTTP API
 RedisQues provides a HTTP API to modify queues, queue items and get information about queue counts and queue item counts.
@@ -1076,6 +1180,20 @@ The result will be a json object with the statistics information like the exampl
 }
 ```
 
+### Get statistics queues item size
+The statistics queues size information contains all queue's size from all instances. but queues size here are collected while the queue processing,
+so can not use as a realtime time reference.
+> GET /queuing/statistics/queuesize
+
+The result will be a json object with the queue name and size.
+
+```json
+{
+  "queue_1": 10,
+  "queue_2": 25
+}
+```
+
 ### Get queue speed
 The speed evaluation collects and calculates the cumulated speed of all queues matchting the given filter.
 To get the speed information use
@@ -1121,6 +1239,188 @@ The collected metrics include:
 | redisques_queue_consumers            | Amount of consumer registered                               |
 | redisques_queue_consumers            | Amount of consumer registered                               |
 | redisques_queue_consumer_life_cycle  | A time line trace for each consumer                         |
+
+## Special features
+### Queue items batch dispatch
+The queue runner supports configurable queue item batching to improve
+throughput and reduce dispatch overhead.
+
+Queue items may either be:
+
+- dispatched immediately one-by-one
+- grouped together into batches as a array
+
+depending on the batch dispatch configuration.
+
+---
+
+#### Batch Dispatch Flow
+
+1. Queue items are collected from the Redis
+
+2. If `maximumItemInBatchDispatch == 0`:
+   - batching is completely disabled
+   - every queue item is dispatched individually
+   - QueueRunner uses the single-item dispatch path, or normal path
+
+3. If `maximumItemInBatchDispatch > 0`:
+   - batching mode is enabled
+   - queue items are grouped into an array / collection
+   - batch size will never exceed `maximumItemInBatchDispatch`
+
+4. If `minimumItemInBatchDispatch > 0`:
+   - QueueRunner may temporarily wait for additional queue items
+   - dispatch starts immediately once enough items are available
+
+5. While waiting for additional queue items:
+   - if enough items arrive before timeout:
+     - dispatch starts immediately
+   - otherwise:
+     - once `maxBatchItemDispatchWaitTimeout` is reached
+     - QueueRunner sends all currently available items, which will never exceed `maximumItemInBatchDispatch`
+
+---
+
+#### Important Difference Between `0` and `1` for `maximumItemInBatchDispatch`
+
+Although both configurations may result in processing one queue item at a time,
+they are **not equivalent**.
+
+```properties
+maximumItemInBatchDispatch=0
+```
+
+Behavior:
+
+- batching is disabled entirely
+- queue runner uses the non-batch execution path
+- queue item is dispatched as a single item object
+- no batch container / array is created
+
+Conceptually Json:
+
+```json
+{
+  "field-1": "value1",
+  "field-2": "value2"
+}
+```
+
+Typical use case:
+
+- lowest possible dispatch overhead
+- direct single-item processing
+- systems with dedicated non-batch APIs / handlers
+
+---
+
+```properties
+maximumItemInBatchDispatch=1
+```
+
+Behavior:
+
+- batching mode remains enabled
+- queue runner still creates a batch container
+- batch size is limited to exactly 1 item
+- queue item is dispatched inside an array / collection
+
+Conceptually:
+
+```json
+[
+  {
+    "field-1": "value1",
+    "field-2": "value2"
+  }
+]
+```
+
+Typical use case:
+
+- unified batch processing pipeline
+- APIs that always expect collections
+- compatibility with batch-oriented APIs / handlers
+
+---
+
+#### Configuration Examples
+
+##### Example 1 — Disable batching completely
+
+```properties
+maximumItemInBatchDispatch=0
+```
+
+Behavior:
+
+- batching disabled
+
+---
+
+##### Example 2 — Batch mode with max 1 item
+
+```properties
+maximumItemInBatchDispatch=1
+```
+
+Behavior:
+
+- batching enabled
+- each batch contains exactly 1 item maximum
+- queue runner still uses batch processing logic
+- item dispatched as an element of arrays / collections
+
+---
+
+##### Example 3 — Immediate batch dispatch
+
+```properties
+maximumItemInBatchDispatch=100
+minimumItemInBatchDispatch=0
+```
+
+Behavior:
+
+- queue runner batches items immediately if there have items
+- up to 100 queue items per batch
+- no waiting for additional queue items
+
+---
+
+##### Example 4 — Wait for larger batches
+
+```properties
+maximumItemInBatchDispatch=100
+minimumItemInBatchDispatch=20
+maxBatchItemDispatchWaitTimeout=5
+```
+
+Behavior:
+
+- queue runner tries to collect at least 20 queue items
+- waits up to 5 seconds for additional items
+- if 20 items arrive before timeout:
+  - dispatch starts immediately
+- if timeout happens first:
+  - queue runner sends all currently available items
+- batch size never exceeds 100 items
+
+---
+#### Timeout disabled
+
+If:
+
+```properties
+minimumItemInBatchDispatch > 0
+maxBatchItemDispatchWaitTimeout = 0
+```
+
+then queue items may wait indefinitely until enough items arrive.
+
+This can potentially block dispatch progress during low traffic conditions.
+
+---
 
 ### Testing locally
 When you include redisques in you project, you probably already have the configuration for publishing the metrics.

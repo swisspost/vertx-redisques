@@ -849,6 +849,8 @@ public class QueueRegistryService {
                                     log.warn("TODO error handling", exceptionFactory.newException(
                                             "removeOldQueues(" + limit + ") failed", removeOldQueuesEvent.cause()));
                                 }
+
+                                queueStatisticsCollector.updateApproximateQueueSize(aliveConsumers, queueConsumerRunner.getMyQueues());
                                 // Mark this composition step as completed.
                                 promise.complete();
                             });

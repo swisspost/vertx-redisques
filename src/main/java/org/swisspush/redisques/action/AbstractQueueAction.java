@@ -14,7 +14,6 @@ import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.queue.KeyspaceHelper;
 import org.swisspush.redisques.queue.RedisService;
 
-import org.swisspush.redisques.util.QueueConfiguration;
 import org.swisspush.redisques.util.QueueConfigurationProvider;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 import org.swisspush.redisques.util.RedisquesConfigurationProvider;
@@ -38,8 +37,8 @@ public abstract class AbstractQueueAction implements QueueAction {
     protected final RedisQuesExceptionFactory exceptionFactory;
     protected final QueueStatisticsCollector queueStatisticsCollector;
 
-
-    public AbstractQueueAction(Vertx vertx, RedisService redisService, KeyspaceHelper keyspaceHelper,
+    public AbstractQueueAction(Vertx vertx, RedisService redisService,
+                               KeyspaceHelper keyspaceHelper,
                                QueueConfigurationProvider queueConfigurationProvider,
                                RedisquesConfigurationProvider redisquesConfigurationProvider,
                                RedisQuesExceptionFactory exceptionFactory,
@@ -141,10 +140,6 @@ public abstract class AbstractQueueAction implements QueueAction {
         });
     }
 
-    protected QueueConfiguration findQueueConfiguration(String queueName) {
-        return queueConfigurationProvider.findQueueConfiguration(queueName);
-    }
-
     /**
      * Try to trim a Queue by it states:
      * 1. Have a Consumer registered, will ask the consumer to process the trim request
@@ -156,12 +151,11 @@ public abstract class AbstractQueueAction implements QueueAction {
      */
     protected Future<Void> processTrimRequestByState(String queueName) {
         final Promise<Void> promise = Promise.promise();
-        final QueueConfiguration queueConfiguration = findQueueConfiguration(queueName);
-        if (queueConfiguration != null && queueConfiguration.getMaxQueueEntries() > 0) {
-            final int maxQueueEntries = queueConfiguration.getMaxQueueEntries();
+        final Integer maxQueueEntriesConfig = queueConfigurationProvider.findMaxQueueEntriesConfig(queueName);
+        if (maxQueueEntriesConfig != null && maxQueueEntriesConfig > 0) {
             final EventBus eb = vertx.eventBus();
             // we have limit set for this queue
-            log.debug("RedisQues Max queue entries {} found for queue {}", maxQueueEntries, queueName);
+            log.debug("RedisQues Max queue entries {} found for queue {}", maxQueueEntriesConfig, queueName);
 
             String consumerKey = keyspaceHelper.getConsumersPrefix() + queueName;
             if (log.isTraceEnabled()) {
@@ -179,7 +173,7 @@ public abstract class AbstractQueueAction implements QueueAction {
                 if (consumer == null) {
                     // No consumer for this queue, trim now
                     final String key = keyspaceHelper.getQueuesPrefix() + queueName;
-                    redisService.ltrim(key, "-" + maxQueueEntries, "-1").onComplete(event1 -> {
+                    redisService.ltrim(key, "-" + maxQueueEntriesConfig, "-1").onComplete(event1 -> {
                         if (event1.failed()) {
                             log.warn("Failed to trim queue '{}'", queueName, event1.cause());
                         }
@@ -196,5 +190,23 @@ public abstract class AbstractQueueAction implements QueueAction {
             promise.complete();
         }
         return promise.future();
+    }
+
+    /**
+     * Check does queue has oversized
+     * @param queueName
+     * @return return TRUE if queue items over the patrol limit, otherwise FALSE
+     */
+    protected boolean isQueuePatrolLimited(String queueName) {
+        long maxQueueItemsAllowed = queueConfigurationProvider.findEnqueuePatrolConfig(queueName);
+        if (maxQueueItemsAllowed > 0) {
+            long approximateQueueSize = queueStatisticsCollector.getApproximateQueueSize(queueName);
+            if (approximateQueueSize >= maxQueueItemsAllowed) {
+                log.warn("Failed to enqueue into queue {} because the queue patrol limit is reached, max {} items allowed, and have {} now",
+                        queueName, maxQueueItemsAllowed, approximateQueueSize);
+                return true;
+            }
+        }
+        return false;
     }
 }

@@ -7,6 +7,7 @@ import org.slf4j.Logger;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.handler.AddQueueItemHandler;
 import org.swisspush.redisques.queue.KeyspaceHelper;
+import org.swisspush.redisques.queue.QueueRegistryService;
 import org.swisspush.redisques.queue.RedisService;
 import org.swisspush.redisques.util.QueueConfigurationProvider;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
@@ -26,7 +27,14 @@ public class AddQueueItemAction extends AbstractQueueAction {
 
     @Override
     public void execute(Message<JsonObject> event) {
+
         String queueName = event.body().getJsonObject(PAYLOAD).getString(QUEUENAME);
+
+        if (isQueuePatrolLimited(queueName)) {
+            event.reply(createErrorReply().put(MESSAGE, QUEUE_PATROL_LIMITED));
+            return;
+        }
+
         String key = keyspaceHelper.getQueuesPrefix() + queueName;
         String valueAddItem = event.body().getJsonObject(PAYLOAD).getString(BUFFER);
         redisService.rpush(key, valueAddItem).onComplete(rpushResult -> {

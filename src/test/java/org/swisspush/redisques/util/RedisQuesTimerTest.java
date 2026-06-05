@@ -16,11 +16,11 @@ import org.junit.runner.RunWith;
 public class RedisQuesTimerTest {
 
     private static final double TEST_BUFFER_MS = 2.5;
+    RedisQuesTimer timer = new RedisQuesTimer(Vertx.vertx());
 
     @Test
     public void testExecuteDelayedLong(TestContext context){
         Async async = context.async();
-        RedisQuesTimer timer = new RedisQuesTimer(Vertx.vertx());
         final int delayMs = 1500;
         final long start = System.currentTimeMillis();
 
@@ -37,7 +37,6 @@ public class RedisQuesTimerTest {
     @Test
     public void testExecuteDelayedShort(TestContext context){
         Async async = context.async();
-        RedisQuesTimer timer = new RedisQuesTimer(Vertx.vertx());
         final int delayMs = 50;
         final long start = System.currentTimeMillis();
 
@@ -54,7 +53,6 @@ public class RedisQuesTimerTest {
     @Test
     public void testExecuteDelayedZero(TestContext context){
         Async async = context.async();
-        RedisQuesTimer timer = new RedisQuesTimer(Vertx.vertx());
         final int delayMs = 0;
         final long start = System.currentTimeMillis();
 
