@@ -113,6 +113,7 @@ public class QueueRegistryService {
         });
 
         queueConsumerRunner.setNoMoreItemHandelr(handlder -> {
+            queueStatisticsCollector.updateApproximateQueueSize(aliveConsumers, queueConsumerRunner.getMyQueues());
             if (stoppedHandler != null) {
                 unregisterConsumers(UnregisterConsumerType.GRACEFUL).onComplete(event -> {
                     if (event.failed()) {
@@ -132,6 +133,7 @@ public class QueueRegistryService {
         registerMyqueuesCleanup();
         registerActiveQueueRegistrationRefresh();
         registerNotExpiredQueueCheck();
+        registerNodeDataSync();
         this.periodicSkipScheduler = new PeriodicSkipScheduler(vertx);
     }
 
@@ -165,6 +167,13 @@ public class QueueRegistryService {
         });
     }
 
+    private void registerNodeDataSync() {
+        // call to sync function in half of refresh period
+        final long periodMs = Math.max(getConfiguration().getRefreshPeriod() / 2 * 1000L, 1);
+        vertx.setPeriodic(periodMs, event -> {
+            queueStatisticsCollector.updateApproximateQueueSize(aliveConsumers, queueConsumerRunner.getMyQueues());
+        });
+    }
     private void registerKeepConsumerAlive() {
         // initial set, add self into local list first
         aliveConsumers.add(keyspaceHelper.getVerticleUid());
@@ -849,8 +858,6 @@ public class QueueRegistryService {
                                     log.warn("TODO error handling", exceptionFactory.newException(
                                             "removeOldQueues(" + limit + ") failed", removeOldQueuesEvent.cause()));
                                 }
-
-                                queueStatisticsCollector.updateApproximateQueueSize(aliveConsumers, queueConsumerRunner.getMyQueues());
                                 // Mark this composition step as completed.
                                 promise.complete();
                             });

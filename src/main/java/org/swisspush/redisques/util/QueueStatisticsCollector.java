@@ -25,7 +25,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
-import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Semaphore;
@@ -73,7 +72,7 @@ public class QueueStatisticsCollector {
     private final Map<String, Long> queueBackpressureTime = new HashMap<>();
     private final Map<String, Long> queueSlowDownTime = new HashMap<>();
     private final Map<String, AtomicLong> queueMessageSpeedCtr = new ConcurrentHashMap<>();
-    private final Map<String, Map<String, Long>> approximateQueueSize =  new ConcurrentHashMap<>();
+    private final Map<String, Map<String, QueueSizeInfo>> approximateQueueSize =  new ConcurrentHashMap<>();
     private final RedisquesConfigurationProvider configurationProvider;
     private final KeyspaceHelper keyspaceHelper;
     private volatile Map<String, Long> queueMessageSpeed = new HashMap<>();
@@ -102,7 +101,7 @@ public class QueueStatisticsCollector {
         this.keyspaceHelper = keyspaceHelper;
         speedStatisticsScheduler(speedIntervalSec);
         vertx.eventBus().consumer(keyspaceHelper.getQueueStatisticQueueSizeSyncKey(),
-                (Handler<Message<Map<String, Map<String, Long>>>>) event ->
+                (Handler<Message<Map<String, Map<String, QueueSizeInfo>>>>) event ->
                         event.body().forEach((key, value) -> {
                             if (!keyspaceHelper.getVerticleUid().equals(key)) {
                                 // update queue item size from other instances
@@ -448,11 +447,7 @@ public class QueueStatisticsCollector {
      * @return approximate queueSize or 0 if not find
      */
     public long getApproximateQueueSize(String queueName) {
-        return approximateQueueSize.values().stream()
-                .map(m -> m.get(queueName))
-                .filter(Objects::nonNull)
-                .findFirst()
-                .orElse(0L);
+        return getAllApproximateQueueSize().getOrDefault(queueName, 0L);
     }
 
     /**
@@ -461,7 +456,18 @@ public class QueueStatisticsCollector {
      */
     public Map<String, Long> getAllApproximateQueueSize() {
         Map<String, Long> merged = new HashMap<>();
-        approximateQueueSize.values().forEach(merged::putAll);
+        Map<String, Long> latestTs = new HashMap<>();
+        approximateQueueSize.values().forEach(inner ->
+                inner.forEach((name, info) -> {
+                    long ts = info.getLastRegisterRefreshedMillis();
+                    if (ts > 0 && ts > latestTs.getOrDefault(name, Long.MIN_VALUE)) {
+                        latestTs.put(name, ts);
+                        merged.put(name, info.getQueueItemSizeCounter());
+                    } else if (ts ==0) {
+                        merged.put(name, info.getQueueItemSizeCounter());
+                    }
+                })
+        );
         return merged;
     }
 
@@ -474,13 +480,16 @@ public class QueueStatisticsCollector {
         // keep alive consumers
         approximateQueueSize.keySet().retainAll(aliveConsumers);
 
-        Map<String, Long> queueSizeMap = new HashMap<>();
+        Map<String, QueueSizeInfo> queueSizeMapWithTimeInfo = new HashMap<>();
         myQueues.forEach((queueName, queueProcessingState) ->
-                queueSizeMap.put(queueName, queueProcessingState.getQueueItemSizeCounter()));
+                queueSizeMapWithTimeInfo.put(queueName, new QueueSizeInfo(queueProcessingState.getQueueItemSizeCounter(), queueProcessingState.getLastRegisterRefreshedMillis())));
 
-        approximateQueueSize.put(keyspaceHelper.getVerticleUid(), queueSizeMap);
+        Map<String, Map<String, QueueSizeInfo>> localQueueSize = new HashMap<>();
+        localQueueSize.put(keyspaceHelper.getVerticleUid(), queueSizeMapWithTimeInfo);
+        approximateQueueSize.putAll(localQueueSize);
+
         // sync to other instances.
-        vertx.eventBus().publish(keyspaceHelper.getQueueStatisticQueueSizeSyncKey(), approximateQueueSize);
+        vertx.eventBus().publish(keyspaceHelper.getQueueStatisticQueueSizeSyncKey(), localQueueSize);
     }
 
 

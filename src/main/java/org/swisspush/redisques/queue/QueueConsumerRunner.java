@@ -290,10 +290,24 @@ public class QueueConsumerRunner {
             } else {
                 // Failed. Message will be kept in queue and retried later
                 log.debug("RedisQues Processing failed for queue {}", queueName);
-                // reschedule
-                log.trace("RedisQues will re-send the message to queue '{}' in {} seconds", queueName, retryInterval);
-                rescheduleSendMessageAfterFailure(queueName, retryInterval, processResult.getValue());
-                promise.complete();
+
+                redisService.llen(queueKey).onComplete(answer1 -> {
+                    if (answer1.succeeded() && answer1.result() != null) {
+                        myQueues.computeIfPresent(queueName, (s, queueProcessingState) -> {
+                            queueProcessingState.setQueueItemSize(answer1.result().toInteger());
+                            return queueProcessingState;
+                        });
+                    } else {
+                        if (answer1.failed() && log.isWarnEnabled()) {
+                            log.warn("Failed to get queue item size of {}", queueName, exceptionFactory.newException(
+                                    "redisAPI.llen(" + queueKey + ") failed", answer1.cause()));
+                        }
+                    }
+                    // reschedule
+                    log.trace("RedisQues will re-send the message to queue '{}' in {} seconds", queueName, retryInterval);
+                    rescheduleSendMessageAfterFailure(queueName, retryInterval, processResult.getValue());
+                    promise.complete();
+                });
             }
         });
         return promise.future();
