@@ -69,6 +69,16 @@ public class QueueConfiguration {
      */
     private int maxBatchItemDispatchWaitTimeout = 0;
 
+    /**
+     * How many seconds this rule will alive, 0 means not enabled
+     */
+    private long configExpireTimeout = 0l;
+
+    /**
+     * When this configuration created or updated
+     */
+    private long lastRegisterTime = 0l;
+
     public QueueConfiguration(String pattern) {
         this.pattern = Pattern.compile(pattern);
     }
@@ -124,6 +134,15 @@ public class QueueConfiguration {
     public int getMaxBatchItemDispatchWaitTimeout() {
         return maxBatchItemDispatchWaitTimeout;
     }
+
+    public long getConfigExpireTimeout() {
+        return configExpireTimeout;
+    }
+
+    public long getLastRegisterTime() {
+        return lastRegisterTime;
+    }
+
 
     public JsonObject asJsonObject() {
         return JsonObject.mapFrom(this);
@@ -257,6 +276,34 @@ public class QueueConfiguration {
             throw new IllegalArgumentException("maxBatchItemDispatchWaitTimeout must be >=0 but is " + maxBatchItemDispatchWaitTimeout);
         }
         this.maxBatchItemDispatchWaitTimeout = maxBatchItemDispatchWaitTimeout;
+        return this;
+    }
+
+    /**
+     * set the max live time for queue configuration
+     *
+     * @param configExpireTimeout
+     * @return
+     */
+    public QueueConfiguration withConfigExpireTimeout(long configExpireTimeout) {
+        if (configExpireTimeout < 0) {
+            throw new IllegalArgumentException("configExpireTimeout must be >=0 but is " + configExpireTimeout);
+        }
+        this.configExpireTimeout = configExpireTimeout;
+        return this;
+    }
+
+    /**
+     * set the time this configuration created or updated
+     *
+     * @param lastRegisterTime
+     * @return
+     */
+    public QueueConfiguration withLastRegisterTime(long lastRegisterTime) {
+        if (lastRegisterTime < 0) {
+            throw new IllegalArgumentException("lastRegisterTime must be >=0 but is " + lastRegisterTime);
+        }
+        this.lastRegisterTime = lastRegisterTime;
         return this;
     }
 }

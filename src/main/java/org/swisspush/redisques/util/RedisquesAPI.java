@@ -58,6 +58,7 @@ public class RedisquesAPI {
     public static final String PER_QUEUE_CONFIG_MAXIMUM_ITEM_IN_BATCH_DISPATCH =  "maximumItemInBatchDispatch";
     public static final String PER_QUEUE_CONFIG_MINIMUM_ITEM_IN_BATCH_DISPATCH =  "minimumItemInBatchDispatch";
     public static final String PER_QUEUE_CONFIG_MAX_BATCH_DISPATCH_WAIT_TIMEOUT =  "maxBatchItemDispatchWaitTimeout";
+    public static final String PER_QUEUE_CONFIG_EXPIRE_TIMEOUT =  "configExpireTimeout";
     public static final String PER_QUEUE_CONFIG_NAME =  "configName";
     public static final String PER_QUEUE_CONFIG_PATTERN =  "pattern";
 

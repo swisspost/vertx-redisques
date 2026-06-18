@@ -12,6 +12,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.AbstractMap;
 import java.util.Arrays;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -114,6 +115,9 @@ public class QueueConfigurationProvider {
                 }
             }
         });
+
+        // QueueConfiguration cleanup
+        vertx.setPeriodic(1_000, event -> queueConfigurationCleanUp());
     }
 
     public static NodeLocalSingletonProvider<QueueConfigurationProvider> provider(Vertx vertx, List<QueueConfiguration> defaultQueueConfigurations) {
@@ -285,6 +289,11 @@ public class QueueConfigurationProvider {
             isNew = true;
         }
 
+        queueConfiguration.withLastRegisterTime(System.currentTimeMillis());
+
+        if (jsonObject.containsKey(RedisquesAPI.PER_QUEUE_CONFIG_EXPIRE_TIMEOUT)) {
+            queueConfiguration.withConfigExpireTimeout(jsonObject.getLong(RedisquesAPI.PER_QUEUE_CONFIG_EXPIRE_TIMEOUT));
+        }
         if (jsonObject.containsKey(RedisquesAPI.PER_QUEUE_CONFIG_MAXIMUM_ITEM_IN_BATCH_DISPATCH)) {
             queueConfiguration.withMaximumItemInBatchDispatch(jsonObject.getInteger(RedisquesAPI.PER_QUEUE_CONFIG_MAXIMUM_ITEM_IN_BATCH_DISPATCH));
         }
@@ -395,6 +404,21 @@ public class QueueConfigurationProvider {
                 queueConfigurations.put(queueConfiguration.getPattern(), queueConfiguration);
                 updateQueueConfigurationCategories(queueConfiguration);
             });
+        }
+    }
+
+    // remove expired queue configurations
+    private void queueConfigurationCleanUp() {
+        Iterator<Map.Entry<String, QueueConfiguration>> iterator = queueConfigurations.entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<String, QueueConfiguration> entry = iterator.next();
+            if (entry.getValue().getConfigExpireTimeout() > 0) {
+                long expires = (entry.getValue().getConfigExpireTimeout() * 1000) + entry.getValue().getLastRegisterTime();
+                if (expires < System.currentTimeMillis()) {
+                    removeQueueConfigurationCategories(entry.getValue());
+                    iterator.remove();
+                }
+            }
         }
     }
 }
