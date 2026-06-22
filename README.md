@@ -708,7 +708,8 @@ Request Data
         "enqueueMaxDelayMillis": <max enqueue delay in millis (optional)>,
         "maximumItemInBatchDispatch": <Maximum queue items allowed in a batch request (optional).>,
         "minimumItemInBatchDispatch": <Minimum queue items required to do a batch (optional)>,
-        "maxBatchItemDispatchWaitTimeout": <How many seconds need to wait the queue items reach the minimum queue items required (optional)>
+        "maxBatchItemDispatchWaitTimeout": <How many seconds need to wait the queue items reach the minimum queue items required (optional)>,
+        "configExpireTimeout": <config live time in seconds, after timeout the config will removed (optional)>
     }
 }
 ```
