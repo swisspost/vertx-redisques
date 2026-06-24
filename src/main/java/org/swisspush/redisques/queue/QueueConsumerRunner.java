@@ -324,14 +324,11 @@ public class QueueConsumerRunner {
                 }
                 Response response = answer.result();
                 log.trace("RedisQues read queue lrange item size: {}", response.size());
-
-                JsonObject batchItemsJsonObject = new  JsonObject();
                 JsonArray itemsJsonArray = new JsonArray();
                 for (Response res : response) {
                     itemsJsonArray.add(res.toString());
                 }
-                batchItemsJsonObject.put(PAYLOAD, itemsJsonArray);
-                processMessage(queueName, batchItemsJsonObject.toString(), maximumItemInBatchDispatch).onComplete(processMessageAnswer -> {
+                processMessage(queueName, itemsJsonArray.toString(), maximumItemInBatchDispatch).onComplete(processMessageAnswer -> {
                     if (processMessageAnswer.failed()) {
                         log.error("Failed to process queue '{}'", queueName, processMessageAnswer.cause());
                         promise.fail(processMessageAnswer.cause());
