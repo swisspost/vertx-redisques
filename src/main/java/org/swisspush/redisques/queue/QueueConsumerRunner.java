@@ -36,6 +36,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import static java.lang.System.currentTimeMillis;
+import static org.swisspush.redisques.util.RedisquesAPI.BATCH_QUEUE;
 import static org.swisspush.redisques.util.RedisquesAPI.MESSAGE;
 import static org.swisspush.redisques.util.RedisquesAPI.OK;
 import static org.swisspush.redisques.util.RedisquesAPI.PAYLOAD;
@@ -76,7 +77,7 @@ public class QueueConsumerRunner {
         this.queueConfigurationProvider = queueConfigurationProvider;
 
         // handles trim request
-        trimRequestConsumer = vertx.eventBus().consumer(keyspaceHelper.getTrimRequestKey(), event -> {
+        trimRequestConsumer = vertx.eventBus().consumer(keyspaceHelper.getTrimRequestKey() + keyspaceHelper.getVerticleUid(), event -> {
             final String queueName = event.body();
             if (queueName == null) {
                 log.warn("Got event bus trim request msg with empty body! uid={}  address={}  replyAddress={}", keyspaceHelper.getVerticleUid(), event.address(), event.replyAddress());
@@ -234,7 +235,7 @@ public class QueueConsumerRunner {
         String queueKey = keyspaceHelper.getQueuesPrefix() + queueName;
         queueStatsService.createDequeueStatisticIfMissing(queueName);
         queueStatsService.dequeueStatisticSetLastDequeueAttemptTimestamp(queueName, System.currentTimeMillis());
-        processMessageWithTimeout(queueName, message, processResult -> {
+        processMessageWithTimeout(queueName, message, messageSize > 1, processResult -> {
 
             // update the queue failure count and get a retry interval
             int retryInterval = updateQueueFailureCountAndGetRetryInterval(queueName, processResult.getKey());
@@ -323,11 +324,14 @@ public class QueueConsumerRunner {
                 }
                 Response response = answer.result();
                 log.trace("RedisQues read queue lrange item size: {}", response.size());
+
+                JsonObject batchItemsJsonObject = new  JsonObject();
                 JsonArray itemsJsonArray = new JsonArray();
                 for (Response res : response) {
                     itemsJsonArray.add(res.toString());
                 }
-                processMessage(queueName, itemsJsonArray.toString(), maximumItemInBatchDispatch).onComplete(processMessageAnswer -> {
+                batchItemsJsonObject.put(PAYLOAD, itemsJsonArray);
+                processMessage(queueName, batchItemsJsonObject.toString(), maximumItemInBatchDispatch).onComplete(processMessageAnswer -> {
                     if (processMessageAnswer.failed()) {
                         log.error("Failed to process queue '{}'", queueName, processMessageAnswer.cause());
                         promise.fail(processMessageAnswer.cause());
@@ -371,6 +375,7 @@ public class QueueConsumerRunner {
                                 if (delayed.failed()) {
                                     log.error("Delayed execution has failed.", exceptionFactory.newException(delayed.cause()));
                                 }
+                                setMyQueuesState(queueName, QueueState.READY);
                                 promise.complete();
                             });
                         }
@@ -459,7 +464,7 @@ public class QueueConsumerRunner {
         });
     }
 
-    private void processMessageWithTimeout(final String queue, final String payload, final Handler<Map.Entry<Boolean, String>> handler) {
+    private void processMessageWithTimeout(final String queue, final String payload, final boolean isBatch, final Handler<Map.Entry<Boolean, String>> handler) {
         long processorDelayMax = configurationProvider.configuration().getProcessorDelayMax();
         if (processorDelayMax > 0) {
             log.info("About to process message for queue {} with a maximum delay of {}ms", queue, processorDelayMax);
@@ -473,6 +478,9 @@ public class QueueConsumerRunner {
             String processorAddress = configurationProvider.configuration().getProcessorAddress();
             final EventBus eb = vertx.eventBus();
             JsonObject message = new JsonObject();
+            if (isBatch) {
+                message.put(BATCH_QUEUE, true);
+            }
             message.put("queue", queue);
             message.put(PAYLOAD, payload);
             log.trace("RedisQues process message: {} for queue: {} send it to processor: {}", message, queue, processorAddress);
