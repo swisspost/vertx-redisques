@@ -6,11 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [4.1.42-SNAPSHOT] - 2026-06-22
 ### Minor changes
-- added a flag named "batchQueue" into batch queue despatch message
+- added a flag named "batchQueue" into the batch queue dispatch message
 
 ### New features
-- Add support config timeout
-  To enable this feature, you need set it via QueueConfiguration.configExpireTimeout. '0' means timeout disabled
+- Add support for per-queue config timeout
+  To enable this feature, you need to set it via QueueConfiguration.configExpireTimeout. '0' means timeout disabled
   the config will be removed after the timeout, if no update via setPerQueueConfiguration happened
     - Example:
 ```json

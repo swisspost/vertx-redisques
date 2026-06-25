@@ -70,12 +70,12 @@ public class QueueConfiguration {
     private int maxBatchItemDispatchWaitTimeout = 0;
 
     /**
-     * How many seconds this rule will alive, 0 means not enabled
+     * How many seconds this rule will stay alive (effective), 0 means not enabled
      */
     private long configExpireTimeout = 0l;
 
     /**
-     * When this configuration created or updated
+     * When this configuration was created or updated
      */
     private long lastRegisterTime = 0l;
 
@@ -280,7 +280,7 @@ public class QueueConfiguration {
     }
 
     /**
-     * set the max live time for queue configuration
+     * set the max live time for this queue configuration
      *
      * @param configExpireTimeout
      * @return
@@ -294,7 +294,7 @@ public class QueueConfiguration {
     }
 
     /**
-     * set the time this configuration created or updated
+     * set the time this configuration was created or updated
      *
      * @param lastRegisterTime
      * @return
