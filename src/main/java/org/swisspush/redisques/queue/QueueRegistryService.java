@@ -174,6 +174,7 @@ public class QueueRegistryService {
             queueStatisticsCollector.updateApproximateQueueSize(aliveConsumers, queueConsumerRunner.getMyQueues());
         });
     }
+
     private void registerKeepConsumerAlive() {
         // initial set, add self into local list first
         aliveConsumers.add(keyspaceHelper.getVerticleUid());
