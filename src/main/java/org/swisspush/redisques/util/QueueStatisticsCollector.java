@@ -4,6 +4,7 @@ import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
+import io.vertx.core.buffer.Buffer;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
@@ -101,8 +102,8 @@ public class QueueStatisticsCollector {
         this.keyspaceHelper = keyspaceHelper;
         speedStatisticsScheduler(speedIntervalSec);
         vertx.eventBus().consumer(keyspaceHelper.getQueueStatisticQueueSizeSyncKey(),
-                (Handler<Message<Map<String, Map<String, QueueSizeInfo>>>>) event ->
-                        event.body().forEach((key, value) -> {
+                (Handler<Message<Buffer>>) event ->
+                       QueueSizeInfoBufferUtility.decode(event.body()).forEach((key, value) -> {
                             if (!keyspaceHelper.getVerticleUid().equals(key)) {
                                 // update queue item size from other instances
                                 approximateQueueSize.put(key, value);
@@ -460,10 +461,8 @@ public class QueueStatisticsCollector {
         approximateQueueSize.values().forEach(inner ->
                 inner.forEach((name, info) -> {
                     long ts = info.getLastRegisterRefreshedMillis();
-                    if (ts > 0 && ts > latestTs.getOrDefault(name, Long.MIN_VALUE)) {
+                    if (ts > latestTs.getOrDefault(name, Long.MIN_VALUE)) {
                         latestTs.put(name, ts);
-                        merged.put(name, info.getQueueItemSizeCounter());
-                    } else if (ts ==0) {
                         merged.put(name, info.getQueueItemSizeCounter());
                     }
                 })
@@ -489,7 +488,7 @@ public class QueueStatisticsCollector {
         approximateQueueSize.putAll(localQueueSize);
 
         // sync to other instances.
-        vertx.eventBus().publish(keyspaceHelper.getQueueStatisticQueueSizeSyncKey(), localQueueSize);
+        vertx.eventBus().publish(keyspaceHelper.getQueueStatisticQueueSizeSyncKey(), QueueSizeInfoBufferUtility.encode(localQueueSize));
     }
 
 

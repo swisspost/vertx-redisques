@@ -182,7 +182,7 @@ public class QueueConsumerRunner {
         return promise.future();
     }
 
-    public void setNoMoreItemHandelr(Handler<Void> handler){
+    public void setNoMoreItemHandler(Handler<Void> handler){
         noQueueMoreItemHandler = handler;
     }
 

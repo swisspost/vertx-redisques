@@ -112,7 +112,7 @@ public class QueueRegistryService {
             queueConsumerRunner.consume(queue);
         });
 
-        queueConsumerRunner.setNoMoreItemHandelr(handlder -> {
+        queueConsumerRunner.setNoMoreItemHandler(handlder -> {
             queueStatisticsCollector.updateApproximateQueueSize(aliveConsumers, queueConsumerRunner.getMyQueues());
             if (stoppedHandler != null) {
                 unregisterConsumers(UnregisterConsumerType.GRACEFUL).onComplete(event -> {
@@ -168,8 +168,15 @@ public class QueueRegistryService {
     }
 
     private void registerNodeDataSync() {
+        int refreshPeriod = getConfiguration().getRefreshPeriod();
+        if (refreshPeriod <= 0) {
+            log.warn("refreshPeriod is {}, skipping node data sync registration", refreshPeriod);
+            return;
+        }
+
         // call to sync function in half of refresh period
-        final long periodMs = Math.max(getConfiguration().getRefreshPeriod() / 2 * 1000L, 1);
+        // Minimum 1-second period to prevent accidental tight loops
+        final long periodMs = Math.max(refreshPeriod / 2 * 1000L, 1000L);
         vertx.setPeriodic(periodMs, event -> {
             queueStatisticsCollector.updateApproximateQueueSize(aliveConsumers, queueConsumerRunner.getMyQueues());
         });
@@ -187,7 +194,7 @@ public class QueueRegistryService {
                 .onFailure(e -> log.warn("failed to set initial alive consumer live key for {}", keyspaceHelper.getVerticleUid(), e));
 
         // update 2 heartbeat timestamp per refresh period
-        final long periodMs = Math.max(getConfiguration().getRefreshPeriod() / 2 * 1000L, 1);
+        final long periodMs = Math.max(getConfiguration().getRefreshPeriod() / 2 * 1000L, 1000L);
 
         vertx.setPeriodic(periodMs, event -> {
             updateConsumerIdAndRemoveExpired(keyspaceHelper.getVerticleUid(), keyLiveTime).onComplete(event2 -> {

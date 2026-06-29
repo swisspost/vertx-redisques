@@ -1291,7 +1291,7 @@ public class RedisQuesTest extends AbstractTestCase {
                             Map<String, QueueSizeInfo> queueSize = new HashMap<>();
                             queueSize.put("patrol-limited-queue-1.test", queueSizeInfo);
                             approximateQueueSize.put("some other id", queueSize);
-                            vertx.eventBus().publish(keyspaceHelper.getQueueStatisticQueueSizeSyncKey(), approximateQueueSize);
+                            vertx.eventBus().publish(keyspaceHelper.getQueueStatisticQueueSizeSyncKey(), QueueSizeInfoBufferUtility.encode(approximateQueueSize));
 
                             // wait consumer sync data
                             try {
