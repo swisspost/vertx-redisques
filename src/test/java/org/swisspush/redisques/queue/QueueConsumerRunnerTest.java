@@ -194,7 +194,7 @@ public class QueueConsumerRunnerTest extends AbstractTestCase {
             log.info("Received '{}'", event.body());
             if (index.get() == 0) {
                 context.assertEquals("batch-queue-1.test", event.body().getString("queue"));
-                context.assertTrue(Boolean.parseBoolean(event.body().getString(BATCH_QUEUE)));
+                context.assertTrue(event.body().getBoolean(BATCH_QUEUE));
                 JsonArray batchItemsJsonObject = new JsonArray(event.body().getString("payload"));
                 context.assertEquals(3, batchItemsJsonObject.size());
                 // the order is important
@@ -203,7 +203,7 @@ public class QueueConsumerRunnerTest extends AbstractTestCase {
                 context.assertEquals("message_1-3", batchItemsJsonObject.getString(2));
             } else if (index.get() == 1) {
                 context.assertEquals("batch-queue-4.test", event.body().getString("queue"));
-                context.assertTrue(Boolean.parseBoolean(event.body().getString(BATCH_QUEUE)));
+                context.assertTrue(event.body().getBoolean(BATCH_QUEUE));
                 JsonArray batchItemsJsonObject = new JsonArray(event.body().getString("payload"));
                 context.assertEquals(5, batchItemsJsonObject.size());
                 // the order is important
