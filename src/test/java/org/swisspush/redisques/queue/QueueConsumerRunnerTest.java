@@ -74,6 +74,7 @@ public class QueueConsumerRunnerTest extends AbstractTestCase {
                         new QueueConfiguration("limited-queue-4.*")
                                 .withMaxQueueEntries(4))
                 )
+                .queueConfigCleanupInterval(1_000L)
                 .build()
                 .asJsonObject();
 
