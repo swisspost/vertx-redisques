@@ -22,6 +22,7 @@ import java.util.stream.Collectors;
 
 public class QueueConfigurationProvider {
     private static final Logger log = LoggerFactory.getLogger(QueueConfigurationProvider.class);
+    private static final long MIN_QUEUE_CONFIG_CLEANUP_INTERVAL = 1_000;
     public static final String DELETE = "DELETE";
 
     // Identify of the config provider, should be the same in the same vertx instance, but different in cluster node
@@ -70,7 +71,7 @@ public class QueueConfigurationProvider {
     }
 
 
-    private QueueConfigurationProvider(Vertx vertx, List<QueueConfiguration> defaultQueueConfigurations) {
+    private QueueConfigurationProvider(Vertx vertx, List<QueueConfiguration> defaultQueueConfigurations, long cleanupInterval) {
         this.vertx = vertx;
         this.defaultQueueConfigurations = defaultQueueConfigurations;
         loadStaticConfigs();
@@ -117,14 +118,14 @@ public class QueueConfigurationProvider {
         });
 
         // QueueConfiguration cleanup
-        vertx.setPeriodic(1_000, event -> queueConfigurationCleanUp());
+        vertx.setPeriodic(Math.max(MIN_QUEUE_CONFIG_CLEANUP_INTERVAL, cleanupInterval), event -> queueConfigurationCleanUp());
     }
 
-    public static NodeLocalSingletonProvider<QueueConfigurationProvider> provider(Vertx vertx, List<QueueConfiguration> defaultQueueConfigurations) {
+    public static NodeLocalSingletonProvider<QueueConfigurationProvider> provider(Vertx vertx, List<QueueConfiguration> defaultQueueConfigurations, long cleanupInterval) {
         return new NodeLocalSingletonProvider<>(
                 vertx,
                 "per-queue-config",
-                () -> Future.succeededFuture(new QueueConfigurationProvider(vertx, defaultQueueConfigurations)));
+                () -> Future.succeededFuture(new QueueConfigurationProvider(vertx, defaultQueueConfigurations, cleanupInterval)));
     }
 
     /**

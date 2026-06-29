@@ -66,6 +66,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getActiveQueueRegRefreshReqQuotaAcquireRetryTimeMs(), -1);
         testContext.assertFalse(config.getTcpKeepAlive());
         testContext.assertEquals(config.getRedisReplicasType(), RedisReplicas.NEVER);
+        testContext.assertEquals(config.getQueueConfigCleanupInterval(), 60_000L);
     }
 
     @Test
@@ -110,6 +111,7 @@ public class RedisquesConfigurationTest {
                 .queueStatsRequestQuotaAcquireRetryTimeMs(5)
                 .tcpKeepAlive(true)
                 .redisReplicasType(RedisReplicas.ALWAYS)
+                .queueConfigCleanupInterval(10_000)
                 .build();
 
         // default values
@@ -157,6 +159,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getRedisReplicasType(), RedisReplicas.ALWAYS);
 
         // queue configurations
+        testContext.assertEquals(config.getQueueConfigCleanupInterval(), 10_000L);
         testContext.assertEquals(config.getQueueConfigurations().size(), 1);
         QueueConfiguration queueConfiguration = config.getQueueConfigurations().get(0);
         testContext.assertEquals(queueConfiguration.getPattern(), "vehicle-.*");
@@ -211,6 +214,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(json.getInteger(PROP_QUEUE_STATS_REQUEST_QUOTA_ACQUIRE_RETRY_TIME_MS), -1);
         testContext.assertFalse(json.getBoolean(PROP_REDIS_CONNECTION_KEEP_ALIVE));
         testContext.assertEquals(RedisReplicas.valueOf(json.getString(PROP_REDIS_REPLICAS_TYPE)), RedisReplicas.NEVER);
+        testContext.assertEquals(json.getLong(PROP_QUEUE_CONFIG_CLEANUP_INTERVAL), 60_000L);
     }
 
     @Test
@@ -254,6 +258,7 @@ public class RedisquesConfigurationTest {
                 .queueStatsRequestQuotaAcquireRetryTimeMs(5)
                 .tcpKeepAlive(true)
                 .redisReplicasType(RedisReplicas.SHARE)
+                .queueConfigCleanupInterval(10_000)
                 .build();
 
         JsonObject json = config.asJsonObject();
@@ -305,6 +310,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(RedisReplicas.valueOf(json.getString(PROP_REDIS_REPLICAS_TYPE)), RedisReplicas.SHARE);
 
         // queue configurations
+        testContext.assertEquals(config.getQueueConfigCleanupInterval(), 10_000L);
         JsonArray queueConfigurationsJsonArray = json.getJsonArray(PROP_QUEUE_CONFIGURATIONS);
         List<JsonObject> queueConfigurationJsonObjects = queueConfigurationsJsonArray.getList();
         testContext.assertEquals(queueConfigurationJsonObjects.size(), 1);
@@ -361,6 +367,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getCheckQueueRequestsQuotaAcquireRetryTimeMs(), -1);
         testContext.assertFalse(config.getTcpKeepAlive());
         testContext.assertEquals(config.getRedisReplicasType(), RedisReplicas.NEVER);
+        testContext.assertEquals(config.getQueueConfigCleanupInterval(), 60_000L);
     }
 
     @Test
@@ -414,6 +421,7 @@ public class RedisquesConfigurationTest {
         json.put(PROP_QUEUE_STATS_REQUEST_QUOTA_ACQUIRE_RETRY_TIME_MS, 4);
         json.put(PROP_REDIS_CONNECTION_KEEP_ALIVE, true);
         json.put(PROP_REDIS_REPLICAS_TYPE, RedisReplicas.ALWAYS);
+        json.put(PROP_QUEUE_CONFIG_CLEANUP_INTERVAL, 20_000);
 
         RedisquesConfiguration config = fromJsonObject(json);
         testContext.assertEquals(config.getAddress(), "new_address");
@@ -459,6 +467,7 @@ public class RedisquesConfigurationTest {
         testContext.assertEquals(config.getRedisReplicasType(), RedisReplicas.ALWAYS);
 
         // queue configurations
+        testContext.assertEquals(config.getQueueConfigCleanupInterval(), 20_000L);
         testContext.assertEquals(config.getQueueConfigurations().size(), 1);
         QueueConfiguration queueConfiguration = config.getQueueConfigurations().get(0);
         testContext.assertEquals(queueConfiguration.getPattern(), "vehicle-.*");
