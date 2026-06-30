@@ -1286,7 +1286,7 @@ public class RedisQuesTest extends AbstractTestCase {
                         eventBusSend(buildEnqueueOperation("patrol-limited-queue-1.test", "message_1-5"), e5 -> {
                             QueueProcessingState state = new QueueProcessingState(QueueState.READY, 0);
                             // simulate queuecheck or queue runner update, we already have 5 items
-                            Map<String, Map<String, QueueSizeInfoEntry>> approximateQueueSize = new HashMap<>();
+                            QueueSizeInfoMap approximateQueueSize = new QueueSizeInfoMap();
                             QueueSizeInfoEntry queueSizeInfoEntry = new QueueSizeInfoEntry(5L, 1000);
                             Map<String, QueueSizeInfoEntry> queueSize = new HashMap<>();
                             queueSize.put("patrol-limited-queue-1.test", queueSizeInfoEntry);
