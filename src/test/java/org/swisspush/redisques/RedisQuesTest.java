@@ -1286,12 +1286,12 @@ public class RedisQuesTest extends AbstractTestCase {
                         eventBusSend(buildEnqueueOperation("patrol-limited-queue-1.test", "message_1-5"), e5 -> {
                             QueueProcessingState state = new QueueProcessingState(QueueState.READY, 0);
                             // simulate queuecheck or queue runner update, we already have 5 items
-                            Map<String, Map<String, QueueSizeInfo>> approximateQueueSize = new HashMap<>();
-                            QueueSizeInfo queueSizeInfo = new QueueSizeInfo(5L, 1000);
-                            Map<String, QueueSizeInfo> queueSize = new HashMap<>();
-                            queueSize.put("patrol-limited-queue-1.test", queueSizeInfo);
+                            Map<String, Map<String, QueueSizeInfoEntry>> approximateQueueSize = new HashMap<>();
+                            QueueSizeInfoEntry queueSizeInfoEntry = new QueueSizeInfoEntry(5L, 1000);
+                            Map<String, QueueSizeInfoEntry> queueSize = new HashMap<>();
+                            queueSize.put("patrol-limited-queue-1.test", queueSizeInfoEntry);
                             approximateQueueSize.put("some other id", queueSize);
-                            vertx.eventBus().publish(keyspaceHelper.getQueueStatisticQueueSizeSyncKey(), QueueSizeInfoBufferUtility.encode(approximateQueueSize));
+                            vertx.eventBus().publish(keyspaceHelper.getQueueStatisticQueueSizeSyncKey(), approximateQueueSize);
 
                             // wait consumer sync data
                             try {

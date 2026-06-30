@@ -4,7 +4,6 @@ import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
-import io.vertx.core.buffer.Buffer;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
@@ -73,7 +72,7 @@ public class QueueStatisticsCollector {
     private final Map<String, Long> queueBackpressureTime = new HashMap<>();
     private final Map<String, Long> queueSlowDownTime = new HashMap<>();
     private final Map<String, AtomicLong> queueMessageSpeedCtr = new ConcurrentHashMap<>();
-    private final Map<String, Map<String, QueueSizeInfo>> approximateQueueSize =  new ConcurrentHashMap<>();
+    private final QueueSizeInfoMap approximateQueueSize =  new QueueSizeInfoMap();
     private final RedisquesConfigurationProvider configurationProvider;
     private final KeyspaceHelper keyspaceHelper;
     private volatile Map<String, Long> queueMessageSpeed = new HashMap<>();
@@ -100,10 +99,12 @@ public class QueueStatisticsCollector {
         this.upperBoundParallel = new UpperBoundParallel(vertx, exceptionFactory);
         this.configurationProvider = configurationProvider;
         this.keyspaceHelper = keyspaceHelper;
+
+        vertx.eventBus().registerDefaultCodec(QueueSizeInfoMap.class, new QueueSizeInfoMapCodec());
         speedStatisticsScheduler(speedIntervalSec);
         vertx.eventBus().consumer(keyspaceHelper.getQueueStatisticQueueSizeSyncKey(),
-                (Handler<Message<Buffer>>) event ->
-                       QueueSizeInfoBufferUtility.decode(event.body()).forEach((key, value) -> {
+                (Handler<Message<QueueSizeInfoMap>>) event ->
+                       event.body().getValue().forEach((key, value) -> {
                             if (!keyspaceHelper.getVerticleUid().equals(key)) {
                                 // update queue item size from other instances
                                 approximateQueueSize.put(key, value);
@@ -458,7 +459,7 @@ public class QueueStatisticsCollector {
     public Map<String, Long> getAllApproximateQueueSize() {
         Map<String, Long> merged = new HashMap<>();
         Map<String, Long> latestTs = new HashMap<>();
-        approximateQueueSize.values().forEach(inner ->
+        approximateQueueSize.getValue().values().forEach(inner ->
                 inner.forEach((name, info) -> {
                     long ts = info.getLastRegisterRefreshedMillis();
                     if (ts > latestTs.getOrDefault(name, Long.MIN_VALUE)) {
@@ -477,18 +478,18 @@ public class QueueStatisticsCollector {
      */
     public void updateApproximateQueueSize(Set<String> aliveConsumers, Map<String, QueueProcessingState> myQueues) {
         // keep alive consumers
-        approximateQueueSize.keySet().retainAll(aliveConsumers);
+        approximateQueueSize.getValue().keySet().retainAll(aliveConsumers);
 
-        Map<String, QueueSizeInfo> queueSizeMapWithTimeInfo = new HashMap<>();
+        Map<String, QueueSizeInfoEntry> queueSizeMapWithTimeInfo = new HashMap<>();
         myQueues.forEach((queueName, queueProcessingState) ->
-                queueSizeMapWithTimeInfo.put(queueName, new QueueSizeInfo(queueProcessingState.getQueueItemSizeCounter(), queueProcessingState.getLastRegisterRefreshedMillis())));
+                queueSizeMapWithTimeInfo.put(queueName, new QueueSizeInfoEntry(queueProcessingState.getQueueItemSizeCounter(), queueProcessingState.getLastRegisterRefreshedMillis())));
 
-        Map<String, Map<String, QueueSizeInfo>> localQueueSize = new HashMap<>();
+        QueueSizeInfoMap localQueueSize = new QueueSizeInfoMap();
         localQueueSize.put(keyspaceHelper.getVerticleUid(), queueSizeMapWithTimeInfo);
         approximateQueueSize.putAll(localQueueSize);
 
         // sync to other instances.
-        vertx.eventBus().publish(keyspaceHelper.getQueueStatisticQueueSizeSyncKey(), QueueSizeInfoBufferUtility.encode(localQueueSize));
+        vertx.eventBus().publish(keyspaceHelper.getQueueStatisticQueueSizeSyncKey(), localQueueSize);
     }
 
 
