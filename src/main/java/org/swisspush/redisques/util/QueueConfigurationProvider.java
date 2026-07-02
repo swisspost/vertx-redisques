@@ -103,7 +103,9 @@ public class QueueConfigurationProvider {
                 if (DELETE.equals(operation)) {
                     final String configName = event.body().getString(RedisquesAPI.PER_QUEUE_CONFIG_NAME);
                     QueueConfiguration removedConfig = queueConfigurations.remove(configName);
-                    removeQueueConfigurationCategories(removedConfig);
+                    if (removedConfig != null) {
+                        removeQueueConfigurationCategories(removedConfig);
+                    }
                     log.debug("delete config {} from instance {}", configName, uid);
                 } else {
                     log.warn("Unsupported operation: {}", operation);
