@@ -28,6 +28,7 @@ import java.util.Map.Entry;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
 
@@ -62,7 +63,7 @@ import static org.swisspush.redisques.util.RedisquesAPI.STATUS;
 public class QueueStatisticsCollector {
 
     private static final Logger log = LoggerFactory.getLogger(QueueStatisticsCollector.class);
-
+    private static final AtomicBoolean CODECS_REGISTERED = new AtomicBoolean(false);
     private static final String STATSKEY = "redisques:stats";
     private final static String QUEUE_FAILURES = "failures";
     private final static String QUEUE_BACKPRESSURE = "backpressureTime";
@@ -99,8 +100,7 @@ public class QueueStatisticsCollector {
         this.upperBoundParallel = new UpperBoundParallel(vertx, exceptionFactory);
         this.configurationProvider = configurationProvider;
         this.keyspaceHelper = keyspaceHelper;
-
-        vertx.eventBus().registerDefaultCodec(QueueSizeInfoMap.class, new QueueSizeInfoMapCodec());
+        registerCodecs(vertx);
         speedStatisticsScheduler(speedIntervalSec);
         vertx.eventBus().consumer(keyspaceHelper.getQueueStatisticQueueSizeSyncKey(),
                 (Handler<Message<QueueSizeInfoMap>>) event ->
@@ -110,6 +110,12 @@ public class QueueStatisticsCollector {
                                 approximateQueueSize.put(key, value);
                             }
                         }));
+    }
+
+    public static void registerCodecs(Vertx vertx) {
+        if (CODECS_REGISTERED.compareAndSet(false, true)) {
+            vertx.eventBus().registerDefaultCodec(QueueSizeInfoMap.class, new QueueSizeInfoMapCodec());
+        }
     }
 
     /**
