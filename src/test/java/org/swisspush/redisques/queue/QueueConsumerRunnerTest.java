@@ -50,12 +50,12 @@ public class QueueConsumerRunnerTest extends AbstractTestCase {
     @After
     public void tearDown(TestContext context) {
         vertx.close(context.asyncAssertSuccess());
-        QueueStatisticsCollector.CODECS_REGISTERED.set(false);
     }
 
     @Before
     public void deployRedisques(TestContext context) {
         vertx = Vertx.vertx();
+        QueueStatisticsCollector.CODECS_REGISTERED.set(false);
         QueueConfigurationProvider.reset();
         JsonObject config = RedisquesConfiguration.with()
                 .processorAddress(PROCESSOR_ADDRESS)
