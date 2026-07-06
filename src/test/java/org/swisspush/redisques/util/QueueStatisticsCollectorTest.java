@@ -47,7 +47,7 @@ public class QueueStatisticsCollectorTest {
         this.configurationProvider = Mockito.mock(RedisquesConfigurationProvider.class);
 
         when(keyspaceHelper.getQueueStatisticQueueSizeSyncKey()).thenReturn("sync_key");
-
+        QueueStatisticsCollector.CODECS_REGISTERED.set(false);
         queueStatisticsCollector = new QueueStatisticsCollector(redisService, keyspaceHelper, vertx,
                 exceptionFactory, redisRequestQuota, 10, configurationProvider);
     }

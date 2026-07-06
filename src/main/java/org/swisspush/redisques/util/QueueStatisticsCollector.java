@@ -63,7 +63,6 @@ import static org.swisspush.redisques.util.RedisquesAPI.STATUS;
 public class QueueStatisticsCollector {
 
     private static final Logger log = LoggerFactory.getLogger(QueueStatisticsCollector.class);
-    private static final AtomicBoolean CODECS_REGISTERED = new AtomicBoolean(false);
     private static final String STATSKEY = "redisques:stats";
     private final static String QUEUE_FAILURES = "failures";
     private final static String QUEUE_BACKPRESSURE = "backpressureTime";
@@ -83,6 +82,8 @@ public class QueueStatisticsCollector {
     private final RedisQuesExceptionFactory exceptionFactory;
     private final Semaphore redisRequestQuota;
     private final UpperBoundParallel upperBoundParallel;
+
+    public static final AtomicBoolean CODECS_REGISTERED = new AtomicBoolean(false);
 
     public QueueStatisticsCollector(
             RedisService redisService,
