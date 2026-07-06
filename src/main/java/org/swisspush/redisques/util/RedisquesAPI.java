@@ -54,7 +54,7 @@ public class RedisquesAPI {
     public static final String PER_QUEUE_CONFIG_ENQUEUE_DELAY_FACTOR_MILLIS =  "enqueueDelayFactorMillis";
     public static final String PER_QUEUE_CONFIG_ENQUEUE_MAX_DELAY_MILLIS =  "enqueueMaxDelayMillis";
     public static final String PER_QUEUE_CONFIG_MAX_QUEUE_ENTRIES =  "maxQueueEntries";
-    public static final String PER_QUEUE_CONFIG_MAX_QUEUE_PATROL_LIMIT =  "queuePatrolLimit";
+    public static final String PER_QUEUE_CONFIG_MAX_QUEUE_PATROL_LIMIT =  "enqueuePatrolLimit";
     public static final String PER_QUEUE_CONFIG_MAXIMUM_ITEM_IN_BATCH_DISPATCH =  "maximumItemInBatchDispatch";
     public static final String PER_QUEUE_CONFIG_MINIMUM_ITEM_IN_BATCH_DISPATCH =  "minimumItemInBatchDispatch";
     public static final String PER_QUEUE_CONFIG_MAX_BATCH_DISPATCH_WAIT_TIMEOUT =  "maxBatchItemDispatchWaitTimeout";
