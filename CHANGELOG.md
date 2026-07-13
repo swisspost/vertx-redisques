@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
+## [4.1.43-SNAPSHOT] - 2026-07-13
+### New features
+- Added new action:
+    - getQueueRunningStates: broadcasts a request to all RedisQues verticle instances and collects their local queue running states (e.g. queue item size counter, last consumed/refreshed timestamps)
+
 ## [4.1.41-SNAPSHOT] - 2026-05-21
 ### Major changes
 - From this version the Redis API version requirement change to > 7

@@ -818,6 +818,45 @@ Response Data
 }
 ```
 
+#### getQueueRunningStates
+
+Broadcasts a request to all RedisQues verticle instances in the cluster and collects their local
+in-memory queue running states (e.g. current queue item size counter, last consumed timestamp, last
+register refreshed timestamp). Unlike `getQueuesSizeStatistics`, the raw per-instance states are
+returned instead of a single merged result, allowing the caller to decide how to merge/aggregate them
+(see `QueueStatisticsCollector#mergeQueueSzieFromAllQueueRunningStates`).
+
+Request Data
+```
+{
+    "operation": "getQueueRunningStates",
+    "payload": {
+        "lastUpdateWithInMs": <long only include queue states refreshed within this time window, in milliseconds; 0 means include all (optional, default 0)>,
+        "expectedReplies": <int number of verticle replies to wait for before completing early; 0 means unknown, wait until timeout (optional, default 0)>,
+        "timeoutMs": <long maximum time to wait for replies, in milliseconds; values <= 0 use the default timeout of 2000ms (optional)>
+    }
+}
+```
+
+Response Data
+```
+{
+    "payload": [   <JsonArray with one JsonObject per verticle instance that replied>
+        {
+            "<str QUEUENAME>": {
+                "state": <str current queue state, e.g. "CONSUMING" / "IDLE">,
+                "lastConsumedTimestampMillis": <long timestamp of the last consumed queue item>,
+                "lastRegisterRefreshedMillis": <long timestamp when this queue's registration was last refreshed>,
+                "queueItemSizeCounter": <long current queue item size counter>
+            },
+            "<str ANOTHERQUEUENAME>": { ... }
+        }
+    ]
+}
+```
+
+Note: on failure, the response only contains `"status": "error"` (no `payload`).
+
 
 ## RedisQues HTTP API
 RedisQues provides a HTTP API to modify queues, queue items and get information about queue counts and queue item counts.
