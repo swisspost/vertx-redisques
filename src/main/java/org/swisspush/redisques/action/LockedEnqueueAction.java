@@ -37,36 +37,39 @@ public class LockedEnqueueAction extends EnqueueAction {
         log.debug("RedisQues about to lockedEnqueue");
         String queueName = event.body().getJsonObject(PAYLOAD).getString(QUEUENAME);
 
-        if (isQueuePatrolLimited(queueName)) {
-            incrEnqueueFailCount();
-            event.reply(createErrorReply().put(MESSAGE, QUEUE_PATROL_LIMITED));
-            return;
-        }
-
         if (isMemoryUsageLimitReached()) {
             log.warn("Failed to lockedEnqueue into queue {} because the memory usage limit is reached", queueName);
             incrEnqueueFailCount();
             event.reply(createErrorReply().put(MESSAGE, MEMORY_FULL));
             return;
         }
-        JsonObject lockInfo = extractLockInfo(event.body().getJsonObject(PAYLOAD).getString(REQUESTED_BY));
-        if (lockInfo != null) {
-            redisService.hmset(Arrays.asList(keyspaceHelper.getLocksKey(), queueName, lockInfo.encode())).onComplete(putLockResult -> {
-                if (putLockResult.succeeded()) {
-                    log.debug("RedisQues lockedEnqueue locking successful, now going to enqueue");
-                    enqueueActionExecute(event);
+
+        isQueuePatrolLimited(queueName).onComplete(asyncLimitResult -> {
+            // isQueuePatrolLimited promise always success
+            if (asyncLimitResult.result()) {
+                incrEnqueueFailCount();
+                event.reply(createErrorReply().put(MESSAGE, QUEUE_PATROL_LIMITED));
+            } else {
+                JsonObject lockInfo = extractLockInfo(event.body().getJsonObject(PAYLOAD).getString(REQUESTED_BY));
+                if (lockInfo != null) {
+                    redisService.hmset(Arrays.asList(keyspaceHelper.getLocksKey(), queueName, lockInfo.encode())).onComplete(putLockResult -> {
+                        if (putLockResult.succeeded()) {
+                            log.debug("RedisQues lockedEnqueue locking successful, now going to enqueue");
+                            enqueueActionExecute(event);
+                        } else {
+                            log.warn("RedisQues lockedEnqueue locking failed. Skip enqueue",
+                                    new Exception(putLockResult.cause()));
+                            incrEnqueueFailCount();
+                            event.reply(createErrorReply());
+                        }
+                    });
                 } else {
-                    log.warn("RedisQues lockedEnqueue locking failed. Skip enqueue",
-                            new Exception(putLockResult.cause()));
+                    log.warn("RedisQues lockedEnqueue failed because property '{}' was missing", REQUESTED_BY);
                     incrEnqueueFailCount();
-                    event.reply(createErrorReply());
+                    event.reply(createErrorReply().put(MESSAGE, "Property '" + REQUESTED_BY + "' missing"));
                 }
-            });
-        } else {
-            log.warn("RedisQues lockedEnqueue failed because property '{}' was missing", REQUESTED_BY);
-            incrEnqueueFailCount();
-            event.reply(createErrorReply().put(MESSAGE, "Property '" + REQUESTED_BY + "' missing"));
-        }
+            }
+        });
     }
 
     private void enqueueActionExecute(Message<JsonObject> event) {

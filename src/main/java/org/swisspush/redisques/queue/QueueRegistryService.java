@@ -113,7 +113,6 @@ public class QueueRegistryService {
         });
 
         queueConsumerRunner.setNoMoreItemHandler(handlder -> {
-            queueStatisticsCollector.updateApproximateQueueSize(aliveConsumers, queueConsumerRunner.getMyQueues());
             if (stoppedHandler != null) {
                 unregisterConsumers(UnregisterConsumerType.GRACEFUL).onComplete(event -> {
                     if (event.failed()) {
@@ -133,7 +132,6 @@ public class QueueRegistryService {
         registerMyqueuesCleanup();
         registerActiveQueueRegistrationRefresh();
         registerNotExpiredQueueCheck();
-        registerNodeDataSync();
         this.periodicSkipScheduler = new PeriodicSkipScheduler(vertx);
     }
 
@@ -164,21 +162,6 @@ public class QueueRegistryService {
             } else {
                 msg.fail(0, event.cause().getMessage());
             }
-        });
-    }
-
-    private void registerNodeDataSync() {
-        int refreshPeriod = getConfiguration().getRefreshPeriod();
-        if (refreshPeriod <= 0) {
-            log.warn("refreshPeriod is {}, skipping node data sync registration", refreshPeriod);
-            return;
-        }
-
-        // call to sync function in half of refresh period
-        // Minimum 1-second period to prevent accidental tight loops
-        final long periodMs = Math.max(refreshPeriod / 2 * 1000L, 1000L);
-        vertx.setPeriodic(periodMs, event -> {
-            queueStatisticsCollector.updateApproximateQueueSize(aliveConsumers, queueConsumerRunner.getMyQueues());
         });
     }
 

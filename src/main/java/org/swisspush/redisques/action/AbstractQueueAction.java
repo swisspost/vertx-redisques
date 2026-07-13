@@ -195,18 +195,29 @@ public abstract class AbstractQueueAction implements QueueAction {
     /**
      * Check does queue has oversized
      * @param queueName
-     * @return return TRUE if queue items over the patrol limit, otherwise FALSE
+     * @return return an always succeeded promise TRUE if queue items over the patrol limit, otherwise FALSE
      */
-    protected boolean isQueuePatrolLimited(String queueName) {
+    protected Future<Boolean> isQueuePatrolLimited(String queueName) {
+        Promise<Boolean> promise = Promise.promise();
         long maxQueueItemsAllowed = queueConfigurationProvider.findEnqueuePatrolConfig(queueName);
+
         if (maxQueueItemsAllowed > 0) {
-            long approximateQueueSize = queueStatisticsCollector.getApproximateQueueSize(queueName);
-            if (approximateQueueSize >= maxQueueItemsAllowed) {
-                log.warn("Failed to enqueue into queue {} because the queue patrol limit is reached, max {} items allowed, and have {} now",
-                        queueName, maxQueueItemsAllowed, approximateQueueSize);
-                return true;
-            }
+            queueStatisticsCollector.getApproximateQueueSize(queueName).onComplete(event -> {
+                if (event.failed()) {
+                    log.warn("Failed to get queue size for queue '{}'", queueName, event.cause());
+                    promise.complete(false);
+                } else {
+                    if (event.result() >= maxQueueItemsAllowed) {
+                        log.warn("Failed to enqueue into queue {} because the queue patrol limit is reached, max {} items allowed, and have {} now",
+                                queueName, maxQueueItemsAllowed, event.result());
+                        promise.complete(true);
+                    } else {
+                        promise.complete(false);
+                    }
+                }
+            });
+            return promise.future();
         }
-        return false;
+        return Future.succeededFuture(false);
     }
 }

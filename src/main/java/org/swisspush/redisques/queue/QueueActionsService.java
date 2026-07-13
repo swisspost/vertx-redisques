@@ -20,35 +20,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.Semaphore;
 
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.addQueueItem;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.bulkDeleteLocks;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.bulkDeleteQueues;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.bulkPutLocks;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.deleteAllLocks;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.deleteAllQueueItems;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.deleteLock;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.deleteQueueConfiguration;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.deleteQueueItem;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.enqueue;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.getAllLocks;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.getPerQueueConfiguration;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.getConfiguration;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.getLock;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.getQueueItem;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.getQueueItems;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.getQueueItemsCount;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.getQueues;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.getQueuesCount;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.getQueuesItemsCount;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.getQueuesSizeStatistics;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.getQueuesSpeed;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.getQueuesStatistics;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.lockedEnqueue;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.monitor;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.putLock;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.replaceQueueItem;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.setConfiguration;
-import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.setPerQueueConfiguration;
+import static org.swisspush.redisques.util.RedisquesAPI.QueueOperation.*;
 
 public class QueueActionsService {
     private static final Logger log = LoggerFactory.getLogger(QueueActionsService.class);
@@ -98,6 +70,7 @@ public class QueueActionsService {
         queueActions.put(getPerQueueConfiguration, queueActionFactory.buildQueueAction(getPerQueueConfiguration));
         queueActions.put(deleteQueueConfiguration, queueActionFactory.buildQueueAction(deleteQueueConfiguration));
         queueActions.put(getQueuesSizeStatistics, queueActionFactory.buildQueueAction(getQueuesSizeStatistics));
+        queueActions.put(getQueueRunningStates, queueActionFactory.buildQueueAction(getQueueRunningStates));
     }
 
     public void handle(RedisquesAPI.QueueOperation queueOperation, Message<JsonObject> event) {

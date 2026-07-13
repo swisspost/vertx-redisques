@@ -1,25 +1,33 @@
 package org.swisspush.redisques.util;
 
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import io.vertx.core.AsyncResult;
+import io.vertx.core.DeploymentOptions;
+import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
+import io.vertx.core.json.JsonObject;
+import io.vertx.ext.unit.Async;
 import io.vertx.ext.unit.TestContext;
+import io.vertx.ext.unit.junit.Timeout;
 import io.vertx.ext.unit.junit.VertxUnitRunner;
+import org.junit.After;
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.Mockito;
+import org.swisspush.redisques.AbstractTestCase;
 import org.swisspush.redisques.QueueState;
+import org.swisspush.redisques.RedisQues;
+import org.swisspush.redisques.action.AbstractQueueAction;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
-import org.swisspush.redisques.queue.KeyspaceHelper;
 import org.swisspush.redisques.queue.QueueProcessingState;
-import org.swisspush.redisques.queue.RedisService;
+import redis.clients.jedis.Jedis;
 
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.Semaphore;
+import java.util.Optional;
 
-import static org.mockito.Mockito.when;
+import static org.swisspush.redisques.exception.RedisQuesExceptionFactory.newWastefulExceptionFactory;
 
 /**
  * Tests for {@link RedisQuesTimer} class.
@@ -27,112 +35,125 @@ import static org.mockito.Mockito.when;
  * @author <a href="https://github.com/mcweba">Marc-André Weber</a>
  */
 @RunWith(VertxUnitRunner.class)
-public class QueueStatisticsCollectorTest {
+public class QueueStatisticsCollectorTest extends AbstractTestCase {
+    private RedisQues redisQues;
     private Vertx vertx;
     private QueueStatisticsCollector queueStatisticsCollector;
-    private RedisService redisService;
-    private KeyspaceHelper keyspaceHelper;
-    private RedisQuesExceptionFactory exceptionFactory;
-    private Semaphore redisRequestQuota;
-    private RedisquesConfigurationProvider configurationProvider;
-
+    private TestMemoryUsageProvider memoryUsageProvider;
+    private final String metricsIdentifier = "foo";
+    protected AbstractQueueAction action;
+    protected RedisQuesExceptionFactory exceptionFactory;
+    @Rule
+    public Timeout rule = Timeout.seconds(50);
 
     @Before
-    public void before(TestContext context) {
-        this.vertx = Vertx.vertx();
-        this.redisService = Mockito.mock(RedisService.class);
-        this.keyspaceHelper = Mockito.mock(KeyspaceHelper.class);
-        this.exceptionFactory = Mockito.mock(RedisQuesExceptionFactory.class);
-        this.redisRequestQuota = new Semaphore(1);
-        this.configurationProvider = Mockito.mock(RedisquesConfigurationProvider.class);
+    public void deployRedisques(TestContext context) {
+        vertx = Vertx.vertx();
+        Async async = context.async();
+        JsonObject config = RedisquesConfiguration.with()
+                .processorAddress(PROCESSOR_ADDRESS)
+                .micrometerMetricsEnabled(true)
+                .micrometerPerQueueMetricsEnabled(true)
+                .micrometerMetricsIdentifier(metricsIdentifier)
+                .refreshPeriod(2)
+                .publishMetricsAddress("my-metrics-eb-address")
+                .metricStorageName("foobar")
+                .metricRefreshPeriod(2)
+                .memoryUsageLimitPercent(80)
+                .redisReadyCheckIntervalMs(2000)
+                .build()
+                .asJsonObject();
 
-        when(keyspaceHelper.getQueueStatisticQueueSizeSyncKey()).thenReturn("sync_key");
+        MeterRegistry meterRegistry = new SimpleMeterRegistry();
+        exceptionFactory = newWastefulExceptionFactory();
+        memoryUsageProvider = new TestMemoryUsageProvider(Optional.of(50));
+        redisQues = RedisQues.builder()
+                .withMemoryUsageProvider(memoryUsageProvider)
+                .withRedisquesRedisquesConfigurationProvider(new DefaultRedisquesConfigurationProvider(vertx, config))
+                .withMeterRegistry(meterRegistry)
+                .build();
+        redisQues.disableMigrationTool();
+        vertx.deployVerticle(redisQues, new DeploymentOptions().setConfig(config), context.asyncAssertSuccess(event -> {
+            deploymentId = event;
+            log.info("vert.x Deploy - {} was successful.", redisQues.getClass().getSimpleName());
+            jedis = new Jedis("localhost", 6379, 5000);
+            keyspaceHelper = redisQues.getKeyspaceHelper();
+            queueStatisticsCollector = redisQues.getqueueStatisticsCollector();
+            async.complete();
+        }));
 
-        queueStatisticsCollector = new QueueStatisticsCollector(redisService, keyspaceHelper, vertx,
-                exceptionFactory, redisRequestQuota, 10, configurationProvider);
     }
 
-    @Test
-    public void testApproximateQueueSizeUpdate(TestContext context) {
-
-        context.assertEquals(0L, queueStatisticsCollector.getApproximateQueueSize("test.queue.1"));
-        context.assertEquals(0L, queueStatisticsCollector.getApproximateQueueSize("test.queue.2"));
-        when(keyspaceHelper.getVerticleUid()).thenReturn("consumer-1");
-
-        Set<String> aliveConsumer = new HashSet<>();
-        aliveConsumer.add("consumer-1");
-        aliveConsumer.add("consumer-2");
-        aliveConsumer.add("consumer-3");
-
-        Map<String, QueueProcessingState> myQueues = new HashMap<>();
-
-        QueueProcessingState state1 = new QueueProcessingState(QueueState.READY, 0);
-        state1.setQueueItemSize(42);
-        QueueProcessingState state2 = new QueueProcessingState(QueueState.READY, 0);
-        state2.setQueueItemSize(84);
-
-        myQueues.put("test.queue.1", state1);
-        myQueues.put("test.queue.2", state2);
-
-        queueStatisticsCollector.updateApproximateQueueSize(aliveConsumer, myQueues);
-
-        context.assertEquals(42L, queueStatisticsCollector.getApproximateQueueSize("test.queue.1"));
-        context.assertEquals(84L, queueStatisticsCollector.getApproximateQueueSize("test.queue.2"));
+    @After
+    public void tearDown(TestContext context) {
+        vertx.close(context.asyncAssertSuccess());
     }
+
     /**
      * This test demonstrates a bug in getAllApproximateQueueSize():
      * When one consumer reports a queue with timestamp=0 (unknown), it unconditionally
      * overwrites data from another consumer that has a valid (newer) timestamp.
-     *
+     * <p>
      * The ts==0 branch should only be used as a fallback when no other data exists,
      * not as an override that defeats the timestamp-based merge logic.
-     *
+     * <p>
      * Note: The bug is order-dependent (ConcurrentHashMap iteration order).
      * We use multiple queues and consumers to increase probability of triggering it.
      */
     @Test
     public void testGetAllApproximateQueueSize_TimestampZeroShouldNotOverwriteNewerData(TestContext context) {
-        Set<String> aliveConsumers = new HashSet<>();
-        for (int i = 0; i < 10; i++) {
-            aliveConsumers.add("consumer-valid-" + i);
-            aliveConsumers.add("consumer-zero-" + i);
-        }
+        Async async = context.async();
 
+        // first consumer
         for (int i = 0; i < 10; i++) {
             String queueName = "queue-" + i;
-
-            when(keyspaceHelper.getVerticleUid()).thenReturn("consumer-valid-" + i);
-            Map<String, QueueProcessingState> validQueues = new HashMap<>();
             QueueProcessingState validState = new QueueProcessingState(QueueState.READY, 1000 + i);
             validState.setQueueItemSize(100 + i);
-            validQueues.put(queueName, validState);
-            queueStatisticsCollector.updateApproximateQueueSize(aliveConsumers, validQueues);
-
-            when(keyspaceHelper.getVerticleUid()).thenReturn("consumer-zero-" + i);
-            Map<String, QueueProcessingState> zeroQueues = new HashMap<>();
-            QueueProcessingState zeroState = new QueueProcessingState(QueueState.READY, 0);
-            zeroState.setQueueItemSize(1 + i);
-            zeroQueues.put(queueName, zeroState);
-            queueStatisticsCollector.updateApproximateQueueSize(aliveConsumers, zeroQueues);
+            redisQues.getQueueConsumerRunner().getMyQueues().put(queueName, validState);
         }
+        // second fake consumer
+        vertx.eventBus().consumer(
+                keyspaceHelper.getQueueRunningStateKey(),
+                msg -> {
+                    JsonObject request = (JsonObject) msg.body();
+                    String replyAddress = request.getString("reply");
+                    long refreshesWithinMs = request.getLong(RedisquesAPI.GET_QUEUE_RUNNING_STATES_LAST_UPDATE_WITHIN_MS);
+                    context.assertEquals(0L, refreshesWithinMs);
+                    JsonObject response = new JsonObject();
 
-        Map<String, Long> result = queueStatisticsCollector.getAllApproximateQueueSize();
+                    for (int i = 0; i < 10; i++) {
+                        String queueName = "queue-" + i;
+                        QueueProcessingState validState = new QueueProcessingState(QueueState.READY, 0);
+                        validState.setQueueItemSize(100 + i);
+                        response.put(queueName, JsonObject.mapFrom(validState));
+                    }
+                    //delay few ms, let this record at 2 pos
+                    try {
+                        Thread.sleep(500);
+                    } catch (InterruptedException e) {
+                        throw new RuntimeException(e);
+                    }
+                    vertx.eventBus().send(replyAddress, response);
+                }
+        );
 
-        int bugCount = 0;
-        for (int i = 0; i < 10; i++) {
-            String queueName = "queue-" + i;
-            long expected = 100 + i;
-            long staleValue = 1 + i;
-            Long actual = result.get(queueName);
+        queueStatisticsCollector.getAllApproximateQueueSize().onComplete(event -> {
+            int bugCount = 0;
+            for (int i = 0; i < 10; i++) {
+                String queueName = "queue-" + i;
+                long staleValue = 1 + i;
+                Long actual = event.result().get(queueName);
 
-            if (actual != null && actual == staleValue) {
-                bugCount++;
+                if (actual != null && actual == staleValue) {
+                    bugCount++;
+                }
             }
-        }
+            context.assertEquals(0, bugCount,
+                    "Found " + bugCount + " queues where ts=0 data overwrote valid timestamp data. " +
+                            "The ts==0 case should not overwrite data with valid timestamps.");
+            async.complete();
+        });
 
-        context.assertEquals(0, bugCount,
-                "Found " + bugCount + " queues where ts=0 data overwrote valid timestamp data. " +
-                        "The ts==0 case should not overwrite data with valid timestamps.");
     }
 
     /**
@@ -141,32 +162,42 @@ public class QueueStatisticsCollectorTest {
      */
     @Test
     public void testGetAllApproximateQueueSize_NewerTimestampWins(TestContext context) {
-        Set<String> aliveConsumers = new HashSet<>();
-        aliveConsumers.add("consumer-A");
-        aliveConsumers.add("consumer-B");
+        Async async = context.async();
 
-        // Consumer A reports queue "foo" with timestamp=1000, size=10
-        when(keyspaceHelper.getVerticleUid()).thenReturn("consumer-A");
-        Map<String, QueueProcessingState> consumerAQueues = new HashMap<>();
-        QueueProcessingState stateA = new QueueProcessingState(QueueState.READY, 1000);
-        stateA.setQueueItemSize(10);
-        consumerAQueues.put("foo", stateA);
-        queueStatisticsCollector.updateApproximateQueueSize(aliveConsumers, consumerAQueues);
+        // first consumer
+        QueueProcessingState consumerAQueues = new QueueProcessingState(QueueState.READY, 1000);
+        consumerAQueues.setQueueItemSize(10);
+        redisQues.getQueueConsumerRunner().getMyQueues().put("foo", consumerAQueues);
 
-        // Consumer B reports queue "foo" with timestamp=2000 (newer), size=20
-        when(keyspaceHelper.getVerticleUid()).thenReturn("consumer-B");
-        Map<String, QueueProcessingState> consumerBQueues = new HashMap<>();
-        QueueProcessingState stateB = new QueueProcessingState(QueueState.READY, 2000);
-        stateB.setQueueItemSize(20);
-        consumerBQueues.put("foo", stateB);
-        queueStatisticsCollector.updateApproximateQueueSize(aliveConsumers, consumerBQueues);
+        vertx.eventBus().consumer(
+                keyspaceHelper.getQueueRunningStateKey(),
+                msg -> {
+                    JsonObject request = (JsonObject) msg.body();
+                    String replyAddress = request.getString("reply");
+                    long refreshesWithinMs = request.getLong(RedisquesAPI.GET_QUEUE_RUNNING_STATES_LAST_UPDATE_WITHIN_MS);
+                    context.assertEquals(0L, refreshesWithinMs);
+                    JsonObject response = new JsonObject();
+
+                    QueueProcessingState consumerBQueues = new QueueProcessingState(QueueState.READY, 2000);
+                    consumerBQueues.setQueueItemSize(20);
+                    response.put("foo", JsonObject.mapFrom(consumerBQueues));
+                    //delay few ms, let this record at 2 pos
+                    try {
+                        Thread.sleep(500);
+                    } catch (InterruptedException e) {
+                        throw new RuntimeException(e);
+                    }
+                    vertx.eventBus().send(replyAddress, response);
+                }
+        );
 
         // Get merged result
-        Map<String, Long> result = queueStatisticsCollector.getAllApproximateQueueSize();
-
-        // Expected: 20 (from consumer-B with the newer timestamp 2000)
-        context.assertEquals(20L, result.get("foo"),
-                "Queue size should be 20 (from consumer-B with newer timestamp=2000)");
+        queueStatisticsCollector.getAllApproximateQueueSize().onComplete(event -> {
+            // Expected: 20 (from consumer-B with the newer timestamp 2000)
+            context.assertEquals(20L, event.result().get("foo"),
+                    "Queue size should be 20 (from consumer-B with newer timestamp=2000)");
+            async.complete();
+        });
     }
 
     /**
@@ -174,22 +205,21 @@ public class QueueStatisticsCollectorTest {
      */
     @Test
     public void testGetAllApproximateQueueSize_TimestampZeroUsedAsFallback(TestContext context) {
-        Set<String> aliveConsumers = new HashSet<>();
-        aliveConsumers.add("consumer-A");
-
+        Async async = context.async();
         // Consumer A reports queue "foo" with timestamp=0, size=42
-        when(keyspaceHelper.getVerticleUid()).thenReturn("consumer-A");
-        Map<String, QueueProcessingState> consumerAQueues = new HashMap<>();
-        QueueProcessingState stateA = new QueueProcessingState(QueueState.READY, 0);
-        stateA.setQueueItemSize(42);
-        consumerAQueues.put("foo", stateA);
-        queueStatisticsCollector.updateApproximateQueueSize(aliveConsumers, consumerAQueues);
+        QueueProcessingState consumerAQueues = new QueueProcessingState(QueueState.READY, 0);
+        consumerAQueues.setQueueItemSize(42);
+        redisQues.getQueueConsumerRunner().getMyQueues().put("foo", consumerAQueues);
 
         // Get merged result
-        Map<String, Long> result = queueStatisticsCollector.getAllApproximateQueueSize();
-
-        // Expected: 42 (ts=0 should be used when it's the only data available)
-        context.assertEquals(42L, result.get("foo"),
-                "Queue size should be 42 when ts=0 is the only data available");
+        queueStatisticsCollector.getAllApproximateQueueSize().onComplete(new Handler<AsyncResult<Map<String, Long>>>() {
+            @Override
+            public void handle(AsyncResult<Map<String, Long>> event) {
+                // Expected: 42 (ts=0 should be used when it's the only data available)
+                context.assertEquals(42L, event.result().get("foo"),
+                        "Queue size should be 42 when ts=0 is the only data available");
+                async.complete();
+            }
+        });
     }
 }

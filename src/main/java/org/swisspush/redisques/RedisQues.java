@@ -300,4 +300,8 @@ public class RedisQues extends AbstractVerticle {
             redisMonitor = null;
         }
     }
+
+    public QueueStatisticsCollector getqueueStatisticsCollector() {
+        return queueStatisticsCollector;
+    }
 }
