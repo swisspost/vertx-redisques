@@ -2079,22 +2079,31 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
     @Test
     public void getStatisticsFailures(TestContext context) {
         flushAll();
-
         // Check normal send with missing message consumer -> 1 failure immediately
         Async async1 = context.async();
         eventBusSend(buildEnqueueOperation("stat_a", "item_a_1"), handler -> {
-            assertQueueState(context, null, 1, 0,
-                    "stat_a", 1, 1, null,
-                    null);
-            async1.complete();
+            testVertx.setTimer(1500, new Handler<Long>() {
+                @Override
+                public void handle(Long event) {
+                    assertQueueState(context, null, 1, 0,
+                            "stat_a", 1, 1, null,
+                            null);
+                    async1.complete();
+                }
+            });
         });
         async1.awaitSuccess();
         Async async2 = context.async();
         eventBusSend(buildEnqueueOperation("stat_a", "item_a_2"), handler -> {
-            assertQueueState(context, null, 1, 0,
-                    "stat_a", 2, 2, null,
-                    null);
-            async2.complete();
+            testVertx.setTimer(1500, new Handler<Long>() {
+                @Override
+                public void handle(Long event) {
+                    assertQueueState(context, null, 1, 0,
+                            "stat_a", 2, 2, null,
+                            null);
+                    async2.complete();
+                }
+            });
         });
         async2.awaitSuccess();
     }
