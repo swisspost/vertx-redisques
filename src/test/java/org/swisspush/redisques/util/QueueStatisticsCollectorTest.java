@@ -1,8 +1,10 @@
 package org.swisspush.redisques.util;
 
 import io.vertx.core.Vertx;
+import io.vertx.ext.unit.Async;
 import io.vertx.ext.unit.TestContext;
 import io.vertx.ext.unit.junit.VertxUnitRunner;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -50,6 +52,47 @@ public class QueueStatisticsCollectorTest {
 
         queueStatisticsCollector = new QueueStatisticsCollector(redisService, keyspaceHelper, vertx,
                 exceptionFactory, redisRequestQuota, 10, configurationProvider);
+    }
+
+    @After
+    public void after(TestContext context) {
+        if (queueStatisticsCollector != null) {
+            queueStatisticsCollector.stop();
+        }
+        vertx.close(context.asyncAssertSuccess());
+    }
+
+    @Test
+    public void testStopUnregistersConsumer(TestContext context) {
+        Async async = context.async();
+        String syncKey = "sync_key";
+        when(keyspaceHelper.getVerticleUid()).thenReturn("this-verticle");
+
+        Map<String, QueueSizeInfoEntry> entries = new HashMap<>();
+        entries.put("test-queue", new QueueSizeInfoEntry(100, System.currentTimeMillis()));
+        QueueSizeInfoMap testMap = new QueueSizeInfoMap();
+        testMap.put("other-verticle", entries);
+
+        vertx.eventBus().publish(syncKey, testMap);
+
+        vertx.setTimer(100, id1 -> {
+            context.assertEquals(100L, queueStatisticsCollector.getApproximateQueueSize("test-queue"),
+                    "Collector should have received and processed message before stop");
+
+            queueStatisticsCollector.stop();
+
+            Map<String, QueueSizeInfoEntry> newEntries = new HashMap<>();
+            newEntries.put("test-queue", new QueueSizeInfoEntry(200, System.currentTimeMillis()));
+            QueueSizeInfoMap newMap = new QueueSizeInfoMap();
+            newMap.put("other-verticle", newEntries);
+            vertx.eventBus().publish(syncKey, newMap);
+
+            vertx.setTimer(100, id2 -> {
+                context.assertEquals(100L, queueStatisticsCollector.getApproximateQueueSize("test-queue"),
+                        "After stop, collector should not process new messages - size should remain 100, not 200");
+                async.complete();
+            });
+        });
     }
 
     @Test
