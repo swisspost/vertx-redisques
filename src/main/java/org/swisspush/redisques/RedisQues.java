@@ -139,7 +139,8 @@ public class RedisQues extends AbstractVerticle {
                 if (this.dequeueStatisticCollector == null) {
                     this.dequeueStatisticCollector = new DequeueStatisticCollector(vertx, modConfig.isDequeueStatsEnabled(), redisService, keyspaceHelper);
                 }
-                QueueConfigurationProvider.provider(vertx, configurationProvider.configuration().getQueueConfigurations()).get().onComplete(event1 -> {
+                QueueConfigurationProvider.provider(vertx, configurationProvider.configuration().getQueueConfigurations(),
+                        configurationProvider.configuration().getQueueConfigCleanupInterval()).get().onComplete(event1 -> {
                     if (event1.succeeded()) {
                         RedisQues.this.queueConfigurationProvider = event1.result();
                         if (migrationToolDisabled) {

@@ -27,6 +27,7 @@ public class RedisquesAPI {
 
     public static final String MEMORY_FULL = "memory usage limit reached";
     public static final String QUEUE_PATROL_LIMITED = "patrol limit reached";
+    public static final String BATCH_QUEUE = "batchQueue";
     public static final String PAYLOAD = "payload";
     public static final String QUEUENAME = "queuename";
     public static final String FILTER = "filter";
@@ -58,6 +59,7 @@ public class RedisquesAPI {
     public static final String PER_QUEUE_CONFIG_MAXIMUM_ITEM_IN_BATCH_DISPATCH =  "maximumItemInBatchDispatch";
     public static final String PER_QUEUE_CONFIG_MINIMUM_ITEM_IN_BATCH_DISPATCH =  "minimumItemInBatchDispatch";
     public static final String PER_QUEUE_CONFIG_MAX_BATCH_DISPATCH_WAIT_TIMEOUT =  "maxBatchItemDispatchWaitTimeout";
+    public static final String PER_QUEUE_CONFIG_EXPIRE_TIMEOUT =  "configExpireTimeout";
     public static final String PER_QUEUE_CONFIG_NAME =  "configName";
     public static final String PER_QUEUE_CONFIG_PATTERN =  "pattern";
 
