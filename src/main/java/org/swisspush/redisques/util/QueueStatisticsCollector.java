@@ -5,6 +5,7 @@ import io.vertx.core.Handler;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.Message;
+import io.vertx.core.eventbus.MessageConsumer;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.redis.client.Command;
@@ -82,6 +83,8 @@ public class QueueStatisticsCollector {
     private final RedisQuesExceptionFactory exceptionFactory;
     private final Semaphore redisRequestQuota;
     private final UpperBoundParallel upperBoundParallel;
+    private MessageConsumer<QueueSizeInfoMap> queueSizeConsumer;
+    private Long speedStatisticsTimerId;
 
     public QueueStatisticsCollector(
             RedisService redisService,
@@ -102,7 +105,7 @@ public class QueueStatisticsCollector {
 
         vertx.eventBus().registerDefaultCodec(QueueSizeInfoMap.class, new QueueSizeInfoMapCodec());
         speedStatisticsScheduler(speedIntervalSec);
-        vertx.eventBus().consumer(keyspaceHelper.getQueueStatisticQueueSizeSyncKey(),
+        this.queueSizeConsumer = vertx.eventBus().consumer(keyspaceHelper.getQueueStatisticQueueSizeSyncKey(),
                 (Handler<Message<QueueSizeInfoMap>>) event ->
                        event.body().getValue().forEach((key, value) -> {
                             if (!keyspaceHelper.getVerticleUid().equals(key)) {
@@ -110,6 +113,28 @@ public class QueueStatisticsCollector {
                                 approximateQueueSize.put(key, value);
                             }
                         }));
+    }
+
+    /**
+     * Stops the QueueStatisticsCollector by unregistering the EventBus consumer and cancelling
+     * the periodic speed statistics timer. This method should be called during shutdown to prevent
+     * stale EventBus subscriptions in clustered environments.
+     */
+    public void stop() {
+        log.debug("Stopping QueueStatisticsCollector");
+        if (queueSizeConsumer != null && queueSizeConsumer.isRegistered()) {
+            queueSizeConsumer.unregister()
+                    .onSuccess(v -> log.debug("Successfully unregistered queueSizeConsumer"))
+                    .onFailure(ex -> log.warn("Failed to unregister queueSizeConsumer", ex));
+        }
+        if (speedStatisticsTimerId != null) {
+            boolean cancelled = vertx.cancelTimer(speedStatisticsTimerId);
+            if (cancelled) {
+                log.debug("Successfully cancelled speed statistics timer");
+            } else {
+                log.warn("Failed to cancel speed statistics timer with id: {}", speedStatisticsTimerId);
+            }
+        }
     }
 
     /**
@@ -129,7 +154,7 @@ public class QueueStatisticsCollector {
             log.debug("No speed statistics required");
             return;
         }
-        vertx.setPeriodic(speedIntervalSec * 1000L, timerId -> {
+        this.speedStatisticsTimerId = vertx.setPeriodic(speedIntervalSec * 1000L, timerId -> {
             log.debug("Schedule statistics queue speed collection");
             // remember the accumulated message counter as speed value for the previous
             // speed measurement interval

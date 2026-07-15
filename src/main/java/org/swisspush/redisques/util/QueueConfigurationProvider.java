@@ -12,6 +12,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.AbstractMap;
 import java.util.Arrays;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -21,6 +22,7 @@ import java.util.stream.Collectors;
 
 public class QueueConfigurationProvider {
     private static final Logger log = LoggerFactory.getLogger(QueueConfigurationProvider.class);
+    private static final long MIN_QUEUE_CONFIG_CLEANUP_INTERVAL = 1_000;
     public static final String DELETE = "DELETE";
 
     // Identify of the config provider, should be the same in the same vertx instance, but different in cluster node
@@ -69,7 +71,7 @@ public class QueueConfigurationProvider {
     }
 
 
-    private QueueConfigurationProvider(Vertx vertx, List<QueueConfiguration> defaultQueueConfigurations) {
+    private QueueConfigurationProvider(Vertx vertx, List<QueueConfiguration> defaultQueueConfigurations, long cleanupInterval) {
         this.vertx = vertx;
         this.defaultQueueConfigurations = defaultQueueConfigurations;
         loadStaticConfigs();
@@ -101,7 +103,9 @@ public class QueueConfigurationProvider {
                 if (DELETE.equals(operation)) {
                     final String configName = event.body().getString(RedisquesAPI.PER_QUEUE_CONFIG_NAME);
                     QueueConfiguration removedConfig = queueConfigurations.remove(configName);
-                    removeQueueConfigurationCategories(removedConfig);
+                    if (removedConfig != null) {
+                        removeQueueConfigurationCategories(removedConfig);
+                    }
                     log.debug("delete config {} from instance {}", configName, uid);
                 } else {
                     log.warn("Unsupported operation: {}", operation);
@@ -114,13 +118,16 @@ public class QueueConfigurationProvider {
                 }
             }
         });
+
+        // QueueConfiguration cleanup
+        vertx.setPeriodic(Math.max(MIN_QUEUE_CONFIG_CLEANUP_INTERVAL, cleanupInterval), event -> queueConfigurationCleanUp());
     }
 
-    public static NodeLocalSingletonProvider<QueueConfigurationProvider> provider(Vertx vertx, List<QueueConfiguration> defaultQueueConfigurations) {
+    public static NodeLocalSingletonProvider<QueueConfigurationProvider> provider(Vertx vertx, List<QueueConfiguration> defaultQueueConfigurations, long cleanupInterval) {
         return new NodeLocalSingletonProvider<>(
                 vertx,
                 "per-queue-config",
-                () -> Future.succeededFuture(new QueueConfigurationProvider(vertx, defaultQueueConfigurations)));
+                () -> Future.succeededFuture(new QueueConfigurationProvider(vertx, defaultQueueConfigurations, cleanupInterval)));
     }
 
     /**
@@ -285,6 +292,11 @@ public class QueueConfigurationProvider {
             isNew = true;
         }
 
+        queueConfiguration.withLastRegisterTime(System.currentTimeMillis());
+
+        if (jsonObject.containsKey(RedisquesAPI.PER_QUEUE_CONFIG_EXPIRE_TIMEOUT)) {
+            queueConfiguration.withConfigExpireTimeout(jsonObject.getLong(RedisquesAPI.PER_QUEUE_CONFIG_EXPIRE_TIMEOUT));
+        }
         if (jsonObject.containsKey(RedisquesAPI.PER_QUEUE_CONFIG_MAXIMUM_ITEM_IN_BATCH_DISPATCH)) {
             queueConfiguration.withMaximumItemInBatchDispatch(jsonObject.getInteger(RedisquesAPI.PER_QUEUE_CONFIG_MAXIMUM_ITEM_IN_BATCH_DISPATCH));
         }
@@ -395,6 +407,21 @@ public class QueueConfigurationProvider {
                 queueConfigurations.put(queueConfiguration.getPattern(), queueConfiguration);
                 updateQueueConfigurationCategories(queueConfiguration);
             });
+        }
+    }
+
+    // remove expired queue configurations
+    private void queueConfigurationCleanUp() {
+        Iterator<Map.Entry<String, QueueConfiguration>> iterator = queueConfigurations.entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<String, QueueConfiguration> entry = iterator.next();
+            if (entry.getValue().getConfigExpireTimeout() > 0) {
+                long expires = (entry.getValue().getConfigExpireTimeout() * 1000) + entry.getValue().getLastRegisterTime();
+                if (expires < System.currentTimeMillis()) {
+                    removeQueueConfigurationCategories(entry.getValue());
+                    iterator.remove();
+                }
+            }
         }
     }
 }

@@ -74,6 +74,7 @@ public class RedisquesConfiguration {
     private final boolean tcpKeepAlive;
 
     private final RedisReplicas redisReplicasType;
+    private final long queueConfigCleanupInterval;
 
     private static final int DEFAULT_HTTP_REQUEST_HANDLER_MAX_HEADER_SIZE = 8192;
     private static final int DEFAULT_HTTP_REQUEST_HANDLER_MAX_INITIAL_LINE_LENGTH = 4096;
@@ -89,6 +90,7 @@ public class RedisquesConfiguration {
     private static final int DEFAULT_CONSUMER_LOCK_MULTIPLIER = 2;
     private static final int DEFAULT_EMPTY_QUEUE_LIVE_TIME_MS = -1;
     private static final RedisReplicas DEFAULT_REDIS_REPLICAS_TYPE = RedisReplicas.NEVER;
+    private static final long DEFAULT_QUEUE_CONFIG_CLEANUP_INTERVAL = 60_000;
 
     // We want to have more than the default of 24 max waiting requests and therefore
     // set the default here to infinity value. See as well:
@@ -165,6 +167,7 @@ public class RedisquesConfiguration {
     public static final String PROP_QUEUESITEMS_COUNT_REQUEST_QUOTA_ACQUIRE_RETRY_TIME_MS = "getQueuesItemsCountRedisRequestQuotaAcquireRetryTimeMs";
     public static final String PROP_ACTIVE_QUEUE_REFRESH_REQUEST_QUOTA_ACQUIRE_RETRY_TIME_MS = "activeQueueRegRefreshReqQuotaAcquireRetryTimeMs";
     public static final String PROP_REDIS_CONNECTION_KEEP_ALIVE = "redisConnectionKeepAlive";
+    public static final String PROP_QUEUE_CONFIG_CLEANUP_INTERVAL = "queueConfigCleanupInterval";
 
     /**
      * Constructor with default values. Use the {@link RedisquesConfigurationBuilder} class
@@ -204,7 +207,7 @@ public class RedisquesConfiguration {
                 DEFAULT_REDIS_POOL_RECYCLE_TIMEOUT_MS, DEFAULT_REDIS_REPLICAS_TYPE, DEFAULT_DEQUEUE_STATISTIC_REPORT_INTERVAL_SEC,
                 DEFAULT_REDIS_READY_CHECK_INTERVAL_MS, DEFAULT_EMPTY_QUEUE_LIVE_TIME_MS, DEFAULT_QUOTA_ACQUIRE_RETRY_TIME_MS,
                 DEFAULT_QUOTA_ACQUIRE_RETRY_TIME_MS, DEFAULT_QUOTA_ACQUIRE_RETRY_TIME_MS, DEFAULT_QUOTA_ACQUIRE_RETRY_TIME_MS, DEFAULT_QUOTA_ACQUIRE_RETRY_TIME_MS,
-                DEFAULT_REDIS_CONNECTION_KEEP_ALIVE);
+                DEFAULT_REDIS_CONNECTION_KEEP_ALIVE, DEFAULT_QUEUE_CONFIG_CLEANUP_INTERVAL);
     }
 
     /**
@@ -235,7 +238,7 @@ public class RedisquesConfiguration {
                 DEFAULT_REDIS_POOL_RECYCLE_TIMEOUT_MS, DEFAULT_REDIS_REPLICAS_TYPE, DEFAULT_DEQUEUE_STATISTIC_REPORT_INTERVAL_SEC,
                 DEFAULT_REDIS_READY_CHECK_INTERVAL_MS, DEFAULT_EMPTY_QUEUE_LIVE_TIME_MS, DEFAULT_QUOTA_ACQUIRE_RETRY_TIME_MS,
                 DEFAULT_QUOTA_ACQUIRE_RETRY_TIME_MS, DEFAULT_QUOTA_ACQUIRE_RETRY_TIME_MS, DEFAULT_QUOTA_ACQUIRE_RETRY_TIME_MS, DEFAULT_QUOTA_ACQUIRE_RETRY_TIME_MS,
-                DEFAULT_REDIS_CONNECTION_KEEP_ALIVE);
+                DEFAULT_REDIS_CONNECTION_KEEP_ALIVE, DEFAULT_QUEUE_CONFIG_CLEANUP_INTERVAL);
     }
 
     /**
@@ -265,7 +268,7 @@ public class RedisquesConfiguration {
                 DEFAULT_REDIS_POOL_RECYCLE_TIMEOUT_MS, DEFAULT_REDIS_REPLICAS_TYPE, DEFAULT_DEQUEUE_STATISTIC_REPORT_INTERVAL_SEC,
                 DEFAULT_REDIS_READY_CHECK_INTERVAL_MS, DEFAULT_EMPTY_QUEUE_LIVE_TIME_MS, DEFAULT_QUOTA_ACQUIRE_RETRY_TIME_MS,
                 DEFAULT_QUOTA_ACQUIRE_RETRY_TIME_MS, DEFAULT_QUOTA_ACQUIRE_RETRY_TIME_MS, DEFAULT_QUOTA_ACQUIRE_RETRY_TIME_MS, DEFAULT_QUOTA_ACQUIRE_RETRY_TIME_MS,
-                DEFAULT_REDIS_CONNECTION_KEEP_ALIVE);
+                DEFAULT_REDIS_CONNECTION_KEEP_ALIVE, DEFAULT_QUEUE_CONFIG_CLEANUP_INTERVAL);
     }
 
     /**
@@ -295,7 +298,7 @@ public class RedisquesConfiguration {
                 DEFAULT_REDIS_POOL_RECYCLE_TIMEOUT_MS, DEFAULT_REDIS_REPLICAS_TYPE, DEFAULT_DEQUEUE_STATISTIC_REPORT_INTERVAL_SEC,
                 DEFAULT_REDIS_READY_CHECK_INTERVAL_MS, DEFAULT_EMPTY_QUEUE_LIVE_TIME_MS, DEFAULT_QUOTA_ACQUIRE_RETRY_TIME_MS,
                 DEFAULT_QUOTA_ACQUIRE_RETRY_TIME_MS, DEFAULT_QUOTA_ACQUIRE_RETRY_TIME_MS, DEFAULT_QUOTA_ACQUIRE_RETRY_TIME_MS, DEFAULT_QUOTA_ACQUIRE_RETRY_TIME_MS,
-                DEFAULT_REDIS_CONNECTION_KEEP_ALIVE);
+                DEFAULT_REDIS_CONNECTION_KEEP_ALIVE, DEFAULT_QUEUE_CONFIG_CLEANUP_INTERVAL);
     }
 
     private RedisquesConfiguration(String address, String configurationUpdatedAddress, String redisPrefix, String processorAddress,
@@ -317,7 +320,8 @@ public class RedisquesConfiguration {
                                    int dequeueStatisticReportIntervalSec, int redisReadyCheckIntervalMs, int emptyQueueLiveTimeMs,
                                    int redisMonitoringReqQuotaAcquireRetryTimeMs, int checkQueueRequestsQuotaAcquireRetryTimeMs,
                                    int queueStatsRequestQuotaAcquireRetryTimeMs, int getQueuesItemsCountRedisRequestQuotaAcquireRetryTimeMs,
-                                   int activeQueueRegRefreshReqQuotaAcquireRetryTimeMs, boolean tcpKeepAlive) {
+                                   int activeQueueRegRefreshReqQuotaAcquireRetryTimeMs, boolean tcpKeepAlive,
+                                   long queueConfigCleanupInterval) {
         this.address = address;
         this.configurationUpdatedAddress = configurationUpdatedAddress;
         this.redisPrefix = redisPrefix;
@@ -343,6 +347,7 @@ public class RedisquesConfiguration {
         this.getQueuesItemsCountRedisRequestQuotaAcquireRetryTimeMs = getQueuesItemsCountRedisRequestQuotaAcquireRetryTimeMs;
         this.activeQueueRegRefreshReqQuotaAcquireRetryTimeMs = activeQueueRegRefreshReqQuotaAcquireRetryTimeMs;
         this.tcpKeepAlive = tcpKeepAlive;
+        this.queueConfigCleanupInterval = queueConfigCleanupInterval;
 
         Logger log = LoggerFactory.getLogger(RedisquesConfiguration.class);
 
@@ -479,7 +484,8 @@ public class RedisquesConfiguration {
                 builder.queueStatsRequestQuotaAcquireRetryTimeMs,
                 builder.getQueuesItemsCountRedisRequestQuotaAcquireRetryTimeMs,
                 builder.activeQueueRegRefreshReqQuotaAcquireRetryTimeMs,
-                builder.tcpKeepAlive);
+                builder.tcpKeepAlive,
+                builder.queueConfigCleanupInterval);
     }
 
     public JsonObject asJsonObject() {
@@ -539,6 +545,7 @@ public class RedisquesConfiguration {
         obj.put(PROP_QUEUESITEMS_COUNT_REQUEST_QUOTA_ACQUIRE_RETRY_TIME_MS, getQueuesItemsCountRedisRequestQuotaAcquireRetryTimeMs());
         obj.put(PROP_ACTIVE_QUEUE_REFRESH_REQUEST_QUOTA_ACQUIRE_RETRY_TIME_MS, getActiveQueueRegRefreshReqQuotaAcquireRetryTimeMs());
         obj.put(PROP_REDIS_CONNECTION_KEEP_ALIVE, getTcpKeepAlive());
+        obj.put(PROP_QUEUE_CONFIG_CLEANUP_INTERVAL, getQueueConfigCleanupInterval());
         return obj;
     }
 
@@ -711,6 +718,9 @@ public class RedisquesConfiguration {
         }
         if (json.containsKey(PROP_REDIS_CONNECTION_KEEP_ALIVE)) {
             builder.tcpKeepAlive(json.getBoolean(PROP_REDIS_CONNECTION_KEEP_ALIVE));
+        }
+        if (json.containsKey(PROP_QUEUE_CONFIG_CLEANUP_INTERVAL)) {
+            builder.queueConfigCleanupInterval(json.getLong(PROP_QUEUE_CONFIG_CLEANUP_INTERVAL));
         }
         return builder.build();
     }
@@ -968,6 +978,10 @@ public class RedisquesConfiguration {
         return redisReplicasType;
     }
 
+    public long getQueueConfigCleanupInterval() {
+        return queueConfigCleanupInterval;
+    }
+
     /**
      * RedisquesConfigurationBuilder class for simplified configuration.
      *
@@ -1035,6 +1049,7 @@ public class RedisquesConfiguration {
         private int getQueuesItemsCountRedisRequestQuotaAcquireRetryTimeMs;
         private int activeQueueRegRefreshReqQuotaAcquireRetryTimeMs;
         private boolean tcpKeepAlive;
+        private long queueConfigCleanupInterval;
 
         public RedisquesConfigurationBuilder() {
             this.address = "redisques";
@@ -1084,6 +1099,7 @@ public class RedisquesConfiguration {
             this.getQueuesItemsCountRedisRequestQuotaAcquireRetryTimeMs = DEFAULT_QUOTA_ACQUIRE_RETRY_TIME_MS;
             this.activeQueueRegRefreshReqQuotaAcquireRetryTimeMs = DEFAULT_QUOTA_ACQUIRE_RETRY_TIME_MS;
             this.tcpKeepAlive = false;
+            this.queueConfigCleanupInterval = DEFAULT_QUEUE_CONFIG_CLEANUP_INTERVAL;
         }
 
         public RedisquesConfigurationBuilder address(String address) {
@@ -1359,6 +1375,11 @@ public class RedisquesConfiguration {
 
         public RedisquesConfigurationBuilder tcpKeepAlive(boolean tcpKeepAlive) {
             this.tcpKeepAlive = tcpKeepAlive;
+            return this;
+        }
+
+        public RedisquesConfigurationBuilder queueConfigCleanupInterval(long queueConfigCleanupInterval) {
+            this.queueConfigCleanupInterval = queueConfigCleanupInterval;
             return this;
         }
 
