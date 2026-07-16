@@ -34,7 +34,7 @@ public class DeletePerQueueConfigurationsActionTest {
     public void testQueueConfigurationAction_deleteOneConfig(TestContext context) {
         final Async async = context.async();
         Message<JsonObject> message = Mockito.mock(Message.class);
-        QueueConfigurationProvider.provider(Vertx.vertx(), new ArrayList<>()).get().onComplete(event -> {
+        QueueConfigurationProvider.provider(Vertx.vertx(), new ArrayList<>(), 1_000).get().onComplete(event -> {
             QueueConfigurationProvider queueConfigurationProvider = event.result();
             DeletePerQueueConfigurationsAction action = new DeletePerQueueConfigurationsAction(queueConfigurationProvider, Mockito.mock(Logger.class));
             queueConfigurationProvider.updateQueueConfiguration("test-pattern-1", createQueueConfiguration("test-pattern-1").asJsonObject());
@@ -59,7 +59,7 @@ public class DeletePerQueueConfigurationsActionTest {
     public void testQueueConfigurationAction_deleteNothing(TestContext context) {
         final Async async = context.async();
         Message<JsonObject> message = Mockito.mock(Message.class);
-        QueueConfigurationProvider.provider(Vertx.vertx(), new ArrayList<>()).get().onComplete(event -> {
+        QueueConfigurationProvider.provider(Vertx.vertx(), new ArrayList<>(), 1_000).get().onComplete(event -> {
             QueueConfigurationProvider queueConfigurationProvider = event.result();
             DeletePerQueueConfigurationsAction action = new DeletePerQueueConfigurationsAction(queueConfigurationProvider, Mockito.mock(Logger.class));
             queueConfigurationProvider.updateQueueConfiguration("test-pattern-1", createQueueConfiguration("test-pattern-1").asJsonObject());

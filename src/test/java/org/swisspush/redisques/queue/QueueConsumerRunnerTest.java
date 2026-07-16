@@ -32,6 +32,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import static org.swisspush.redisques.util.RedisquesAPI.BATCH_QUEUE;
 import static org.swisspush.redisques.util.RedisquesAPI.ERROR;
 import static org.swisspush.redisques.util.RedisquesAPI.OK;
 import static org.swisspush.redisques.util.RedisquesAPI.STATUS;
@@ -73,6 +74,7 @@ public class QueueConsumerRunnerTest extends AbstractTestCase {
                         new QueueConfiguration("limited-queue-4.*")
                                 .withMaxQueueEntries(4))
                 )
+                .queueConfigCleanupInterval(1_000L)
                 .build()
                 .asJsonObject();
 
@@ -192,22 +194,24 @@ public class QueueConsumerRunnerTest extends AbstractTestCase {
             log.info("Received '{}'", event.body());
             if (index.get() == 0) {
                 context.assertEquals("batch-queue-1.test", event.body().getString("queue"));
-                JsonArray itemsJsonArray = new JsonArray(event.body().getString("payload"));
-                context.assertEquals(3, itemsJsonArray.size());
+                context.assertTrue(event.body().getBoolean(BATCH_QUEUE));
+                JsonArray batchItemsJsonObject = new JsonArray(event.body().getString("payload"));
+                context.assertEquals(3, batchItemsJsonObject.size());
                 // the order is important
-                context.assertEquals("message_1-1", itemsJsonArray.getString(0));
-                context.assertEquals("message_1-2", itemsJsonArray.getString(1));
-                context.assertEquals("message_1-3", itemsJsonArray.getString(2));
+                context.assertEquals("message_1-1", batchItemsJsonObject.getString(0));
+                context.assertEquals("message_1-2", batchItemsJsonObject.getString(1));
+                context.assertEquals("message_1-3", batchItemsJsonObject.getString(2));
             } else if (index.get() == 1) {
                 context.assertEquals("batch-queue-4.test", event.body().getString("queue"));
-                JsonArray itemsJsonArray = new JsonArray(event.body().getString("payload"));
-                context.assertEquals(5, itemsJsonArray.size());
+                context.assertTrue(event.body().getBoolean(BATCH_QUEUE));
+                JsonArray batchItemsJsonObject = new JsonArray(event.body().getString("payload"));
+                context.assertEquals(5, batchItemsJsonObject.size());
                 // the order is important
-                context.assertEquals("message_4-1", itemsJsonArray.getString(0));
-                context.assertEquals("message_4-2", itemsJsonArray.getString(1));
-                context.assertEquals("message_4-3", itemsJsonArray.getString(2));
-                context.assertEquals("message_4-4", itemsJsonArray.getString(3));
-                context.assertEquals("message_4-5", itemsJsonArray.getString(4));
+                context.assertEquals("message_4-1", batchItemsJsonObject.getString(0));
+                context.assertEquals("message_4-2", batchItemsJsonObject.getString(1));
+                context.assertEquals("message_4-3", batchItemsJsonObject.getString(2));
+                context.assertEquals("message_4-4", batchItemsJsonObject.getString(3));
+                context.assertEquals("message_4-5", batchItemsJsonObject.getString(4));
             } else {
                 context.fail("unexpected index " + index);
             }
@@ -262,23 +266,23 @@ public class QueueConsumerRunnerTest extends AbstractTestCase {
             public void handle(Message<JsonObject> event) {
                 log.info("Received '{}'", event.body());
                 if (index.get() == 0) {
-                    context.assertEquals("batch-queue-1.test", event.body().getString("queue"));
-                    JsonArray itemsJsonArray = new JsonArray(event.body().getString("payload"));
-                    context.assertEquals(3, itemsJsonArray.size());
+                    JsonArray batchItemsJsonObject = new JsonArray(event.body().getString("payload"));
+                    context.assertTrue(Boolean.parseBoolean(event.body().getString(BATCH_QUEUE)));
+                    context.assertEquals(3, batchItemsJsonObject.size());
                     // the order is important
-                    context.assertEquals("message_1-1", itemsJsonArray.getString(0));
-                    context.assertEquals("message_1-2", itemsJsonArray.getString(1));
-                    context.assertEquals("message_1-3", itemsJsonArray.getString(2));
+                    context.assertEquals("message_1-1", batchItemsJsonObject.getString(0));
+                    context.assertEquals("message_1-2", batchItemsJsonObject.getString(1));
+                    context.assertEquals("message_1-3", batchItemsJsonObject.getString(2));
                 } else if (index.get() == 1) {
-                    context.assertEquals("batch-queue-4.test", event.body().getString("queue"));
-                    JsonArray itemsJsonArray = new JsonArray(event.body().getString("payload"));
-                    context.assertEquals(5, itemsJsonArray.size());
+                    JsonArray batchItemsJsonObject = new JsonArray(event.body().getString("payload"));
+                    context.assertTrue(Boolean.parseBoolean(event.body().getString(BATCH_QUEUE)));
+                    context.assertEquals(5, batchItemsJsonObject.size());
                     // the order is important
-                    context.assertEquals("message_4-1", itemsJsonArray.getString(0));
-                    context.assertEquals("message_4-2", itemsJsonArray.getString(1));
-                    context.assertEquals("message_4-3", itemsJsonArray.getString(2));
-                    context.assertEquals("message_4-4", itemsJsonArray.getString(3));
-                    context.assertEquals("message_4-5", itemsJsonArray.getString(4));
+                    context.assertEquals("message_4-1", batchItemsJsonObject.getString(0));
+                    context.assertEquals("message_4-2", batchItemsJsonObject.getString(1));
+                    context.assertEquals("message_4-3", batchItemsJsonObject.getString(2));
+                    context.assertEquals("message_4-4", batchItemsJsonObject.getString(3));
+                    context.assertEquals("message_4-5", batchItemsJsonObject.getString(4));
                 } else {
                     context.fail("unexpected index " + index);
                 }
@@ -323,7 +327,6 @@ public class QueueConsumerRunnerTest extends AbstractTestCase {
         });
     }
 
-
     @Test
     public void testMultipleItemBatchDispatchSuccessWithMinimum(TestContext context) {
         Async async = context.async();
@@ -335,14 +338,14 @@ public class QueueConsumerRunnerTest extends AbstractTestCase {
             if (index.get() == 0) {
                 context.fail("Should no dispatch");
             } else if (index.get() == 1) {
-                context.assertEquals(queueName, event.body().getString("queue"));
-                JsonArray itemsJsonArray = new JsonArray(event.body().getString("payload"));
-                context.assertEquals(4, itemsJsonArray.size());
+                JsonArray batchItemsJsonObject = new JsonArray(event.body().getString("payload"));
+                context.assertTrue(Boolean.parseBoolean(event.body().getString(BATCH_QUEUE)));
+                context.assertEquals(4, batchItemsJsonObject.size());
                 // the order is important
-                context.assertEquals("message_1-1", itemsJsonArray.getString(0));
-                context.assertEquals("message_1-2", itemsJsonArray.getString(1));
-                context.assertEquals("message_1-3", itemsJsonArray.getString(2));
-                context.assertEquals("message_1-4", itemsJsonArray.getString(3));
+                context.assertEquals("message_1-1", batchItemsJsonObject.getString(0));
+                context.assertEquals("message_1-2", batchItemsJsonObject.getString(1));
+                context.assertEquals("message_1-3", batchItemsJsonObject.getString(2));
+                context.assertEquals("message_1-4", batchItemsJsonObject.getString(3));
             } else {
                 context.fail("unexpected index " + index);
             }
@@ -392,13 +395,13 @@ public class QueueConsumerRunnerTest extends AbstractTestCase {
             } else if (index.get() == 2) {
                 context.fail("Should no dispatch");
             } else if (index.get() == 3) {
-                context.assertEquals(queueName, event.body().getString("queue"));
-                JsonArray itemsJsonArray = new JsonArray(event.body().getString("payload"));
-                context.assertEquals(3, itemsJsonArray.size());
+                JsonArray batchItemsJsonObject = new JsonArray(event.body().getString("payload"));
+                context.assertTrue(Boolean.parseBoolean(event.body().getString(BATCH_QUEUE)));
+                context.assertEquals(3, batchItemsJsonObject.size());
                 // the order is important
-                context.assertEquals("message_1-1", itemsJsonArray.getString(0));
-                context.assertEquals("message_1-2", itemsJsonArray.getString(1));
-                context.assertEquals("message_1-3", itemsJsonArray.getString(2));
+                context.assertEquals("message_1-1", batchItemsJsonObject.getString(0));
+                context.assertEquals("message_1-2", batchItemsJsonObject.getString(1));
+                context.assertEquals("message_1-3", batchItemsJsonObject.getString(2));
             } else {
                 context.fail("unexpected index " + index);
             }
@@ -442,7 +445,6 @@ public class QueueConsumerRunnerTest extends AbstractTestCase {
             });
         });
     }
-
 
     private Future<Void> addQueueItemsSequentially(List<String[]> items) {
         Promise<Void> promise = Promise.promise();

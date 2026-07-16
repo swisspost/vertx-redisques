@@ -24,9 +24,11 @@ import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.queue.QueueProcessingState;
 import redis.clients.jedis.Jedis;
 
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 
+import static org.mockito.Mockito.when;
 import static org.swisspush.redisques.exception.RedisQuesExceptionFactory.newWastefulExceptionFactory;
 
 /**
@@ -85,8 +87,72 @@ public class QueueStatisticsCollectorTest extends AbstractTestCase {
     }
 
     @After
-    public void tearDown(TestContext context) {
+    public void after(TestContext context) {
+        if (queueStatisticsCollector != null) {
+            queueStatisticsCollector.stop();
+        }
         vertx.close(context.asyncAssertSuccess());
+    }
+
+    @Test
+    public void testStopUnregistersConsumer(TestContext context) {
+        Async async = context.async();
+        String syncKey = "sync_key";
+        when(keyspaceHelper.getVerticleUid()).thenReturn("this-verticle");
+
+        Map<String, QueueSizeInfoEntry> entries = new HashMap<>();
+        entries.put("test-queue", new QueueSizeInfoEntry(100, System.currentTimeMillis()));
+        QueueSizeInfoMap testMap = new QueueSizeInfoMap();
+        testMap.put("other-verticle", entries);
+
+        vertx.eventBus().publish(syncKey, testMap);
+
+        vertx.setTimer(100, id1 -> {
+            context.assertEquals(100L, queueStatisticsCollector.getApproximateQueueSize("test-queue"),
+                    "Collector should have received and processed message before stop");
+
+            queueStatisticsCollector.stop();
+
+            Map<String, QueueSizeInfoEntry> newEntries = new HashMap<>();
+            newEntries.put("test-queue", new QueueSizeInfoEntry(200, System.currentTimeMillis()));
+            QueueSizeInfoMap newMap = new QueueSizeInfoMap();
+            newMap.put("other-verticle", newEntries);
+            vertx.eventBus().publish(syncKey, newMap);
+
+            vertx.setTimer(100, id2 -> {
+                context.assertEquals(100L, queueStatisticsCollector.getApproximateQueueSize("test-queue"),
+                        "After stop, collector should not process new messages - size should remain 100, not 200");
+                async.complete();
+            });
+        });
+    }
+
+    @Test
+    public void testApproximateQueueSizeUpdate(TestContext context) {
+
+        context.assertEquals(0L, queueStatisticsCollector.getApproximateQueueSize("test.queue.1"));
+        context.assertEquals(0L, queueStatisticsCollector.getApproximateQueueSize("test.queue.2"));
+        when(keyspaceHelper.getVerticleUid()).thenReturn("consumer-1");
+
+        Set<String> aliveConsumer = new HashSet<>();
+        aliveConsumer.add("consumer-1");
+        aliveConsumer.add("consumer-2");
+        aliveConsumer.add("consumer-3");
+
+        Map<String, QueueProcessingState> myQueues = new HashMap<>();
+
+        QueueProcessingState state1 = new QueueProcessingState(QueueState.READY, 0);
+        state1.setQueueItemSize(42);
+        QueueProcessingState state2 = new QueueProcessingState(QueueState.READY, 0);
+        state2.setQueueItemSize(84);
+
+        myQueues.put("test.queue.1", state1);
+        myQueues.put("test.queue.2", state2);
+
+        queueStatisticsCollector.updateApproximateQueueSize(aliveConsumer, myQueues);
+
+        context.assertEquals(42L, queueStatisticsCollector.getApproximateQueueSize("test.queue.1"));
+        context.assertEquals(84L, queueStatisticsCollector.getApproximateQueueSize("test.queue.2"));
     }
 
     /**

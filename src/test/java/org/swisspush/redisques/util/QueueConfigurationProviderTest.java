@@ -25,10 +25,10 @@ public class QueueConfigurationProviderTest {
     public void testQueueConfigurationProviderCreation(TestContext context) {
         Async async = context.async();
         Vertx vertx = Vertx.vertx();
-        QueueConfigurationProvider.provider(vertx, List.of()).get().onComplete(event -> {
+        QueueConfigurationProvider.provider(vertx, List.of(), 1_000).get().onComplete(event -> {
             QueueConfigurationProvider provider1 = event.result();
             vertx.executeBlocking(promise -> {
-                QueueConfigurationProvider.provider(vertx, List.of()).get().onComplete(event1 -> {
+                QueueConfigurationProvider.provider(vertx, List.of(), 1_000).get().onComplete(event1 -> {
                     context.assertEquals(provider1, event1.result());
                     context.assertEquals(provider1.getUid(), event1.result().getUid());
                     async.complete();
@@ -41,7 +41,7 @@ public class QueueConfigurationProviderTest {
     public void testQueueConfigUpdate(TestContext context) {
         Async async = context.async();
         Vertx vertx = Vertx.vertx();
-        QueueConfigurationProvider.provider(vertx, List.of()).get().onComplete(event -> {
+        QueueConfigurationProvider.provider(vertx, List.of(), 1_000).get().onComplete(event -> {
             QueueConfigurationProvider provider = event.result();
             context.assertNull(provider.findQueueConfiguration("mytestqueue"));
             JsonObject jsonObject = new JsonObject();
@@ -62,24 +62,24 @@ public class QueueConfigurationProviderTest {
             provider.updateQueueConfiguration("mytestqueue", jsonObject);
             QueueConfiguration queueConfiguration = provider.findQueueConfiguration("mytestqueue");
 
-            context.assertEquals(99,  queueConfiguration.getMaxQueueEntries());
-            context.assertEquals(11.0F,  queueConfiguration.getEnqueueDelayFactorMillis());
-            context.assertEquals(22,  queueConfiguration.getEnqueueMaxDelayMillis());
-            context.assertEquals(500,  queueConfiguration.getMaximumItemInBatchDispatch());
-            context.assertEquals(400,  queueConfiguration.getMinimumItemInBatchDispatch());
-            context.assertEquals(10,  queueConfiguration.getMaxBatchItemDispatchWaitTimeout());
-            context.assertEquals(3,  queueConfiguration.getRetryIntervals().length);
+            context.assertEquals(99, queueConfiguration.getMaxQueueEntries());
+            context.assertEquals(11.0F, queueConfiguration.getEnqueueDelayFactorMillis());
+            context.assertEquals(22, queueConfiguration.getEnqueueMaxDelayMillis());
+            context.assertEquals(500, queueConfiguration.getMaximumItemInBatchDispatch());
+            context.assertEquals(400, queueConfiguration.getMinimumItemInBatchDispatch());
+            context.assertEquals(10, queueConfiguration.getMaxBatchItemDispatchWaitTimeout());
+            context.assertEquals(3, queueConfiguration.getRetryIntervals().length);
 
             jsonObject.put(RedisquesAPI.PER_QUEUE_CONFIG_ENQUEUE_MAX_DELAY_MILLIS, 212);
             provider.updateQueueConfiguration("mytestqueue", jsonObject);
             QueueConfiguration queueConfigurationNew = provider.findQueueConfiguration("mytestqueue");
 
             // the object should be updated, not replaced
-            context.assertEquals(queueConfiguration,  queueConfigurationNew);
-            context.assertEquals(99,  queueConfiguration.getMaxQueueEntries());
-            context.assertEquals(11.0F,  queueConfiguration.getEnqueueDelayFactorMillis());
-            context.assertEquals(212,  queueConfiguration.getEnqueueMaxDelayMillis());
-            context.assertEquals(3,  queueConfiguration.getRetryIntervals().length);
+            context.assertEquals(queueConfiguration, queueConfigurationNew);
+            context.assertEquals(99, queueConfiguration.getMaxQueueEntries());
+            context.assertEquals(11.0F, queueConfiguration.getEnqueueDelayFactorMillis());
+            context.assertEquals(212, queueConfiguration.getEnqueueMaxDelayMillis());
+            context.assertEquals(3, queueConfiguration.getRetryIntervals().length);
             async.complete();
         });
     }
@@ -88,14 +88,14 @@ public class QueueConfigurationProviderTest {
     public void testQueueConfigGetAll(TestContext context) {
         Async async = context.async();
         Vertx vertx = Vertx.vertx();
-        QueueConfigurationProvider.provider(vertx, List.of()).get().onComplete(event -> {
+        QueueConfigurationProvider.provider(vertx, List.of(), 1_000).get().onComplete(event -> {
             QueueConfigurationProvider provider = event.result();
 
             provider.updateQueueConfiguration("my_config_1", createQueueConfiguration("1.*").asJsonObject());
             provider.updateQueueConfiguration("my_config_2", createQueueConfiguration("2.*").asJsonObject());
             provider.updateQueueConfiguration("my_config_3", createQueueConfiguration("3.*").asJsonObject());
             Map<String, QueueConfiguration> queueConfigurations = provider.getQueueConfigurations("*");
-            context.assertEquals(3,  queueConfigurations.size());
+            context.assertEquals(3, queueConfigurations.size());
             async.complete();
         });
     }
@@ -104,14 +104,14 @@ public class QueueConfigurationProviderTest {
     public void testQueueConfigGetOne(TestContext context) {
         Async async = context.async();
         Vertx vertx = Vertx.vertx();
-        QueueConfigurationProvider.provider(vertx, List.of()).get().onComplete(event -> {
+        QueueConfigurationProvider.provider(vertx, List.of(), 1_000).get().onComplete(event -> {
             QueueConfigurationProvider provider = event.result();
 
             provider.updateQueueConfiguration("my_config_1", createQueueConfiguration("1.*").asJsonObject());
             provider.updateQueueConfiguration("my_config_2", createQueueConfiguration("2.*").asJsonObject());
             provider.updateQueueConfiguration("my_config_3", createQueueConfiguration("3.*").asJsonObject());
             Map<String, QueueConfiguration> queueConfigurations = provider.getQueueConfigurations("my_config_2");
-            context.assertEquals(1,  queueConfigurations.size());
+            context.assertEquals(1, queueConfigurations.size());
             async.complete();
         });
     }
@@ -120,23 +120,23 @@ public class QueueConfigurationProviderTest {
     public void testQueueConfigRemove(TestContext context) {
         Async async = context.async();
         Vertx vertx = Vertx.vertx();
-        QueueConfigurationProvider.provider(vertx, List.of()).get().onComplete(event -> {
+        QueueConfigurationProvider.provider(vertx, List.of(), 1_000).get().onComplete(event -> {
             QueueConfigurationProvider provider = event.result();
 
             provider.updateQueueConfiguration("my_config_1", createQueueConfiguration("1.*").asJsonObject());
             provider.updateQueueConfiguration("my_config_2", createQueueConfiguration("2.*").asJsonObject());
             provider.updateQueueConfiguration("my_config_3", createQueueConfiguration("3.*").asJsonObject());
             Map<String, QueueConfiguration> queueConfigurations = provider.getQueueConfigurations("*");
-            context.assertEquals(3,  queueConfigurations.size());
+            context.assertEquals(3, queueConfigurations.size());
             provider.removeQueueConfiguration("anything?");
-            context.assertEquals(3,  queueConfigurations.size());
+            context.assertEquals(3, queueConfigurations.size());
             provider.removeQueueConfiguration("my_config_1");
-            context.assertEquals(2,  queueConfigurations.size());
+            context.assertEquals(2, queueConfigurations.size());
             provider.removeQueueConfiguration("my_config_2");
             provider.removeQueueConfiguration("my_config_3");
-            context.assertEquals(0,  queueConfigurations.size());
+            context.assertEquals(0, queueConfigurations.size());
             provider.removeQueueConfiguration("my_config_3");
-            context.assertEquals(0,  queueConfigurations.size());
+            context.assertEquals(0, queueConfigurations.size());
             async.complete();
         });
     }
@@ -145,7 +145,7 @@ public class QueueConfigurationProviderTest {
     public void testQueueConfigCategoryRead(TestContext context) {
         Async async = context.async();
         Vertx vertx = Vertx.vertx();
-        QueueConfigurationProvider.provider(vertx, List.of()).get().onComplete(event -> {
+        QueueConfigurationProvider.provider(vertx, List.of(), 1_000).get().onComplete(event -> {
             QueueConfigurationProvider provider = event.result();
             context.assertNull(provider.findQueueConfiguration("mytestqueue"));
             JsonObject jsonObject = new JsonObject();
@@ -204,6 +204,52 @@ public class QueueConfigurationProviderTest {
             context.assertNull(provider.findBatchQueueItemsConfig("mytestqueue"));
 
             async.complete();
+        });
+    }
+
+    @Test
+    public void testQueueConfigExpiring(TestContext context) {
+        Async async = context.async();
+        Vertx vertx = Vertx.vertx();
+        QueueConfigurationProvider.provider(vertx, List.of(), 1_000).get().onComplete(event -> {
+            QueueConfigurationProvider provider = event.result();
+
+            provider.updateQueueConfiguration("my_config_1", createQueueConfiguration("1.*").asJsonObject());
+
+            QueueConfiguration expirableQueueConfiguration = createQueueConfiguration("2.*");
+            expirableQueueConfiguration.withConfigExpireTimeout(3);
+            provider.updateQueueConfiguration("my_config_2", expirableQueueConfiguration.asJsonObject());
+
+            provider.updateQueueConfiguration("my_config_3", createQueueConfiguration("3.*").asJsonObject());
+            Map<String, QueueConfiguration> queueConfigurations = provider.getQueueConfigurations("*");
+            context.assertEquals(3, queueConfigurations.size());
+            context.assertTrue(queueConfigurations.containsKey("my_config_1"));
+            context.assertTrue(queueConfigurations.containsKey("my_config_2"));
+            context.assertTrue(queueConfigurations.containsKey("my_config_3"));
+
+            vertx.setTimer(2000, event1 -> {
+                // try to update it
+                provider.updateQueueConfiguration("my_config_2", expirableQueueConfiguration.asJsonObject());
+
+                vertx.setTimer(2000, event2 -> {
+                    Map<String, QueueConfiguration> queueConfigurations1 = provider.getQueueConfigurations("*");
+                    // the "my_config_2" should still exist
+                    context.assertEquals(3, queueConfigurations1.size());
+                    context.assertTrue(queueConfigurations1.containsKey("my_config_1"));
+                    context.assertTrue(queueConfigurations1.containsKey("my_config_2"));
+                    context.assertTrue(queueConfigurations1.containsKey("my_config_3"));
+
+                    vertx.setTimer(2000, event3 -> {
+                        Map<String, QueueConfiguration> queueConfigurations2 = provider.getQueueConfigurations("*");
+                        // now "my_config_2" should have gone
+                        context.assertEquals(2, queueConfigurations2.size());
+                        context.assertTrue(queueConfigurations2.containsKey("my_config_1"));
+                        context.assertTrue(queueConfigurations2.containsKey("my_config_3"));
+                        async.complete();
+                    });
+                });
+            });
+
         });
     }
 

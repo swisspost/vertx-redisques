@@ -71,6 +71,7 @@ public class QueueRegistryService {
 
 
     public void stop() {
+        queueStatisticsCollector.stop();
         unregisterConsumers(UnregisterConsumerType.FORCE);
     }
 
@@ -986,6 +987,7 @@ public class QueueRegistryService {
     }
 
     public void gracefulStop(final Handler<Void> doneHandler) {
+        queueStatisticsCollector.stop();
         unregisterAll(Arrays.asList(consumersMessageConsumer, uidMessageConsumer, notifyConsumer))
                 .onComplete(event -> {
             if (event.failed()) {

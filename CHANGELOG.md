@@ -9,6 +9,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Added new action:
     - getQueueRunningStates: broadcasts a request to all RedisQues verticle instances and collects their local queue running states (e.g. queue item size counter, last consumed/refreshed timestamps)
 
+## [4.1.42-SNAPSHOT] - 2026-06-22
+### Minor changes
+- added a flag named "batchQueue" into the batch queue dispatch message
+- unregister eventbus consumers of QueueStatisticsCollector on stop of the verticle. This prevents stale consumers that are not reachable anymore
+
+### New features
+- Add support for per-queue config timeout
+  To enable this feature, you need to set it via QueueConfiguration.configExpireTimeout. '0' means timeout disabled
+  the config will be removed after the timeout, if no update via setPerQueueConfiguration happened
+    - Example:
+```json
+{
+  "pattern":"listener-hook-http.*",
+  "retryIntervals":[10],
+  "configExpireTimeout": 10
+}
+```
+
 ## [4.1.41-SNAPSHOT] - 2026-05-21
 ### Major changes
 - From this version the Redis API version requirement change to > 7
