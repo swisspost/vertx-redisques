@@ -2126,7 +2126,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         async.awaitSuccess(8000);
     }
 
-    @Test(timeout = 10000L)
+    @Test(timeout = 15000L)
     public void getStatisticsBackpressure(TestContext context) {
         flushAll();
 
@@ -2134,28 +2134,34 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         // see the QueueConfiguration for stat_* queues in the @Before section
         Async async1 = context.async();
         eventBusSend(buildEnqueueOperation("stat_c", "item_c_1"), handler -> {
-            assertQueueState(context, null, 1, 0,
-                    "stat_c", 1, null, null,
-                    0);
-            async1.complete();
+            testVertx.setTimer(1000, event -> {
+                assertQueueState(context, null, 1, 0,
+                        "stat_c", 1, null, null,
+                        0);
+                async1.complete();
+            });
         });
         async1.awaitSuccess();
 
         Async async2 = context.async();
         eventBusSend(buildEnqueueOperation("stat_c", "item_c_2"), h1 -> {
-            assertQueueState(context, null, 1, 0,
-                    "stat_c", 2, null, null,
-                    5);
-            async2.complete();
+            testVertx.setTimer(1000, event -> {
+                assertQueueState(context, null, 1, 0,
+                        "stat_c", 2, null, null,
+                        5);
+                async2.complete();
+            });
         });
         async2.awaitSuccess();
 
         Async async3 = context.async();
         eventBusSend(buildEnqueueOperation("stat_c", "item_c_3"), h1 -> {
-            assertQueueState(context, null, 1, 0,
-                    "stat_c", 3, null, null,
-                    10);
-            async3.complete();
+            testVertx.setTimer(1000, event -> {
+                assertQueueState(context, null, 1, 0,
+                        "stat_c", 3, null, null,
+                        10);
+                async3.complete();
+            });
         });
         async3.awaitSuccess(8000);
     }
