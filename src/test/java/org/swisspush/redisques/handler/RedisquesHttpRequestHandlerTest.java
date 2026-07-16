@@ -1914,15 +1914,13 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         eventBusSend(buildEnqueueOperation("queue_2", "item2_2"), null);
 
         eventBusSend(buildEnqueueOperation("queue_3", "item3_1"), null);
+        delay_One_Second();
 
         // lock queue
         given().body("{}").when().put("/queuing/locks/queue_3").then().assertThat().statusCode(200);
         when().delete("/queuing/queues/queue_3/0").then().assertThat().statusCode(200);
-        try {
-            Thread.sleep(3000);
-        } catch (InterruptedException iex) {
-            // ignore
-        }
+
+        delay_One_Second();
         String expectedNoEmptyQueuesNoLimit = "{\n" +
                 "  \"queues\": [\n" +
                 "    {\n" +
@@ -1938,6 +1936,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         JsonNode expectedStaticJson = jsonMapper.readTree(expectedNoEmptyQueuesNoLimit);
         repeatVerify(context, jsonMapper, expectedStaticJson, "/queuing/monitor", 5);
 
+        delay_One_Second();
         String expectedWithEmptyQueuesNoLimit = "{\n" +
                 "  \"queues\": [\n" +
                 "    {\n" +
@@ -1958,6 +1957,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         expectedStaticJson = jsonMapper.readTree(expectedWithEmptyQueuesNoLimit);
         repeatVerify(context, jsonMapper, expectedStaticJson, "/queuing/monitor?emptyQueues", 5);
 
+        delay_One_Second();
         String expectedNoEmptyQueuesAndLimit3 = "{\n" +
                 "  \"queues\": [\n" +
                 "    {\n" +
@@ -1974,6 +1974,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         expectedStaticJson = jsonMapper.readTree(expectedNoEmptyQueuesAndLimit3);
         repeatVerify(context, jsonMapper, expectedStaticJson, "/queuing/monitor?limit=3", 5);
 
+        delay_One_Second();
         String expectedWithEmptyQueuesAndLimit3 = "{\n" +
                 "  \"queues\": [\n" +
                 "    {\n" +
@@ -1994,6 +1995,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         expectedStaticJson = jsonMapper.readTree(expectedWithEmptyQueuesAndLimit3);
         repeatVerify(context, jsonMapper, expectedStaticJson, "/queuing/monitor?limit=3&emptyQueues", 5);
 
+        delay_One_Second();
         String expectedWithEmptyQueuesAndInvalidLimit = "{\n" +
                 "  \"queues\": [\n" +
                 "    {\n" +
@@ -2017,14 +2019,13 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
     }
 
     private static void repeatVerify(TestContext context, ObjectMapper jsonMapper, JsonNode expectedStaticJson, String url, int repeat) throws JsonProcessingException {
-
         for (int i = 0; i < repeat; i++) {
             JsonNode receivedJson = jsonMapper.readTree(when().get(url).then().assertThat().statusCode(200).extract().asString());
             if (doesMatch(context, expectedStaticJson, receivedJson)) {
                 return;
             }
             try {
-                Thread.sleep(1000);
+                Thread.sleep(500);
             } catch (InterruptedException iex) {
                 // ignore
             }
@@ -2115,10 +2116,12 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
 
         // Test increasing slowDown Time within 5 seconds
         eventBusSend(buildEnqueueOperation("stat_b", "item_b_1"), handler -> {
-            assertQueueState(context, null, 1, 0,
-                    "stat_b", 1, 1, 1,
-                    null);
-            async.complete();
+            testVertx.setTimer(2000, event -> {
+                assertQueueState(context, null, 1, 0,
+                        "stat_b", 1, 1, 1,
+                        null);
+                async.complete();
+            });
         });
         async.awaitSuccess(8000);
     }
@@ -2487,5 +2490,14 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         System.out.println("------------------ PERFORMANCE CHECKS COMPLETED ---------------------");
         async.complete();
         flushAll();
+    }
+
+
+    private static void delay_One_Second() {
+        try {
+            Thread.sleep(1000);
+        } catch (InterruptedException iex) {
+            // ignore
+        }
     }
 }

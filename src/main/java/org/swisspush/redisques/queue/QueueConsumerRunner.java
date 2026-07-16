@@ -58,6 +58,7 @@ public class QueueConsumerRunner {
     private final int consumerLockTime;
     private final QueueConfigurationProvider queueConfigurationProvider;
     private MessageConsumer<String> trimRequestConsumer;
+    private MessageConsumer<JsonObject> runningQueueStateConsumer;
     private Handler<Void> noQueueMoreItemHandler = null;
 
     // The queues this verticle instance is registered as a consumer
@@ -118,8 +119,26 @@ public class QueueConsumerRunner {
         return myQueues;
     }
 
-    public void trimRequestConsumerUnregister(Handler<AsyncResult<Void>> handler) {
-        trimRequestConsumer.unregister(handler);
+
+
+    public void unregisterConsumers(Handler<AsyncResult<Void>> handler) {
+        if (trimRequestConsumer != null && trimRequestConsumer.isRegistered()) {
+            trimRequestConsumer.unregister(unregisterTrimEvent -> {
+                if (unregisterTrimEvent.failed()) {
+                    handler.handle(unregisterTrimEvent);
+                    return;
+                }
+                if (runningQueueStateConsumer != null && runningQueueStateConsumer.isRegistered()) {
+                    runningQueueStateConsumer.unregister(handler);
+                } else {
+                    handler.handle(Future.succeededFuture());
+                }
+            });
+        } else if (runningQueueStateConsumer != null && runningQueueStateConsumer.isRegistered()) {
+            runningQueueStateConsumer.unregister(handler);
+        } else {
+            handler.handle(Future.succeededFuture());
+        }
     }
 
     public Future<Void> consume(final String queueName) {
@@ -682,7 +701,7 @@ public class QueueConsumerRunner {
      * A consumer send current queues states back to the given reply address
      */
     private void registerRunningQueueStateConsumer() {
-        vertx.eventBus().consumer(
+        runningQueueStateConsumer = vertx.eventBus().consumer(
                 keyspaceHelper.getQueueRunningStateKey(),
                 msg -> {
                     JsonObject request = (JsonObject) msg.body();

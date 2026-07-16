@@ -1000,10 +1000,10 @@ public class QueueRegistryService {
                             "unregisterConsumers(false) failed", unregisterConsumersEvent.cause()));
                 }
 
-                queueConsumerRunner.trimRequestConsumerUnregister(unregisterTrimEvent -> {
-                    if (unregisterTrimEvent.failed()) {
+                queueConsumerRunner.unregisterConsumers(unregisterRunnerConsumersEvent -> {
+                    if (unregisterRunnerConsumersEvent.failed()) {
                         log.warn("TODO error handling", exceptionFactory.newException(
-                                "unregister trimRequestConsumer failed", unregisterTrimEvent.cause()));
+                                "unregister Runner's eventbus consumer failed", unregisterRunnerConsumersEvent.cause()));
                     }
                     stoppedHandler = doneHandler;
                     if (queueConsumerRunner.getMyQueues().keySet().isEmpty()) {
