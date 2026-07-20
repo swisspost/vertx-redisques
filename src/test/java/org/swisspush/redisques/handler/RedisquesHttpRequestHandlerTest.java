@@ -156,7 +156,6 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
 
     @Before
     public void deployRedisques(TestContext context) {
-        QueueStatisticsCollector.CODECS_REGISTERED.set(false);
         Async async = context.async();
         testVertx = Vertx.vertx();
         QueueConfigurationProvider.reset();

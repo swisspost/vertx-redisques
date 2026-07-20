@@ -49,7 +49,6 @@ public class RedisQuesTest extends AbstractTestCase {
 
     @After
     public void tearDown(TestContext context) {
-        QueueStatisticsCollector.CODECS_REGISTERED.set(false);
         vertx.close(context.asyncAssertSuccess());
     }
 

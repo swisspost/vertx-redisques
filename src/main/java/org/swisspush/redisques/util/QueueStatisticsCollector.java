@@ -62,7 +62,6 @@ public class QueueStatisticsCollector {
     private static final Logger log = LoggerFactory.getLogger(QueueStatisticsCollector.class);
 
     private static final String STATSKEY = "redisques:stats";
-    public static final AtomicBoolean CODECS_REGISTERED = new AtomicBoolean(false);
     private final static String QUEUE_FAILURES = "failures";
     private final static String QUEUE_BACKPRESSURE = "backpressureTime";
     private final static String QUEUE_SLOWDOWNTIME = "slowdownTime";
@@ -102,12 +101,6 @@ public class QueueStatisticsCollector {
         this.keyspaceHelper = keyspaceHelper;
 
         speedStatisticsScheduler(speedIntervalSec);
-    }
-
-    public static void registerCodecs(Vertx vertx) {
-        if (CODECS_REGISTERED.compareAndSet(false, true)) {
-            vertx.eventBus().registerDefaultCodec(QueueSizeInfoMap.class, new QueueSizeInfoMapCodec());
-        }
     }
 
     /**

@@ -48,7 +48,6 @@ public class MetricsCollectorTest extends AbstractTestCase {
     @Before
     public void deployRedisques(TestContext context) {
         vertx = Vertx.vertx();
-        QueueStatisticsCollector.CODECS_REGISTERED.set(false);
         JsonObject config = RedisquesConfiguration.with()
                 .processorAddress(PROCESSOR_ADDRESS)
                 .httpRequestHandlerEnabled(true)
