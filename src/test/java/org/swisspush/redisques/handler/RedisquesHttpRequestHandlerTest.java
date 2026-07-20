@@ -25,6 +25,7 @@ import org.swisspush.redisques.RedisQues;
 import org.swisspush.redisques.util.DefaultRedisquesConfigurationProvider;
 import org.swisspush.redisques.util.QueueConfiguration;
 import org.swisspush.redisques.util.QueueConfigurationProvider;
+import org.swisspush.redisques.util.QueueStatisticsCollector;
 import org.swisspush.redisques.util.RedisquesAPI;
 import org.swisspush.redisques.util.RedisquesConfiguration;
 import org.swisspush.redisques.util.TestMemoryUsageProvider;
@@ -155,6 +156,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
 
     @Before
     public void deployRedisques(TestContext context) {
+        QueueStatisticsCollector.CODECS_REGISTERED.set(false);
         Async async = context.async();
         testVertx = Vertx.vertx();
         QueueConfigurationProvider.reset();

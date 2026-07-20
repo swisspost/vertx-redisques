@@ -24,6 +24,7 @@ import org.swisspush.redisques.RedisQues;
 import org.swisspush.redisques.util.DefaultRedisquesConfigurationProvider;
 import org.swisspush.redisques.util.QueueConfiguration;
 import org.swisspush.redisques.util.QueueConfigurationProvider;
+import org.swisspush.redisques.util.QueueStatisticsCollector;
 import org.swisspush.redisques.util.RedisquesConfiguration;
 import org.swisspush.redisques.util.TestMemoryUsageProvider;
 import redis.clients.jedis.Jedis;
@@ -56,6 +57,7 @@ public class QueueConsumerRunnerTest extends AbstractTestCase {
     public void deployRedisques(TestContext context) {
         vertx = Vertx.vertx();
         QueueConfigurationProvider.reset();
+        QueueStatisticsCollector.CODECS_REGISTERED.set(false);
         JsonObject config = RedisquesConfiguration.with()
                 .processorAddress(PROCESSOR_ADDRESS)
                 .micrometerMetricsEnabled(true)
@@ -323,6 +325,213 @@ public class QueueConsumerRunnerTest extends AbstractTestCase {
                         }
                     });
                 }
+            });
+        });
+    }
+
+    @Test
+    public void testMultipleItemBatchDispatchStopsWhenMethodDiffers(TestContext context) {
+        Async async = context.async();
+        final String queueName = "batch-queue-method.test";
+        final AtomicInteger index = new AtomicInteger(0);
+        final String postItem = new JsonObject().put("method", "POST").put("uri", "/foo").encode();
+        final String getItem = new JsonObject().put("method", "GET").put("uri", "/foo").encode();
+        flushAll();
+        vertx.eventBus().consumer(RedisquesConfiguration.PROP_PROCESSOR_ADDRESS, (Handler<Message<JsonObject>>) event -> {
+            if (!Boolean.parseBoolean(event.body().getString("batchQueue"))) {
+                return;
+            }
+
+            context.assertEquals(queueName, event.body().getString("queue"));
+            JsonArray itemsJsonArray = new JsonArray(event.body().getString("payload"));
+            if (index.get() == 0) {
+                // 1st dispatch: leading 2 matching POST items, stops before the GET item
+                context.assertEquals(2, itemsJsonArray.size());
+                context.assertEquals(postItem, itemsJsonArray.getString(0));
+                context.assertEquals(postItem, itemsJsonArray.getString(1));
+            } else if (index.get() == 1) {
+                // 2nd dispatch: the GET item alone, stops right away because the next item is POST
+                context.assertEquals(1, itemsJsonArray.size());
+                context.assertEquals(getItem, itemsJsonArray.getString(0));
+            } else if (index.get() == 2) {
+                // 3rd dispatch: remaining 2 POST items all match, dispatched together
+                context.assertEquals(2, itemsJsonArray.size());
+                context.assertEquals(postItem, itemsJsonArray.getString(0));
+                context.assertEquals(postItem, itemsJsonArray.getString(1));
+            } else {
+                context.fail("unexpected index " + index);
+            }
+            event.reply(new JsonObject().put(STATUS, OK));
+        });
+
+        List<String[]> items = List.of(
+                new String[]{queueName, postItem},
+                new String[]{queueName, postItem},
+                new String[]{queueName, getItem},
+                new String[]{queueName, postItem},
+                new String[]{queueName, postItem}
+        );
+
+        addQueueItemsSequentially(items).onComplete(e11 -> {
+            assertQueuesCount(context, 1);
+            assertQueueItemsCount(context, queueName, 5);
+            redisQues.getQueueConsumerRunner().processMultipleItems(queueName, 5, 0, 0).onComplete(event1 -> {
+                // the batch stopped after the leading 2 matching items because the 3rd item's method differs
+                assertQueueItemsCount(context, queueName, 3);
+                index.incrementAndGet();
+                redisQues.getQueueConsumerRunner().processMultipleItems(queueName, 5, 0, 0).onComplete(event2 -> {
+                    // the GET item was dispatched alone since it differs from the following POST items
+                    assertQueueItemsCount(context, queueName, 2);
+                    index.incrementAndGet();
+                    redisQues.getQueueConsumerRunner().processMultipleItems(queueName, 5, 0, 0).onComplete(event3 -> {
+                        // all remaining items share the same method/uri, so they are dispatched together
+                        assertQueuesCount(context, 0);
+                        assertQueueItemsCount(context, queueName, 0);
+                        async.complete();
+                    });
+                });
+            });
+        });
+    }
+
+    @Test
+    public void testMultipleItemBatchDispatchStopsWhenUriDiffers(TestContext context) {
+        Async async = context.async();
+        final String queueName = "batch-queue-uri.test";
+        final AtomicInteger index = new AtomicInteger(0);
+        final String fooItem = new JsonObject().put("method", "POST").put("uri", "/foo").encode();
+        final String barItem = new JsonObject().put("method", "POST").put("uri", "/bar").encode();
+        flushAll();
+        vertx.eventBus().consumer(RedisquesConfiguration.PROP_PROCESSOR_ADDRESS, (Handler<Message<JsonObject>>) event -> {
+            if (!Boolean.parseBoolean(event.body().getString("batchQueue"))) {
+                return;
+            }
+
+            context.assertEquals(queueName, event.body().getString("queue"));
+            JsonArray itemsJsonArray = new JsonArray(event.body().getString("payload"));
+            if (index.get() == 0) {
+                // 1st dispatch: leading 2 matching "/foo" items, stops before the "/bar" item
+                context.assertEquals(2, itemsJsonArray.size());
+                context.assertEquals(fooItem, itemsJsonArray.getString(0));
+                context.assertEquals(fooItem, itemsJsonArray.getString(1));
+            } else if (index.get() == 1) {
+                // 2nd dispatch: the "/bar" item alone, stops right away because the next item is "/foo"
+                context.assertEquals(1, itemsJsonArray.size());
+                context.assertEquals(barItem, itemsJsonArray.getString(0));
+            } else if (index.get() == 2) {
+                // 3rd dispatch: remaining 3 "/foo" items all match, dispatched together
+                context.assertEquals(3, itemsJsonArray.size());
+                context.assertEquals(fooItem, itemsJsonArray.getString(0));
+                context.assertEquals(fooItem, itemsJsonArray.getString(1));
+                context.assertEquals(fooItem, itemsJsonArray.getString(2));
+            } else {
+                context.fail("unexpected index " + index);
+            }
+            event.reply(new JsonObject().put(STATUS, OK));
+        });
+
+        List<String[]> items = List.of(
+                new String[]{queueName, fooItem},
+                new String[]{queueName, fooItem},
+                new String[]{queueName, barItem},
+                new String[]{queueName, fooItem},
+                new String[]{queueName, fooItem},
+                new String[]{queueName, fooItem}
+        );
+
+        addQueueItemsSequentially(items).onComplete(e11 -> {
+            assertQueuesCount(context, 1);
+            assertQueueItemsCount(context, queueName, 6);
+            redisQues.getQueueConsumerRunner().processMultipleItems(queueName, 5, 0, 0).onComplete(event1 -> {
+                // the batch stopped after the leading 2 matching items because the 3rd item's uri differs
+                // (lrange only inspected the first 5 items, capped by maximumItemInBatchDispatch)
+                assertQueueItemsCount(context, queueName, 4);
+                index.incrementAndGet();
+                redisQues.getQueueConsumerRunner().processMultipleItems(queueName, 5, 0, 0).onComplete(event2 -> {
+                    // the "/bar" item was dispatched alone since it differs from the following "/foo" items
+                    assertQueueItemsCount(context, queueName, 3);
+                    index.incrementAndGet();
+                    redisQues.getQueueConsumerRunner().processMultipleItems(queueName, 5, 0, 0).onComplete(event3 -> {
+                        // all remaining items share the same method/uri, so they are dispatched together
+                        assertQueuesCount(context, 0);
+                        assertQueueItemsCount(context, queueName, 0);
+                        async.complete();
+                    });
+                });
+            });
+        });
+    }
+
+    @Test
+    public void testMultipleItemBatchDispatchStopsWhenUriMissing(TestContext context) {
+        Async async = context.async();
+        final String queueName = "batch-queue-missing-uri.test";
+        final AtomicInteger index = new AtomicInteger(0);
+        final String getItem = new JsonObject().put("method", "GET").put("uri", "/foo").encode();
+        final String postItem = new JsonObject().put("method", "POST").put("uri", "/foo").encode();
+        final String postItemWithNoUri = new JsonObject().put("method", "POST").encode();
+        flushAll();
+        vertx.eventBus().consumer(RedisquesConfiguration.PROP_PROCESSOR_ADDRESS, (Handler<Message<JsonObject>>) event -> {
+            if (!Boolean.parseBoolean(event.body().getString("batchQueue"))) {
+                return;
+            }
+
+            context.assertEquals(queueName, event.body().getString("queue"));
+            JsonArray itemsJsonArray = new JsonArray(event.body().getString("payload"));
+            if (index.get() == 0) {
+                // 1st dispatch: leading 2 matching POST /foo items, stops before the GET item
+                context.assertEquals(2, itemsJsonArray.size());
+                context.assertEquals(postItem, itemsJsonArray.getString(0));
+                context.assertEquals(postItem, itemsJsonArray.getString(1));
+            } else if (index.get() == 1) {
+                // 2nd dispatch: the GET item alone, stops right away because the item without uri differs
+                context.assertEquals(1, itemsJsonArray.size());
+                context.assertEquals(getItem, itemsJsonArray.getString(0));
+            } else if (index.get() == 2) {
+                // 3rd dispatch: the item without uri alone, stops right away because the next item has a uri
+                context.assertEquals(1, itemsJsonArray.size());
+                context.assertEquals(postItemWithNoUri, itemsJsonArray.getString(0));
+            } else if (index.get() == 3) {
+                // 4th dispatch: the trailing POST /foo item dispatched alone
+                context.assertEquals(1, itemsJsonArray.size());
+                context.assertEquals(postItem, itemsJsonArray.getString(0));
+            } else {
+                context.fail("unexpected index " + index);
+            }
+            event.reply(new JsonObject().put(STATUS, OK));
+        });
+
+        List<String[]> items = List.of(
+                new String[]{queueName, postItem},
+                new String[]{queueName, postItem},
+                new String[]{queueName, getItem},
+                new String[]{queueName, postItemWithNoUri},
+                new String[]{queueName, postItem}
+        );
+
+        addQueueItemsSequentially(items).onComplete(e11 -> {
+            assertQueuesCount(context, 1);
+            assertQueueItemsCount(context, queueName, 5);
+            redisQues.getQueueConsumerRunner().processMultipleItems(queueName, 5, 0, 0).onComplete(event1 -> {
+                // the batch stopped after the leading 2 matching items because the 3rd item's method differs
+                assertQueueItemsCount(context, queueName, 3);
+                index.incrementAndGet();
+                redisQues.getQueueConsumerRunner().processMultipleItems(queueName, 5, 0, 0).onComplete(event2 -> {
+                    // the GET item was dispatched alone since the item without uri differs from it
+                    assertQueueItemsCount(context, queueName, 2);
+                    index.incrementAndGet();
+                    redisQues.getQueueConsumerRunner().processMultipleItems(queueName, 5, 0, 0).onComplete(event3 -> {
+                        // the item without uri was dispatched alone since it differs from the following POST /foo item
+                        assertQueueItemsCount(context, queueName, 1);
+                        index.incrementAndGet();
+                        redisQues.getQueueConsumerRunner().processMultipleItems(queueName, 5, 0, 0).onComplete(event4 -> {
+                            // the trailing item is dispatched on its own
+                            assertQueuesCount(context, 0);
+                            assertQueueItemsCount(context, queueName, 0);
+                            async.complete();
+                        });
+                    });
+                });
             });
         });
     }
