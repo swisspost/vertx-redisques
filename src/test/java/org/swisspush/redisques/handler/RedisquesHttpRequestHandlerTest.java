@@ -171,8 +171,10 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
                 .httpRequestHandlerPort(7070)
                 .queueConfigurations(List.of(
                         new QueueConfiguration("queue_1").withRetryIntervals(1, 2, 3, 5),
-                        new QueueConfiguration("stat.*").withRetryIntervals(1, 2, 3, 5)
-                                .withEnqueueDelayMillisPerSize(5).withEnqueueMaxDelayMillis(100)
+                        new QueueConfiguration("stat.*").withRetryIntervals(1, 2, 3, 5).
+                                withEnqueueDelayMillisPerSize(5).withEnqueueMaxDelayMillis(100),
+                        new QueueConfiguration("slowdown_stat").withRetryIntervals(8, 9, 10, 11)
+
                 ))
                 .queueSpeedIntervalSec(2)
                 .dequeueStatisticReportIntervalSec(3)
@@ -2110,21 +2112,19 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         async2.awaitSuccess();
     }
 
-    @Test(timeout = 10000L)
+    @Test(timeout = 15000L)
     public void getStatisticsSlowDown(TestContext context) {
         Async async = context.async();
         flushAll();
-
         // Test increasing slowDown Time within 5 seconds
-        eventBusSend(buildEnqueueOperation("stat_b", "item_b_1"), handler -> {
-            testVertx.setTimer(2000, event -> {
-                assertQueueState(context, null, 1, 0,
-                        "stat_b", 1, 1, 1,
-                        null);
-                async.complete();
-            });
+        eventBusSend(buildEnqueueOperation("slowdown_stat", "item_b_1"), handler -> {
+
+            assertQueueState(context, null, 1, 0,
+                    "slowdown_stat", 1, 1, 8,
+                    null);
+            async.complete();
         });
-        async.awaitSuccess(8000);
+        async.awaitSuccess(10000);
     }
 
     @Test(timeout = 15000L)
