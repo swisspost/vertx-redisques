@@ -346,10 +346,12 @@ public class QueueConsumerRunner {
                     String item = res.toString();
                     String itemMethod = null;
                     String itemUri = null;
+                    boolean itemParsed = false;
                     try {
                         JsonObject itemJson = new JsonObject(item);
                         itemMethod = itemJson.getString("method");
                         itemUri = itemJson.getString("uri");
+                        itemParsed = true;
                     } catch (Exception e) {
                         // item is not a JSON object (e.g. plain payload) - skip method/url consistency check for it
                         log.trace("RedisQues could not parse queue item of queue '{}' as json to check method/uri consistency", queueName);
@@ -358,7 +360,7 @@ public class QueueConsumerRunner {
                         // first item of the batch defines the method/url all following items must match
                         batchMethod = itemMethod;
                         batchUri = itemUri;
-                    } else if (itemMethod != null && itemUri != null
+                    } else if (itemParsed
                             && (!Objects.equals(itemMethod, batchMethod) || !Objects.equals(itemUri, batchUri))) {
                         // item has a different method/url than the current batch, stop growing the batch here so that
                         // only items with the same method and url are dispatched together
