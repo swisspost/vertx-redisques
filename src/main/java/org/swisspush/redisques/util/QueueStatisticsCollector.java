@@ -25,6 +25,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
 
@@ -61,6 +62,7 @@ public class QueueStatisticsCollector {
     private static final Logger log = LoggerFactory.getLogger(QueueStatisticsCollector.class);
 
     private static final String STATSKEY = "redisques:stats";
+    public static final AtomicBoolean CODECS_REGISTERED = new AtomicBoolean(false);
     private final static String QUEUE_FAILURES = "failures";
     private final static String QUEUE_BACKPRESSURE = "backpressureTime";
     private final static String QUEUE_SLOWDOWNTIME = "slowdownTime";
@@ -81,6 +83,7 @@ public class QueueStatisticsCollector {
     private final UpperBoundParallel upperBoundParallel;
     private Long speedStatisticsTimerId;
 
+
     public QueueStatisticsCollector(
             RedisService redisService,
             KeyspaceHelper keyspaceHelper,
@@ -99,6 +102,12 @@ public class QueueStatisticsCollector {
         this.keyspaceHelper = keyspaceHelper;
 
         speedStatisticsScheduler(speedIntervalSec);
+    }
+
+    public static void registerCodecs(Vertx vertx) {
+        if (CODECS_REGISTERED.compareAndSet(false, true)) {
+            vertx.eventBus().registerDefaultCodec(QueueSizeInfoMap.class, new QueueSizeInfoMapCodec());
+        }
     }
 
     /**

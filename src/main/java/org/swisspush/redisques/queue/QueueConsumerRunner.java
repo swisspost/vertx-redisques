@@ -253,12 +253,12 @@ public class QueueConsumerRunner {
         return promise.future();
     }
 
-    private Future<Void> processMessage(String queueName, String message, int messageSize) {
+    private Future<Void> processMessage(String queueName, String message, int messageSize, final boolean batchQueue) {
         Promise<Void> promise = Promise.promise();
         String queueKey = keyspaceHelper.getQueuesPrefix() + queueName;
         queueStatsService.createDequeueStatisticIfMissing(queueName);
         queueStatsService.dequeueStatisticSetLastDequeueAttemptTimestamp(queueName, System.currentTimeMillis());
-        processMessageWithTimeout(queueName, message, messageSize > 1, processResult -> {
+        processMessageWithTimeout(queueName, message, batchQueue, processResult -> {
 
             // update the queue failure count and get a retry interval
             int retryInterval = updateQueueFailureCountAndGetRetryInterval(queueName, processResult.getKey());
@@ -282,7 +282,7 @@ public class QueueConsumerRunner {
                         log.trace("RedisQues read queue: {}", queueKey);
                         redisService.llen(queueKey).onComplete(answer1 -> {
                             if (answer1.succeeded() && answer1.result() != null) {
-                                if ( answer1.result().toLong() > 0L) {
+                                if (answer1.result().toLong() > 0L) {
                                     notifyConsumer(queueName).onComplete(event1 -> {
                                         if (event1.failed())
                                             log.warn("TODO error handling", exceptionFactory.newException(
@@ -362,10 +362,39 @@ public class QueueConsumerRunner {
                 Response response = answer.result();
                 log.trace("RedisQues read queue lrange item size: {}", response.size());
                 JsonArray itemsJsonArray = new JsonArray();
+                String batchMethod = null;
+                String batchUri = null;
+                int batchSize = 0;
                 for (Response res : response) {
-                    itemsJsonArray.add(res.toString());
+                    String item = res.toString();
+                    String itemMethod = null;
+                    String itemUri = null;
+                    boolean itemParsed = false;
+                    try {
+                        JsonObject itemJson = new JsonObject(item);
+                        itemMethod = itemJson.getString("method");
+                        itemUri = itemJson.getString("uri");
+                        itemParsed = true;
+                    } catch (Exception e) {
+                        // item is not a JSON object (e.g. plain payload) - skip method/url consistency check for it
+                        log.trace("RedisQues could not parse queue item of queue '{}' as json to check method/uri consistency", queueName);
+                    }
+                    if (batchSize == 0) {
+                        // first item of the batch defines the method/url all following items must match
+                        batchMethod = itemMethod;
+                        batchUri = itemUri;
+                    } else if (itemParsed
+                            && (!Objects.equals(itemMethod, batchMethod) || !Objects.equals(itemUri, batchUri))) {
+                        // item has a different method/url than the current batch, stop growing the batch here so that
+                        // only items with the same method and url are dispatched together
+                        log.debug("RedisQues stops batch dispatch for queue '{}' at item {} because method/uri differs from the batch ({} {} vs {} {})",
+                                queueName, batchSize, itemMethod, itemUri, batchMethod, batchUri);
+                        break;
+                    }
+                    itemsJsonArray.add(item);
+                    batchSize++;
                 }
-                processMessage(queueName, itemsJsonArray.toString(), maximumItemInBatchDispatch).onComplete(processMessageAnswer -> {
+                processMessage(queueName, itemsJsonArray.toString(), batchSize, true).onComplete(processMessageAnswer -> {
                     if (processMessageAnswer.failed()) {
                         log.error("Failed to process queue '{}'", queueName, processMessageAnswer.cause());
                         promise.fail(processMessageAnswer.cause());
@@ -442,7 +471,7 @@ public class QueueConsumerRunner {
             Response response = answer.result();
             log.trace("RedisQues read queue lindex result: {}", response);
             if (response != null) {
-                processMessage(queueName, response.toString(), 1).onComplete(processMessageAnswer -> {
+                processMessage(queueName, response.toString(), 1, false).onComplete(processMessageAnswer -> {
                     if (processMessageAnswer.failed()) {
                         log.error("Failed to process queue '{}'", queueName, processMessageAnswer.cause());
                         promise.fail(processMessageAnswer.cause());
@@ -498,7 +527,7 @@ public class QueueConsumerRunner {
         });
     }
 
-    private void processMessageWithTimeout(final String queue, final String payload, final boolean isBatch, final Handler<Map.Entry<Boolean, String>> handler) {
+    private void processMessageWithTimeout(final String queue, final String payload, final boolean batchQueue, final Handler<Map.Entry<Boolean, String>> handler) {
         long processorDelayMax = configurationProvider.configuration().getProcessorDelayMax();
         if (processorDelayMax > 0) {
             log.info("About to process message for queue {} with a maximum delay of {}ms", queue, processorDelayMax);
@@ -512,10 +541,10 @@ public class QueueConsumerRunner {
             String processorAddress = configurationProvider.configuration().getProcessorAddress();
             final EventBus eb = vertx.eventBus();
             JsonObject message = new JsonObject();
-            if (isBatch) {
-                message.put(BATCH_QUEUE, true);
-            }
             message.put("queue", queue);
+            if (batchQueue) {
+               message.put(BATCH_QUEUE, true);
+            }
             message.put(PAYLOAD, payload);
             log.trace("RedisQues process message: {} for queue: {} send it to processor: {}", message, queue, processorAddress);
 

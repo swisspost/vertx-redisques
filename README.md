@@ -1321,6 +1321,30 @@ depending on the batch dispatch configuration.
 
 ---
 
+#### Same `method` / `uri` grouping
+
+Batched queue items are expected to be dispatched to the same downstream endpoint.
+To guarantee this, the queue runner only groups consecutive queue items together
+when they share the **same `method` and `uri`**.
+
+Behavior:
+
+- the first queue item read from the queue defines the `method` / `uri` for the batch
+- subsequent queue items are appended to the batch only while their `method` and `uri`
+  match the first item
+- as soon as a queue item with a different `method` and/or `uri` is encountered,
+  the batch is closed (dispatched) without including that item
+- the differing item (and everything after it) remains in the queue and will be
+  picked up by the next dispatch cycle, potentially starting a new batch
+- queue items that cannot be parsed as JSON (i.e. no `method` / `uri` fields) are not
+  checked for consistency and are simply included in the batch
+
+This means a single call to the batch dispatch logic may send fewer items than
+`maximumItemInBatchDispatch`, even if more items are available in the queue, whenever
+a `method` / `uri` change is detected within the inspected range.
+
+---
+
 #### Important Difference Between `0` and `1` for `maximumItemInBatchDispatch`
 
 Although both configurations may result in processing one queue item at a time,

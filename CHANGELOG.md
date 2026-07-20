@@ -4,10 +4,23 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
-## [4.1.43-SNAPSHOT] - 2026-07-13
+
+## [4.1.54-SNAPSHOT] - 2026-07-20
 ### New features
 - Added new action:
     - getQueueRunningStates: broadcasts a request to all RedisQues verticle instances and collects their local queue running states (e.g. queue item size counter, last consumed/refreshed timestamps)
+
+## [4.1.46-SNAPSHOT] - 2026-07-15
+### Bugfixes
+- Fixed `QueueConsumerRunner#processMultipleItems` to ensure all queue items grouped
+  into a batch share the same `method` and `uri`. Previously, items with different
+  `method`/`uri` values could be dispatched together in the same batch. Now the batch
+  is closed as soon as an item with a different `method`/`uri` is encountered; that
+  item and any following items remain in the queue for the next dispatch cycle.
+- Fixed `QueueStatisticsCollector` to register the `QueueSizeInfoMapCodec` event bus
+  codec only once. Previously, creating multiple `QueueStatisticsCollector` instances
+  could trigger a duplicate codec registration error on the Vert.x event bus.
+
 
 ## [4.1.42-SNAPSHOT] - 2026-06-22
 ### Minor changes
