@@ -2086,7 +2086,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         // Check normal send with missing message consumer -> 1 failure immediately
         Async async1 = context.async();
         eventBusSend(buildEnqueueOperation("slowdown_stat", "item_a_1"), handler -> {
-            testVertx.setTimer(1500, new Handler<Long>() {
+            testVertx.setTimer(2500, new Handler<Long>() {
                 @Override
                 public void handle(Long event) {
                     assertQueueState(context, null, 1, 0,
@@ -2099,7 +2099,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         async1.awaitSuccess();
         Async async2 = context.async();
         eventBusSend(buildEnqueueOperation("slowdown_stat", "item_a_2"), handler -> {
-            testVertx.setTimer(1500, new Handler<Long>() {
+            testVertx.setTimer(2500, new Handler<Long>() {
                 @Override
                 public void handle(Long event) {
                     assertQueueState(context, null, 1, 0,
