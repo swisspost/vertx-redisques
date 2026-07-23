@@ -5,14 +5,17 @@ import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.eventbus.MessageConsumer;
+import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import org.slf4j.Logger;
 import org.swisspush.redisques.queue.KeyspaceHelper;
 import org.swisspush.redisques.util.RedisquesAPI;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static org.swisspush.redisques.util.RedisquesAPI.ERROR;
@@ -84,18 +87,23 @@ public class GetQueueRunningStatesAction implements QueueAction {
      */
     private Future<JsonObject> getAllRunningQueuesStatesFromAllVerticles(final long lastUpdateWithInMs, final int expectedReplies, final long timeoutMs) {
         final Promise<JsonObject> promise = Promise.promise();
-        final List<JsonObject> results = new ArrayList<>();
+        final List<JsonObject> results = Collections.synchronizedList(new ArrayList<>());
         final String replyAddress = keyspaceHelper.getQueueRunningStateReplyKey() + UUID.randomUUID();
-        final AtomicLong timerId = new AtomicLong(1);
+        final AtomicLong timerId = new AtomicLong(-1L);
+        final AtomicBoolean finished = new AtomicBoolean(false);
         MessageConsumer<JsonObject> consumer =
                 vertx.eventBus().consumer(replyAddress);
         Runnable finish = () -> {
-            if (!promise.future().isComplete()) {
-                vertx.cancelTimer(timerId.get());
-                consumer.unregister();
-                promise.complete(new JsonObject()
-                        .put(RedisquesAPI.PAYLOAD, results));
+            if (!finished.compareAndSet(false, true)) {
+                return;
             }
+            long timerIdValue = timerId.get();
+            if (timerIdValue >= 0) {
+                vertx.cancelTimer(timerIdValue);
+            }
+            consumer.unregister();
+            promise.tryComplete(new JsonObject()
+                    .put(RedisquesAPI.PAYLOAD, new JsonArray(new ArrayList<>(results))));
         };
         consumer.handler(msg -> {
             results.add(msg.body());
@@ -113,7 +121,8 @@ public class GetQueueRunningStatesAction implements QueueAction {
                 if (effectTimeout <= 0) {
                     effectTimeout = DEFAULT_WAIT_TIMEOUT;
                 }
-                // wait some time to collect the data
+                // All callbacks here (completion handler, message handler, timer callback) are executed by Vert.x contexts.
+                // The finished flag keeps finish() idempotent even if timeout and expected-replies completion race.
                 timerId.set(vertx.setTimer(effectTimeout, id -> finish.run()));
 
                 vertx.eventBus().publish(

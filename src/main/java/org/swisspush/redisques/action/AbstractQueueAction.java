@@ -195,7 +195,7 @@ public abstract class AbstractQueueAction implements QueueAction {
     /**
      * Check does queue has oversized
      * @param queueName
-     * @return return an always succeeded promise TRUE if queue items over the patrol limit, otherwise FALSE
+     * @return returns an always-succeeded future; on size lookup failures this deliberately fails open (FALSE)
      */
     protected Future<Boolean> isQueuePatrolLimited(String queueName) {
         Promise<Boolean> promise = Promise.promise();

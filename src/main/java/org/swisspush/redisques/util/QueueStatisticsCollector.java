@@ -462,7 +462,8 @@ public class QueueStatisticsCollector {
 
         getAllApproximateQueueSize().onComplete(event -> {
             if (event.failed()) {
-                log.warn("failed to get approximate size for {}", queueName, event.cause());
+                log.warn("Fail-open queue size fallback for '{}' (using size=0 because running-state collection failed)",
+                        queueName, event.cause());
                 promise.complete(0L);
                 return;
             }
@@ -512,27 +513,57 @@ public class QueueStatisticsCollector {
      * appears in multiple instances, only the state with the highest {@code lastRegisterRefreshedMillis}
      * value is kept, and its {@code queueItemSizeCounter} is used as the merged size.
      *
+     * Entries with malformed shape are ignored to stay robust during mixed-version cluster states.
+     *
      * @param payload a {@link JsonArray} of per-instance {@link JsonObject}s mapping queue names to their running state
-     * @return a {@link Future} completed with a {@link Map} of queue name to its merged (most recently updated) queue size
+     * @return a {@link Map} of queue name to its merged (most recently updated) queue size
      */
     public static Map<String, Long> mergeQueueSizeFromAllQueueRunningStates(JsonArray payload) {
         Map<String, Long> merged = new HashMap<>();
         Map<String, Long> latestTs = new HashMap<>();
-        payload.stream()
-                .map(JsonObject.class::cast)
-                .forEach(instanceQueues -> {
-                    instanceQueues.forEach(entry -> {
-                        JsonObject queueState = (JsonObject) entry.getValue();
-                        long size = queueState.getLong("queueItemSizeCounter", 0L);
-                        long lastRegisterRefreshedMillis = queueState.getLong("lastRegisterRefreshedMillis", 0L);
-                        String name = entry.getKey();
-                        if (lastRegisterRefreshedMillis > latestTs.getOrDefault(name, Long.MIN_VALUE)) {
-                            latestTs.put(name, lastRegisterRefreshedMillis);
-                            merged.put(name, size);
-                        }
-                    });
-                });
+        if (payload == null || payload.isEmpty()) {
+            return merged;
+        }
+        payload.stream().forEach(instanceObj -> {
+            if (!(instanceObj instanceof JsonObject)) {
+                log.warn("Ignoring malformed running-state instance payload entry of type '{}'",
+                        instanceObj == null ? "null" : instanceObj.getClass().getName());
+                return;
+            }
+            JsonObject instanceQueues = (JsonObject) instanceObj;
+            instanceQueues.forEach(entry -> {
+                if (!(entry.getValue() instanceof JsonObject)) {
+                    log.warn("Ignoring malformed running-state queue entry for '{}': expected object but got '{}'",
+                            entry.getKey(),
+                            entry.getValue() == null ? "null" : entry.getValue().getClass().getName());
+                    return;
+                }
+                JsonObject queueState = (JsonObject) entry.getValue();
+                Long size = getLongOrDefault(queueState, "queueItemSizeCounter", 0L);
+                Long lastRegisterRefreshedMillis = getLongOrDefault(queueState, "lastRegisterRefreshedMillis", 0L);
+                if (size == null || lastRegisterRefreshedMillis == null) {
+                    log.warn("Ignoring malformed running-state values for queue '{}': {}", entry.getKey(), queueState.encode());
+                    return;
+                }
+                String name = entry.getKey();
+                if (lastRegisterRefreshedMillis > latestTs.getOrDefault(name, Long.MIN_VALUE)) {
+                    latestTs.put(name, lastRegisterRefreshedMillis);
+                    merged.put(name, size);
+                }
+            });
+        });
         return merged;
+    }
+
+    private static Long getLongOrDefault(JsonObject obj, String field, long defaultValue) {
+        Object value = obj.getValue(field);
+        if (value == null) {
+            return defaultValue;
+        }
+        if (value instanceof Number) {
+            return ((Number) value).longValue();
+        }
+        return null;
     }
 
     /**
@@ -632,7 +663,8 @@ public class QueueStatisticsCollector {
         if (includeQueueSize) {
             getAllApproximateQueueSize(QUEUE_STATES_UPDATED_WITHIN_MS).onComplete(event -> {
                 if (event.failed()) {
-                    log.warn("Can't get queues states, so all queue size will fetch from Redis", exceptionFactory.newException(event.cause()));
+                    log.warn("Fail-open queue-size fallback: running-state request failed, fetching missing queue sizes from Redis LLEN",
+                            exceptionFactory.newException(event.cause()));
                 } else {
                     queueSizeFromStatistics.putAll(event.result());
                 }

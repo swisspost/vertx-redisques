@@ -102,7 +102,8 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
 
             if (!reloadSize) {
                 if (asyncRunningStatesResult.failed()) {
-                    log.warn("Can't get queues states, so all queue size will fetch from Redis", exceptionFactory.newException(asyncRunningStatesResult.cause()));
+                    log.warn("Fail-open queue-size fallback: running-state request failed, fetching all queue sizes from Redis LLEN",
+                            exceptionFactory.newException(asyncRunningStatesResult.cause()));
                 } else {
                     queueSizeFromStatistics.putAll(QueueStatisticsCollector.mergeQueueSizeFromAllQueueRunningStates(asyncRunningStatesResult.result().body().getJsonArray(PAYLOAD)));
                 }

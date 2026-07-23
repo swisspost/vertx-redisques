@@ -284,4 +284,33 @@ public class QueueStatisticsCollectorTest extends AbstractTestCase {
             async.complete();
         }));
     }
+
+    @Test
+    public void testMergeQueueSizeFromAllQueueRunningStates_IgnoresMalformedEntries(TestContext context) {
+        JsonObject validQueueState = new JsonObject()
+                .put("queueItemSizeCounter", 11L)
+                .put("lastRegisterRefreshedMillis", 1000L);
+        JsonObject newerQueueState = new JsonObject()
+                .put("queueItemSizeCounter", 22L)
+                .put("lastRegisterRefreshedMillis", 2000L);
+        JsonObject malformedQueueState = new JsonObject()
+                .put("queueItemSizeCounter", "not-a-number")
+                .put("lastRegisterRefreshedMillis", "bad-ts");
+
+        JsonObject instanceA = new JsonObject()
+                .put("queue-a", validQueueState)
+                .put("queue-malformed", malformedQueueState)
+                .put("queue-nonobject", "oops");
+        JsonObject instanceB = new JsonObject()
+                .put("queue-a", newerQueueState);
+
+        JsonArray payload = new JsonArray()
+                .add(instanceA)
+                .add("invalid-instance-entry")
+                .add(instanceB);
+
+        Map<String, Long> merged = QueueStatisticsCollector.mergeQueueSizeFromAllQueueRunningStates(payload);
+        context.assertEquals(1, merged.size());
+        context.assertEquals(22L, merged.get("queue-a").longValue());
+    }
 }
