@@ -1,11 +1,9 @@
 package org.swisspush.redisques.util;
 
 import io.vertx.core.Future;
-import io.vertx.core.Handler;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.Message;
-import io.vertx.core.eventbus.MessageConsumer;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.redis.client.Command;
@@ -16,7 +14,6 @@ import org.slf4j.LoggerFactory;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.performance.UpperBoundParallel;
 import org.swisspush.redisques.queue.KeyspaceHelper;
-import org.swisspush.redisques.queue.QueueProcessingState;
 import org.swisspush.redisques.queue.RedisService;
 
 import java.util.ArrayList;
@@ -26,7 +23,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -66,16 +62,15 @@ public class QueueStatisticsCollector {
     private static final Logger log = LoggerFactory.getLogger(QueueStatisticsCollector.class);
 
     private static final String STATSKEY = "redisques:stats";
-    public static final AtomicBoolean CODECS_REGISTERED = new AtomicBoolean(false);
     private final static String QUEUE_FAILURES = "failures";
     private final static String QUEUE_BACKPRESSURE = "backpressureTime";
     private final static String QUEUE_SLOWDOWNTIME = "slowdownTime";
+    private final static long QUEUE_STATES_UPDATED_WITHIN_MS = 30_000L;
 
     private final Map<String, AtomicLong> queueFailureCount = new HashMap<>();
     private final Map<String, Long> queueBackpressureTime = new HashMap<>();
     private final Map<String, Long> queueSlowDownTime = new HashMap<>();
     private final Map<String, AtomicLong> queueMessageSpeedCtr = new ConcurrentHashMap<>();
-    private final QueueSizeInfoMap approximateQueueSize =  new QueueSizeInfoMap();
     private final RedisquesConfigurationProvider configurationProvider;
     private final KeyspaceHelper keyspaceHelper;
     private volatile Map<String, Long> queueMessageSpeed = new HashMap<>();
@@ -85,7 +80,6 @@ public class QueueStatisticsCollector {
     private final RedisQuesExceptionFactory exceptionFactory;
     private final Semaphore redisRequestQuota;
     private final UpperBoundParallel upperBoundParallel;
-    private MessageConsumer<QueueSizeInfoMap> queueSizeConsumer;
     private Long speedStatisticsTimerId;
 
 
@@ -106,22 +100,7 @@ public class QueueStatisticsCollector {
         this.configurationProvider = configurationProvider;
         this.keyspaceHelper = keyspaceHelper;
 
-        registerCodecs(vertx);
         speedStatisticsScheduler(speedIntervalSec);
-        this.queueSizeConsumer = vertx.eventBus().consumer(keyspaceHelper.getQueueStatisticQueueSizeSyncKey(),
-                (Handler<Message<QueueSizeInfoMap>>) event ->
-                       event.body().getValue().forEach((key, value) -> {
-                            if (!keyspaceHelper.getVerticleUid().equals(key)) {
-                                // update queue item size from other instances
-                                approximateQueueSize.put(key, value);
-                            }
-                        }));
-    }
-
-    public static void registerCodecs(Vertx vertx) {
-        if (CODECS_REGISTERED.compareAndSet(false, true)) {
-            vertx.eventBus().registerDefaultCodec(QueueSizeInfoMap.class, new QueueSizeInfoMapCodec());
-        }
     }
 
     /**
@@ -131,11 +110,6 @@ public class QueueStatisticsCollector {
      */
     public void stop() {
         log.debug("Stopping QueueStatisticsCollector");
-        if (queueSizeConsumer != null && queueSizeConsumer.isRegistered()) {
-            queueSizeConsumer.unregister()
-                    .onSuccess(v -> log.debug("Successfully unregistered queueSizeConsumer"))
-                    .onFailure(ex -> log.warn("Failed to unregister queueSizeConsumer", ex));
-        }
         if (speedStatisticsTimerId != null) {
             boolean cancelled = vertx.cancelTimer(speedStatisticsTimerId);
             if (cancelled) {
@@ -215,7 +189,7 @@ public class QueueStatisticsCollector {
                 updateStatisticsInRedis(queueName).onComplete(event -> {
                     if (event.failed()) {
                         promise.fail(event.cause());
-                    }else {
+                    } else {
                         promise.complete();
                     }
                 });
@@ -403,11 +377,11 @@ public class QueueStatisticsCollector {
     public void setQueueSlowDownTime(String queueName, long time) {
         if (time > 0) {
             queueSlowDownTime.put(queueName, time);
-                updateStatisticsInRedis(queueName).onComplete(event -> {
-                    if (event.failed()) {
-                        log.warn("failed to update statistics", event.cause());
-                    }
-                });
+            updateStatisticsInRedis(queueName).onComplete(event -> {
+                if (event.failed()) {
+                    log.warn("failed to update statistics", event.cause());
+                }
+            });
         } else {
             Long lastTime = queueSlowDownTime.remove(queueName);
             if (lastTime != null) {
@@ -479,53 +453,118 @@ public class QueueStatisticsCollector {
     /**
      * get a queue item size which updated by queuecheck and queue runner, and synced by eventbus,
      * which not accurately reflects the current item quantity.
+     *
      * @param queueName
      * @return approximate queueSize or 0 if not find
      */
-    public long getApproximateQueueSize(String queueName) {
-        return getAllApproximateQueueSize().getOrDefault(queueName, 0L);
+    public Future<Long> getApproximateQueueSize(String queueName) {
+        Promise<Long> promise = Promise.promise();
+
+        getAllApproximateQueueSize().onComplete(event -> {
+            if (event.failed()) {
+                log.warn("Fail-open queue size fallback for '{}' (using size=0 because running-state collection failed)",
+                        queueName, event.cause());
+                promise.complete(0L);
+                return;
+            }
+            promise.complete(event.result().getOrDefault(queueName, 0L));
+        });
+
+        return promise.future();
     }
+
 
     /**
      * Get all queues size from statistics
+     *
      * @return
      */
-    public Map<String, Long> getAllApproximateQueueSize() {
-        Map<String, Long> merged = new HashMap<>();
-        Map<String, Long> latestTs = new HashMap<>();
-        approximateQueueSize.getValue().values().forEach(inner ->
-                inner.forEach((name, info) -> {
-                    long ts = info.getLastRegisterRefreshedMillis();
-                    if (ts > latestTs.getOrDefault(name, Long.MIN_VALUE)) {
-                        latestTs.put(name, ts);
-                        merged.put(name, info.getQueueItemSizeCounter());
-                    }
-                })
-        );
-        return merged;
+    public Future<Map<String, Long>> getAllApproximateQueueSize() {
+        return getAllApproximateQueueSize(0);
     }
 
     /**
-     * update and sync all approximate queue size
-     * @param aliveConsumers
-     * @param myQueues
+     * Get all queues size from statistics, also allow user to filter how old the queue size.
+     *
+     * @param lastUpdateWithInMs only include queue states updated within this time window, in milliseconds, 0 mean all
+     * @return
      */
-    public void updateApproximateQueueSize(Set<String> aliveConsumers, Map<String, QueueProcessingState> myQueues) {
-        // keep alive consumers
-        approximateQueueSize.getValue().keySet().retainAll(aliveConsumers);
-
-        Map<String, QueueSizeInfoEntry> queueSizeMapWithTimeInfo = new HashMap<>();
-        myQueues.forEach((queueName, queueProcessingState) ->
-                queueSizeMapWithTimeInfo.put(queueName, new QueueSizeInfoEntry(queueProcessingState.getQueueItemSizeCounter(), queueProcessingState.getLastRegisterRefreshedMillis())));
-
-        QueueSizeInfoMap localQueueSize = new QueueSizeInfoMap();
-        localQueueSize.put(keyspaceHelper.getVerticleUid(), queueSizeMapWithTimeInfo);
-        approximateQueueSize.putAll(localQueueSize);
-
-        // sync to other instances.
-        vertx.eventBus().publish(keyspaceHelper.getQueueStatisticQueueSizeSyncKey(), localQueueSize);
+    public Future<Map<String, Long>> getAllApproximateQueueSize(long lastUpdateWithInMs) {
+        Promise<Map<String, Long>> promise = Promise.promise();
+        JsonObject requestBody = RedisquesAPI.buildGetQueueRunningStates(lastUpdateWithInMs, 0, 0);
+        vertx.eventBus().<JsonObject>request(keyspaceHelper.getAddress(), requestBody).onComplete(event -> {
+            if (event.failed()) {
+                log.error("failed to get the queue running states", event.cause());
+                promise.fail(event.cause());
+                return;
+            }
+            promise.complete(mergeQueueSizeFromAllQueueRunningStates(event.result().body().getJsonArray(RedisquesAPI.PAYLOAD)));
+        });
+        return promise.future();
     }
 
+    /**
+     * Merges the queue sizes reported by each redisques instance's queue running state into a single
+     * per-queue size map, keeping only the most recently refreshed entry for each queue name.
+     * <p>
+     * The payload is expected to be a {@link JsonArray} of {@link JsonObject}s, one per instance, where
+     * each entry maps a queue name to its running state (a {@link JsonObject} containing at least
+     * {@code queueItemSizeCounter} and {@code lastRegisterRefreshedMillis}). For a given queue name that
+     * appears in multiple instances, only the state with the highest {@code lastRegisterRefreshedMillis}
+     * value is kept, and its {@code queueItemSizeCounter} is used as the merged size.
+     *
+     * Entries with malformed shape are ignored to stay robust during mixed-version cluster states.
+     *
+     * @param payload a {@link JsonArray} of per-instance {@link JsonObject}s mapping queue names to their running state
+     * @return a {@link Map} of queue name to its merged (most recently updated) queue size
+     */
+    public static Map<String, Long> mergeQueueSizeFromAllQueueRunningStates(JsonArray payload) {
+        Map<String, Long> merged = new HashMap<>();
+        Map<String, Long> latestTs = new HashMap<>();
+        if (payload == null || payload.isEmpty()) {
+            return merged;
+        }
+        payload.stream().forEach(instanceObj -> {
+            if (!(instanceObj instanceof JsonObject)) {
+                log.warn("Ignoring malformed running-state instance payload entry of type '{}'",
+                        instanceObj == null ? "null" : instanceObj.getClass().getName());
+                return;
+            }
+            JsonObject instanceQueues = (JsonObject) instanceObj;
+            instanceQueues.forEach(entry -> {
+                if (!(entry.getValue() instanceof JsonObject)) {
+                    log.warn("Ignoring malformed running-state queue entry for '{}': expected object but got '{}'",
+                            entry.getKey(),
+                            entry.getValue() == null ? "null" : entry.getValue().getClass().getName());
+                    return;
+                }
+                JsonObject queueState = (JsonObject) entry.getValue();
+                Long size = getLongOrDefault(queueState, "queueItemSizeCounter", 0L);
+                Long lastRegisterRefreshedMillis = getLongOrDefault(queueState, "lastRegisterRefreshedMillis", 0L);
+                if (size == null || lastRegisterRefreshedMillis == null) {
+                    log.warn("Ignoring malformed running-state values for queue '{}': {}", entry.getKey(), queueState.encode());
+                    return;
+                }
+                String name = entry.getKey();
+                if (lastRegisterRefreshedMillis > latestTs.getOrDefault(name, Long.MIN_VALUE)) {
+                    latestTs.put(name, lastRegisterRefreshedMillis);
+                    merged.put(name, size);
+                }
+            });
+        });
+        return merged;
+    }
+
+    private static Long getLongOrDefault(JsonObject obj, String field, long defaultValue) {
+        Object value = obj.getValue(field);
+        if (value == null) {
+            return defaultValue;
+        }
+        if (value instanceof Number) {
+            return ((Number) value).longValue();
+        }
+        return null;
+    }
 
     /**
      * An internally used class for statistics value storage per queue.
@@ -601,7 +640,7 @@ public class QueueStatisticsCollector {
      * for all queues requested (independent of the redisques instance for which the queues are
      * registered). Therefore this method must be used with care and not be called too often!
      *
-     * @param queues The queues for which we are interested in the statistics
+     * @param queues           The queues for which we are interested in the statistics
      * @param includeQueueSize fetch queue item size
      * @return A Future
      */
@@ -612,67 +651,108 @@ public class QueueStatisticsCollector {
             promise.complete(new JsonObject().put(STATUS, OK).put(RedisquesAPI.QUEUES, new JsonArray()));
             return promise.future();
         }
-        Map<String, String> keyQueuePairs = new LinkedHashMap<>();
+        final Map<String, Long> queueSizeFromStatistics = new HashMap<>();
+        final Map<String, String> keyQueuePairs = new LinkedHashMap<>();
+        final var ctx = new RequestCtx();
+        ctx.includeQueueSize = includeQueueSize;
         for (String key : queues) {
             keyQueuePairs.put(queuePrefix + key, key);
         }
-        keyQueuePairs = RedisClusterUtil.groupMapBySlot(keyQueuePairs);
+        Map<String, String> groupedKeyQueuePairs = RedisClusterUtil.groupMapBySlot(keyQueuePairs);
 
-        var ctx = new RequestCtx();
-        ctx.includeQueueSize = includeQueueSize ;
-        ctx.keyQueuePair =  new ArrayList<>(keyQueuePairs.entrySet());
-        step1(ctx).compose(
-                nothing2 -> step2(ctx).compose(
-                        nothing3 -> step3(ctx).compose(
-                                nothing4 -> step4(ctx))
-                )).onComplete(promise);
+        if (includeQueueSize) {
+            getAllApproximateQueueSize(QUEUE_STATES_UPDATED_WITHIN_MS).onComplete(event -> {
+                if (event.failed()) {
+                    log.warn("Fail-open queue-size fallback: running-state request failed, fetching missing queue sizes from Redis LLEN",
+                            exceptionFactory.newException(event.cause()));
+                } else {
+                    queueSizeFromStatistics.putAll(event.result());
+                }
+                // Remove queues from statistics that don't exist in filtered queueKeys
+                queueSizeFromStatistics.keySet().removeIf(queue -> !queues.contains(queue));
+                ctx.keyQueuePair = new ArrayList<>(groupedKeyQueuePairs.entrySet());
+                ctx.queueSizeFromStatistics = queueSizeFromStatistics;
+                step1(ctx).compose(
+                        nothing2 -> step2(ctx).compose(
+                                nothing3 -> step3(ctx).compose(
+                                        nothing4 -> step4(ctx))
+                        )).onComplete(promise);
+            });
+        } else {
+            ctx.keyQueuePair = new ArrayList<>(groupedKeyQueuePairs.entrySet());
+            ctx.queueSizeFromStatistics = new HashMap<>();
+            step1(ctx).compose(
+                    nothing2 -> step2(ctx).compose(
+                            nothing3 -> step3(ctx).compose(
+                                    nothing4 -> step4(ctx))
+                    )).onComplete(promise);
+        }
         return promise.future();
     }
-
 
     /**
      * <p>Query queue lengths.</p>
      */
     Future<Void> step1(RequestCtx ctx) {
-        if (!ctx.includeQueueSize){
+        if (!ctx.includeQueueSize) {
             return Future.succeededFuture();
         }
         int numQueues = ctx.keyQueuePair.size();
         log.debug("About to perform {} requests to redis just for monitoring", numQueues);
         long begRedisRequestsEpochMs = currentTimeMillis();
 
-        assert ctx.queueLengthList == null;
-        ctx.queueLengthList = new ArrayList<>(ctx.keyQueuePair.size());
+        assert ctx.queueLengths == null;
+        // UpperBoundParallel may complete batches concurrently, therefore use a concurrent map.
+        // Keying by queue name avoids relying on asynchronous completion order.
+        ctx.queueLengths = new ConcurrentHashMap<>(ctx.keyQueuePair.size());
+
         var upperBoundPromise = Promise.<Void>promise();
         final int redisRequestQuotaAcquireRetryTime = configurationProvider.configuration().getRedisMonitoringReqQuotaAcquireRetryTimeMs();
         upperBoundParallel.request(redisRequestQuota, redisRequestQuotaAcquireRetryTime, ctx, new UpperBoundParallel.Mentor<>() {
-            Iterator<Entry<String, String>> queueKeyWithNameIter = ctx.keyQueuePair.iterator();
+            final Iterator<Entry<String, String>> queueKeyWithNameIter = ctx.keyQueuePair.iterator();
 
             @Override
             public boolean runOneMore(BiConsumer<Throwable, Void> onDone, RequestCtx ctx) {
                 if (!queueKeyWithNameIter.hasNext()) {
                     return false;
                 }
-                List<String> keyBatch = new ArrayList<>(RedisService.MAX_COMMANDS_IN_BATCH);
 
-                int count = 0;
-                while (queueKeyWithNameIter.hasNext() && count < RedisService.MAX_COMMANDS_IN_BATCH) {
-                    keyBatch.add(queueKeyWithNameIter.next().getKey());
-                    count++;
+                List<Entry<String, String>> redisBatch = new ArrayList<>(RedisService.MAX_COMMANDS_IN_BATCH);
+                while (queueKeyWithNameIter.hasNext() && redisBatch.size() < RedisService.MAX_COMMANDS_IN_BATCH) {
+                    Entry<String, String> entry = queueKeyWithNameIter.next();
+                    Long knownSize = ctx.queueSizeFromStatistics.get(entry.getValue());
+                    if (knownSize != null) {
+                        ctx.queueLengths.put(entry.getValue(), knownSize);
+                    } else {
+                        redisBatch.add(entry);
+                    }
+                }
+
+                if (redisBatch.isEmpty()) {
+                    onDone.accept(null, null);
+                    return queueKeyWithNameIter.hasNext();
+                }
+
+                List<String> keyBatch = new ArrayList<>(redisBatch.size());
+                for (Entry<String, String> entry : redisBatch) {
+                    keyBatch.add(entry.getKey());
                 }
 
                 redisService.clusterSafeBatch(Command.LLEN, keyBatch, List.of())
-                        .compose(responses -> {
-                            for (Response rsp : responses) {
-                                NumberType num = (NumberType) rsp;
-                                ctx.queueLengthList.add(num);
+                        .onSuccess(responses -> {
+                            if (responses.size() != redisBatch.size()) {
+                                onDone.accept(exceptionFactory.newException(
+                                        "Unexpected queue length batch result with unequal size "
+                                                + redisBatch.size() + " : " + responses.size()), null);
+                                return;
+                            }
+                            for (int i = 0; i < responses.size(); i++) {
+                                ctx.queueLengths.put(redisBatch.get(i).getValue(), responses.get(i).toLong());
                             }
                             onDone.accept(null, null);
-                            return succeededFuture();
                         })
-                        .onFailure(ex ->
-                                onDone.accept(exceptionFactory.newException(ex), null)
-                        );
+                        .onFailure(ex -> onDone.accept(exceptionFactory.newException(ex), null));
+
                 return queueKeyWithNameIter.hasNext();
             }
 
@@ -688,7 +768,8 @@ public class QueueStatisticsCollector {
                 upperBoundPromise.complete();
             }
         });
-        return upperBoundPromise.future().<Void>compose((Void v) -> {
+
+        return upperBoundPromise.future().compose(v -> {
             long durRedisRequestsMs = currentTimeMillis() - begRedisRequestsEpochMs;
             String fmt2 = "All those {} redis requests took {}ms";
             if (durRedisRequestsMs > 3000) {
@@ -696,19 +777,11 @@ public class QueueStatisticsCollector {
             } else {
                 log.debug(fmt2, numQueues, durRedisRequestsMs);
             }
-            if (ctx.queueLengthList.size() != ctx.keyQueuePair.size()) {
-                return failedFuture(exceptionFactory.newException("Unexpected queue length result with unequal size "
-                        + ctx.keyQueuePair.size() + " : " + ctx.queueLengthList.size()));
-            }
-            return succeededFuture();
-        }).compose((Void v) -> {
-            if (ctx.queueLengthList == null) {
-                assert false : "TODO I guess this unreachable code could be removed";
-                return failedFuture(exceptionFactory.newException("Unexpected queue length result: null"));
-            }
-            if (ctx.queueLengthList.size() != ctx.keyQueuePair.size()) {
-                return failedFuture(exceptionFactory.newException("Unexpected queue length result with unequal size "
-                        + ctx.keyQueuePair.size() + " : " + ctx.queueLengthList.size()));
+
+            if (ctx.queueLengths.size() != ctx.keyQueuePair.size()) {
+                return failedFuture(exceptionFactory.newException(
+                        "Unexpected queue length result with unequal size "
+                                + ctx.keyQueuePair.size() + " : " + ctx.queueLengths.size()));
             }
             return succeededFuture();
         });
@@ -719,14 +792,14 @@ public class QueueStatisticsCollector {
      */
     Future<Void> step2(RequestCtx ctx) {
         if (ctx.includeQueueSize) {
-            assert ctx.queueLengthList != null;
+            assert ctx.queueLengths != null;
         }
         // populate the list of queue statistics in a Hashmap for later fast merging
         ctx.statistics = new HashMap<>(ctx.keyQueuePair.size());
         for (int i = 0; i < ctx.keyQueuePair.size(); i++) {
             QueueStatistic qs = new QueueStatistic(ctx.keyQueuePair.get(i).getValue());
             if (ctx.includeQueueSize) {
-                qs.setSize(ctx.queueLengthList.get(i).toLong());
+                qs.setSize(ctx.queueLengths.get(qs.queueName));
             }
             qs.setMessageSpeed(getQueueSpeed(qs.queueName));
             ctx.statistics.put(qs.queueName, qs);
@@ -814,7 +887,8 @@ public class QueueStatisticsCollector {
      */
     private static class RequestCtx {
         private List<Map.Entry<String, String>> keyQueuePair; // Requested queues to analyze
-        private List<NumberType> queueLengthList;
+        private Map<String, Long> queueSizeFromStatistics; // Queue sizes from statistics
+        private Map<String, Long> queueLengths;
         private Boolean includeQueueSize;
         private HashMap<String, QueueStatistic> statistics; // Stats we're going to populate
         private Response redisFailStats; // failure stats we got from redis.

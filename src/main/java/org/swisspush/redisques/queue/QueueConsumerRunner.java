@@ -1,5 +1,6 @@
 package org.swisspush.redisques.queue;
 
+import com.google.common.base.Strings;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
@@ -22,6 +23,7 @@ import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.util.QueueConfigurationProvider;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 import org.swisspush.redisques.util.RedisQuesTimer;
+import org.swisspush.redisques.util.RedisquesAPI;
 import org.swisspush.redisques.util.RedisquesConfigurationProvider;
 
 import java.util.AbstractMap;
@@ -56,6 +58,7 @@ public class QueueConsumerRunner {
     private final int consumerLockTime;
     private final QueueConfigurationProvider queueConfigurationProvider;
     private MessageConsumer<String> trimRequestConsumer;
+    private MessageConsumer<JsonObject> runningQueueStateConsumer;
     private Handler<Void> noQueueMoreItemHandler = null;
 
     // The queues this verticle instance is registered as a consumer
@@ -108,14 +111,34 @@ public class QueueConsumerRunner {
             });
         }
         timer = new RedisQuesTimer(vertx);
+        registerRunningQueueStateConsumer();
     }
+
 
     public Map<String, QueueProcessingState> getMyQueues() {
         return myQueues;
     }
 
-    public void trimRequestConsumerUnregister(Handler<AsyncResult<Void>> handler) {
-        trimRequestConsumer.unregister(handler);
+
+
+    public void unregisterConsumers(Handler<AsyncResult<Void>> handler) {
+        if (trimRequestConsumer != null && trimRequestConsumer.isRegistered()) {
+            trimRequestConsumer.unregister(unregisterTrimEvent -> {
+                if (unregisterTrimEvent.failed()) {
+                    handler.handle(unregisterTrimEvent);
+                    return;
+                }
+                if (runningQueueStateConsumer != null && runningQueueStateConsumer.isRegistered()) {
+                    runningQueueStateConsumer.unregister(handler);
+                } else {
+                    handler.handle(Future.succeededFuture());
+                }
+            });
+        } else if (runningQueueStateConsumer != null && runningQueueStateConsumer.isRegistered()) {
+            runningQueueStateConsumer.unregister(handler);
+        } else {
+            handler.handle(Future.succeededFuture());
+        }
     }
 
     public Future<Void> consume(final String queueName) {
@@ -701,5 +724,35 @@ public class QueueConsumerRunner {
             queueProcessingState.setLastRegisterRefreshedMillis(System.currentTimeMillis());
             return queueProcessingState;
         });
+    }
+
+    /**
+     * A consumer send current queues states back to the given reply address
+     */
+    private void registerRunningQueueStateConsumer() {
+        runningQueueStateConsumer = vertx.eventBus().consumer(
+                keyspaceHelper.getQueueRunningStateKey(),
+                msg -> {
+                    JsonObject request = (JsonObject) msg.body();
+                    String replyAddress = request.getString("reply");
+                    long refreshesWithinMs = request.getLong(RedisquesAPI.GET_QUEUE_RUNNING_STATES_LAST_UPDATE_WITHIN_MS);
+                    if (Strings.isNullOrEmpty(replyAddress)) {
+                        log.warn("Reply address is empty, this should not happened");
+                        return;
+                    }
+                    JsonObject response = new JsonObject();
+                    getMyQueues().forEach((queueName, processingState) -> {
+
+                        if (refreshesWithinMs == 0 || processingState.getLastRegisterRefreshedMillis() + refreshesWithinMs >= System.currentTimeMillis()) {
+                            response.put(
+                                    queueName,
+                                    JsonObject.mapFrom(processingState)
+                            );
+                        }
+
+                    });
+                    vertx.eventBus().send(replyAddress, response);
+                }
+        );
     }
 }

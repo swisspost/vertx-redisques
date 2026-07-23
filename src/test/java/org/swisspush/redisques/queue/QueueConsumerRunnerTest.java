@@ -57,7 +57,6 @@ public class QueueConsumerRunnerTest extends AbstractTestCase {
     public void deployRedisques(TestContext context) {
         vertx = Vertx.vertx();
         QueueConfigurationProvider.reset();
-        QueueStatisticsCollector.CODECS_REGISTERED.set(false);
         JsonObject config = RedisquesConfiguration.with()
                 .processorAddress(PROCESSOR_ADDRESS)
                 .micrometerMetricsEnabled(true)

@@ -156,7 +156,6 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
 
     @Before
     public void deployRedisques(TestContext context) {
-        QueueStatisticsCollector.CODECS_REGISTERED.set(false);
         Async async = context.async();
         testVertx = Vertx.vertx();
         QueueConfigurationProvider.reset();
@@ -172,8 +171,10 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
                 .httpRequestHandlerPort(7070)
                 .queueConfigurations(List.of(
                         new QueueConfiguration("queue_1").withRetryIntervals(1, 2, 3, 5),
-                        new QueueConfiguration("stat.*").withRetryIntervals(1, 2, 3, 5)
-                                .withEnqueueDelayMillisPerSize(5).withEnqueueMaxDelayMillis(100)
+                        new QueueConfiguration("stat.*").withRetryIntervals(1, 2, 3, 5).
+                                withEnqueueDelayMillisPerSize(5).withEnqueueMaxDelayMillis(100),
+                        new QueueConfiguration("slowdown_stat").withRetryIntervals(8, 9, 10, 11)
+
                 ))
                 .queueSpeedIntervalSec(2)
                 .dequeueStatisticReportIntervalSec(3)
@@ -1916,15 +1917,13 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         eventBusSend(buildEnqueueOperation("queue_2", "item2_2"), null);
 
         eventBusSend(buildEnqueueOperation("queue_3", "item3_1"), null);
+        delay_One_Second();
 
         // lock queue
         given().body("{}").when().put("/queuing/locks/queue_3").then().assertThat().statusCode(200);
         when().delete("/queuing/queues/queue_3/0").then().assertThat().statusCode(200);
-        try {
-            Thread.sleep(3000);
-        } catch (InterruptedException iex) {
-            // ignore
-        }
+
+        delay_One_Second();
         String expectedNoEmptyQueuesNoLimit = "{\n" +
                 "  \"queues\": [\n" +
                 "    {\n" +
@@ -1940,6 +1939,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         JsonNode expectedStaticJson = jsonMapper.readTree(expectedNoEmptyQueuesNoLimit);
         repeatVerify(context, jsonMapper, expectedStaticJson, "/queuing/monitor", 5);
 
+        delay_One_Second();
         String expectedWithEmptyQueuesNoLimit = "{\n" +
                 "  \"queues\": [\n" +
                 "    {\n" +
@@ -1960,6 +1960,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         expectedStaticJson = jsonMapper.readTree(expectedWithEmptyQueuesNoLimit);
         repeatVerify(context, jsonMapper, expectedStaticJson, "/queuing/monitor?emptyQueues", 5);
 
+        delay_One_Second();
         String expectedNoEmptyQueuesAndLimit3 = "{\n" +
                 "  \"queues\": [\n" +
                 "    {\n" +
@@ -1976,6 +1977,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         expectedStaticJson = jsonMapper.readTree(expectedNoEmptyQueuesAndLimit3);
         repeatVerify(context, jsonMapper, expectedStaticJson, "/queuing/monitor?limit=3", 5);
 
+        delay_One_Second();
         String expectedWithEmptyQueuesAndLimit3 = "{\n" +
                 "  \"queues\": [\n" +
                 "    {\n" +
@@ -1996,6 +1998,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         expectedStaticJson = jsonMapper.readTree(expectedWithEmptyQueuesAndLimit3);
         repeatVerify(context, jsonMapper, expectedStaticJson, "/queuing/monitor?limit=3&emptyQueues", 5);
 
+        delay_One_Second();
         String expectedWithEmptyQueuesAndInvalidLimit = "{\n" +
                 "  \"queues\": [\n" +
                 "    {\n" +
@@ -2019,14 +2022,13 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
     }
 
     private static void repeatVerify(TestContext context, ObjectMapper jsonMapper, JsonNode expectedStaticJson, String url, int repeat) throws JsonProcessingException {
-
         for (int i = 0; i < repeat; i++) {
             JsonNode receivedJson = jsonMapper.readTree(when().get(url).then().assertThat().statusCode(200).extract().asString());
             if (doesMatch(context, expectedStaticJson, receivedJson)) {
                 return;
             }
             try {
-                Thread.sleep(1000);
+                Thread.sleep(500);
             } catch (InterruptedException iex) {
                 // ignore
             }
@@ -2081,42 +2083,51 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
     @Test
     public void getStatisticsFailures(TestContext context) {
         flushAll();
-
         // Check normal send with missing message consumer -> 1 failure immediately
         Async async1 = context.async();
-        eventBusSend(buildEnqueueOperation("stat_a", "item_a_1"), handler -> {
-            assertQueueState(context, null, 1, 0,
-                    "stat_a", 1, 1, null,
-                    null);
-            async1.complete();
+        eventBusSend(buildEnqueueOperation("slowdown_stat", "item_a_1"), handler -> {
+            testVertx.setTimer(2500, new Handler<Long>() {
+                @Override
+                public void handle(Long event) {
+                    assertQueueState(context, null, 1, 0,
+                            "slowdown_stat", 1, 1, null,
+                            null);
+                    async1.complete();
+                }
+            });
         });
         async1.awaitSuccess();
         Async async2 = context.async();
-        eventBusSend(buildEnqueueOperation("stat_a", "item_a_2"), handler -> {
-            assertQueueState(context, null, 1, 0,
-                    "stat_a", 2, 2, null,
-                    null);
-            async2.complete();
+        eventBusSend(buildEnqueueOperation("slowdown_stat", "item_a_2"), handler -> {
+            testVertx.setTimer(2500, new Handler<Long>() {
+                @Override
+                public void handle(Long event) {
+                    assertQueueState(context, null, 1, 0,
+                            "slowdown_stat", 2, 2, null,
+                            null);
+                    async2.complete();
+                }
+            });
         });
         async2.awaitSuccess();
     }
 
-    @Test(timeout = 10000L)
+    @Test(timeout = 15000L)
     public void getStatisticsSlowDown(TestContext context) {
         Async async = context.async();
         flushAll();
-
         // Test increasing slowDown Time within 5 seconds
-        eventBusSend(buildEnqueueOperation("stat_b", "item_b_1"), handler -> {
+        eventBusSend(buildEnqueueOperation("slowdown_stat", "item_b_1"), handler -> {
+
             assertQueueState(context, null, 1, 0,
-                    "stat_b", 1, 1, 1,
+                    "slowdown_stat", 1, 1, 8,
                     null);
             async.complete();
         });
-        async.awaitSuccess(8000);
+        async.awaitSuccess(10000);
     }
 
-    @Test(timeout = 10000L)
+    @Test(timeout = 15000L)
     public void getStatisticsBackpressure(TestContext context) {
         flushAll();
 
@@ -2124,28 +2135,34 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         // see the QueueConfiguration for stat_* queues in the @Before section
         Async async1 = context.async();
         eventBusSend(buildEnqueueOperation("stat_c", "item_c_1"), handler -> {
-            assertQueueState(context, null, 1, 0,
-                    "stat_c", 1, null, null,
-                    0);
-            async1.complete();
+            testVertx.setTimer(1000, event -> {
+                assertQueueState(context, null, 1, 0,
+                        "stat_c", 1, null, null,
+                        0);
+                async1.complete();
+            });
         });
         async1.awaitSuccess();
 
         Async async2 = context.async();
         eventBusSend(buildEnqueueOperation("stat_c", "item_c_2"), h1 -> {
-            assertQueueState(context, null, 1, 0,
-                    "stat_c", 2, null, null,
-                    5);
-            async2.complete();
+            testVertx.setTimer(1000, event -> {
+                assertQueueState(context, null, 1, 0,
+                        "stat_c", 2, null, null,
+                        5);
+                async2.complete();
+            });
         });
         async2.awaitSuccess();
 
         Async async3 = context.async();
         eventBusSend(buildEnqueueOperation("stat_c", "item_c_3"), h1 -> {
-            assertQueueState(context, null, 1, 0,
-                    "stat_c", 3, null, null,
-                    10);
-            async3.complete();
+            testVertx.setTimer(1000, event -> {
+                assertQueueState(context, null, 1, 0,
+                        "stat_c", 3, null, null,
+                        10);
+                async3.complete();
+            });
         });
         async3.awaitSuccess(8000);
     }
@@ -2480,5 +2497,14 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         System.out.println("------------------ PERFORMANCE CHECKS COMPLETED ---------------------");
         async.complete();
         flushAll();
+    }
+
+
+    private static void delay_One_Second() {
+        try {
+            Thread.sleep(1000);
+        } catch (InterruptedException iex) {
+            // ignore
+        }
     }
 }
