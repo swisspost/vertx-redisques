@@ -2084,32 +2084,47 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
     public void getStatisticsFailures(TestContext context) {
         flushAll();
         // Check normal send with missing message consumer -> 1 failure immediately
-        eventBusSend(buildEnqueueOperation("slowdown_stat", "item_a_1"), null);
-        delay(2500);
-        assertQueueState(context, "slowdown_stat", 1, 0,
-                "slowdown_stat", 1, null, null,
-                null);
-        int failuresAfterFirstEnqueue = getQueueFailures("slowdown_stat");
-        context.assertTrue(failuresAfterFirstEnqueue >= 1, "Expected at least one failure after first enqueue");
-
-        eventBusSend(buildEnqueueOperation("slowdown_stat", "item_a_2"), null);
-        delay(2500);
-        assertQueueState(context, "slowdown_stat", 1, 0,
-                "slowdown_stat", 2, null, null,
-                null);
-        int failuresAfterSecondEnqueue = getQueueFailures("slowdown_stat");
-        context.assertTrue(failuresAfterSecondEnqueue > failuresAfterFirstEnqueue,
-                "Expected failures to increase after second enqueue");
+        Async async1 = context.async();
+        eventBusSend(buildEnqueueOperation("slowdown_stat", "item_a_1"), handler -> {
+            testVertx.setTimer(2500, new Handler<Long>() {
+                @Override
+                public void handle(Long event) {
+                    assertQueueState(context, null, 1, 0,
+                            "slowdown_stat", 1, 1, null,
+                            null);
+                    async1.complete();
+                }
+            });
+        });
+        async1.awaitSuccess();
+        Async async2 = context.async();
+        eventBusSend(buildEnqueueOperation("slowdown_stat", "item_a_2"), handler -> {
+            testVertx.setTimer(2500, new Handler<Long>() {
+                @Override
+                public void handle(Long event) {
+                    assertQueueState(context, null, 1, 0,
+                            "slowdown_stat", 2, 2, null,
+                            null);
+                    async2.complete();
+                }
+            });
+        });
+        async2.awaitSuccess();
     }
 
     @Test(timeout = 15000L)
     public void getStatisticsSlowDown(TestContext context) {
+        Async async = context.async();
         flushAll();
         // Test increasing slowDown Time within 5 seconds
-        eventBusSend(buildEnqueueOperation("slowdown_stat", "item_b_1"), null);
-        assertQueueState(context, "slowdown_stat", 1, 0,
-                "slowdown_stat", 1, 1, 8,
-                null);
+        eventBusSend(buildEnqueueOperation("slowdown_stat", "item_b_1"), handler -> {
+
+            assertQueueState(context, null, 1, 0,
+                    "slowdown_stat", 1, 1, 8,
+                    null);
+            async.complete();
+        });
+        async.awaitSuccess(10000);
     }
 
     @Test(timeout = 15000L)
@@ -2118,23 +2133,38 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
 
         // Test increasing backPressure Time
         // see the QueueConfiguration for stat_* queues in the @Before section
-        eventBusSend(buildEnqueueOperation("stat_c", "item_c_1"), null);
-        delay(1000);
-        assertQueueState(context, "stat_c", 1, 0,
-                "stat_c", 1, null, null,
-                0);
+        Async async1 = context.async();
+        eventBusSend(buildEnqueueOperation("stat_c", "item_c_1"), handler -> {
+            testVertx.setTimer(1000, event -> {
+                assertQueueState(context, null, 1, 0,
+                        "stat_c", 1, null, null,
+                        0);
+                async1.complete();
+            });
+        });
+        async1.awaitSuccess();
 
-        eventBusSend(buildEnqueueOperation("stat_c", "item_c_2"), null);
-        delay(1000);
-        assertQueueState(context, "stat_c", 1, 0,
-                "stat_c", 2, null, null,
-                5);
+        Async async2 = context.async();
+        eventBusSend(buildEnqueueOperation("stat_c", "item_c_2"), h1 -> {
+            testVertx.setTimer(1000, event -> {
+                assertQueueState(context, null, 1, 0,
+                        "stat_c", 2, null, null,
+                        5);
+                async2.complete();
+            });
+        });
+        async2.awaitSuccess();
 
-        eventBusSend(buildEnqueueOperation("stat_c", "item_c_3"), null);
-        delay(1000);
-        assertQueueState(context, "stat_c", 1, 0,
-                "stat_c", 3, null, null,
-                10);
+        Async async3 = context.async();
+        eventBusSend(buildEnqueueOperation("stat_c", "item_c_3"), h1 -> {
+            testVertx.setTimer(1000, event -> {
+                assertQueueState(context, null, 1, 0,
+                        "stat_c", 3, null, null,
+                        10);
+                async3.complete();
+            });
+        });
+        async3.awaitSuccess(8000);
     }
 
     @Test
@@ -2258,53 +2288,46 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
             }
             if (element != null) {
                 // check the queue statistic element at the given position
-                if (element < 0 || element >= response.size()) {
-                    success = false;
-                    failureState.append("/elementMissing:index=").append(element)
-                            .append(",size=").append(response.size());
-                } else {
-                    // check if the queue name at the position is correct
-                    if (queueName != null) {
-                        String name = (String) response.get(element).get("name");
-                        if (!name.equals(queueName)) {
-                            success = false;
-                            failureState.append("/queueName:" + name);
-                        }
+                //
+                // check if the queue name at the position is correct
+                if (queueName != null) {
+                    String name = (String) response.get(element).get("name");
+                    if (!name.equals(queueName)) {
+                        success = false;
+                        failureState.append("/queueName:" + name);
                     }
-
-                    // check the queue size
-                    if (queueSize != null) {
-                        Integer size = (Integer) response.get(element).get("size");
-                        if (!queueSize.equals(size)) {
-                            success = false;
-                            failureState.append("/queueSize:" + size);
-                        }
+                }
+                // check the queue size
+                if (queueSize != null) {
+                    Integer size = (Integer) response.get(element).get("size");
+                    if (!queueSize.equals(size)) {
+                        success = false;
+                        failureState.append("/queueSize:" + size);
                     }
-
-                    // check the accumulated queue failures
-                    if (queueFailures != null) {
-                        Integer failures = (Integer) response.get(element).get("failures");
-                        if (!queueFailures.equals(failures)) {
-                            success = false;
-                            failureState.append("/queueFailures:" + failures);
-                        }
+                }
+                // check the accumulated queue failures
+                if (queueFailures != null) {
+                    Integer failures = (Integer) response.get(element).get("failures");
+                    if (!queueFailures.equals(failures)) {
+                        success = false;
+                        failureState.append("/queueFailures:" + failures);
                     }
-                    // check the queue slowDown time
-                    if (queueSlowdownTime != null) {
-                        Integer slowDownTime = (Integer) response.get(element).get("slowdownTime");
-                        if (!queueSlowdownTime.equals(slowDownTime)) {
-                            success = false;
-                            failureState.append("/slowDownTime:" + slowDownTime);
-                        }
+                }
+                // check the queue slowDown time
+                if (queueSlowdownTime != null) {
+                    Integer slowDownTime = (Integer) response.get(element).get("slowdownTime");
+                    if (!queueSlowdownTime.equals(slowDownTime)) {
+                        success = false;
+                        failureState.append("/slowDownTime:" + slowDownTime);
                     }
-                    // check the queue backpressure time
-                    if (queueBackpressureTime != null) {
-                        Integer backpressureTime = (Integer) response.get(element)
-                                .get("backpressureTime");
-                        if (!queueBackpressureTime.equals(backpressureTime)) {
-                            success = false;
-                            failureState.append("/backpressureTime:" + backpressureTime);
-                        }
+                }
+                // check the queue backpressure time
+                if (queueBackpressureTime != null) {
+                    Integer backpressureTime = (Integer) response.get(element)
+                            .get("backpressureTime");
+                    if (!queueBackpressureTime.equals(backpressureTime)) {
+                        success = false;
+                        failureState.append("/backpressureTime:" + backpressureTime);
                     }
                 }
             }
@@ -2319,15 +2342,6 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
                 // ignore
             }
         }
-    }
-
-    private int getQueueFailures(String filter) {
-        String url = "/queuing/statistics?filter=" + filter;
-        Integer failures = when().get(url)
-                .then()
-                .assertThat().statusCode(200)
-                .extract().path("queues[0].failures");
-        return failures == null ? 0 : failures;
     }
 
 
