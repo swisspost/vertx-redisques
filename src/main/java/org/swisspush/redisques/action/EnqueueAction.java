@@ -2,6 +2,8 @@ package org.swisspush.redisques.action;
 
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.vertx.core.AsyncResult;
+import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonObject;
@@ -44,60 +46,64 @@ public class EnqueueAction extends AbstractQueueAction {
     public void execute(Message<JsonObject> event) {
         String queueName = event.body().getJsonObject(PAYLOAD).getString(QUEUENAME);
 
-        if (isQueuePatrolLimited(queueName)) {
-            incrEnqueueFailCount();
-            event.reply(createErrorReply().put(MESSAGE, QUEUE_PATROL_LIMITED));
-            return;
-        }
         if (isMemoryUsageLimitReached()) {
             log.warn("Failed to enqueue into queue {} because the memory usage limit is reached", queueName);
             incrEnqueueFailCount();
             event.reply(createErrorReply().put(MESSAGE, MEMORY_FULL));
             return;
         }
-        queueRegistryService.updateTimestamp(queueName).onComplete(updateTimestampEvent -> {
-            if (updateTimestampEvent.failed()) {
-                replyError(event, queueName, updateTimestampEvent.cause());
-                return;
-            }
-            String keyEnqueue = keyspaceHelper.getQueuesPrefix() + queueName;
-            String valueEnqueue = event.body().getString(MESSAGE);
 
-            redisService.rpush(keyEnqueue, valueEnqueue).onComplete(enqueueEvent -> {
-                JsonObject reply = new JsonObject();
-                if (enqueueEvent.succeeded()) {
-                    if (log.isDebugEnabled()) {
-                        log.debug("RedisQues Enqueued message into queue {}", queueName);
+        isQueuePatrolLimited(queueName).onComplete(asyncLimitResult -> {
+            // isQueuePatrolLimited promise always success
+            if (asyncLimitResult.result()) {
+                incrEnqueueFailCount();
+                event.reply(createErrorReply().put(MESSAGE, QUEUE_PATROL_LIMITED));
+            } else {
+                queueRegistryService.updateTimestamp(queueName).onComplete(updateTimestampEvent -> {
+                    if (updateTimestampEvent.failed()) {
+                        replyError(event, queueName, updateTimestampEvent.cause());
+                        return;
                     }
-                    processTrimRequestByState(queueName).onComplete(asyncResult -> {
-                        if (asyncResult.failed()) {
-                            log.warn("Failed to do the trim for  {}", queueName);
+                    String keyEnqueue = keyspaceHelper.getQueuesPrefix() + queueName;
+                    String valueEnqueue = event.body().getString(MESSAGE);
+
+                    redisService.rpush(keyEnqueue, valueEnqueue).onComplete(enqueueEvent -> {
+                        JsonObject reply = new JsonObject();
+                        if (enqueueEvent.succeeded()) {
+                            if (log.isDebugEnabled()) {
+                                log.debug("RedisQues Enqueued message into queue {}", queueName);
+                            }
+                            processTrimRequestByState(queueName).onComplete(asyncResult -> {
+                                if (asyncResult.failed()) {
+                                    log.warn("Failed to do the trim for  {}", queueName);
+                                }
+                                long queueLength = enqueueEvent.result().toLong();
+                                queueRegistryService.notifyConsumer(queueName).onComplete(asyncResult1 -> {
+                                    if (asyncResult1.failed()) {
+                                        replyError(event, queueName, asyncResult1.cause());
+                                        return;
+                                    }
+                                    reply.put(STATUS, OK);
+                                    reply.put(MESSAGE, "enqueued");
+
+                                    incrEnqueueSuccessCount();
+
+                                    // feature EN-queue slow-down (the larger the queue the longer we delay "OK" response)
+                                    long delayReplyMillis = queueConfigurationProvider.findEnqueueDelayConfig(queueName, queueLength);
+                                    if (delayReplyMillis > 0) {
+                                        vertx.setTimer(delayReplyMillis, timeIsUp -> event.reply(reply));
+                                    } else {
+                                        event.reply(reply);
+                                    }
+                                    queueStatisticsCollector.setQueueBackPressureTime(queueName, delayReplyMillis);
+                                });
+                            });
+                        } else {
+                            replyError(event, queueName, enqueueEvent.cause());
                         }
-                        long queueLength = enqueueEvent.result().toLong();
-                        queueRegistryService.notifyConsumer(queueName).onComplete(asyncResult1 -> {
-                            if (asyncResult1.failed()) {
-                                replyError(event, queueName, asyncResult1.cause());
-                                return;
-                            }
-                            reply.put(STATUS, OK);
-                            reply.put(MESSAGE, "enqueued");
-
-                            incrEnqueueSuccessCount();
-
-                            // feature EN-queue slow-down (the larger the queue the longer we delay "OK" response)
-                            long delayReplyMillis = queueConfigurationProvider.findEnqueueDelayConfig(queueName, queueLength);
-                            if (delayReplyMillis > 0) {
-                                vertx.setTimer(delayReplyMillis, timeIsUp -> event.reply(reply));
-                            } else {
-                                event.reply(reply);
-                            }
-                            queueStatisticsCollector.setQueueBackPressureTime(queueName, delayReplyMillis);
-                        });
                     });
-                } else {
-                    replyError(event, queueName, enqueueEvent.cause());
-                }
-            });
+                });
+            }
         });
     }
 

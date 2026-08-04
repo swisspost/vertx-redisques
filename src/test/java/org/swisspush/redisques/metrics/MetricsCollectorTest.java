@@ -48,7 +48,6 @@ public class MetricsCollectorTest extends AbstractTestCase {
     @Before
     public void deployRedisques(TestContext context) {
         vertx = Vertx.vertx();
-        QueueStatisticsCollector.CODECS_REGISTERED.set(false);
         JsonObject config = RedisquesConfiguration.with()
                 .processorAddress(PROCESSOR_ADDRESS)
                 .httpRequestHandlerEnabled(true)
@@ -140,11 +139,14 @@ public class MetricsCollectorTest extends AbstractTestCase {
 
                     eventBusSend(buildEnqueueOperation("queueEnqueue2", "testItem3"), messageEnqueue3 -> {
                         context.assertEquals(OK, messageEnqueue3.result().body().getString(STATUS));
-
+                        try {
+                            Thread.sleep(2000);
+                        } catch (InterruptedException e) {
+                            throw new RuntimeException(e);
+                        }
                         when(lock.acquireLock(Mockito.anyString(), Mockito.anyString(), Mockito.anyLong())).thenReturn(Future.succeededFuture(true));
                         metricsCollector.updateActiveQueuesCount().onComplete(event -> {
                             context.assertEquals(2.0, getActiveQueuesCountGauge().value());
-
                             metricsCollector.updateMaxQueueSize().onComplete(maxQueueSizeEvent -> {
                                 context.assertEquals(3.0, getMaxQueueSizeGauge().value());
                                 async.complete();

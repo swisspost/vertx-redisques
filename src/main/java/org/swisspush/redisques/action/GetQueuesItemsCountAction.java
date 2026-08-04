@@ -48,11 +48,18 @@ public class GetQueuesItemsCountAction extends AbstractQueueAction {
             event.reply(createErrorReply().put(ERROR_TYPE, BAD_INPUT)
                     .put(MESSAGE, filterPattern.getErr()));
         } else {
+            boolean reloadSize;
+            if (Boolean.TRUE == event.body().getBoolean(FORCE_RELOAD)) {
+                reloadSize = true;
+            } else {
+                reloadSize = false;
+            }
             redisService.zrangebyscore(keyspaceHelper.getQueuesKey(),
                     String.valueOf(getMaxAgeTimestamp()), "+inf").onComplete(response ->
                     new GetQueuesItemsCountHandler(vertx, event, filterPattern.getOk(),
                             keyspaceHelper.getQueuesPrefix(), redisService, exceptionFactory, redisRequestQuota,
-                            redisquesConfigurationProvider.configuration().getQueuesItemsCountRedisRequestQuotaAcquireRetryTimeMs()).handle(response));
+                            redisquesConfigurationProvider.configuration().getQueuesItemsCountRedisRequestQuotaAcquireRetryTimeMs(),
+                            queueStatisticsCollector, keyspaceHelper, reloadSize).handle(response));
         }
     }
 

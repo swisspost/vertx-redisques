@@ -11,6 +11,7 @@ import org.swisspush.redisques.util.QueueConfigurationProvider;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 import org.swisspush.redisques.util.RedisquesConfigurationProvider;
 
+import static org.swisspush.redisques.util.RedisquesAPI.MESSAGE;
 import static org.swisspush.redisques.util.RedisquesAPI.OK;
 import static org.swisspush.redisques.util.RedisquesAPI.PAYLOAD;
 import static org.swisspush.redisques.util.RedisquesAPI.STATUS;
@@ -39,7 +40,12 @@ public class GetQueuesSizeStatisticsAction extends AbstractQueueAction {
      * Retrieve the queue size statistics info
      */
     private void getQueuesSizeStatistics(Message<JsonObject> event) {
-        event.reply(new JsonObject().put(STATUS, OK).put(PAYLOAD, queueStatisticsCollector.getAllApproximateQueueSize()));
+        queueStatisticsCollector.getAllApproximateQueueSize().onComplete(asyncResult -> {
+            if (asyncResult.failed()) {
+                event.reply(createErrorReply().put(MESSAGE, asyncResult.cause().getMessage()));
+            } else {
+                event.reply(new JsonObject().put(STATUS, OK).put(PAYLOAD, asyncResult.result()));
+            }
+        });
     }
-
 }

@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 
+## [4.1.54-SNAPSHOT] - 2026-07-20
+### New features
+- Added new action:
+    - getQueueRunningStates: broadcasts a request to all RedisQues verticle instances and collects their local queue running states (e.g. queue item size counter, last consumed/refreshed timestamps)
+
+### Important notes
+- Queue-size synchronization now uses a pull-based request/reply protocol over event bus JSON payloads (custom queue-size codec removed).
+- Rolling upgrades between pre-4.1.54 and 4.1.54+ are not wire-compatible for running-state exchange. During mixed-version operation, queue-size statistics may temporarily fall back to Redis `LLEN` until all nodes are upgraded.
+- Public API changes in this redesign:
+    - `QueueStatisticsCollector#getApproximateQueueSize(String)` now returns `Future<Long>` (was `long`)
+    - `QueueStatisticsCollector#getAllApproximateQueueSize()` now returns `Future<Map<String, Long>>` (was `Map<String, Long>`)
+    - `QueueStatisticsCollector#getAllApproximateQueueSize(long)` added with max-age filter
+    - `AbstractQueueAction#isQueuePatrolLimited(String)` now returns `Future<Boolean>` (was `boolean`)
+    - `GetQueuesItemsCountHandler` constructor now requires `QueueStatisticsCollector`, `KeyspaceHelper`, and `reloadSize`
+    - Removed API surface: `QueueStatisticsCollector.CODECS_REGISTERED`, `QueueStatisticsCollector.registerCodecs(...)`, `QueueStatisticsCollector.updateApproximateQueueSize(...)`
+
 ## [4.1.46-SNAPSHOT] - 2026-07-15
 ### Bugfixes
 - Fixed `QueueConsumerRunner#processMultipleItems` to ensure all queue items grouped

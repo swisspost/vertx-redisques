@@ -21,6 +21,7 @@ import org.swisspush.redisques.action.GetPerQueueConfigurationsAction;
 import org.swisspush.redisques.action.GetQueueItemAction;
 import org.swisspush.redisques.action.GetQueueItemsAction;
 import org.swisspush.redisques.action.GetQueueItemsCountAction;
+import org.swisspush.redisques.action.GetQueueRunningStatesAction;
 import org.swisspush.redisques.action.GetQueuesAction;
 import org.swisspush.redisques.action.GetQueuesCountAction;
 import org.swisspush.redisques.action.GetQueuesItemsCountAction;
@@ -156,6 +157,8 @@ public class QueueActionFactory {
                 return new DeletePerQueueConfigurationsAction(queueConfigurationProvider, log);
             case getQueuesSizeStatistics:
                 return new GetQueuesSizeStatisticsAction(vertx, redisService, keyspaceHelper, queueConfigurationProvider, redisquesConfigurationProvider, exceptionFactory, queueStatisticsCollector, log);
+            case getQueueRunningStates:
+                return new GetQueueRunningStatesAction(vertx, keyspaceHelper, log);
             default:
                 return new UnsupportedAction(log);
         }
