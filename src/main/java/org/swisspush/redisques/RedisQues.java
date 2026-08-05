@@ -182,6 +182,7 @@ public class RedisQues extends AbstractVerticle {
 
         this.queueMetrics = new QueueMetrics(vertx, keyspaceHelper, redisService, meterRegistry, configurationProvider, exceptionFactory);
         queueMetrics.initMicrometerMetrics();
+        meterRegistry = queueMetrics.getMeterRegistry();
 
         RedisquesHttpRequestHandler.init(vertx, configuration, queueStatsService, exceptionFactory);
 

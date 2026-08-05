@@ -125,6 +125,10 @@ public class QueueMetrics {
         perQueueMetrics.remove(queueName);
     }
 
+    public MeterRegistry getMeterRegistry() {
+        return meterRegistry;
+    }
+
     public void initMicrometerMetrics() {
         var cfg = configurationProvider.configuration();
         if(cfg.getMicrometerMetricsEnabled()) {
