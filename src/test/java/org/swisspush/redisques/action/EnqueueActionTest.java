@@ -132,35 +132,37 @@ public class EnqueueActionTest extends AbstractQueueActionTest {
      */
     @Test
     public void testEnqueueSuccessMetricRegression(TestContext context) {
-        SimpleMeterRegistry registry = new SimpleMeterRegistry();
-        Counter successCounter = registry.counter(MetricMeter.ENQUEUE_SUCCESS.getId(), MetricTags.IDENTIFIER.getId(), "foo");
-
         when(keyspaceHelper.getConsumersAddress()).thenReturn("address-consumers");
-        when(message.body()).thenReturn(new JsonObject(Buffer.buffer(
-                "{\"operation\":\"enqueue\",\"payload\":{\"queuename\":\"someQueue\"},\"message\":\"hello\"}")));
         when(redisAPI.rpush(anyList())).thenReturn(Future.succeededFuture(BulkType.create(Buffer.buffer("1"), false)));
         when(registryService.updateTimestamp(anyString())).thenReturn(Future.succeededFuture(null));
         when(registryService.notifyConsumer(anyString())).thenReturn(Future.succeededFuture());
+
+        SimpleMeterRegistry brokenRegistry = new SimpleMeterRegistry();
+        Counter brokenCounter = brokenRegistry.counter(MetricMeter.ENQUEUE_SUCCESS.getId(), MetricTags.IDENTIFIER.getId(), "foo");
 
         EnqueueAction brokenAction = new EnqueueAction(vertx, registryService, redisService, keyspaceHelper,
                 queueConfigurationProvider, getConfigurationProvider(), exceptionFactory,
                 Mockito.mock(QueueStatisticsCollector.class), Mockito.mock(Logger.class),
                 memoryUsageProvider, null);
-        brokenAction.execute(message);
-
-        context.assertEquals(0.0, successCounter.count(),
-                "Broken path: ENQUEUE_SUCCESS must stay at 0 when EnqueueAction received null MeterRegistry");
-
         when(message.body()).thenReturn(new JsonObject(Buffer.buffer(
                 "{\"operation\":\"enqueue\",\"payload\":{\"queuename\":\"someQueue\"},\"message\":\"hello\"}")));
+        brokenAction.execute(message);
+
+        context.assertEquals(0.0, brokenCounter.count(),
+                "Broken path: ENQUEUE_SUCCESS must stay at 0 when EnqueueAction received null MeterRegistry");
+
+        SimpleMeterRegistry fixedRegistry = new SimpleMeterRegistry();
+        Counter fixedCounter = fixedRegistry.counter(MetricMeter.ENQUEUE_SUCCESS.getId(), MetricTags.IDENTIFIER.getId(), "foo");
 
         EnqueueAction fixedAction = new EnqueueAction(vertx, registryService, redisService, keyspaceHelper,
                 queueConfigurationProvider, getConfigurationProvider(), exceptionFactory,
                 Mockito.mock(QueueStatisticsCollector.class), Mockito.mock(Logger.class),
-                memoryUsageProvider, registry);
+                memoryUsageProvider, fixedRegistry);
+        when(message.body()).thenReturn(new JsonObject(Buffer.buffer(
+                "{\"operation\":\"enqueue\",\"payload\":{\"queuename\":\"someQueue\"},\"message\":\"hello\"}")));
         fixedAction.execute(message);
 
-        context.assertEquals(1.0, successCounter.count(),
+        context.assertEquals(1.0, fixedCounter.count(),
                 "Fixed path: ENQUEUE_SUCCESS must be incremented when EnqueueAction receives the registry from queueMetrics.getMeterRegistry()");
     }
 

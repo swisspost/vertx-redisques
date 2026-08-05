@@ -29,7 +29,7 @@ public class QueueMetrics {
     private final Map<String, LongTaskTimerSamplePair> perQueueMetrics = new ConcurrentHashMap<>();
     private final Vertx vertx;
     private final KeyspaceHelper keyspaceHelper;
-    private MeterRegistry meterRegistry;
+    private volatile MeterRegistry meterRegistry;
     private Counter dequeueCounter;
     private Gauge consumerCounter;
     private AtomicInteger consumerCounterValue = new AtomicInteger(0);
