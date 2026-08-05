@@ -38,6 +38,7 @@ public class EnqueueActionTest extends AbstractQueueActionTest {
 
     private Counter enqueueCounterSuccess;
     private Counter enqueueCounterFail;
+    private MeterRegistry meterRegistry;
     private QueueRegistryService registryService;
     private QueueConsumerRunner runner;
     private QueueConfigurationProvider queueConfigurationProvider = Mockito.mock(QueueConfigurationProvider.class);
@@ -50,7 +51,7 @@ public class EnqueueActionTest extends AbstractQueueActionTest {
         runner = Mockito.mock(QueueConsumerRunner.class);
         when(registryService.getQueueConsumerRunner()).thenReturn(runner);
         when(runner.getMyQueues()).thenReturn(new HashMap<>());
-        MeterRegistry meterRegistry = new SimpleMeterRegistry();
+        meterRegistry = new SimpleMeterRegistry();
         enqueueCounterSuccess = meterRegistry.counter(MetricMeter.ENQUEUE_SUCCESS.getId(), MetricTags.IDENTIFIER.getId(), "foo");
         enqueueCounterFail = meterRegistry.counter(MetricMeter.ENQUEUE_FAIL.getId(), MetricTags.IDENTIFIER.getId(), "foo");
         action = new EnqueueAction(vertx, registryService, redisService, keyspaceHelper,
@@ -118,6 +119,50 @@ public class EnqueueActionTest extends AbstractQueueActionTest {
         verify(redisAPI, times(1)).rpush(eq(Arrays.asList("prefix-someQueue", "hello")));
 
         assertEnqueueCounts(context, 1.0, 0.0);
+    }
+
+    /**
+     * Regression test for https://github.com/swisspost/vertx-redisques/issues/406: ENQUEUE_SUCCESS metric missing after upgrade to v4.1.33.
+     *
+     * Root cause: RedisQues.initialize() passes its own meterRegistry field (possibly null) to
+     * QueueActionsService → QueueActionFactory → EnqueueAction. The BackendRegistries fallback
+     * that resolves a default registry was moved into QueueMetrics.initMicrometerMetrics() and
+     * stays local to that object, so EnqueueAction never receives a non-null registry when the
+     * caller does not explicitly inject one via the builder.
+     *
+     * EnqueueAction only registers its counters when meterRegistry != null, so ENQUEUE_SUCCESS
+     * is silently absent despite a successful enqueue.
+     *
+     * This test documents the broken state: the counter stays at 0.0 even though the enqueue
+     * succeeds. Once the fix is applied (apply the BackendRegistries fallback in
+     * RedisQues.initialize() before constructing QueueActionsService), change the expected
+     * counter value from 0.0 to 1.0.
+     */
+    @Test
+    public void testEnqueueSuccessMetricMissingWhenMeterRegistryIsNull(TestContext context) {
+        EnqueueAction actionWithNullRegistry = new EnqueueAction(
+                vertx, registryService, redisService, keyspaceHelper,
+                queueConfigurationProvider, getConfigurationProvider(), exceptionFactory,
+                Mockito.mock(QueueStatisticsCollector.class), Mockito.mock(Logger.class),
+                memoryUsageProvider, null);
+
+        when(keyspaceHelper.getConsumersAddress()).thenReturn("address-consumers");
+        when(message.body()).thenReturn(new JsonObject(Buffer.buffer(
+                "{\"operation\":\"enqueue\",\"payload\":{\"queuename\":\"someQueue\"},\"message\":\"hello\"}")));
+        when(redisAPI.rpush(anyList())).thenReturn(Future.succeededFuture(BulkType.create(Buffer.buffer("1"), false)));
+        when(registryService.updateTimestamp(anyString())).thenReturn(Future.succeededFuture(null));
+        when(registryService.notifyConsumer(anyString())).thenReturn(Future.succeededFuture());
+
+        actionWithNullRegistry.execute(message);
+
+        verify(message, times(1)).reply(eq(new JsonObject(Buffer.buffer("{\"status\":\"ok\",\"message\":\"enqueued\"}"))));
+
+        double enqueueSuccessCount = meterRegistry.counter(
+                MetricMeter.ENQUEUE_SUCCESS.getId(), MetricTags.IDENTIFIER.getId(), "foo").count();
+        context.assertEquals(0.0, enqueueSuccessCount,
+                "REGRESSION (https://github.com/swisspost/vertx-redisques/issues/406): ENQUEUE_SUCCESS should have been incremented but was not " +
+                "because EnqueueAction received a null MeterRegistry. " +
+                "Update this assertion to 1.0 once the fix is applied.");
     }
 
     private void assertEnqueueCounts(TestContext context, double successCount, double failCount) {
