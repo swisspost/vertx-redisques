@@ -23,6 +23,7 @@ public class KeyspaceHelper {
     private final String metricsCollectorAddress;
     private final String queueRunningStateKey;
     private final String queueRunningStateReplyKey;
+    private final String queueRebalanceControlAddress;
     public static final String QUEUE_STATE_COUNT_KEY = "queueStateCount";
     public static final String QUEUE_STATE_QUEUE_ITEM_COUNTER = "queueStateQueueItemCounter";
 
@@ -46,6 +47,7 @@ public class KeyspaceHelper {
         metricsCollectorAddress = configuration.getAddress() + "-" + verticleUid + "-" + QUEUE_STATE_COUNT_KEY;
         queueRunningStateKey = configuration.getAddress() + "-runningState";
         queueRunningStateReplyKey = configuration.getAddress() + "-runningState.reply";
+        queueRebalanceControlAddress = configuration.getAddress() + "-rebalance-control:" + verticleUid;
 
     }
 
@@ -118,5 +120,9 @@ public class KeyspaceHelper {
     }
     public String getQueueRunningStateReplyKey() {
         return queueRunningStateReplyKey;
+    }
+
+    public String getQueueRebalanceControlAddress() {
+        return queueRebalanceControlAddress;
     }
 }

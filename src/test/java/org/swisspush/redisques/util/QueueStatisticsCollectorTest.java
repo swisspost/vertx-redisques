@@ -131,21 +131,18 @@ public class QueueStatisticsCollectorTest extends AbstractTestCase {
                     String replyAddress = request.getString("reply");
                     long refreshesWithinMs = request.getLong(RedisquesAPI.GET_QUEUE_RUNNING_STATES_LAST_UPDATE_WITHIN_MS);
                     context.assertEquals(0L, refreshesWithinMs);
-                    JsonObject response = new JsonObject();
+                    JsonObject response = new JsonObject()
+                            .put("consumerId", "fake-consumer-a");
+                    JsonObject queues = new JsonObject();
 
                     for (int i = 0; i < 10; i++) {
                         String queueName = "queue-" + i;
                         QueueProcessingState validState = new QueueProcessingState(QueueState.READY, 0);
                         validState.setQueueItemSize(100 + i);
-                        response.put(queueName, JsonObject.mapFrom(validState));
+                        queues.put(queueName, JsonObject.mapFrom(validState));
                     }
-                    //delay few ms, let this record at 2 pos
-                    try {
-                        Thread.sleep(500);
-                    } catch (InterruptedException e) {
-                        throw new RuntimeException(e);
-                    }
-                    vertx.eventBus().send(replyAddress, response);
+                    response.put("queues", queues);
+                    vertx.setTimer(25L, event -> vertx.eventBus().send(replyAddress, response));
                 }
         );
 
@@ -188,18 +185,15 @@ public class QueueStatisticsCollectorTest extends AbstractTestCase {
                     String replyAddress = request.getString("reply");
                     long refreshesWithinMs = request.getLong(RedisquesAPI.GET_QUEUE_RUNNING_STATES_LAST_UPDATE_WITHIN_MS);
                     context.assertEquals(0L, refreshesWithinMs);
-                    JsonObject response = new JsonObject();
+                    JsonObject response = new JsonObject()
+                            .put("consumerId", "fake-consumer-b");
+                    JsonObject queues = new JsonObject();
 
                     QueueProcessingState consumerBQueues = new QueueProcessingState(QueueState.READY, 2000);
                     consumerBQueues.setQueueItemSize(20);
-                    response.put("foo", JsonObject.mapFrom(consumerBQueues));
-                    //delay few ms, let this record at 2 pos
-                    try {
-                        Thread.sleep(500);
-                    } catch (InterruptedException e) {
-                        throw new RuntimeException(e);
-                    }
-                    vertx.eventBus().send(replyAddress, response);
+                    queues.put("foo", JsonObject.mapFrom(consumerBQueues));
+                    response.put("queues", queues);
+                    vertx.setTimer(25L, event -> vertx.eventBus().send(replyAddress, response));
                 }
         );
 

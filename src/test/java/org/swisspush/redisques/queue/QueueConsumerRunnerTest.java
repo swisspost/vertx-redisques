@@ -11,6 +11,7 @@ import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
+import io.vertx.redis.client.Response;
 import io.vertx.ext.unit.Async;
 import io.vertx.ext.unit.TestContext;
 import io.vertx.ext.unit.junit.Timeout;
@@ -18,13 +19,17 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
+import org.mockito.Mockito;
 import org.swisspush.redisques.AbstractTestCase;
 import org.swisspush.redisques.QueueState;
+import org.swisspush.redisques.QueueStatsService;
 import org.swisspush.redisques.RedisQues;
+import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.util.DefaultRedisquesConfigurationProvider;
 import org.swisspush.redisques.util.QueueConfiguration;
 import org.swisspush.redisques.util.QueueConfigurationProvider;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
+import org.swisspush.redisques.util.RedisquesConfigurationProvider;
 import org.swisspush.redisques.util.RedisquesConfiguration;
 import org.swisspush.redisques.util.TestMemoryUsageProvider;
 import redis.clients.jedis.Jedis;
@@ -33,6 +38,14 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import static org.swisspush.redisques.util.RedisquesAPI.BATCH_QUEUE;
 import static org.swisspush.redisques.util.RedisquesAPI.ERROR;
 import static org.swisspush.redisques.util.RedisquesAPI.OK;
@@ -677,5 +690,233 @@ public class QueueConsumerRunnerTest extends AbstractTestCase {
 
             addQueueItemsSequentially(items, index + 1, promise);
         });
+    }
+
+    private void registerQueueOwnership(String queueName) {
+        jedis.setex(getConsumersRedisKeyPrefix() + queueName, 30, keyspaceHelper.getVerticleUid());
+    }
+
+    @Test
+    public void releaseQueueIfReadyAndOwnedControlPath_ReleasesReadyQueue(TestContext context) {
+        Async async = context.async();
+        String queueName = "release-ready-queue.test";
+        String targetOwner = "consumer-target";
+        redisQues.getQueueConsumerRunner().getMyQueues().put(queueName, new QueueProcessingState(QueueState.READY, System.currentTimeMillis()));
+        jedis.setex(getConsumersRedisKeyPrefix() + queueName, 30, targetOwner);
+
+        vertx.eventBus().request(keyspaceHelper.getQueueRebalanceControlAddress(),
+                new JsonObject()
+                        .put("queueName", queueName)
+                        .put("expectedOwner", targetOwner),
+                context.asyncAssertSuccess((Message<Object> reply) -> {
+                    context.assertTrue((Boolean) reply.body());
+                    context.assertFalse(redisQues.getQueueConsumerRunner().getMyQueues().containsKey(queueName));
+                    context.assertEquals(targetOwner, jedis.get(getConsumersRedisKeyPrefix() + queueName));
+                    async.complete();
+                }));
+    }
+
+    @Test
+    public void releaseQueueIfReadyAndOwnedControlPath_DoesNotReleaseNonReadyQueue(TestContext context) {
+        Async async = context.async();
+        String queueName = "release-busy-queue.test";
+        String targetOwner = "consumer-target";
+        redisQues.getQueueConsumerRunner().getMyQueues().put(queueName, new QueueProcessingState(QueueState.CONSUMING, System.currentTimeMillis()));
+        jedis.setex(getConsumersRedisKeyPrefix() + queueName, 30, targetOwner);
+
+        vertx.eventBus().request(keyspaceHelper.getQueueRebalanceControlAddress(),
+                new JsonObject()
+                        .put("queueName", queueName)
+                        .put("expectedOwner", targetOwner),
+                context.asyncAssertSuccess((Message<Object> reply) -> {
+                    context.assertFalse((Boolean) reply.body());
+                    context.assertTrue(redisQues.getQueueConsumerRunner().getMyQueues().containsKey(queueName));
+                    context.assertEquals(targetOwner, jedis.get(getConsumersRedisKeyPrefix() + queueName));
+                    async.complete();
+                }));
+    }
+
+    @Test
+    public void releaseQueueIfReadyAndOwned_IsIdempotent(TestContext context) {
+        Async async = context.async();
+        String queueName = "release-idempotent-queue.test";
+        String targetOwner = "consumer-target";
+        redisQues.getQueueConsumerRunner().getMyQueues().put(queueName, new QueueProcessingState(QueueState.READY, System.currentTimeMillis()));
+        jedis.setex(getConsumersRedisKeyPrefix() + queueName, 30, targetOwner);
+
+        redisQues.getQueueConsumerRunner().releaseQueueIfReadyAndOwned(queueName, targetOwner).onComplete(
+                context.asyncAssertSuccess((Boolean released) -> {
+                    context.assertTrue(released);
+                    context.assertEquals(targetOwner, jedis.get(getConsumersRedisKeyPrefix() + queueName));
+                    redisQues.getQueueConsumerRunner().releaseQueueIfReadyAndOwned(queueName, targetOwner).onComplete(
+                            context.asyncAssertSuccess((Boolean releasedAgain) -> {
+                                context.assertFalse(releasedAgain);
+                                context.assertEquals(targetOwner, jedis.get(getConsumersRedisKeyPrefix() + queueName));
+                                async.complete();
+                            }));
+                }));
+    }
+
+    @Test
+    public void claimQueueForRebalanceControlPath_TriggersConsume(TestContext context) {
+        Async async = context.async(2);
+        String queueName = "claim-trigger-queue.test";
+        String sourceOwner = "consumer-source";
+        jedis.rpush(getQueuesRedisKeyPrefix() + queueName, "message-1");
+        jedis.setex(getConsumersRedisKeyPrefix() + queueName, 30, sourceOwner);
+
+        vertx.eventBus().consumer(RedisquesConfiguration.PROP_PROCESSOR_ADDRESS, (Handler<Message<JsonObject>>) event -> {
+            if (!queueName.equals(event.body().getString("queue"))) {
+                event.reply(new JsonObject().put(STATUS, OK));
+                return;
+            }
+            context.assertEquals("message-1", event.body().getString("payload"));
+            event.reply(new JsonObject().put(STATUS, OK));
+            async.countDown();
+        });
+
+        vertx.eventBus().request(keyspaceHelper.getQueueRebalanceControlAddress(),
+                new JsonObject()
+                        .put("action", "claim")
+                        .put("queueName", queueName)
+                        .put("expectedOwner", sourceOwner),
+                context.asyncAssertSuccess((Message<Object> reply) -> {
+                    context.assertTrue((Boolean) reply.body());
+                    context.assertEquals(keyspaceHelper.getVerticleUid(), jedis.get(getConsumersRedisKeyPrefix() + queueName));
+                    async.countDown();
+                }));
+    }
+
+    @Test
+    public void claimQueueForRebalanceControlPath_PropagatesClaimFailure(TestContext context) {
+        RedisService redisService = mock(RedisService.class);
+        QueueStatsService queueStatsService = mock(QueueStatsService.class);
+        KeyspaceHelper mockedKeyspaceHelper = mock(KeyspaceHelper.class);
+        RedisquesConfigurationProvider mockedConfigurationProvider = mock(RedisquesConfigurationProvider.class);
+        QueueConfigurationProvider mockedQueueConfigurationProvider = mock(QueueConfigurationProvider.class);
+        QueueStatisticsCollector queueStatisticsCollector = mock(QueueStatisticsCollector.class);
+        QueueMetrics metrics = mock(QueueMetrics.class);
+        RedisquesConfiguration configuration = mock(RedisquesConfiguration.class);
+
+        when(configuration.getConsumerLockMultiplier()).thenReturn(2);
+        when(configuration.getRefreshPeriod()).thenReturn(3);
+        when(configuration.getMetricRefreshPeriod()).thenReturn(0);
+        when(mockedConfigurationProvider.configuration()).thenReturn(configuration);
+        when(mockedKeyspaceHelper.getVerticleUid()).thenReturn("consumer-A");
+        when(mockedKeyspaceHelper.getTrimRequestKey()).thenReturn("trim:");
+        when(mockedKeyspaceHelper.getQueueRunningStateKey()).thenReturn("running-state");
+        when(mockedKeyspaceHelper.getQueueRebalanceControlAddress()).thenReturn("rebalance-control");
+        when(mockedKeyspaceHelper.getConsumersPrefix()).thenReturn("consumer:");
+        when(redisService.send(any())).thenReturn(Future.failedFuture("redis down"));
+
+        QueueConsumerRunner runner = new QueueConsumerRunner(vertx, redisService, metrics, queueStatsService, mockedKeyspaceHelper,
+                mockedConfigurationProvider, RedisQuesExceptionFactory.newWastefulExceptionFactory(), queueStatisticsCollector,
+                mockedQueueConfigurationProvider);
+
+        Async async = context.async();
+        vertx.eventBus().request("rebalance-control",
+                new JsonObject()
+                        .put("action", "claim")
+                        .put("queueName", "q-race")
+                        .put("expectedOwner", "consumer-B"))
+                .onComplete(context.asyncAssertFailure(throwable -> {
+                    context.assertNotNull(throwable);
+                    runner.unregisterConsumers(context.asyncAssertSuccess(v -> async.complete()));
+                }));
+    }
+
+    @Test
+    public void releaseQueueIfReadyAndOwned_DoesNotReleaseWhenStateFlipsDuringRefresh(TestContext context) {
+        RedisService redisService = mock(RedisService.class);
+        QueueStatsService queueStatsService = mock(QueueStatsService.class);
+        KeyspaceHelper mockedKeyspaceHelper = mock(KeyspaceHelper.class);
+        RedisquesConfigurationProvider mockedConfigurationProvider = mock(RedisquesConfigurationProvider.class);
+        QueueConfigurationProvider mockedQueueConfigurationProvider = mock(QueueConfigurationProvider.class);
+        QueueStatisticsCollector queueStatisticsCollector = mock(QueueStatisticsCollector.class);
+        QueueMetrics metrics = mock(QueueMetrics.class);
+        RedisquesConfiguration configuration = mock(RedisquesConfiguration.class);
+
+        when(configuration.getConsumerLockMultiplier()).thenReturn(2);
+        when(configuration.getRefreshPeriod()).thenReturn(3);
+        when(configuration.getMetricRefreshPeriod()).thenReturn(0);
+        when(mockedConfigurationProvider.configuration()).thenReturn(configuration);
+        when(mockedKeyspaceHelper.getVerticleUid()).thenReturn("consumer-A");
+        when(mockedKeyspaceHelper.getTrimRequestKey()).thenReturn("trim:");
+        when(mockedKeyspaceHelper.getQueueRunningStateKey()).thenReturn("running-state");
+        when(mockedKeyspaceHelper.getQueueRebalanceControlAddress()).thenReturn("rebalance-control");
+        when(mockedKeyspaceHelper.getConsumersPrefix()).thenReturn("consumer:");
+
+        Promise<Response> getPromise = Promise.promise();
+        when(redisService.get("consumer:q-race")).thenReturn(getPromise.future());
+
+        QueueConsumerRunner runner = new QueueConsumerRunner(vertx, redisService, metrics, queueStatsService, mockedKeyspaceHelper,
+                mockedConfigurationProvider, RedisQuesExceptionFactory.newWastefulExceptionFactory(), queueStatisticsCollector,
+                mockedQueueConfigurationProvider);
+        runner.getMyQueues().put("q-race", new QueueProcessingState(QueueState.READY, System.currentTimeMillis()));
+
+        Async async = context.async();
+        runner.releaseQueueIfReadyAndOwned("q-race", "consumer-B").onComplete(context.asyncAssertSuccess(released -> {
+            context.assertFalse(released);
+            context.assertEquals(QueueState.CONSUMING, runner.getMyQueues().get("q-race").getState());
+            verify(redisService, never()).del(anyList());
+            verify(queueStatsService, never()).dequeueStatisticRemoveFromLocal(anyString());
+            runner.unregisterConsumers(context.asyncAssertSuccess(v -> async.complete()));
+        }));
+
+        runner.getMyQueues().put("q-race", new QueueProcessingState(QueueState.CONSUMING, System.currentTimeMillis()));
+        getPromise.complete(stringResponse("consumer-B"));
+    }
+
+    @Test
+    public void claimQueueIfUnowned_DoesNotDeleteFreshOwnerWhenNotifyFails(TestContext context) {
+        RedisService redisService = mock(RedisService.class);
+        QueueStatsService queueStatsService = mock(QueueStatsService.class);
+        KeyspaceHelper mockedKeyspaceHelper = mock(KeyspaceHelper.class);
+        RedisquesConfigurationProvider mockedConfigurationProvider = mock(RedisquesConfigurationProvider.class);
+        QueueConfigurationProvider mockedQueueConfigurationProvider = mock(QueueConfigurationProvider.class);
+        QueueStatisticsCollector queueStatisticsCollector = mock(QueueStatisticsCollector.class);
+        QueueMetrics metrics = mock(QueueMetrics.class);
+        RedisquesConfiguration configuration = mock(RedisquesConfiguration.class);
+
+        when(configuration.getConsumerLockMultiplier()).thenReturn(2);
+        when(configuration.getRefreshPeriod()).thenReturn(3);
+        when(configuration.getMetricRefreshPeriod()).thenReturn(0);
+        when(mockedConfigurationProvider.configuration()).thenReturn(configuration);
+        when(mockedKeyspaceHelper.getVerticleUid()).thenReturn("consumer-A");
+        when(mockedKeyspaceHelper.getTrimRequestKey()).thenReturn("trim:");
+        when(mockedKeyspaceHelper.getQueueRunningStateKey()).thenReturn("running-state");
+        when(mockedKeyspaceHelper.getQueueRebalanceControlAddress()).thenReturn("rebalance-control");
+        when(mockedKeyspaceHelper.getConsumersPrefix()).thenReturn("consumer:");
+        when(mockedKeyspaceHelper.getVerticleNotifyConsumerKey()).thenReturn("notify-consumer");
+
+        when(redisService.setNxPx("consumer:q-race", "consumer-A", true, 6000L)).thenReturn(Future.succeededFuture(true));
+        Response compareAndDeleteResponse = integerResponse(0);
+        when(redisService.send(any())).thenReturn(Future.succeededFuture(compareAndDeleteResponse));
+
+        QueueConsumerRunner runner = new QueueConsumerRunner(vertx, redisService, metrics, queueStatsService, mockedKeyspaceHelper,
+                mockedConfigurationProvider, RedisQuesExceptionFactory.newWastefulExceptionFactory(), queueStatisticsCollector,
+                mockedQueueConfigurationProvider);
+
+        Async async = context.async();
+        runner.claimQueueIfUnowned("q-race").onComplete(context.asyncAssertSuccess(claimed -> {
+            context.assertFalse(claimed);
+            context.assertFalse(runner.getMyQueues().containsKey("q-race"));
+            verify(redisService, times(1)).send(any());
+            verify(queueStatsService, times(1)).dequeueStatisticRemoveFromLocal("q-race");
+            runner.unregisterConsumers(context.asyncAssertSuccess(v -> async.complete()));
+        }));
+    }
+
+    private static Response integerResponse(int value) {
+        Response response = Mockito.mock(Response.class);
+        when(response.toInteger()).thenReturn(value);
+        when(response.toString()).thenReturn(String.valueOf(value));
+        return response;
+    }
+
+    private static Response stringResponse(String value) {
+        Response response = Mockito.mock(Response.class);
+        when(response.toString()).thenReturn(value);
+        return response;
     }
 }

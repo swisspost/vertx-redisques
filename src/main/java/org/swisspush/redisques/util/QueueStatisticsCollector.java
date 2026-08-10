@@ -507,11 +507,12 @@ public class QueueStatisticsCollector {
      * Merges the queue sizes reported by each redisques instance's queue running state into a single
      * per-queue size map, keeping only the most recently refreshed entry for each queue name.
      * <p>
-     * The payload is expected to be a {@link JsonArray} of {@link JsonObject}s, one per instance, where
-     * each entry maps a queue name to its running state (a {@link JsonObject} containing at least
-     * {@code queueItemSizeCounter} and {@code lastRegisterRefreshedMillis}). For a given queue name that
-     * appears in multiple instances, only the state with the highest {@code lastRegisterRefreshedMillis}
-     * value is kept, and its {@code queueItemSizeCounter} is used as the merged size.
+     * The payload is expected to be a {@link JsonArray} of {@link JsonObject}s, one per instance. Each
+     * entry may either be a direct queue-name-to-running-state map (legacy shape) or an object containing
+     * {@code consumerId} plus a nested {@code queues} object with that same queue-state map. For a given
+     * queue name that appears in multiple instances, only the state with the highest
+     * {@code lastRegisterRefreshedMillis} value is kept, and its {@code queueItemSizeCounter} is used as
+     * the merged size.
      *
      * Entries with malformed shape are ignored to stay robust during mixed-version cluster states.
      *
@@ -530,7 +531,8 @@ public class QueueStatisticsCollector {
                         instanceObj == null ? "null" : instanceObj.getClass().getName());
                 return;
             }
-            JsonObject instanceQueues = (JsonObject) instanceObj;
+            JsonObject instancePayload = (JsonObject) instanceObj;
+            JsonObject instanceQueues = instancePayload.getJsonObject("queues", instancePayload);
             instanceQueues.forEach(entry -> {
                 if (!(entry.getValue() instanceof JsonObject)) {
                     log.warn("Ignoring malformed running-state queue entry for '{}': expected object but got '{}'",

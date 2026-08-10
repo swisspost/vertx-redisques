@@ -28,6 +28,7 @@ import org.swisspush.redisques.util.RedisquesConfigurationProvider;
 
 import java.util.AbstractMap;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Date;
 import java.util.EnumMap;
 import java.util.HashMap;
@@ -59,7 +60,11 @@ public class QueueConsumerRunner {
     private final QueueConfigurationProvider queueConfigurationProvider;
     private MessageConsumer<String> trimRequestConsumer;
     private MessageConsumer<JsonObject> runningQueueStateConsumer;
+    private MessageConsumer<JsonObject> queueRebalanceControlConsumer;
     private Handler<Void> noQueueMoreItemHandler = null;
+    private static final String REBALANCE_ACTION = "action";
+    private static final String REBALANCE_ACTION_CLAIM = "claim";
+    private static final String REBALANCE_ACTION_RELEASE = "release";
 
     // The queues this verticle instance is registered as a consumer
     private final Map<String, QueueProcessingState> myQueues = new HashMap<>();
@@ -112,6 +117,7 @@ public class QueueConsumerRunner {
         }
         timer = new RedisQuesTimer(vertx);
         registerRunningQueueStateConsumer();
+        registerQueueRebalanceControlConsumer();
     }
 
 
@@ -129,13 +135,37 @@ public class QueueConsumerRunner {
                     return;
                 }
                 if (runningQueueStateConsumer != null && runningQueueStateConsumer.isRegistered()) {
-                    runningQueueStateConsumer.unregister(handler);
+                    runningQueueStateConsumer.unregister(unregisterRunningEvent -> {
+                        if (unregisterRunningEvent.failed()) {
+                            handler.handle(unregisterRunningEvent);
+                            return;
+                        }
+                        if (queueRebalanceControlConsumer != null && queueRebalanceControlConsumer.isRegistered()) {
+                            queueRebalanceControlConsumer.unregister(handler);
+                        } else {
+                            handler.handle(Future.succeededFuture());
+                        }
+                    });
+                } else if (queueRebalanceControlConsumer != null && queueRebalanceControlConsumer.isRegistered()) {
+                    queueRebalanceControlConsumer.unregister(handler);
                 } else {
                     handler.handle(Future.succeededFuture());
                 }
             });
         } else if (runningQueueStateConsumer != null && runningQueueStateConsumer.isRegistered()) {
-            runningQueueStateConsumer.unregister(handler);
+            runningQueueStateConsumer.unregister(unregisterRunningEvent -> {
+                if (unregisterRunningEvent.failed()) {
+                    handler.handle(unregisterRunningEvent);
+                    return;
+                }
+                if (queueRebalanceControlConsumer != null && queueRebalanceControlConsumer.isRegistered()) {
+                    queueRebalanceControlConsumer.unregister(handler);
+                } else {
+                    handler.handle(Future.succeededFuture());
+                }
+            });
+        } else if (queueRebalanceControlConsumer != null && queueRebalanceControlConsumer.isRegistered()) {
+            queueRebalanceControlConsumer.unregister(handler);
         } else {
             handler.handle(Future.succeededFuture());
         }
@@ -208,6 +238,108 @@ public class QueueConsumerRunner {
 
     public void setNoMoreItemHandler(Handler<Void> handler){
         noQueueMoreItemHandler = handler;
+    }
+
+    public Future<Boolean> releaseQueueIfReadyAndOwned(String queueName, String expectedOwner) {
+        if (Strings.isNullOrEmpty(queueName) || Strings.isNullOrEmpty(expectedOwner)) {
+            return Future.succeededFuture(false);
+        }
+        QueueProcessingState queueProcessingState = myQueues.get(queueName);
+        if (queueProcessingState == null || queueProcessingState.getState() != QueueState.READY) {
+            return Future.succeededFuture(false);
+        }
+        final String consumerKey = keyspaceHelper.getConsumersPrefix() + queueName;
+        return redisService.get(consumerKey)
+                .compose(ownerResponse -> {
+                    if (!expectedOwner.equals(Objects.toString(ownerResponse, null))) {
+                        return Future.succeededFuture(false);
+                    }
+                    QueueProcessingState refreshedQueueProcessingState = myQueues.get(queueName);
+                    if (refreshedQueueProcessingState == null || refreshedQueueProcessingState.getState() != QueueState.READY) {
+                        return Future.succeededFuture(false);
+                    }
+                    myQueues.remove(queueName);
+                    queueStatsService.dequeueStatisticRemoveFromLocal(queueName);
+                    return Future.succeededFuture(true);
+                })
+                .recover(throwable -> Future.failedFuture(
+                        exceptionFactory.newException("Failed to release queue ownership for '" + queueName + "'", throwable)));
+    }
+
+    public Future<Boolean> claimQueueForRebalance(String queueName, String expectedOwner) {
+        if (Strings.isNullOrEmpty(queueName) || Strings.isNullOrEmpty(expectedOwner)) {
+            return Future.succeededFuture(false);
+        }
+        final String consumerKey = keyspaceHelper.getConsumersPrefix() + queueName;
+        return compareAndSetOwner(consumerKey, expectedOwner, keyspaceHelper.getVerticleUid())
+                .compose(claimed -> {
+                    if (!claimed) {
+                        return Future.succeededFuture(false);
+                    }
+                    setMyQueuesState(queueName, QueueState.READY);
+                    return notifyConsumer(queueName)
+                            .map(Boolean.TRUE)
+                            .recover(throwable -> rollbackClaimedQueue(consumerKey, queueName, expectedOwner, throwable,
+                                    "complete rebalance claim"));
+                });
+    }
+
+    private Future<Boolean> rollbackClaimedQueue(String consumerKey, String queueName, String rollbackOwner,
+                                                 Throwable cause, String action) {
+        return compareAndSetOwner(consumerKey, keyspaceHelper.getVerticleUid(), rollbackOwner)
+                .recover(rollbackThrowable -> Future.succeededFuture(false))
+                .compose(rollbackResult -> {
+                    myQueues.remove(queueName);
+                    queueStatsService.dequeueStatisticRemoveFromLocal(queueName);
+                    return Future.failedFuture(exceptionFactory.newException(
+                            "Failed to " + action + " for '" + queueName + "'", cause));
+                });
+    }
+
+    private Future<Boolean> compareAndSetOwner(String consumerKey, String expectedOwner, String newOwner) {
+        String script = "if redis.call('GET', KEYS[1]) == ARGV[1] then redis.call('SET', KEYS[1], ARGV[2], 'PX', ARGV[3]); return 1 else return 0 end";
+        return redisService.send(Request.cmd(Command.EVAL)
+                        .arg(script)
+                        .arg("1")
+                        .arg(consumerKey)
+                        .arg(expectedOwner)
+                        .arg(newOwner)
+                        .arg(String.valueOf(1000L * consumerLockTime)))
+                .map(response -> response != null && response.toInteger() == 1);
+    }
+
+    private Future<Boolean> compareAndDeleteOwner(String consumerKey, String expectedOwner) {
+        String script = "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) else return 0 end";
+        return redisService.send(Request.cmd(Command.EVAL)
+                        .arg(script)
+                        .arg("1")
+                        .arg(consumerKey)
+                        .arg(expectedOwner))
+                .map(response -> response != null && response.toInteger() == 1);
+    }
+
+    public Future<Boolean> claimQueueIfUnowned(String queueName) {
+        if (Strings.isNullOrEmpty(queueName)) {
+            return Future.succeededFuture(false);
+        }
+        final String consumerKey = keyspaceHelper.getConsumersPrefix() + queueName;
+        return redisService.setNxPx(consumerKey, keyspaceHelper.getVerticleUid(), true, 1000L * consumerLockTime)
+                .recover(throwable -> Future.succeededFuture(false))
+                .compose(claimed -> {
+                    if (!claimed) {
+                        return Future.succeededFuture(false);
+                    }
+                    setMyQueuesState(queueName, QueueState.READY);
+                    return notifyConsumer(queueName)
+                            .map(true)
+                            .recover(throwable -> compareAndDeleteOwner(consumerKey, keyspaceHelper.getVerticleUid())
+                                    .recover(delThrowable -> Future.succeededFuture(false))
+                                    .map(response -> {
+                                        myQueues.remove(queueName);
+                                        queueStatsService.dequeueStatisticRemoveFromLocal(queueName);
+                                        return false;
+                                    }));
+                });
     }
 
     private Future<Void> readQueue(final String queueName) {
@@ -751,7 +883,39 @@ public class QueueConsumerRunner {
                         }
 
                     });
-                    vertx.eventBus().send(replyAddress, response);
+                    vertx.eventBus().send(replyAddress, new JsonObject()
+                            .put("consumerId", keyspaceHelper.getVerticleUid())
+                            .put("queues", response));
+                }
+        );
+    }
+
+    private void registerQueueRebalanceControlConsumer() {
+        queueRebalanceControlConsumer = vertx.eventBus().consumer(
+                keyspaceHelper.getQueueRebalanceControlAddress(),
+                msg -> {
+                    JsonObject request = msg.body();
+                    if (request == null) {
+                        log.warn("Got queue rebalance control request with empty body. uid={}", keyspaceHelper.getVerticleUid());
+                        msg.reply(false);
+                        return;
+                    }
+                    String action = request.getString(REBALANCE_ACTION, REBALANCE_ACTION_RELEASE);
+                    Future<Boolean> command;
+                    if (REBALANCE_ACTION_CLAIM.equals(action)) {
+                        command = claimQueueForRebalance(request.getString("queueName"), request.getString("expectedOwner"));
+                    } else {
+                        command = releaseQueueIfReadyAndOwned(request.getString("queueName"), request.getString("expectedOwner"));
+                    }
+                    command
+                            .onComplete(asyncResult -> {
+                                if (asyncResult.failed()) {
+                                    log.warn("Failed to process queue rebalance control request {}", request.encode(), asyncResult.cause());
+                                    msg.fail(0, asyncResult.cause().getMessage());
+                                    return;
+                                }
+                                msg.reply(asyncResult.result());
+                            });
                 }
         );
     }

@@ -82,20 +82,12 @@ public class GetQueueRunningStatesActionTest extends AbstractTestCase {
         vertx.close(context.asyncAssertSuccess());
     }
 
-    private void waitMillis(long millis) {
-        try {
-            Thread.sleep(millis);
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-
     @Test
     public void getQueueStatesFromAllVerticles(TestContext context) {
         Async async = context.async();
         flushAll();
         //Another fake Verticle
+        String fakeConsumerId = "fake-consumer-1";
         vertx.eventBus().consumer(
                 keyspaceHelper.getQueueRunningStateKey(),
                 msg -> {
@@ -103,17 +95,13 @@ public class GetQueueRunningStatesActionTest extends AbstractTestCase {
                     String replyAddress = request.getString("reply");
                     long refreshesWithinMs = request.getLong(RedisquesAPI.GET_QUEUE_RUNNING_STATES_LAST_UPDATE_WITHIN_MS);
                     context.assertEquals(0L, refreshesWithinMs);
-                    JsonObject response = new JsonObject();
-                    response.put("queueName_1", new JsonObject());
-                    response.put("queueName_2", new JsonObject());
-                    response.put("queueName_3", new JsonObject());
-                    //delay few ms, let this record at 2 pos
-                    try {
-                        Thread.sleep(500);
-                    } catch (InterruptedException e) {
-                        throw new RuntimeException(e);
-                    }
-                    vertx.eventBus().send(replyAddress, response);
+                    JsonObject response = new JsonObject()
+                            .put("consumerId", fakeConsumerId)
+                            .put("queues", new JsonObject()
+                                    .put("queueName_1", new JsonObject())
+                                    .put("queueName_2", new JsonObject())
+                                    .put("queueName_3", new JsonObject()));
+                    vertx.setTimer(25L, event -> vertx.eventBus().send(replyAddress, response));
                 }
         );
 
@@ -167,8 +155,12 @@ public class GetQueueRunningStatesActionTest extends AbstractTestCase {
             public void reply(Object message, DeliveryOptions options) {
                 JsonObject jsonObject = (JsonObject) message;
                 context.assertEquals(2, jsonObject.getJsonArray(RedisquesAPI.PAYLOAD).size());
-                context.assertEquals(4, ((JsonObject) jsonObject.getJsonArray(RedisquesAPI.PAYLOAD).getList().get(0)).getMap().size());
-                context.assertEquals(3, ((JsonObject) jsonObject.getJsonArray(RedisquesAPI.PAYLOAD).getList().get(1)).getMap().size());
+                JsonObject localEntry = jsonObject.getJsonArray(RedisquesAPI.PAYLOAD).getJsonObject(0);
+                JsonObject remoteEntry = jsonObject.getJsonArray(RedisquesAPI.PAYLOAD).getJsonObject(1);
+                context.assertEquals(keyspaceHelper.getVerticleUid(), localEntry.getString("consumerId"));
+                context.assertEquals(4, localEntry.getJsonObject("queues").size());
+                context.assertEquals(fakeConsumerId, remoteEntry.getString("consumerId"));
+                context.assertEquals(3, remoteEntry.getJsonObject("queues").size());
                 async.complete();
             }
 
@@ -177,14 +169,16 @@ public class GetQueueRunningStatesActionTest extends AbstractTestCase {
                 return null;
             }
         };
-        action.execute(message);
+        vertx.setTimer(50L, ignored -> action.execute(message));
     }
 
     @Test
     public void getQueueStatesFromAllVerticles_WithTimeout(TestContext context) {
         Async async = context.async();
         flushAll();
+        long startTime = System.currentTimeMillis();
         //Another fake Verticle
+        String fakeConsumerId = "fake-consumer-2";
         vertx.eventBus().consumer(
                 keyspaceHelper.getQueueRunningStateKey(),
                 msg -> {
@@ -192,11 +186,13 @@ public class GetQueueRunningStatesActionTest extends AbstractTestCase {
                     String replyAddress = request.getString("reply");
                     long refreshesWithinMs = request.getLong(RedisquesAPI.GET_QUEUE_RUNNING_STATES_LAST_UPDATE_WITHIN_MS);
                     context.assertEquals(0L, refreshesWithinMs);
-                    JsonObject response = new JsonObject();
-                    response.put("queueName_1", new JsonObject());
-                    response.put("queueName_2", new JsonObject());
-                    response.put("queueName_3", new JsonObject());
-                    vertx.setTimer(5_000L, event -> vertx.eventBus().send(replyAddress, response));
+                    JsonObject response = new JsonObject()
+                            .put("consumerId", fakeConsumerId)
+                            .put("queues", new JsonObject()
+                                    .put("queueName_1", new JsonObject())
+                                    .put("queueName_2", new JsonObject())
+                                    .put("queueName_3", new JsonObject()));
+                    vertx.setTimer(2_000L, event -> vertx.eventBus().send(replyAddress, response));
                 }
         );
 
@@ -217,7 +213,7 @@ public class GetQueueRunningStatesActionTest extends AbstractTestCase {
         state4.setQueueItemSize(40);
         redisQues.getQueueConsumerRunner().getMyQueues().put("queue_4", state4);
 
-        JsonObject requestBody = RedisquesAPI.buildGetQueueRunningStates(0, 0, 1_000);
+        JsonObject requestBody = RedisquesAPI.buildGetQueueRunningStates(0, 0, 750);
         GetQueueRunningStatesAction action = new GetQueueRunningStatesAction(vertx, keyspaceHelper, log);
 
         Message<JsonObject> message = new Message<>() {
@@ -250,7 +246,10 @@ public class GetQueueRunningStatesActionTest extends AbstractTestCase {
             public void reply(Object message, DeliveryOptions options) {
                 JsonObject jsonObject = (JsonObject) message;
                 context.assertEquals(1, jsonObject.getJsonArray(RedisquesAPI.PAYLOAD).size());
-                context.assertEquals(4, ((JsonObject) jsonObject.getJsonArray(RedisquesAPI.PAYLOAD).getList().get(0)).getMap().size());
+                JsonObject localEntry = jsonObject.getJsonArray(RedisquesAPI.PAYLOAD).getJsonObject(0);
+                context.assertEquals(keyspaceHelper.getVerticleUid(), localEntry.getString("consumerId"));
+                context.assertEquals(4, localEntry.getJsonObject("queues").size());
+                context.assertTrue(System.currentTimeMillis() - startTime < 1_500);
                 async.complete();
             }
 
@@ -259,7 +258,7 @@ public class GetQueueRunningStatesActionTest extends AbstractTestCase {
                 return null;
             }
         };
-        action.execute(message);
+        vertx.setTimer(50L, ignored -> action.execute(message));
     }
 
     @Test
@@ -268,6 +267,7 @@ public class GetQueueRunningStatesActionTest extends AbstractTestCase {
         flushAll();
         long startTime = System.currentTimeMillis();
         //Another fake Verticle
+        String fakeConsumerId = "fake-consumer-3";
         vertx.eventBus().consumer(
                 keyspaceHelper.getQueueRunningStateKey(),
                 msg -> {
@@ -275,11 +275,13 @@ public class GetQueueRunningStatesActionTest extends AbstractTestCase {
                     String replyAddress = request.getString("reply");
                     long refreshesWithinMs = request.getLong(RedisquesAPI.GET_QUEUE_RUNNING_STATES_LAST_UPDATE_WITHIN_MS);
                     context.assertEquals(0L, refreshesWithinMs);
-                    JsonObject response = new JsonObject();
-                    response.put("queueName_1", new JsonObject());
-                    response.put("queueName_2", new JsonObject());
-                    response.put("queueName_3", new JsonObject());
-                    vertx.setTimer(1_000L, event -> vertx.eventBus().send(replyAddress, response));
+                    JsonObject response = new JsonObject()
+                            .put("consumerId", fakeConsumerId)
+                            .put("queues", new JsonObject()
+                                    .put("queueName_1", new JsonObject())
+                                    .put("queueName_2", new JsonObject())
+                                    .put("queueName_3", new JsonObject()));
+                    vertx.setTimer(100L, event -> vertx.eventBus().send(replyAddress, response));
                 }
         );
 
@@ -300,7 +302,7 @@ public class GetQueueRunningStatesActionTest extends AbstractTestCase {
         state4.setQueueItemSize(40);
         redisQues.getQueueConsumerRunner().getMyQueues().put("queue_4", state4);
 
-        JsonObject requestBody = RedisquesAPI.buildGetQueueRunningStates(0, 2, 10_000);
+        JsonObject requestBody = RedisquesAPI.buildGetQueueRunningStates(0, 2, 2_000);
         GetQueueRunningStatesAction action = new GetQueueRunningStatesAction(vertx, keyspaceHelper, log);
 
         Message<JsonObject> message = new Message<>() {
@@ -333,7 +335,11 @@ public class GetQueueRunningStatesActionTest extends AbstractTestCase {
             public void reply(Object message, DeliveryOptions options) {
                 JsonObject jsonObject = (JsonObject) message;
                 context.assertEquals(2, jsonObject.getJsonArray(RedisquesAPI.PAYLOAD).size());
-                context.assertTrue(System.currentTimeMillis() - startTime < 1200);
+                context.assertNotNull(jsonObject.getJsonArray(RedisquesAPI.PAYLOAD).getJsonObject(0).getString("consumerId"));
+                context.assertNotNull(jsonObject.getJsonArray(RedisquesAPI.PAYLOAD).getJsonObject(0).getJsonObject("queues"));
+                context.assertNotNull(jsonObject.getJsonArray(RedisquesAPI.PAYLOAD).getJsonObject(1).getString("consumerId"));
+                context.assertNotNull(jsonObject.getJsonArray(RedisquesAPI.PAYLOAD).getJsonObject(1).getJsonObject("queues"));
+                context.assertTrue(System.currentTimeMillis() - startTime < 900);
                 async.complete();
             }
 
@@ -342,7 +348,7 @@ public class GetQueueRunningStatesActionTest extends AbstractTestCase {
                 return null;
             }
         };
-        action.execute(message);
+        vertx.setTimer(50L, ignored -> action.execute(message));
     }
 
 
@@ -352,6 +358,7 @@ public class GetQueueRunningStatesActionTest extends AbstractTestCase {
         flushAll();
         long startTime = System.currentTimeMillis();
         //Another fake Verticle
+        String fakeConsumerId = "fake-consumer-4";
         vertx.eventBus().consumer(
                 keyspaceHelper.getQueueRunningStateKey(),
                 msg -> {
@@ -359,10 +366,12 @@ public class GetQueueRunningStatesActionTest extends AbstractTestCase {
                     String replyAddress = request.getString("reply");
                     long refreshesWithinMs = request.getLong(RedisquesAPI.GET_QUEUE_RUNNING_STATES_LAST_UPDATE_WITHIN_MS);
                     context.assertEquals(9000L, refreshesWithinMs);
-                    JsonObject response = new JsonObject();
-                    response.put("queueName_1", new JsonObject());
-                    response.put("queueName_2", new JsonObject());
-                    response.put("queueName_3", new JsonObject());
+                    JsonObject response = new JsonObject()
+                            .put("consumerId", fakeConsumerId)
+                            .put("queues", new JsonObject()
+                                    .put("queueName_1", new JsonObject())
+                                    .put("queueName_2", new JsonObject())
+                                    .put("queueName_3", new JsonObject()));
                     vertx.setTimer(2_000L, event -> vertx.eventBus().send(replyAddress, response));
                 }
         );
@@ -384,7 +393,7 @@ public class GetQueueRunningStatesActionTest extends AbstractTestCase {
         state4.setQueueItemSize(40);
         redisQues.getQueueConsumerRunner().getMyQueues().put("queue_4", state4);
 
-        JsonObject requestBody = RedisquesAPI.buildGetQueueRunningStates(9_000L, 0, 1_000);
+        JsonObject requestBody = RedisquesAPI.buildGetQueueRunningStates(9_000L, 0, 750);
         GetQueueRunningStatesAction action = new GetQueueRunningStatesAction(vertx, keyspaceHelper, log);
 
         Message<JsonObject> message = new Message<>() {
@@ -417,8 +426,10 @@ public class GetQueueRunningStatesActionTest extends AbstractTestCase {
             public void reply(Object message, DeliveryOptions options) {
                 JsonObject jsonObject = (JsonObject) message;
                 context.assertEquals(1, jsonObject.getJsonArray(RedisquesAPI.PAYLOAD).size());
-                context.assertEquals(2, ((JsonObject) jsonObject.getJsonArray(RedisquesAPI.PAYLOAD).getList().get(0)).getMap().size());
-                context.assertTrue(System.currentTimeMillis() - startTime < 1200);
+                JsonObject localEntry = jsonObject.getJsonArray(RedisquesAPI.PAYLOAD).getJsonObject(0);
+                context.assertEquals(keyspaceHelper.getVerticleUid(), localEntry.getString("consumerId"));
+                context.assertEquals(2, localEntry.getJsonObject("queues").size());
+                context.assertTrue(System.currentTimeMillis() - startTime < 1_500);
                 async.complete();
             }
 
@@ -427,6 +438,60 @@ public class GetQueueRunningStatesActionTest extends AbstractTestCase {
                 return null;
             }
         };
-        action.execute(message);
+        vertx.setTimer(50L, ignored -> action.execute(message));
+    }
+
+    @Test
+    public void getQueueStatesFromAllVerticles_ContainsConsumerId(TestContext context) {
+        Async async = context.async();
+        flushAll();
+
+        QueueProcessingState state = new QueueProcessingState(QueueState.READY, System.currentTimeMillis());
+        redisQues.getQueueConsumerRunner().getMyQueues().put("queue_1", state);
+
+        JsonObject requestBody = RedisquesAPI.buildGetQueueRunningStates(0, 0, 1_000);
+        GetQueueRunningStatesAction action = new GetQueueRunningStatesAction(vertx, keyspaceHelper, log);
+
+        Message<JsonObject> message = new Message<>() {
+            @Override
+            public String address() {
+                return "";
+            }
+
+            @Override
+            public MultiMap headers() {
+                return null;
+            }
+
+            @Override
+            public JsonObject body() {
+                return requestBody;
+            }
+
+            @Override
+            public String replyAddress() {
+                return "";
+            }
+
+            @Override
+            public boolean isSend() {
+                return false;
+            }
+
+            @Override
+            public void reply(Object message, DeliveryOptions options) {
+                JsonObject response = (JsonObject) message;
+                JsonObject entry = response.getJsonArray(RedisquesAPI.PAYLOAD).getJsonObject(0);
+                context.assertEquals(keyspaceHelper.getVerticleUid(), entry.getString("consumerId"));
+                context.assertNotNull(entry.getJsonObject("queues"));
+                async.complete();
+            }
+
+            @Override
+            public <R> Future<Message<R>> replyAndRequest(Object message, DeliveryOptions options) {
+                return null;
+            }
+        };
+        vertx.setTimer(50L, ignored -> action.execute(message));
     }
 }

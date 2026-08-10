@@ -844,19 +844,56 @@ Response Data
 {
     "payload": [   <JsonArray with one JsonObject per verticle instance that replied>
         {
-            "<str QUEUENAME>": {
-                "state": <str current queue state, e.g. "CONSUMING" / "IDLE">,
-                "lastConsumedTimestampMillis": <long timestamp of the last consumed queue item>,
-                "lastRegisterRefreshedMillis": <long timestamp when this queue's registration was last refreshed>,
-                "queueItemSizeCounter": <long current queue item size counter>
-            },
-            "<str ANOTHERQUEUENAME>": { ... }
+            "consumerId": <str consumer/verticle identifier>,
+            "queues": {
+                "<str QUEUENAME>": {
+                    "state": <str current queue state, e.g. "CONSUMING" / "IDLE">,
+                    "lastConsumedTimestampMillis": <long timestamp of the last consumed queue item>,
+                    "lastRegisterRefreshedMillis": <long timestamp when this queue's registration was last refreshed>,
+                    "queueItemSizeCounter": <long current queue item size counter>
+                },
+                "<str ANOTHERQUEUENAME>": { ... }
+            }
         }
     ]
 }
 ```
 
 Note: on failure, the response only contains `"status": "error"` (no `payload`).
+
+#### rebalanceQueues
+
+Triggers queue ownership rebalancing across active RedisQues verticle instances. All queues that
+match the optional `filter` count toward the scoped ownership load, but only queues currently in
+`READY` state are eligible to move. Set `dryRun` to `true` to preview how many moves would be
+planned without changing ownership.
+
+Request Data
+```
+{
+    "operation": "rebalanceQueues",
+    "payload": {
+        "filter": <str regex pattern to restrict the queues to rebalance (optional)>,
+        "dryRun": <boolean when true, only calculate the rebalance plan (optional, default false)>,
+        "maxMovesPerRun": <int maximum amount of queue moves to execute in one run; must be between 1 and 100 (optional, default 100)>
+    }
+}
+```
+
+Response Data
+```
+{
+    "status": "ok" / "error",
+    "value": {
+        "plannedMoves": <int amount of moves selected by the planner>,
+        "executedMoves": <int amount of moves that were actually completed>,
+        "skipped": <int amount of planned moves that were skipped during execution>,
+        "reasonsByQueue": {
+            "<str QUEUENAME>": <str skip reason such as "owner-changed", "not-ready", "release-failed", "claim-failed">
+        }
+    }
+}
+```
 
 
 ## RedisQues HTTP API

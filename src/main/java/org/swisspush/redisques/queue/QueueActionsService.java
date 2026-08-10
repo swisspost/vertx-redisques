@@ -71,6 +71,7 @@ public class QueueActionsService {
         queueActions.put(deleteQueueConfiguration, queueActionFactory.buildQueueAction(deleteQueueConfiguration));
         queueActions.put(getQueuesSizeStatistics, queueActionFactory.buildQueueAction(getQueuesSizeStatistics));
         queueActions.put(getQueueRunningStates, queueActionFactory.buildQueueAction(getQueueRunningStates));
+        queueActions.put(rebalanceQueues, queueActionFactory.buildQueueAction(rebalanceQueues));
     }
 
     public void handle(RedisquesAPI.QueueOperation queueOperation, Message<JsonObject> event) {
