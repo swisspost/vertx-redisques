@@ -1,7 +1,9 @@
 package org.swisspush.redisques.action;
 
 import io.vertx.core.Future;
+import io.vertx.core.buffer.Buffer;
 import io.vertx.core.eventbus.ReplyException;
+import io.vertx.core.json.JsonObject;
 import io.vertx.ext.unit.TestContext;
 import io.vertx.ext.unit.junit.VertxUnitRunner;
 import org.junit.Before;
@@ -14,6 +16,7 @@ import org.swisspush.redisques.util.QueueStatisticsCollector;
 
 import static org.mockito.Mockito.*;
 import static org.swisspush.redisques.util.RedisquesAPI.buildAddQueueItemOperation;
+import static org.swisspush.redisques.util.RedisquesAPI.QUEUE_PATROL_LIMITED;
 
 /**
  * Tests for {@link AddQueueItemAction} class.
@@ -65,5 +68,17 @@ public class AddQueueItemActionTest extends AbstractQueueActionTest {
 
         verify(redisAPI, times(1)).rpush(anyList());
         verify(message, times(1)).reply(isA(ReplyException.class));
+    }
+
+    @Test
+    public void testAddQueueItemWhenQueuePatrolLimitCheckFails(TestContext context) {
+        when(message.body()).thenReturn(buildAddQueueItemOperation("queue2", "fooBar"));
+        AddQueueItemAction addQueueItemAction = spy((AddQueueItemAction) action);
+        doReturn(Future.failedFuture("Booom")).when(addQueueItemAction).isQueuePatrolLimited(anyString());
+
+        addQueueItemAction.execute(message);
+
+        verify(message, times(1)).reply(eq(new JsonObject(Buffer.buffer("{\"status\":\"error\",\"message\":\"" + QUEUE_PATROL_LIMITED + "\"}"))));
+        verify(redisAPI, never()).rpush(anyList());
     }
 }

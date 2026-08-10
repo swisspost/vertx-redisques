@@ -27,6 +27,7 @@ import java.util.Optional;
 
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.*;
+import static org.swisspush.redisques.util.RedisquesAPI.QUEUE_PATROL_LIMITED;
 
 /**
  * Tests for {@link EnqueueAction} class.
@@ -97,6 +98,21 @@ public class EnqueueActionTest extends AbstractQueueActionTest {
                 "\"error\",\"message\":\"RedisQues QUEUE_ERROR: Error while enqueueing message into " +
                 "queue updateTimestampFail\"}"))));
         verify(redisAPI, never()).rpush(anyList());
+
+        assertEnqueueCounts(context, 0.0, 1.0);
+    }
+
+    @Test
+    public void testEnqueueWhenQueuePatrolLimitCheckFails(TestContext context) {
+        when(message.body()).thenReturn(new JsonObject(Buffer.buffer("{\"operation\":\"enqueue\",\"payload\":{\"queuename\":\"someQueue\"},\"message\":\"hello\"}")));
+        EnqueueAction enqueueAction = spy((EnqueueAction) action);
+        doReturn(Future.failedFuture("Booom")).when(enqueueAction).isQueuePatrolLimited(anyString());
+
+        enqueueAction.execute(message);
+
+        verify(message, times(1)).reply(eq(new JsonObject(Buffer.buffer("{\"status\":\"error\",\"message\":\"" + QUEUE_PATROL_LIMITED + "\"}"))));
+        verify(redisAPI, never()).rpush(anyList());
+        verify(registryService, never()).updateTimestamp(anyString());
 
         assertEnqueueCounts(context, 0.0, 1.0);
     }

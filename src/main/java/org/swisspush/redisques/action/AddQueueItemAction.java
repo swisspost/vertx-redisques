@@ -29,8 +29,7 @@ public class AddQueueItemAction extends AbstractQueueAction {
         String queueName = event.body().getJsonObject(PAYLOAD).getString(QUEUENAME);
 
         isQueuePatrolLimited(queueName).onComplete(asyncLimitResult -> {
-            // isQueuePatrolLimited promise always success
-            if (asyncLimitResult.result()) {
+            if (asyncLimitResult.failed() || Boolean.TRUE.equals(asyncLimitResult.result())) {
                 event.reply(createErrorReply().put(MESSAGE, QUEUE_PATROL_LIMITED));
             }else {
                 String key = keyspaceHelper.getQueuesPrefix() + queueName;
