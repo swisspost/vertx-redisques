@@ -182,6 +182,7 @@ public class RedisQues extends AbstractVerticle {
 
         this.queueMetrics = new QueueMetrics(vertx, keyspaceHelper, redisService, meterRegistry, configurationProvider, exceptionFactory);
         queueMetrics.initMicrometerMetrics();
+        MeterRegistry resolvedRegistry = queueMetrics.getMeterRegistry();
 
         RedisquesHttpRequestHandler.init(vertx, configuration, queueStatsService, exceptionFactory);
 
@@ -195,7 +196,7 @@ public class RedisQues extends AbstractVerticle {
         this.queueRegistryService = new QueueRegistryService(vertx, redisService, configurationProvider, exceptionFactory,
                 keyspaceHelper, queueMetrics, queueStatsService, queueStatisticsCollector, checkQueueRequestsQuota, activeQueueRegRefreshReqQuota, queueConfigurationProvider);
         this.queueActionsService = new QueueActionsService(vertx, queueRegistryService, redisService, keyspaceHelper, configurationProvider,
-                exceptionFactory, memoryUsageProvider, queueStatisticsCollector, getQueuesItemsCountRedisRequestQuota, meterRegistry, queueConfigurationProvider);
+                exceptionFactory, memoryUsageProvider, queueStatisticsCollector, getQueuesItemsCountRedisRequestQuota, resolvedRegistry, queueConfigurationProvider);
 
         // Handles operations
         vertx.eventBus().consumer(keyspaceHelper.getAddress(), operationsHandler());
