@@ -302,7 +302,7 @@ public class RedisQues extends AbstractVerticle {
         }
     }
 
-    public QueueStatisticsCollector getqueueStatisticsCollector() {
+    public QueueStatisticsCollector getQueueStatisticsCollector() {
         return queueStatisticsCollector;
     }
 }

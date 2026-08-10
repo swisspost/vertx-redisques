@@ -87,7 +87,7 @@ public class QueueStatisticsCollectorTest extends AbstractTestCase {
             log.info("vert.x Deploy - {} was successful.", redisQues.getClass().getSimpleName());
             jedis = new Jedis("localhost", 6379, 5000);
             keyspaceHelper = redisQues.getKeyspaceHelper();
-            queueStatisticsCollector = redisQues.getqueueStatisticsCollector();
+            queueStatisticsCollector = redisQues.getQueueStatisticsCollector();
             async.complete();
         }));
 

@@ -21,6 +21,7 @@ import org.swisspush.redisques.util.QueueStatisticsCollector;
 
 import static org.mockito.Mockito.*;
 import static org.swisspush.redisques.util.RedisquesAPI.buildLockedEnqueueOperation;
+import static org.swisspush.redisques.util.RedisquesAPI.QUEUE_PATROL_LIMITED;
 
 /**
  * Tests for {@link LockedEnqueueAction} class.
@@ -58,6 +59,20 @@ public class LockedEnqueueActionTest extends AbstractQueueActionTest {
         assertEnqueueCounts(context, 0.0, 1.0);
         verify(message, times(1)).reply(eq(new JsonObject(Buffer.buffer("{\"status\":\"error\"}"))));
         verifyNoInteractions(redisAPI);
+    }
+
+    @Test
+    public void testLockedEnqueueWhenQueuePatrolLimitCheckFails(TestContext context) {
+        when(message.body()).thenReturn(buildLockedEnqueueOperation("queueEnqueue", "helloEnqueue", "someuser"));
+        LockedEnqueueAction lockedEnqueueAction = spy((LockedEnqueueAction) action);
+        doReturn(Future.failedFuture("Booom")).when(lockedEnqueueAction).isQueuePatrolLimited(anyString());
+
+        lockedEnqueueAction.execute(message);
+
+        verify(message, times(1)).reply(eq(new JsonObject(Buffer.buffer("{\"status\":\"error\",\"message\":\"" + QUEUE_PATROL_LIMITED + "\"}"))));
+        verify(redisAPI, never()).hmset(anyList());
+
+        assertEnqueueCounts(context, 0.0, 1.0);
     }
 
     private void assertEnqueueCounts(TestContext context, double successCount, double failCount) {
