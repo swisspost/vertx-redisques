@@ -401,7 +401,7 @@
         <jedis.version>3.7.0</jedis.version>
         <rest-assured.version>5.4.0</rest-assured.version>
         <commons-coded.version>1.16.0</commons-coded.version>
-        <jackson-databind.version>2.17.0</jackson-databind.version>
+        <jackson-databind.version>2.18.9</jackson-databind.version>
         <project.build.sourceEncoding>UTF8</project.build.sourceEncoding>
     </properties>
 </project>
