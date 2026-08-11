@@ -45,7 +45,6 @@ public class MigrateToolTest extends AbstractTestCase {
     @Before
     public void deployRedisques(TestContext context) {
         vertx = Vertx.vertx();
-        QueueStatisticsCollector.CODECS_REGISTERED.set(false);
         Async async = context.async();
         QueueConfigurationProvider.reset();
         RedisquesConfiguration rqConfig =  RedisquesConfiguration.with()

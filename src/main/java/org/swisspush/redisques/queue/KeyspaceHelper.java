@@ -21,7 +21,8 @@ public class KeyspaceHelper {
     private final String consumersAddress;
     private final String aliveConsumersKey;
     private final String metricsCollectorAddress;
-    private final String queueStatisticQueueSizeSyncKey;
+    private final String queueRunningStateKey;
+    private final String queueRunningStateReplyKey;
     public static final String QUEUE_STATE_COUNT_KEY = "queueStateCount";
     public static final String QUEUE_STATE_QUEUE_ITEM_COUNTER = "queueStateQueueItemCounter";
 
@@ -43,7 +44,8 @@ public class KeyspaceHelper {
         consumersAddress = configuration.getAddress() + "-consumers";
         aliveConsumersKey = configuration.getRedisPrefix() + "-aliveConsumer";
         metricsCollectorAddress = configuration.getAddress() + "-" + verticleUid + "-" + QUEUE_STATE_COUNT_KEY;
-        queueStatisticQueueSizeSyncKey = configuration.getAddress() + "-" + QUEUE_STATE_QUEUE_ITEM_COUNTER;
+        queueRunningStateKey = configuration.getAddress() + "-runningState";
+        queueRunningStateReplyKey = configuration.getAddress() + "-runningState.reply";
 
     }
 
@@ -111,7 +113,10 @@ public class KeyspaceHelper {
         return dataMigrationTaskPrefix;
     }
 
-    public String getQueueStatisticQueueSizeSyncKey() {
-        return queueStatisticQueueSizeSyncKey;
+    public String getQueueRunningStateKey() {
+        return queueRunningStateKey;
+    }
+    public String getQueueRunningStateReplyKey() {
+        return queueRunningStateReplyKey;
     }
 }

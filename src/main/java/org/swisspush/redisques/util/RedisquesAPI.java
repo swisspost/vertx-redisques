@@ -42,6 +42,7 @@ public class RedisquesAPI {
     public static final String NO_SUCH_LOCK = "No such lock";
     public static final String PROCESSOR_DELAY_MAX = "processorDelayMax";
     public static final String PROCESSOR_TIMEOUT = "processorTimeout";
+    public static final String FORCE_RELOAD = "forceReload";
 
     public static final String MONITOR_QUEUE_NAME = "name";
     public static final String MONITOR_QUEUE_SIZE = "size";
@@ -62,6 +63,10 @@ public class RedisquesAPI {
     public static final String PER_QUEUE_CONFIG_EXPIRE_TIMEOUT =  "configExpireTimeout";
     public static final String PER_QUEUE_CONFIG_NAME =  "configName";
     public static final String PER_QUEUE_CONFIG_PATTERN =  "pattern";
+    public static final String GET_QUEUE_RUNNING_STATES_LAST_UPDATE_WITHIN_MS = "lastUpdateWithInMs";
+    public static final String GET_QUEUE_RUNNING_STATES_EXPECTED_REPLIES = "expectedReplies";
+    public static final String GET_QUEUE_RUNNING_STATES_TIMEOUT = "timeoutMs";
+
 
     private static final Logger log = LoggerFactory.getLogger(RedisquesAPI.class);
 
@@ -97,7 +102,8 @@ public class RedisquesAPI {
         setPerQueueConfiguration(null),
         getPerQueueConfiguration(null),
         deleteQueueConfiguration(null),
-        getQueuesSizeStatistics(null);
+        getQueuesSizeStatistics(null),
+        getQueueRunningStates(null);
 
 
         private final String legacyName;
@@ -245,7 +251,13 @@ public class RedisquesAPI {
      * Evaluate the size of the ques according to the given filter
      */
     public static JsonObject buildGetQueuesItemsCountOperation(String filter) {
-        return buildOperation(QueueOperation.getQueuesItemsCount, new JsonObject().put(FILTER, filter));
+        return buildGetQueuesItemsCountOperation(filter, false);
+    }
+
+    public static JsonObject buildGetQueuesItemsCountOperation(String filter, boolean forceReload) {
+        JsonObject request =  new JsonObject().put(FILTER, filter);
+        request.put(FORCE_RELOAD, forceReload);
+        return buildOperation(QueueOperation.getQueuesItemsCount, request);
     }
 
     public static JsonObject buildGetLockOperation(String queueName) {
@@ -403,5 +415,19 @@ public class RedisquesAPI {
             throw new IllegalArgumentException("configName cannot be null");
         }
         return buildOperation(QueueOperation.deleteQueueConfiguration, new JsonObject().put(RedisquesAPI.PER_QUEUE_CONFIG_NAME, configName));
+    }
+
+    /**
+     * get queue running status from all instances cross cluster
+     * @param lastUpdateWithInMs only include queue states updated within this time window, in milliseconds, 0 mean all
+     * @param expectedReplies the number of replies expected from cluster instances, 0 means unknow
+     * @param timeoutMs maximum time to wait for replies, in milliseconds, 0 means use default see {@link org.swisspush.redisques.action.GetQueueRunningStatesAction.DEFAULT_WAIT_TIMEOUT}
+     * @return action payload
+     */
+    public static JsonObject buildGetQueueRunningStates(final long lastUpdateWithInMs, final int expectedReplies, final long timeoutMs) {
+        JsonObject jsonObject = new JsonObject().put(RedisquesAPI.GET_QUEUE_RUNNING_STATES_LAST_UPDATE_WITHIN_MS, lastUpdateWithInMs);
+        jsonObject.put(RedisquesAPI.GET_QUEUE_RUNNING_STATES_EXPECTED_REPLIES, expectedReplies);
+        jsonObject.put(RedisquesAPI.GET_QUEUE_RUNNING_STATES_TIMEOUT, timeoutMs);
+        return buildOperation(QueueOperation.getQueueRunningStates, jsonObject);
     }
 }
