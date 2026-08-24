@@ -7,6 +7,7 @@ import io.vertx.core.AbstractVerticle;
 import io.vertx.core.Handler;
 import io.vertx.core.Promise;
 import io.vertx.core.eventbus.Message;
+import io.vertx.core.eventbus.MessageConsumer;
 import io.vertx.core.json.JsonObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -50,6 +51,7 @@ public class RedisQues extends AbstractVerticle {
     private QueueActionsService queueActionsService;
     private QueueStatsService queueStatsService;
     private QueueConfigurationProvider queueConfigurationProvider;
+    private MessageConsumer<JsonObject> operationsMessageConsumer;
 
     private final RedisQuesExceptionFactory exceptionFactory;
     private PeriodicSkipScheduler periodicSkipScheduler;
@@ -199,7 +201,7 @@ public class RedisQues extends AbstractVerticle {
                 exceptionFactory, memoryUsageProvider, queueStatisticsCollector, getQueuesItemsCountRedisRequestQuota, resolvedRegistry, queueConfigurationProvider);
 
         // Handles operations
-        vertx.eventBus().consumer(keyspaceHelper.getAddress(), operationsHandler());
+        operationsMessageConsumer = vertx.eventBus().consumer(keyspaceHelper.getAddress(), operationsHandler());
         registerMetricsGathering(configuration);
     }
 
@@ -297,6 +299,10 @@ public class RedisQues extends AbstractVerticle {
     @Override
     public void stop() {
         queueRegistryService.stop();
+        if (operationsMessageConsumer != null) {
+            operationsMessageConsumer.unregister();
+            operationsMessageConsumer = null;
+        }
         if (redisMonitor != null) {
             redisMonitor.stop();
             redisMonitor = null;

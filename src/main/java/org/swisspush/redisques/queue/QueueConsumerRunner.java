@@ -59,6 +59,7 @@ public class QueueConsumerRunner {
     private final QueueConfigurationProvider queueConfigurationProvider;
     private MessageConsumer<String> trimRequestConsumer;
     private MessageConsumer<JsonObject> runningQueueStateConsumer;
+    private MessageConsumer<Void> metricsCollectorConsumer;
     private Handler<Void> noQueueMoreItemHandler = null;
 
     // The queues this verticle instance is registered as a consumer
@@ -103,7 +104,7 @@ public class QueueConsumerRunner {
         });
         int metricRefreshPeriod = configurationProvider.configuration().getMetricRefreshPeriod();
         if (metricRefreshPeriod > 0) {
-            vertx.eventBus().consumer(keyspaceHelper.getMetricsCollectorAddress(), (Handler<Message<Void>>) event -> {
+            metricsCollectorConsumer = vertx.eventBus().consumer(keyspaceHelper.getMetricsCollectorAddress(), (Handler<Message<Void>>) event -> {
                 Map<QueueState, Long> stateCount = getQueueStateCount();
                 JsonObject jsonObject = new JsonObject();
                 stateCount.forEach((queueState, aLong) -> jsonObject.put(queueState.name(), aLong));
@@ -122,23 +123,27 @@ public class QueueConsumerRunner {
 
 
     public void unregisterConsumers(Handler<AsyncResult<Void>> handler) {
+        List<Future<?>> unregisterFutures = new ArrayList<>();
         if (trimRequestConsumer != null && trimRequestConsumer.isRegistered()) {
-            trimRequestConsumer.unregister(unregisterTrimEvent -> {
-                if (unregisterTrimEvent.failed()) {
-                    handler.handle(unregisterTrimEvent);
-                    return;
-                }
-                if (runningQueueStateConsumer != null && runningQueueStateConsumer.isRegistered()) {
-                    runningQueueStateConsumer.unregister(handler);
-                } else {
-                    handler.handle(Future.succeededFuture());
-                }
-            });
-        } else if (runningQueueStateConsumer != null && runningQueueStateConsumer.isRegistered()) {
-            runningQueueStateConsumer.unregister(handler);
-        } else {
-            handler.handle(Future.succeededFuture());
+            unregisterFutures.add(trimRequestConsumer.unregister());
         }
+        if (runningQueueStateConsumer != null && runningQueueStateConsumer.isRegistered()) {
+            unregisterFutures.add(runningQueueStateConsumer.unregister());
+        }
+        if (metricsCollectorConsumer != null && metricsCollectorConsumer.isRegistered()) {
+            unregisterFutures.add(metricsCollectorConsumer.unregister());
+        }
+        if (unregisterFutures.isEmpty()) {
+            handler.handle(Future.succeededFuture());
+            return;
+        }
+        Future.join(unregisterFutures).onComplete(ar -> {
+            if (ar.succeeded()) {
+                handler.handle(Future.succeededFuture());
+            } else {
+                handler.handle(Future.failedFuture(ar.cause()));
+            }
+        });
     }
 
     public Future<Void> consume(final String queueName) {
