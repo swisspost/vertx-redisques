@@ -72,7 +72,7 @@ public class DequeueStatisticCollectorTest extends AbstractTestCase {
         memoryUsageProvider = new TestMemoryUsageProvider(Optional.of(50));
         redisQues = RedisQues.builder()
                 .withMemoryUsageProvider(memoryUsageProvider)
-                .withRedisquesRedisquesConfigurationProvider(new DefaultRedisquesConfigurationProvider(vertx, config))
+                .withRedisquesRedisquesConfigurationProvider(new DefaultRedisquesConfigurationProvider(vertx, config, new MessageConsumerManager(vertx)))
                 .withMeterRegistry(meterRegistry)
                 .build();
 

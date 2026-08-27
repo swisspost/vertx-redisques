@@ -62,7 +62,7 @@ public class GetQueuesItemsCountActionExtTest extends AbstractTestCase {
         memoryUsageProvider = new TestMemoryUsageProvider(Optional.of(50));
         redisQues = RedisQues.builder()
                 .withMemoryUsageProvider(memoryUsageProvider)
-                .withRedisquesRedisquesConfigurationProvider(new DefaultRedisquesConfigurationProvider(vertx, config))
+                .withRedisquesRedisquesConfigurationProvider(new DefaultRedisquesConfigurationProvider(vertx, config, new org.swisspush.redisques.util.MessageConsumerManager(vertx)))
                 .withMeterRegistry(meterRegistry)
                 .build();
         redisQues.disableMigrationTool();
@@ -134,4 +134,3 @@ public class GetQueuesItemsCountActionExtTest extends AbstractTestCase {
         });
     }
 }
-

@@ -20,6 +20,7 @@ import org.slf4j.LoggerFactory;
 import org.swisspush.redisques.QueueState;
 import org.swisspush.redisques.QueueStatsService;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
+import org.swisspush.redisques.util.MessageConsumerManager;
 import org.swisspush.redisques.util.QueueConfigurationProvider;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 import org.swisspush.redisques.util.RedisQuesTimer;
@@ -57,6 +58,7 @@ public class QueueConsumerRunner {
     private final RedisQuesTimer timer;
     private final int consumerLockTime;
     private final QueueConfigurationProvider queueConfigurationProvider;
+    private final MessageConsumerManager consumerManager;
     private MessageConsumer<String> trimRequestConsumer;
     private MessageConsumer<JsonObject> runningQueueStateConsumer;
     private MessageConsumer<Void> metricsCollectorConsumer;
@@ -68,7 +70,8 @@ public class QueueConsumerRunner {
     public QueueConsumerRunner(Vertx vertx, RedisService redisService, QueueMetrics metrics, QueueStatsService queueStatsService,
                                KeyspaceHelper keyspaceHelper,
                                RedisquesConfigurationProvider configurationProvider, RedisQuesExceptionFactory exceptionFactory,
-                               QueueStatisticsCollector queueStatisticsCollector, QueueConfigurationProvider queueConfigurationProvider) {
+                               QueueStatisticsCollector queueStatisticsCollector, QueueConfigurationProvider queueConfigurationProvider,
+                               MessageConsumerManager consumerManager) {
         this.vertx = vertx;
         this.redisService = redisService;
         this.exceptionFactory = exceptionFactory;
@@ -79,9 +82,10 @@ public class QueueConsumerRunner {
         this.queueStatisticsCollector = queueStatisticsCollector;
         consumerLockTime = configurationProvider.configuration().getConsumerLockMultiplier() * configurationProvider.configuration().getRefreshPeriod(); // lock is kept twice as long as its refresh interval -> never expires as long as the consumer ('we') are alive
         this.queueConfigurationProvider = queueConfigurationProvider;
+        this.consumerManager = consumerManager;
 
         // handles trim request
-        trimRequestConsumer = vertx.eventBus().consumer(keyspaceHelper.getTrimRequestKey() + keyspaceHelper.getVerticleUid(), event -> {
+        trimRequestConsumer = consumerManager.consumer(keyspaceHelper.getTrimRequestKey() + keyspaceHelper.getVerticleUid(), event -> {
             final String queueName = event.body();
             if (queueName == null) {
                 log.warn("Got event bus trim request msg with empty body! uid={}  address={}  replyAddress={}", keyspaceHelper.getVerticleUid(), event.address(), event.replyAddress());
@@ -104,7 +108,7 @@ public class QueueConsumerRunner {
         });
         int metricRefreshPeriod = configurationProvider.configuration().getMetricRefreshPeriod();
         if (metricRefreshPeriod > 0) {
-            metricsCollectorConsumer = vertx.eventBus().consumer(keyspaceHelper.getMetricsCollectorAddress(), (Handler<Message<Void>>) event -> {
+            metricsCollectorConsumer = consumerManager.consumer(keyspaceHelper.getMetricsCollectorAddress(), (Handler<Message<Void>>) event -> {
                 Map<QueueState, Long> stateCount = getQueueStateCount();
                 JsonObject jsonObject = new JsonObject();
                 stateCount.forEach((queueState, aLong) -> jsonObject.put(queueState.name(), aLong));
@@ -735,7 +739,7 @@ public class QueueConsumerRunner {
      * A consumer send current queues states back to the given reply address
      */
     private void registerRunningQueueStateConsumer() {
-        runningQueueStateConsumer = vertx.eventBus().consumer(
+        runningQueueStateConsumer = consumerManager.consumer(
                 keyspaceHelper.getQueueRunningStateKey(),
                 msg -> {
                     JsonObject request = (JsonObject) msg.body();

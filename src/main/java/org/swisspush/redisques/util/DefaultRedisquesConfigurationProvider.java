@@ -27,11 +27,11 @@ public class DefaultRedisquesConfigurationProvider implements RedisquesConfigura
     private static final Set<String> ALLOWED_CONFIGURATION_VALUES = Stream.of("processorDelayMax", "processorTimeout")
             .collect(Collectors.toSet());
 
-    public DefaultRedisquesConfigurationProvider(Vertx vertx, JsonObject config) {
+    public DefaultRedisquesConfigurationProvider(Vertx vertx, JsonObject config, MessageConsumerManager consumerManager) {
         this.vertx = vertx;
         this.redisquesConfiguration = RedisquesConfiguration.fromJsonObject(config);
 
-        vertx.eventBus().consumer(redisquesConfiguration.getConfigurationUpdatedAddress(), (Handler<Message<JsonObject>>) event -> {
+        consumerManager.consumer(redisquesConfiguration.getConfigurationUpdatedAddress(), (Handler<Message<JsonObject>>) event -> {
             log.info("Received configurations update");
             setConfigurationValues(event.body(), false);
         });

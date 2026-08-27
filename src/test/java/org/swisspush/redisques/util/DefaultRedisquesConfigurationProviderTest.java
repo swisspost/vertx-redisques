@@ -22,11 +22,13 @@ import static org.hamcrest.CoreMatchers.equalTo;
 public class DefaultRedisquesConfigurationProviderTest {
 
     private Vertx vertx;
+    private MessageConsumerManager consumerManager;
     private DefaultRedisquesConfigurationProvider configurationProvider;
 
     @Before
     public void setup(TestContext context) {
         vertx = Vertx.vertx();
+        consumerManager = new MessageConsumerManager(vertx);
     }
 
     @Test
@@ -59,7 +61,7 @@ public class DefaultRedisquesConfigurationProviderTest {
                 "    \"memoryUsageCheckIntervalSec\": 60\n" +
                 "}\n");
 
-        configurationProvider = new DefaultRedisquesConfigurationProvider(vertx, config);
+        configurationProvider = new DefaultRedisquesConfigurationProvider(vertx, config, consumerManager);
         RedisquesConfiguration conf = configurationProvider.configuration();
         context.assertEquals(60, conf.getCheckInterval());
         context.assertEquals(100, conf.getMemoryUsageLimitPercent());
@@ -99,7 +101,7 @@ public class DefaultRedisquesConfigurationProviderTest {
                 "    \"memoryUsageCheckIntervalSec\": 60\n" +
                 "}\n");
 
-        configurationProvider = new DefaultRedisquesConfigurationProvider(vertx, initialConfig);
+        configurationProvider = new DefaultRedisquesConfigurationProvider(vertx, initialConfig, consumerManager);
         RedisquesConfiguration conf = configurationProvider.configuration();
         context.assertEquals(0L, conf.getProcessorDelayMax());
 
@@ -152,7 +154,7 @@ public class DefaultRedisquesConfigurationProviderTest {
                 "    \"memoryUsageCheckIntervalSec\": 60\n" +
                 "}\n");
 
-        configurationProvider = new DefaultRedisquesConfigurationProvider(vertx, initialConfig);
+        configurationProvider = new DefaultRedisquesConfigurationProvider(vertx, initialConfig, consumerManager);
         RedisquesConfiguration conf = configurationProvider.configuration();
         context.assertEquals(0L, conf.getProcessorDelayMax());
 
@@ -197,7 +199,7 @@ public class DefaultRedisquesConfigurationProviderTest {
                 "    \"memoryUsageCheckIntervalSec\": 60\n" +
                 "}\n");
 
-        configurationProvider = new DefaultRedisquesConfigurationProvider(vertx, initialConfig);
+        configurationProvider = new DefaultRedisquesConfigurationProvider(vertx, initialConfig, consumerManager);
         RedisquesConfiguration conf = configurationProvider.configuration();
         context.assertEquals(55L, conf.getProcessorDelayMax());
 
@@ -269,7 +271,7 @@ public class DefaultRedisquesConfigurationProviderTest {
                 "    \"memoryUsageCheckIntervalSec\": 60\n" +
                 "}\n");
 
-        configurationProvider = new DefaultRedisquesConfigurationProvider(vertx, initialConfig);
+        configurationProvider = new DefaultRedisquesConfigurationProvider(vertx, initialConfig, consumerManager);
         RedisquesConfiguration conf = configurationProvider.configuration();
         context.assertEquals(55L, conf.getProcessorDelayMax());
 
@@ -310,7 +312,7 @@ public class DefaultRedisquesConfigurationProviderTest {
                 "    \"memoryUsageCheckIntervalSec\": 60\n" +
                 "}\n");
 
-        configurationProvider = new DefaultRedisquesConfigurationProvider(vertx, initialConfig);
+        configurationProvider = new DefaultRedisquesConfigurationProvider(vertx, initialConfig, consumerManager);
         RedisquesConfiguration conf = configurationProvider.configuration();
         context.assertEquals(55L, conf.getProcessorDelayMax());
 
@@ -329,7 +331,7 @@ public class DefaultRedisquesConfigurationProviderTest {
     public void testEmptyConfiguration(TestContext context) {
         JsonObject config = new JsonObject("{}");
 
-        configurationProvider = new DefaultRedisquesConfigurationProvider(vertx, config);
+        configurationProvider = new DefaultRedisquesConfigurationProvider(vertx, config, consumerManager);
         RedisquesConfiguration conf = configurationProvider.configuration();
         context.assertEquals(60, conf.getCheckInterval());
         context.assertEquals(100, conf.getMemoryUsageLimitPercent());
@@ -370,7 +372,7 @@ public class DefaultRedisquesConfigurationProviderTest {
                 "    \"memoryUsageCheckIntervalSec\": 60\n" +
                 "}\n");
 
-        configurationProvider = new DefaultRedisquesConfigurationProvider(vertx, initialConfig);
+        configurationProvider = new DefaultRedisquesConfigurationProvider(vertx, initialConfig, consumerManager);
         RedisquesConfiguration conf = configurationProvider.configuration();
         context.assertEquals(0L, conf.getProcessorDelayMax());
 

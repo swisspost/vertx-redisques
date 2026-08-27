@@ -39,6 +39,7 @@ public class RedisQues extends AbstractVerticle {
     private RedisService redisService;
     private KeyspaceHelper keyspaceHelper;
     private RedisquesConfigurationProvider configurationProvider;
+    private MessageConsumerManager consumerManager;
 
     private DequeueStatisticCollector dequeueStatisticCollector;
     private QueueStatisticsCollector queueStatisticsCollector;
@@ -119,8 +120,9 @@ public class RedisQues extends AbstractVerticle {
     public void start(Promise<Void> promise) {
         log.info("Started with UID {}", uid);
 
+        consumerManager = new MessageConsumerManager(vertx);
         if (this.configurationProvider == null) {
-            this.configurationProvider = new DefaultRedisquesConfigurationProvider(vertx, config());
+            this.configurationProvider = new DefaultRedisquesConfigurationProvider(vertx, config(), consumerManager);
         }
 
         if (this.periodicSkipScheduler == null) {
@@ -142,7 +144,7 @@ public class RedisQues extends AbstractVerticle {
                     this.dequeueStatisticCollector = new DequeueStatisticCollector(vertx, modConfig.isDequeueStatsEnabled(), redisService, keyspaceHelper);
                 }
                 QueueConfigurationProvider.provider(vertx, configurationProvider.configuration().getQueueConfigurations(),
-                        configurationProvider.configuration().getQueueConfigCleanupInterval()).get().onComplete(event1 -> {
+                        configurationProvider.configuration().getQueueConfigCleanupInterval(), consumerManager).get().onComplete(event1 -> {
                     if (event1.succeeded()) {
                         RedisQues.this.queueConfigurationProvider = event1.result();
                         if (migrationToolDisabled) {
@@ -196,12 +198,12 @@ public class RedisQues extends AbstractVerticle {
         assert getQueuesItemsCountRedisRequestQuota != null;
 
         this.queueRegistryService = new QueueRegistryService(vertx, redisService, configurationProvider, exceptionFactory,
-                keyspaceHelper, queueMetrics, queueStatsService, queueStatisticsCollector, checkQueueRequestsQuota, activeQueueRegRefreshReqQuota, queueConfigurationProvider);
+                keyspaceHelper, queueMetrics, queueStatsService, queueStatisticsCollector, checkQueueRequestsQuota, activeQueueRegRefreshReqQuota, queueConfigurationProvider, consumerManager);
         this.queueActionsService = new QueueActionsService(vertx, queueRegistryService, redisService, keyspaceHelper, configurationProvider,
-                exceptionFactory, memoryUsageProvider, queueStatisticsCollector, getQueuesItemsCountRedisRequestQuota, resolvedRegistry, queueConfigurationProvider);
+                exceptionFactory, memoryUsageProvider, queueStatisticsCollector, getQueuesItemsCountRedisRequestQuota, resolvedRegistry, queueConfigurationProvider, consumerManager);
 
         // Handles operations
-        operationsMessageConsumer = vertx.eventBus().consumer(keyspaceHelper.getAddress(), operationsHandler());
+        operationsMessageConsumer = consumerManager.consumer(keyspaceHelper.getAddress(), operationsHandler());
         registerMetricsGathering(configuration);
     }
 
@@ -298,14 +300,21 @@ public class RedisQues extends AbstractVerticle {
 
     @Override
     public void stop() {
-        queueRegistryService.stop();
-        if (operationsMessageConsumer != null) {
-            operationsMessageConsumer.unregister();
-            operationsMessageConsumer = null;
-        }
-        if (redisMonitor != null) {
-            redisMonitor.stop();
-            redisMonitor = null;
+        try {
+            if (queueRegistryService != null) {
+                queueRegistryService.stop();
+            }
+            if (operationsMessageConsumer != null) {
+                operationsMessageConsumer = null;
+            }
+        } finally {
+            if (consumerManager != null && !consumerManager.isClosed()) {
+                consumerManager.unregisterAll();
+            }
+            if (redisMonitor != null) {
+                redisMonitor.stop();
+                redisMonitor = null;
+            }
         }
     }
 

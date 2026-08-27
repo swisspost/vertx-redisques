@@ -50,14 +50,17 @@ public class QueueStatisticsCollectorTest extends AbstractTestCase {
     private QueueStatisticsCollector queueStatisticsCollector;
     private TestMemoryUsageProvider memoryUsageProvider;
     private final String metricsIdentifier = "foo";
+    private MessageConsumerManager consumerManager;
     protected AbstractQueueAction action;
     protected RedisQuesExceptionFactory exceptionFactory;
+
     @Rule
     public Timeout rule = Timeout.seconds(50);
 
     @Before
     public void deployRedisques(TestContext context) {
         vertx = Vertx.vertx();
+        consumerManager = new MessageConsumerManager(vertx);
         Async async = context.async();
         JsonObject config = RedisquesConfiguration.with()
                 .processorAddress(PROCESSOR_ADDRESS)
@@ -78,7 +81,7 @@ public class QueueStatisticsCollectorTest extends AbstractTestCase {
         memoryUsageProvider = new TestMemoryUsageProvider(Optional.of(50));
         redisQues = RedisQues.builder()
                 .withMemoryUsageProvider(memoryUsageProvider)
-                .withRedisquesRedisquesConfigurationProvider(new DefaultRedisquesConfigurationProvider(vertx, config))
+                .withRedisquesRedisquesConfigurationProvider(new DefaultRedisquesConfigurationProvider(vertx, config, consumerManager))
                 .withMeterRegistry(meterRegistry)
                 .build();
         redisQues.disableMigrationTool();

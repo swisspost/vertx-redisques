@@ -71,11 +71,11 @@ public class QueueConfigurationProvider {
     }
 
 
-    private QueueConfigurationProvider(Vertx vertx, List<QueueConfiguration> defaultQueueConfigurations, long cleanupInterval) {
+    private QueueConfigurationProvider(Vertx vertx, List<QueueConfiguration> defaultQueueConfigurations, long cleanupInterval, MessageConsumerManager consumerManager) {
         this.vertx = vertx;
         this.defaultQueueConfigurations = defaultQueueConfigurations;
         loadStaticConfigs();
-        vertx.eventBus().consumer(QUEUE_CONFIG_EVENTBUS_SYNC_KEY, (Handler<Message<JsonObject>>) event -> {
+        consumerManager.consumer(QUEUE_CONFIG_EVENTBUS_SYNC_KEY, (Handler<Message<JsonObject>>) event -> {
 
             // message structure
             // {
@@ -123,11 +123,11 @@ public class QueueConfigurationProvider {
         vertx.setPeriodic(Math.max(MIN_QUEUE_CONFIG_CLEANUP_INTERVAL, cleanupInterval), event -> queueConfigurationCleanUp());
     }
 
-    public static NodeLocalSingletonProvider<QueueConfigurationProvider> provider(Vertx vertx, List<QueueConfiguration> defaultQueueConfigurations, long cleanupInterval) {
+    public static NodeLocalSingletonProvider<QueueConfigurationProvider> provider(Vertx vertx, List<QueueConfiguration> defaultQueueConfigurations, long cleanupInterval, MessageConsumerManager consumerManager) {
         return new NodeLocalSingletonProvider<>(
                 vertx,
                 "per-queue-config",
-                () -> Future.succeededFuture(new QueueConfigurationProvider(vertx, defaultQueueConfigurations, cleanupInterval)));
+                () -> Future.succeededFuture(new QueueConfigurationProvider(vertx, defaultQueueConfigurations, cleanupInterval, consumerManager)));
     }
 
     /**

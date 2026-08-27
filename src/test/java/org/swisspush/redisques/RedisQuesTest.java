@@ -88,7 +88,7 @@ public class RedisQuesTest extends AbstractTestCase {
         memoryUsageProvider = new TestMemoryUsageProvider(Optional.of(50));
         redisQues = RedisQues.builder()
                 .withMemoryUsageProvider(memoryUsageProvider)
-                .withRedisquesRedisquesConfigurationProvider(new DefaultRedisquesConfigurationProvider(vertx, rqConfig.asJsonObject()))
+                .withRedisquesRedisquesConfigurationProvider(new DefaultRedisquesConfigurationProvider(vertx, rqConfig.asJsonObject(), new org.swisspush.redisques.util.MessageConsumerManager(vertx)))
                 .withMeterRegistry(meterRegistry)
                 .build();
         redisQues.disableMigrationTool();
