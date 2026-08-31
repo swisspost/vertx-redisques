@@ -81,15 +81,20 @@ public class DefaultRedisquesConfigurationProviderTest {
         DefaultRedisquesConfigurationProvider provider = new DefaultRedisquesConfigurationProvider(vertx, new JsonObject());
         String address = provider.configuration().getConfigurationUpdatedAddress();
 
-        provider.acquire();
-        provider.acquire();
-        provider.release().compose(ignored -> provider.release()).onComplete(context.asyncAssertSuccess(ignored ->
-                vertx.eventBus().request(address, new JsonObject(), new DeliveryOptions().setSendTimeout(100),
-                        context.asyncAssertFailure(cause -> {
-                            context.assertTrue(cause instanceof ReplyException);
-                            context.assertEquals(ReplyFailure.NO_HANDLERS, ((ReplyException) cause).failureType());
-                            vertx.close().onComplete(context.asyncAssertSuccess(closed -> async.complete()));
-                        }))));
+        provider.acquire().compose(ignored -> provider.acquire())
+                .compose(ignored -> provider.release()).onComplete(context.asyncAssertSuccess(ignored -> {
+                    vertx.eventBus().publish(address, new JsonObject().put("processorDelayMax", 23));
+                    vertx.setTimer(100, timerId -> {
+                        context.assertEquals(23L, provider.configuration().getProcessorDelayMax());
+                        provider.release().onComplete(context.asyncAssertSuccess(released ->
+                                vertx.eventBus().request(address, new JsonObject(), new DeliveryOptions().setSendTimeout(100),
+                                        context.asyncAssertFailure(cause -> {
+                                            context.assertTrue(cause instanceof ReplyException);
+                                            context.assertEquals(ReplyFailure.NO_HANDLERS, ((ReplyException) cause).failureType());
+                                            vertx.close().onComplete(context.asyncAssertSuccess(closed -> async.complete()));
+                                        }))));
+                    });
+                }));
     }
 
     @Test
@@ -122,7 +127,7 @@ public class DefaultRedisquesConfigurationProviderTest {
                 "    \"memoryUsageCheckIntervalSec\": 60\n" +
                 "}\n");
 
-        configurationProvider = new DefaultRedisquesConfigurationProvider(vertx, initialConfig);
+        configurationProvider = createConfigurationProvider(initialConfig);
         RedisquesConfiguration conf = configurationProvider.configuration();
         context.assertEquals(0L, conf.getProcessorDelayMax());
 
@@ -175,7 +180,7 @@ public class DefaultRedisquesConfigurationProviderTest {
                 "    \"memoryUsageCheckIntervalSec\": 60\n" +
                 "}\n");
 
-        configurationProvider = new DefaultRedisquesConfigurationProvider(vertx, initialConfig);
+        configurationProvider = createConfigurationProvider(initialConfig);
         RedisquesConfiguration conf = configurationProvider.configuration();
         context.assertEquals(0L, conf.getProcessorDelayMax());
 
@@ -220,7 +225,7 @@ public class DefaultRedisquesConfigurationProviderTest {
                 "    \"memoryUsageCheckIntervalSec\": 60\n" +
                 "}\n");
 
-        configurationProvider = new DefaultRedisquesConfigurationProvider(vertx, initialConfig);
+        configurationProvider = createConfigurationProvider(initialConfig);
         RedisquesConfiguration conf = configurationProvider.configuration();
         context.assertEquals(55L, conf.getProcessorDelayMax());
 
@@ -292,7 +297,7 @@ public class DefaultRedisquesConfigurationProviderTest {
                 "    \"memoryUsageCheckIntervalSec\": 60\n" +
                 "}\n");
 
-        configurationProvider = new DefaultRedisquesConfigurationProvider(vertx, initialConfig);
+        configurationProvider = createConfigurationProvider(initialConfig);
         RedisquesConfiguration conf = configurationProvider.configuration();
         context.assertEquals(55L, conf.getProcessorDelayMax());
 
@@ -333,7 +338,7 @@ public class DefaultRedisquesConfigurationProviderTest {
                 "    \"memoryUsageCheckIntervalSec\": 60\n" +
                 "}\n");
 
-        configurationProvider = new DefaultRedisquesConfigurationProvider(vertx, initialConfig);
+        configurationProvider = createConfigurationProvider(initialConfig);
         RedisquesConfiguration conf = configurationProvider.configuration();
         context.assertEquals(55L, conf.getProcessorDelayMax());
 
@@ -413,5 +418,11 @@ public class DefaultRedisquesConfigurationProviderTest {
                 () -> configurationProvider.configuration().getProcessorDelayMax() == 0L, equalTo(true));
         Awaitility.await().atMost(Duration.ofSeconds(2)).until(
                 () -> configurationProvider.configuration().getProcessorTimeout() == 240000, equalTo(true));
+    }
+
+    private DefaultRedisquesConfigurationProvider createConfigurationProvider(JsonObject config) {
+        DefaultRedisquesConfigurationProvider provider = new DefaultRedisquesConfigurationProvider(vertx, config);
+        provider.acquire().toCompletionStage().toCompletableFuture().join();
+        return provider;
     }
 }

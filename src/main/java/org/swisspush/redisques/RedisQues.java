@@ -126,10 +126,20 @@ public class RedisQues extends AbstractVerticle {
             this.configurationProvider = new DefaultRedisquesConfigurationProvider(vertx, config());
         }
         if (this.configurationProvider instanceof DefaultRedisquesConfigurationProvider) {
-            ((DefaultRedisquesConfigurationProvider) this.configurationProvider).acquire();
-            configurationProviderAcquired = true;
+            ((DefaultRedisquesConfigurationProvider) this.configurationProvider).acquire().onComplete(acquired -> {
+                if (acquired.failed()) {
+                    promise.fail(acquired.cause());
+                } else {
+                    configurationProviderAcquired = true;
+                    startWithConfigurationProvider(promise);
+                }
+            });
+            return;
         }
+        startWithConfigurationProvider(promise);
+    }
 
+    private void startWithConfigurationProvider(Promise<Void> promise) {
         if (this.periodicSkipScheduler == null) {
             this.periodicSkipScheduler = new PeriodicSkipScheduler(vertx);
         }

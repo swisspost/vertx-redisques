@@ -2,6 +2,7 @@ package org.swisspush.redisques.util;
 
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
+import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.eventbus.MessageConsumer;
@@ -27,6 +28,7 @@ public class DefaultRedisquesConfigurationProvider implements RedisquesConfigura
     private final Vertx vertx;
     private final AtomicInteger owners = new AtomicInteger();
     private MessageConsumer<JsonObject> configurationUpdatedConsumer;
+    private Future<Void> consumerRegistration;
     private RedisquesConfiguration redisquesConfiguration;
 
     private static final Set<String> ALLOWED_CONFIGURATION_VALUES = Stream.of("processorDelayMax", "processorTimeout")
@@ -35,17 +37,20 @@ public class DefaultRedisquesConfigurationProvider implements RedisquesConfigura
     public DefaultRedisquesConfigurationProvider(Vertx vertx, JsonObject config) {
         this.vertx = vertx;
         this.redisquesConfiguration = RedisquesConfiguration.fromJsonObject(config);
-
-        registerConfigurationUpdatedConsumer();
     }
 
     /**
      * Acquires this provider for a RedisQues instance.
      */
-    public synchronized void acquire() {
-        if (owners.getAndIncrement() == 0 && !configurationUpdatedConsumer.isRegistered()) {
-            registerConfigurationUpdatedConsumer();
+    public synchronized Future<Void> acquire() {
+        if (owners.getAndIncrement() > 0) {
+            return consumerRegistration == null ? Future.succeededFuture() : consumerRegistration;
         }
+        if (configurationUpdatedConsumer != null && configurationUpdatedConsumer.isRegistered()) {
+            return Future.succeededFuture();
+        }
+        consumerRegistration = registerConfigurationUpdatedConsumer();
+        return consumerRegistration;
     }
 
     /**
@@ -57,17 +62,53 @@ public class DefaultRedisquesConfigurationProvider implements RedisquesConfigura
             owners.incrementAndGet();
             return Future.failedFuture("Configuration provider released without being acquired");
         }
-        if (remainingOwners == 0 && configurationUpdatedConsumer.isRegistered()) {
-            return configurationUpdatedConsumer.unregister();
+        if (remainingOwners == 0) {
+            if (consumerRegistration != null) {
+                return consumerRegistration.compose(ignored -> unregisterConfigurationUpdatedConsumer());
+            }
+            return unregisterConfigurationUpdatedConsumer();
         }
         return Future.succeededFuture();
     }
 
-    private void registerConfigurationUpdatedConsumer() {
-        configurationUpdatedConsumer = vertx.eventBus().consumer(redisquesConfiguration.getConfigurationUpdatedAddress(), (Handler<Message<JsonObject>>) event -> {
-            log.info("Received configurations update");
-            setConfigurationValues(event.body(), false);
-        });
+    private Future<Void> unregisterConfigurationUpdatedConsumer() {
+        return configurationUpdatedConsumer != null && configurationUpdatedConsumer.isRegistered()
+                ? configurationUpdatedConsumer.unregister()
+                : Future.succeededFuture();
+    }
+
+    private Future<Void> registerConfigurationUpdatedConsumer() {
+        Promise<Void> promise = Promise.promise();
+        Thread registrationThread = new Thread(() -> {
+            try {
+                // Avoid binding a shared provider to any individual verticle deployment.
+                MessageConsumer<JsonObject> consumer = vertx.eventBus().consumer(redisquesConfiguration.getConfigurationUpdatedAddress(),
+                        (Handler<Message<JsonObject>>) event -> {
+                            log.info("Received configurations update");
+                            setConfigurationValues(event.body(), false);
+                        });
+                consumer.completionHandler(registration -> {
+                    synchronized (DefaultRedisquesConfigurationProvider.this) {
+                        if (registration.succeeded()) {
+                            configurationUpdatedConsumer = consumer;
+                            consumerRegistration = null;
+                            promise.complete();
+                        } else {
+                            consumerRegistration = null;
+                            promise.fail(registration.cause());
+                        }
+                    }
+                });
+            } catch (RuntimeException ex) {
+                synchronized (this) {
+                    consumerRegistration = null;
+                }
+                promise.fail(ex);
+            }
+        }, "redisques-configuration-provider-registration");
+        registrationThread.setDaemon(true);
+        registrationThread.start();
+        return promise.future();
     }
 
     @Override
