@@ -39,6 +39,7 @@ public class RedisQues extends AbstractVerticle {
     private RedisService redisService;
     private KeyspaceHelper keyspaceHelper;
     private RedisquesConfigurationProvider configurationProvider;
+    private boolean configurationProviderAcquired;
     private MessageConsumerManager consumerManager;
 
     private DequeueStatisticCollector dequeueStatisticCollector;
@@ -122,7 +123,11 @@ public class RedisQues extends AbstractVerticle {
 
         consumerManager = new MessageConsumerManager(vertx);
         if (this.configurationProvider == null) {
-            this.configurationProvider = new DefaultRedisquesConfigurationProvider(vertx, config(), consumerManager);
+            this.configurationProvider = new DefaultRedisquesConfigurationProvider(vertx, config());
+        }
+        if (this.configurationProvider instanceof DefaultRedisquesConfigurationProvider) {
+            ((DefaultRedisquesConfigurationProvider) this.configurationProvider).acquire();
+            configurationProviderAcquired = true;
         }
 
         if (this.periodicSkipScheduler == null) {
@@ -144,7 +149,7 @@ public class RedisQues extends AbstractVerticle {
                     this.dequeueStatisticCollector = new DequeueStatisticCollector(vertx, modConfig.isDequeueStatsEnabled(), redisService, keyspaceHelper);
                 }
                 QueueConfigurationProvider.provider(vertx, configurationProvider.configuration().getQueueConfigurations(),
-                        configurationProvider.configuration().getQueueConfigCleanupInterval(), consumerManager).get().onComplete(event1 -> {
+                        configurationProvider.configuration().getQueueConfigCleanupInterval()).get().onComplete(event1 -> {
                     if (event1.succeeded()) {
                         RedisQues.this.queueConfigurationProvider = event1.result();
                         if (migrationToolDisabled) {
@@ -310,6 +315,10 @@ public class RedisQues extends AbstractVerticle {
         } finally {
             if (consumerManager != null && !consumerManager.isClosed()) {
                 consumerManager.unregisterAll();
+            }
+            if (configurationProviderAcquired) {
+                ((DefaultRedisquesConfigurationProvider) configurationProvider).release();
+                configurationProviderAcquired = false;
             }
             if (redisMonitor != null) {
                 redisMonitor.stop();

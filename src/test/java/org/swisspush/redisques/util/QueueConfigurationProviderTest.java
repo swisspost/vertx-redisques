@@ -1,5 +1,7 @@
 package org.swisspush.redisques.util;
 
+import io.vertx.core.AbstractVerticle;
+import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
@@ -26,10 +28,10 @@ public class QueueConfigurationProviderTest {
         Async async = context.async();
         Vertx vertx = Vertx.vertx();
         MessageConsumerManager consumerManager = new MessageConsumerManager(vertx);
-        QueueConfigurationProvider.provider(vertx, List.of(), 1_000, consumerManager).get().onComplete(event -> {
+        QueueConfigurationProvider.provider(vertx, List.of(), 1_000).get().onComplete(event -> {
             QueueConfigurationProvider provider1 = event.result();
             vertx.executeBlocking(promise -> {
-                QueueConfigurationProvider.provider(vertx, List.of(), 1_000, consumerManager).get().onComplete(event1 -> {
+                QueueConfigurationProvider.provider(vertx, List.of(), 1_000).get().onComplete(event1 -> {
                     context.assertEquals(provider1, event1.result());
                     context.assertEquals(provider1.getUid(), event1.result().getUid());
                     async.complete();
@@ -39,10 +41,42 @@ public class QueueConfigurationProviderTest {
     }
 
     @Test
+    public void testSyncConsumerSurvivesCreatorVerticleUndeploy(TestContext context) {
+        Async async = context.async();
+        Vertx vertx = Vertx.vertx();
+        Promise<QueueConfigurationProvider> providerPromise = Promise.promise();
+
+        vertx.deployVerticle(new AbstractVerticle() {
+            @Override
+            public void start(Promise<Void> startPromise) {
+                QueueConfigurationProvider.provider(vertx, List.of(), 1_000).get()
+                        .onSuccess(provider -> {
+                            providerPromise.complete(provider);
+                            startPromise.complete();
+                        })
+                        .onFailure(startPromise::fail);
+            }
+        }).compose(deploymentId -> vertx.undeploy(deploymentId))
+                .onComplete(context.asyncAssertSuccess(ignored -> {
+                    QueueConfigurationProvider provider = providerPromise.future().result();
+                    JsonObject configuration = createQueueConfiguration("synced-queue").asJsonObject();
+                    vertx.eventBus().publish("redisques_queue_config_eventbus_sync", new JsonObject()
+                            .put("queue_config_sender_id", "another-node")
+                            .put(RedisquesAPI.PER_QUEUE_CONFIG_NAME, "synced")
+                            .put(RedisquesAPI.PAYLOAD, configuration));
+
+                    vertx.setTimer(100, timerId -> {
+                        context.assertNotNull(provider.getQueueConfiguration("synced"));
+                        vertx.close().onComplete(context.asyncAssertSuccess(closed -> async.complete()));
+                    });
+                }));
+    }
+
+    @Test
     public void testQueueConfigUpdate(TestContext context) {
         Async async = context.async();
         Vertx vertx = Vertx.vertx();
-        QueueConfigurationProvider.provider(vertx, List.of(), 1_000, new MessageConsumerManager(vertx)).get().onComplete(event -> {
+        QueueConfigurationProvider.provider(vertx, List.of(), 1_000).get().onComplete(event -> {
             QueueConfigurationProvider provider = event.result();
             context.assertNull(provider.findQueueConfiguration("mytestqueue"));
             JsonObject jsonObject = new JsonObject();
@@ -89,7 +123,7 @@ public class QueueConfigurationProviderTest {
     public void testQueueConfigGetAll(TestContext context) {
         Async async = context.async();
         Vertx vertx = Vertx.vertx();
-        QueueConfigurationProvider.provider(vertx, List.of(), 1_000, new MessageConsumerManager(vertx)).get().onComplete(event -> {
+        QueueConfigurationProvider.provider(vertx, List.of(), 1_000).get().onComplete(event -> {
             QueueConfigurationProvider provider = event.result();
 
             provider.updateQueueConfiguration("my_config_1", createQueueConfiguration("1.*").asJsonObject());
@@ -105,7 +139,7 @@ public class QueueConfigurationProviderTest {
     public void testQueueConfigGetOne(TestContext context) {
         Async async = context.async();
         Vertx vertx = Vertx.vertx();
-        QueueConfigurationProvider.provider(vertx, List.of(), 1_000, new MessageConsumerManager(vertx)).get().onComplete(event -> {
+        QueueConfigurationProvider.provider(vertx, List.of(), 1_000).get().onComplete(event -> {
             QueueConfigurationProvider provider = event.result();
 
             provider.updateQueueConfiguration("my_config_1", createQueueConfiguration("1.*").asJsonObject());
@@ -121,7 +155,7 @@ public class QueueConfigurationProviderTest {
     public void testQueueConfigRemove(TestContext context) {
         Async async = context.async();
         Vertx vertx = Vertx.vertx();
-        QueueConfigurationProvider.provider(vertx, List.of(), 1_000, new MessageConsumerManager(vertx)).get().onComplete(event -> {
+        QueueConfigurationProvider.provider(vertx, List.of(), 1_000).get().onComplete(event -> {
             QueueConfigurationProvider provider = event.result();
 
             provider.updateQueueConfiguration("my_config_1", createQueueConfiguration("1.*").asJsonObject());
@@ -146,7 +180,7 @@ public class QueueConfigurationProviderTest {
     public void testQueueConfigCategoryRead(TestContext context) {
         Async async = context.async();
         Vertx vertx = Vertx.vertx();
-        QueueConfigurationProvider.provider(vertx, List.of(), 1_000, new MessageConsumerManager(vertx)).get().onComplete(event -> {
+        QueueConfigurationProvider.provider(vertx, List.of(), 1_000).get().onComplete(event -> {
             QueueConfigurationProvider provider = event.result();
             context.assertNull(provider.findQueueConfiguration("mytestqueue"));
             JsonObject jsonObject = new JsonObject();
@@ -212,7 +246,7 @@ public class QueueConfigurationProviderTest {
     public void testQueueConfigExpiring(TestContext context) {
         Async async = context.async();
         Vertx vertx = Vertx.vertx();
-        QueueConfigurationProvider.provider(vertx, List.of(), 1_000, new MessageConsumerManager(vertx)).get().onComplete(event -> {
+        QueueConfigurationProvider.provider(vertx, List.of(), 1_000).get().onComplete(event -> {
             QueueConfigurationProvider provider = event.result();
 
             provider.updateQueueConfiguration("my_config_1", createQueueConfiguration("1.*").asJsonObject());

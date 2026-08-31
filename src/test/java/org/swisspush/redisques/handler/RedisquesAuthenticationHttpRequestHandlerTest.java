@@ -59,7 +59,7 @@ public class RedisquesAuthenticationHttpRequestHandlerTest extends AbstractTestC
 
         RedisQues redisQues = RedisQues.builder()
                 .withMemoryUsageProvider(memoryUsageProvider)
-                .withRedisquesRedisquesConfigurationProvider(new DefaultRedisquesConfigurationProvider(testVertx, config, new org.swisspush.redisques.util.MessageConsumerManager(testVertx)))
+                .withRedisquesRedisquesConfigurationProvider(new DefaultRedisquesConfigurationProvider(testVertx, config))
                 .build();
 
         redisQues.disableMigrationTool();
@@ -93,7 +93,7 @@ public class RedisquesAuthenticationHttpRequestHandlerTest extends AbstractTestC
 
         RedisQues redisQues = RedisQues.builder()
                 .withMemoryUsageProvider(memoryUsageProvider)
-                .withRedisquesRedisquesConfigurationProvider(new DefaultRedisquesConfigurationProvider(testVertx, config, new org.swisspush.redisques.util.MessageConsumerManager(testVertx)))
+                .withRedisquesRedisquesConfigurationProvider(new DefaultRedisquesConfigurationProvider(testVertx, config))
                 .build();
 
         redisQues.disableMigrationTool();
@@ -127,7 +127,7 @@ public class RedisquesAuthenticationHttpRequestHandlerTest extends AbstractTestC
 
         RedisQues redisQues = RedisQues.builder()
                 .withMemoryUsageProvider(memoryUsageProvider)
-                .withRedisquesRedisquesConfigurationProvider(new DefaultRedisquesConfigurationProvider(testVertx, config, new org.swisspush.redisques.util.MessageConsumerManager(testVertx)))
+                .withRedisquesRedisquesConfigurationProvider(new DefaultRedisquesConfigurationProvider(testVertx, config))
                 .build();
 
         redisQues.disableMigrationTool();
@@ -161,7 +161,7 @@ public class RedisquesAuthenticationHttpRequestHandlerTest extends AbstractTestC
 
         RedisQues redisQues = RedisQues.builder()
                 .withMemoryUsageProvider(memoryUsageProvider)
-                .withRedisquesRedisquesConfigurationProvider(new DefaultRedisquesConfigurationProvider(testVertx, config, new org.swisspush.redisques.util.MessageConsumerManager(testVertx)))
+                .withRedisquesRedisquesConfigurationProvider(new DefaultRedisquesConfigurationProvider(testVertx, config))
                 .build();
 
         redisQues.disableMigrationTool();
@@ -195,7 +195,7 @@ public class RedisquesAuthenticationHttpRequestHandlerTest extends AbstractTestC
 
         RedisQues redisQues = RedisQues.builder()
                 .withMemoryUsageProvider(memoryUsageProvider)
-                .withRedisquesRedisquesConfigurationProvider(new DefaultRedisquesConfigurationProvider(testVertx, config, new org.swisspush.redisques.util.MessageConsumerManager(testVertx)))
+                .withRedisquesRedisquesConfigurationProvider(new DefaultRedisquesConfigurationProvider(testVertx, config))
                 .build();
 
         redisQues.disableMigrationTool();
@@ -229,7 +229,7 @@ public class RedisquesAuthenticationHttpRequestHandlerTest extends AbstractTestC
 
         RedisQues redisQues = RedisQues.builder()
                 .withMemoryUsageProvider(memoryUsageProvider)
-                .withRedisquesRedisquesConfigurationProvider(new DefaultRedisquesConfigurationProvider(testVertx, config, new org.swisspush.redisques.util.MessageConsumerManager(testVertx)))
+                .withRedisquesRedisquesConfigurationProvider(new DefaultRedisquesConfigurationProvider(testVertx, config))
                 .build();
 
         redisQues.disableMigrationTool();

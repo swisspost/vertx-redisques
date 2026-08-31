@@ -81,7 +81,7 @@ public class QueueStatisticsCollectorTest extends AbstractTestCase {
         memoryUsageProvider = new TestMemoryUsageProvider(Optional.of(50));
         redisQues = RedisQues.builder()
                 .withMemoryUsageProvider(memoryUsageProvider)
-                .withRedisquesRedisquesConfigurationProvider(new DefaultRedisquesConfigurationProvider(vertx, config, consumerManager))
+                .withRedisquesRedisquesConfigurationProvider(new DefaultRedisquesConfigurationProvider(vertx, config))
                 .withMeterRegistry(meterRegistry)
                 .build();
         redisQues.disableMigrationTool();

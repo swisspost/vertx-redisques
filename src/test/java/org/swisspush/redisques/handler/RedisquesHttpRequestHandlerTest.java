@@ -184,7 +184,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         memoryUsageProvider = new TestMemoryUsageProvider(Optional.of(50));
         RedisQues redisQues = RedisQues.builder()
                 .withMemoryUsageProvider(memoryUsageProvider)
-                .withRedisquesRedisquesConfigurationProvider(new DefaultRedisquesConfigurationProvider(testVertx, config, new org.swisspush.redisques.util.MessageConsumerManager(testVertx)))
+                .withRedisquesRedisquesConfigurationProvider(new DefaultRedisquesConfigurationProvider(testVertx, config))
                 .build();
 
         redisQues.disableMigrationTool();

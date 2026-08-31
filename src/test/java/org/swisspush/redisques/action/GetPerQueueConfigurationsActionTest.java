@@ -42,7 +42,7 @@ public class GetPerQueueConfigurationsActionTest {
         Message<JsonObject> message = Mockito.mock(Message.class);
         ArgumentCaptor<JsonObject> captor = ArgumentCaptor.forClass(JsonObject.class);
         when(message.body()).thenReturn(new JsonObject("{\"operation\":\"getPerQueueConfiguration\",\"payload\":{\"filter\":\"*\"}}"));
-        QueueConfigurationProvider.provider(vertx, new ArrayList<>(), 1_000, new MessageConsumerManager(vertx)).get().onComplete(event -> {
+        QueueConfigurationProvider.provider(vertx, new ArrayList<>(), 1_000).get().onComplete(event -> {
             QueueConfigurationProvider queueConfigurationProvider = event.result();
             GetPerQueueConfigurationsAction action = new GetPerQueueConfigurationsAction(queueConfigurationProvider, Mockito.mock(Logger.class));
 
@@ -69,7 +69,7 @@ public class GetPerQueueConfigurationsActionTest {
         Message<JsonObject> message = Mockito.mock(Message.class);
         ArgumentCaptor<JsonObject> captor = ArgumentCaptor.forClass(JsonObject.class);
         when(message.body()).thenReturn(new JsonObject("{\"operation\":\"getPerQueueConfiguration\",\"payload\":{\"configName\":\"test-pattern-3\"}}"));
-        QueueConfigurationProvider.provider(vertx, new ArrayList<>(), 1_000, new MessageConsumerManager(vertx)).get().onComplete(event -> {
+        QueueConfigurationProvider.provider(vertx, new ArrayList<>(), 1_000).get().onComplete(event -> {
             QueueConfigurationProvider queueConfigurationProvider = event.result();
             GetPerQueueConfigurationsAction action = new GetPerQueueConfigurationsAction(queueConfigurationProvider, Mockito.mock(Logger.class));
 

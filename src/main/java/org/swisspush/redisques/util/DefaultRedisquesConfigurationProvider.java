@@ -1,8 +1,10 @@
 package org.swisspush.redisques.util;
 
+import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.Message;
+import io.vertx.core.eventbus.MessageConsumer;
 import io.vertx.core.json.JsonObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -10,6 +12,7 @@ import org.slf4j.LoggerFactory;
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -22,16 +25,46 @@ public class DefaultRedisquesConfigurationProvider implements RedisquesConfigura
 
     private final Logger log = LoggerFactory.getLogger(DefaultRedisquesConfigurationProvider.class);
     private final Vertx vertx;
+    private final AtomicInteger owners = new AtomicInteger();
+    private MessageConsumer<JsonObject> configurationUpdatedConsumer;
     private RedisquesConfiguration redisquesConfiguration;
 
     private static final Set<String> ALLOWED_CONFIGURATION_VALUES = Stream.of("processorDelayMax", "processorTimeout")
             .collect(Collectors.toSet());
 
-    public DefaultRedisquesConfigurationProvider(Vertx vertx, JsonObject config, MessageConsumerManager consumerManager) {
+    public DefaultRedisquesConfigurationProvider(Vertx vertx, JsonObject config) {
         this.vertx = vertx;
         this.redisquesConfiguration = RedisquesConfiguration.fromJsonObject(config);
 
-        consumerManager.consumer(redisquesConfiguration.getConfigurationUpdatedAddress(), (Handler<Message<JsonObject>>) event -> {
+        registerConfigurationUpdatedConsumer();
+    }
+
+    /**
+     * Acquires this provider for a RedisQues instance.
+     */
+    public synchronized void acquire() {
+        if (owners.getAndIncrement() == 0 && !configurationUpdatedConsumer.isRegistered()) {
+            registerConfigurationUpdatedConsumer();
+        }
+    }
+
+    /**
+     * Releases a RedisQues instance and unregisters the consumer when it was the last owner.
+     */
+    public synchronized Future<Void> release() {
+        int remainingOwners = owners.decrementAndGet();
+        if (remainingOwners < 0) {
+            owners.incrementAndGet();
+            return Future.failedFuture("Configuration provider released without being acquired");
+        }
+        if (remainingOwners == 0 && configurationUpdatedConsumer.isRegistered()) {
+            return configurationUpdatedConsumer.unregister();
+        }
+        return Future.succeededFuture();
+    }
+
+    private void registerConfigurationUpdatedConsumer() {
+        configurationUpdatedConsumer = vertx.eventBus().consumer(redisquesConfiguration.getConfigurationUpdatedAddress(), (Handler<Message<JsonObject>>) event -> {
             log.info("Received configurations update");
             setConfigurationValues(event.body(), false);
         });

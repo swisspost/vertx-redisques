@@ -64,7 +64,7 @@ public class GetQueueRunningStatesActionTest extends AbstractTestCase {
         memoryUsageProvider = new TestMemoryUsageProvider(Optional.of(50));
         redisQues = RedisQues.builder()
                 .withMemoryUsageProvider(memoryUsageProvider)
-                .withRedisquesRedisquesConfigurationProvider(new DefaultRedisquesConfigurationProvider(vertx, config, new MessageConsumerManager(vertx)))
+                .withRedisquesRedisquesConfigurationProvider(new DefaultRedisquesConfigurationProvider(vertx, config))
                 .withMeterRegistry(meterRegistry)
                 .build();
         redisQues.disableMigrationTool();

@@ -70,7 +70,7 @@ public class MetricsCollectorTest extends AbstractTestCase {
         meterRegistry = new SimpleMeterRegistry();
         keyspaceHelper = Mockito.mock(KeyspaceHelper.class);
         redisQues = RedisQues.builder()
-                .withRedisquesRedisquesConfigurationProvider(new DefaultRedisquesConfigurationProvider(vertx, config, new org.swisspush.redisques.util.MessageConsumerManager(vertx)))
+                .withRedisquesRedisquesConfigurationProvider(new DefaultRedisquesConfigurationProvider(vertx, config))
                 .withMeterRegistry(meterRegistry)
                 .build();
 
