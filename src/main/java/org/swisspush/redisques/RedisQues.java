@@ -4,6 +4,7 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Strings;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.vertx.core.AbstractVerticle;
+import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.Promise;
 import io.vertx.core.eventbus.Message;
@@ -127,12 +128,14 @@ public class RedisQues extends AbstractVerticle {
         }
         if (this.configurationProvider instanceof DefaultRedisquesConfigurationProvider) {
             ((DefaultRedisquesConfigurationProvider) this.configurationProvider).acquire().onComplete(acquired -> {
-                if (acquired.failed()) {
-                    promise.fail(acquired.cause());
-                } else {
-                    configurationProviderAcquired = true;
-                    startWithConfigurationProvider(promise);
-                }
+                context.runOnContext(ignored -> {
+                    if (acquired.failed()) {
+                        promise.fail(acquired.cause());
+                    } else {
+                        configurationProviderAcquired = true;
+                        startWithConfigurationProvider(promise);
+                    }
+                });
             });
             return;
         }
@@ -314,27 +317,25 @@ public class RedisQues extends AbstractVerticle {
     }
 
     @Override
-    public void stop() {
-        try {
-            if (queueRegistryService != null) {
-                queueRegistryService.stop();
-            }
-            if (operationsMessageConsumer != null) {
-                operationsMessageConsumer = null;
-            }
-        } finally {
-            if (consumerManager != null && !consumerManager.isClosed()) {
-                consumerManager.unregisterAll();
-            }
-            if (configurationProviderAcquired) {
-                ((DefaultRedisquesConfigurationProvider) configurationProvider).release();
-                configurationProviderAcquired = false;
-            }
-            if (redisMonitor != null) {
-                redisMonitor.stop();
-                redisMonitor = null;
-            }
+    public void stop(Promise<Void> stopPromise) {
+        if (redisMonitor != null) {
+            redisMonitor.stop();
+            redisMonitor = null;
         }
+
+        Future<Void> registryStop = queueRegistryService == null
+                ? Future.succeededFuture()
+                : queueRegistryService.stop();
+        Future<Void> consumerStop = consumerManager == null || consumerManager.isClosed()
+                ? Future.succeededFuture()
+                : consumerManager.unregisterAll();
+        Future<Void> configurationStop = Future.succeededFuture();
+        if (configurationProviderAcquired) {
+            configurationProviderAcquired = false;
+            configurationStop = ((DefaultRedisquesConfigurationProvider) configurationProvider).release();
+        }
+
+        Future.join(registryStop, consumerStop, configurationStop).<Void>mapEmpty().onComplete(stopPromise);
     }
 
     public QueueStatisticsCollector getQueueStatisticsCollector() {

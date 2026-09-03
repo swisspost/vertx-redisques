@@ -8,6 +8,8 @@ import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.eventbus.MessageConsumer;
+import io.vertx.core.impl.ContextInternal;
+import io.vertx.core.impl.VertxInternal;
 import io.vertx.core.json.JsonObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -124,7 +126,8 @@ public class QueueConfigurationProvider {
 
     private Future<Void> registerNodeLocalEventBusConsumer(long cleanupInterval) {
         Promise<Void> promise = Promise.promise();
-        Thread registrationThread = new Thread(() -> {
+        ContextInternal context = ((VertxInternal) vertx).createEventLoopContext();
+        context.runOnContext(ignored -> {
             try {
                 // A non-deployment context deliberately makes this consumer live for the Vert.x instance.
                 MessageConsumer<JsonObject> consumer = vertx.eventBus().<JsonObject>consumer(QUEUE_CONFIG_EVENTBUS_SYNC_KEY,
@@ -141,9 +144,7 @@ public class QueueConfigurationProvider {
             } catch (RuntimeException ex) {
                 promise.fail(ex);
             }
-        }, "redisques-queue-configuration-registration");
-        registrationThread.setDaemon(true);
-        registrationThread.start();
+        });
         return promise.future();
     }
 

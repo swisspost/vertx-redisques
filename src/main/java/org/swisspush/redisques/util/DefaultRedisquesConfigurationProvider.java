@@ -6,6 +6,8 @@ import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.eventbus.MessageConsumer;
+import io.vertx.core.impl.ContextInternal;
+import io.vertx.core.impl.VertxInternal;
 import io.vertx.core.json.JsonObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,7 +31,7 @@ public class DefaultRedisquesConfigurationProvider implements RedisquesConfigura
     private final AtomicInteger owners = new AtomicInteger();
     private MessageConsumer<JsonObject> configurationUpdatedConsumer;
     private Future<Void> consumerRegistration;
-    private RedisquesConfiguration redisquesConfiguration;
+    private volatile RedisquesConfiguration redisquesConfiguration;
 
     private static final Set<String> ALLOWED_CONFIGURATION_VALUES = Stream.of("processorDelayMax", "processorTimeout")
             .collect(Collectors.toSet());
@@ -79,7 +81,8 @@ public class DefaultRedisquesConfigurationProvider implements RedisquesConfigura
 
     private Future<Void> registerConfigurationUpdatedConsumer() {
         Promise<Void> promise = Promise.promise();
-        Thread registrationThread = new Thread(() -> {
+        ContextInternal context = ((VertxInternal) vertx).createEventLoopContext();
+        context.runOnContext(ignored -> {
             try {
                 // Avoid binding a shared provider to any individual verticle deployment.
                 MessageConsumer<JsonObject> consumer = vertx.eventBus().consumer(redisquesConfiguration.getConfigurationUpdatedAddress(),
@@ -95,6 +98,7 @@ public class DefaultRedisquesConfigurationProvider implements RedisquesConfigura
                             promise.complete();
                         } else {
                             consumerRegistration = null;
+                            owners.decrementAndGet();
                             promise.fail(registration.cause());
                         }
                     }
@@ -102,12 +106,11 @@ public class DefaultRedisquesConfigurationProvider implements RedisquesConfigura
             } catch (RuntimeException ex) {
                 synchronized (this) {
                     consumerRegistration = null;
+                    owners.decrementAndGet();
                 }
                 promise.fail(ex);
             }
-        }, "redisques-configuration-provider-registration");
-        registrationThread.setDaemon(true);
-        registrationThread.start();
+        });
         return promise.future();
     }
 

@@ -71,18 +71,9 @@ public class QueueRegistryService {
     protected Set<String> aliveConsumers = ConcurrentHashMap.newKeySet();
 
 
-    public void stop() {
+    public Future<Void> stop() {
         queueStatisticsCollector.stop();
-        unregisterAll(Arrays.asList(consumersMessageConsumer, uidMessageConsumer, notifyConsumer))
-                .onFailure(event -> log.warn("TODO error handling", exceptionFactory.newException(
-                        "unregister QueueRegistryService eventbus consumers failed", event)));
-        queueConsumerRunner.unregisterConsumers(event -> {
-            if (event.failed()) {
-                log.warn("TODO error handling", exceptionFactory.newException(
-                        "unregister QueueConsumerRunner eventbus consumers failed", event.cause()));
-            }
-        });
-        unregisterRedisQueueConsumers(UnregisterConsumerType.FORCE);
+        return unregisterRedisQueueConsumers(UnregisterConsumerType.FORCE);
     }
 
     public QueueRegistryService(Vertx vertx, RedisService redisService, RedisquesConfigurationProvider configurationProvider,

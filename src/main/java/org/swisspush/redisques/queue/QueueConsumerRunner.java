@@ -126,7 +126,7 @@ public class QueueConsumerRunner {
 
 
 
-    public void unregisterConsumers(Handler<AsyncResult<Void>> handler) {
+    public Future<Void> unregisterConsumers() {
         List<Future<?>> unregisterFutures = new ArrayList<>();
         if (trimRequestConsumer != null && trimRequestConsumer.isRegistered()) {
             unregisterFutures.add(trimRequestConsumer.unregister());
@@ -138,16 +138,13 @@ public class QueueConsumerRunner {
             unregisterFutures.add(metricsCollectorConsumer.unregister());
         }
         if (unregisterFutures.isEmpty()) {
-            handler.handle(Future.succeededFuture());
-            return;
+            return Future.succeededFuture();
         }
-        Future.join(unregisterFutures).onComplete(ar -> {
-            if (ar.succeeded()) {
-                handler.handle(Future.succeededFuture());
-            } else {
-                handler.handle(Future.failedFuture(ar.cause()));
-            }
-        });
+        return Future.join(unregisterFutures).mapEmpty();
+    }
+
+    public void unregisterConsumers(Handler<AsyncResult<Void>> handler) {
+        unregisterConsumers().onComplete(handler);
     }
 
     public Future<Void> consume(final String queueName) {
