@@ -45,13 +45,15 @@ public class DefaultRedisquesConfigurationProvider implements RedisquesConfigura
      * Acquires this provider for a RedisQues instance.
      */
     public synchronized Future<Void> acquire() {
-        if (owners.getAndIncrement() > 0) {
-            return consumerRegistration == null ? Future.succeededFuture() : consumerRegistration;
-        }
         if (configurationUpdatedConsumer != null && configurationUpdatedConsumer.isRegistered()) {
+            owners.incrementAndGet();
             return Future.succeededFuture();
         }
-        consumerRegistration = registerConfigurationUpdatedConsumer();
+        if (consumerRegistration != null) {
+            return consumerRegistration.onSuccess(ignored -> owners.incrementAndGet());
+        }
+        consumerRegistration = registerConfigurationUpdatedConsumer()
+                .onSuccess(ignored -> owners.incrementAndGet());
         return consumerRegistration;
     }
 
@@ -98,7 +100,6 @@ public class DefaultRedisquesConfigurationProvider implements RedisquesConfigura
                             promise.complete();
                         } else {
                             consumerRegistration = null;
-                            owners.decrementAndGet();
                             promise.fail(registration.cause());
                         }
                     }
@@ -106,7 +107,6 @@ public class DefaultRedisquesConfigurationProvider implements RedisquesConfigura
             } catch (RuntimeException ex) {
                 synchronized (this) {
                     consumerRegistration = null;
-                    owners.decrementAndGet();
                 }
                 promise.fail(ex);
             }

@@ -1,5 +1,6 @@
 package org.swisspush.redisques.util;
 
+import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.DeliveryOptions;
 import io.vertx.core.eventbus.ReplyException;
@@ -13,7 +14,11 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
+import java.lang.reflect.Field;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.hamcrest.CoreMatchers.equalTo;
 
@@ -94,6 +99,92 @@ public class DefaultRedisquesConfigurationProviderTest {
                                             vertx.close().onComplete(context.asyncAssertSuccess(closed -> async.complete()));
                                         }))));
                     });
+                }));
+    }
+
+    @Test
+    public void testConcurrentAcquiresAreCountedAfterRegistration(TestContext context) {
+        Async async = context.async();
+        DefaultRedisquesConfigurationProvider provider = new DefaultRedisquesConfigurationProvider(vertx, new JsonObject());
+
+        Future<Void> firstAcquire = provider.acquire();
+        Future<Void> secondAcquire = provider.acquire();
+
+        Future.join(firstAcquire, secondAcquire)
+                .compose(ignored -> provider.release())
+                .compose(ignored -> provider.release())
+                .compose(ignored -> provider.release())
+                .onComplete(context.asyncAssertFailure(cause -> {
+                    context.assertEquals("Configuration provider released without being acquired", cause.getMessage());
+                    vertx.close().onComplete(context.asyncAssertSuccess(closed -> async.complete()));
+                }));
+    }
+
+    @Test
+    public void testFailedAcquireDoesNotChangeOwnerCount(TestContext context) throws Exception {
+        Async async = context.async();
+        JsonObject config = new JsonObject().putNull(RedisquesConfiguration.PROP_CONFIGURATION_UPDATED_ADDRESS);
+        DefaultRedisquesConfigurationProvider provider = new DefaultRedisquesConfigurationProvider(vertx, config);
+        AtomicInteger owners = ownersOf(provider);
+
+        provider.acquire().onComplete(context.asyncAssertFailure(cause -> {
+            context.assertEquals(0, owners.get());
+            provider.release().onComplete(context.asyncAssertFailure(releaseCause -> {
+                context.assertEquals("Configuration provider released without being acquired", releaseCause.getMessage());
+                context.assertEquals(0, owners.get());
+                vertx.close().onComplete(context.asyncAssertSuccess(closed -> async.complete()));
+            }));
+        }));
+    }
+
+    @Test
+    public void testOwnerCountAcrossRegistrationsFailuresAndUnregistrations(TestContext context) throws Exception {
+        Async async = context.async();
+        DefaultRedisquesConfigurationProvider provider =
+                new DefaultRedisquesConfigurationProvider(vertx, new JsonObject());
+        DefaultRedisquesConfigurationProvider failingProvider = new DefaultRedisquesConfigurationProvider(
+                vertx, new JsonObject().putNull(RedisquesConfiguration.PROP_CONFIGURATION_UPDATED_ADDRESS));
+        AtomicInteger owners = ownersOf(provider);
+        AtomicInteger failingOwners = ownersOf(failingProvider);
+        int numberOfOwners = 25;
+
+        List<Future<Void>> acquisitions = new ArrayList<>();
+        for (int i = 0; i < numberOfOwners; i++) {
+            acquisitions.add(provider.acquire());
+        }
+
+        Future.join(acquisitions).mapEmpty()
+                .compose(ignored -> {
+                    context.assertEquals(numberOfOwners, owners.get());
+                    return release(provider, numberOfOwners - 1);
+                })
+                .compose(ignored -> {
+                    context.assertEquals(1, owners.get());
+                    return provider.release();
+                })
+                .compose(ignored -> {
+                    context.assertEquals(0, owners.get());
+                    return provider.acquire();
+                })
+                .compose(ignored -> {
+                    context.assertEquals(1, owners.get());
+                    return provider.release();
+                })
+                .compose(ignored -> {
+                    context.assertEquals(0, owners.get());
+                    List<Future<Void>> failedAcquisitions = new ArrayList<>();
+                    for (int i = 0; i < numberOfOwners; i++) {
+                        failedAcquisitions.add(expectFailure(failingProvider.acquire()));
+                    }
+                    return Future.join(failedAcquisitions).mapEmpty();
+                })
+                .compose(ignored -> {
+                    context.assertEquals(0, failingOwners.get());
+                    return expectFailure(failingProvider.release());
+                })
+                .onComplete(context.asyncAssertSuccess(ignored -> {
+                    context.assertEquals(0, failingOwners.get());
+                    vertx.close().onComplete(context.asyncAssertSuccess(closed -> async.complete()));
                 }));
     }
 
@@ -424,5 +515,25 @@ public class DefaultRedisquesConfigurationProviderTest {
         DefaultRedisquesConfigurationProvider provider = new DefaultRedisquesConfigurationProvider(vertx, config);
         provider.acquire().toCompletionStage().toCompletableFuture().join();
         return provider;
+    }
+
+    private Future<Void> release(DefaultRedisquesConfigurationProvider provider, int times) {
+        Future<Void> releases = Future.succeededFuture();
+        for (int i = 0; i < times; i++) {
+            releases = releases.compose(ignored -> provider.release());
+        }
+        return releases;
+    }
+
+    private Future<Void> expectFailure(Future<Void> future) {
+        return future.compose(
+                ignored -> Future.failedFuture("Expected operation to fail"),
+                cause -> Future.succeededFuture());
+    }
+
+    private AtomicInteger ownersOf(DefaultRedisquesConfigurationProvider provider) throws Exception {
+        Field ownersField = DefaultRedisquesConfigurationProvider.class.getDeclaredField("owners");
+        ownersField.setAccessible(true);
+        return (AtomicInteger) ownersField.get(provider);
     }
 }
