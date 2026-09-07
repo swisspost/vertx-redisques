@@ -204,14 +204,26 @@ public class RedisQuesTest extends AbstractTestCase {
 
             eventBusSend(buildSetConfigurationOperation(new JsonObject().put(PROCESSOR_DELAY_MAX, 1234)), setConfig -> {
                 context.assertEquals(OK, setConfig.result().body().getString(STATUS));
-                eventBusSend(buildGetConfigurationOperation(), getConfigAgain -> {
-                    context.assertEquals(OK, getConfigAgain.result().body().getString(STATUS));
-                    JsonObject updatedConfig = getConfigAgain.result().body().getJsonObject(VALUE);
-                    context.assertNotNull(updatedConfig);
-                    context.assertEquals(updatedConfig.getLong(PROCESSOR_DELAY_MAX), 1234L);
-                    async.complete();
-                });
+                assertProcessorDelayMaxEventually(context, async, 1234L, System.currentTimeMillis() + 2000);
             });
+        });
+    }
+
+    private void assertProcessorDelayMaxEventually(TestContext context, Async async, long expected, long deadline) {
+        eventBusSend(buildGetConfigurationOperation(), getConfig -> {
+            context.assertTrue(getConfig.succeeded());
+            context.assertEquals(OK, getConfig.result().body().getString(STATUS));
+            JsonObject configuration = getConfig.result().body().getJsonObject(VALUE);
+            context.assertNotNull(configuration);
+            Long actual = configuration.getLong(PROCESSOR_DELAY_MAX);
+            if (Long.valueOf(expected).equals(actual)) {
+                async.complete();
+            } else if (System.currentTimeMillis() >= deadline) {
+                context.assertEquals(expected, actual);
+            } else {
+                vertx.setTimer(10, ignored ->
+                        assertProcessorDelayMaxEventually(context, async, expected, deadline));
+            }
         });
     }
 

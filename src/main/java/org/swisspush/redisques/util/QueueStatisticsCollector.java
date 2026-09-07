@@ -8,7 +8,6 @@ import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.redis.client.Command;
 import io.vertx.redis.client.Response;
-import io.vertx.redis.client.impl.types.NumberType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
@@ -25,7 +24,6 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Semaphore;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
 
@@ -104,9 +102,8 @@ public class QueueStatisticsCollector {
     }
 
     /**
-     * Stops the QueueStatisticsCollector by unregistering the EventBus consumer and cancelling
-     * the periodic speed statistics timer. This method should be called during shutdown to prevent
-     * stale EventBus subscriptions in clustered environments.
+     * Stops the QueueStatisticsCollector by cancelling the periodic speed statistics timer.
+     * QueueStatisticsCollector does not register an EventBus consumer itself.
      */
     public void stop() {
         log.debug("Stopping QueueStatisticsCollector");

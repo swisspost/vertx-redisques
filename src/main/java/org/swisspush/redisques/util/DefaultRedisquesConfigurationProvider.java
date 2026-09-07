@@ -1,8 +1,13 @@
 package org.swisspush.redisques.util;
 
+import io.vertx.core.Future;
 import io.vertx.core.Handler;
+import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.Message;
+import io.vertx.core.eventbus.MessageConsumer;
+import io.vertx.core.impl.ContextInternal;
+import io.vertx.core.impl.VertxInternal;
 import io.vertx.core.json.JsonObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -10,6 +15,7 @@ import org.slf4j.LoggerFactory;
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -22,7 +28,10 @@ public class DefaultRedisquesConfigurationProvider implements RedisquesConfigura
 
     private final Logger log = LoggerFactory.getLogger(DefaultRedisquesConfigurationProvider.class);
     private final Vertx vertx;
-    private RedisquesConfiguration redisquesConfiguration;
+    private final AtomicInteger owners = new AtomicInteger();
+    private MessageConsumer<JsonObject> configurationUpdatedConsumer;
+    private Future<Void> consumerRegistration;
+    private volatile RedisquesConfiguration redisquesConfiguration;
 
     private static final Set<String> ALLOWED_CONFIGURATION_VALUES = Stream.of("processorDelayMax", "processorTimeout")
             .collect(Collectors.toSet());
@@ -30,11 +39,79 @@ public class DefaultRedisquesConfigurationProvider implements RedisquesConfigura
     public DefaultRedisquesConfigurationProvider(Vertx vertx, JsonObject config) {
         this.vertx = vertx;
         this.redisquesConfiguration = RedisquesConfiguration.fromJsonObject(config);
+    }
 
-        vertx.eventBus().consumer(redisquesConfiguration.getConfigurationUpdatedAddress(), (Handler<Message<JsonObject>>) event -> {
-            log.info("Received configurations update");
-            setConfigurationValues(event.body(), false);
+    /**
+     * Acquires this provider for a RedisQues instance.
+     */
+    public synchronized Future<Void> acquire() {
+        if (configurationUpdatedConsumer != null && configurationUpdatedConsumer.isRegistered()) {
+            owners.incrementAndGet();
+            return Future.succeededFuture();
+        }
+        if (consumerRegistration != null) {
+            return consumerRegistration.onSuccess(ignored -> owners.incrementAndGet());
+        }
+        consumerRegistration = registerConfigurationUpdatedConsumer()
+                .onSuccess(ignored -> owners.incrementAndGet());
+        return consumerRegistration;
+    }
+
+    /**
+     * Releases a RedisQues instance and unregisters the consumer when it was the last owner.
+     */
+    public synchronized Future<Void> release() {
+        int remainingOwners = owners.decrementAndGet();
+        if (remainingOwners < 0) {
+            owners.incrementAndGet();
+            return Future.failedFuture("Configuration provider released without being acquired");
+        }
+        if (remainingOwners == 0) {
+            if (consumerRegistration != null) {
+                return consumerRegistration.compose(ignored -> unregisterConfigurationUpdatedConsumer());
+            }
+            return unregisterConfigurationUpdatedConsumer();
+        }
+        return Future.succeededFuture();
+    }
+
+    private Future<Void> unregisterConfigurationUpdatedConsumer() {
+        return configurationUpdatedConsumer != null && configurationUpdatedConsumer.isRegistered()
+                ? configurationUpdatedConsumer.unregister()
+                : Future.succeededFuture();
+    }
+
+    private Future<Void> registerConfigurationUpdatedConsumer() {
+        Promise<Void> promise = Promise.promise();
+        ContextInternal context = ((VertxInternal) vertx).createEventLoopContext();
+        context.runOnContext(ignored -> {
+            try {
+                // Avoid binding a shared provider to any individual verticle deployment.
+                MessageConsumer<JsonObject> consumer = vertx.eventBus().consumer(redisquesConfiguration.getConfigurationUpdatedAddress(),
+                        (Handler<Message<JsonObject>>) event -> {
+                            log.info("Received configurations update");
+                            setConfigurationValues(event.body(), false);
+                        });
+                consumer.completionHandler(registration -> {
+                    synchronized (DefaultRedisquesConfigurationProvider.this) {
+                        if (registration.succeeded()) {
+                            configurationUpdatedConsumer = consumer;
+                            consumerRegistration = null;
+                            promise.complete();
+                        } else {
+                            consumerRegistration = null;
+                            promise.fail(registration.cause());
+                        }
+                    }
+                });
+            } catch (RuntimeException ex) {
+                synchronized (this) {
+                    consumerRegistration = null;
+                }
+                promise.fail(ex);
+            }
         });
+        return promise.future();
     }
 
     @Override

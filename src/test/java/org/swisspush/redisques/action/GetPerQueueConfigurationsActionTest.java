@@ -12,6 +12,7 @@ import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import org.slf4j.Logger;
+import org.swisspush.redisques.util.MessageConsumerManager;
 import org.swisspush.redisques.util.QueueConfiguration;
 import org.swisspush.redisques.util.QueueConfigurationProvider;
 
@@ -27,6 +28,8 @@ import static org.mockito.Mockito.when;
 @RunWith(VertxUnitRunner.class)
 public class GetPerQueueConfigurationsActionTest {
 
+
+
     @Before
     public void setUp() {
         QueueConfigurationProvider.reset();
@@ -35,10 +38,11 @@ public class GetPerQueueConfigurationsActionTest {
     @Test
     public void testQueueConfigurationAction_getAll(TestContext context) {
         final Async async = context.async();
+        final Vertx vertx = Vertx.vertx();
         Message<JsonObject> message = Mockito.mock(Message.class);
         ArgumentCaptor<JsonObject> captor = ArgumentCaptor.forClass(JsonObject.class);
         when(message.body()).thenReturn(new JsonObject("{\"operation\":\"getPerQueueConfiguration\",\"payload\":{\"filter\":\"*\"}}"));
-        QueueConfigurationProvider.provider(Vertx.vertx(), new ArrayList<>(), 1_000).get().onComplete(event -> {
+        QueueConfigurationProvider.provider(vertx, new ArrayList<>(), 1_000).get().onComplete(event -> {
             QueueConfigurationProvider queueConfigurationProvider = event.result();
             GetPerQueueConfigurationsAction action = new GetPerQueueConfigurationsAction(queueConfigurationProvider, Mockito.mock(Logger.class));
 
@@ -61,10 +65,11 @@ public class GetPerQueueConfigurationsActionTest {
     @Test
     public void testQueueConfigurationAction_getSpecified(TestContext context) {
         final Async async = context.async();
+        final Vertx vertx = Vertx.vertx();
         Message<JsonObject> message = Mockito.mock(Message.class);
         ArgumentCaptor<JsonObject> captor = ArgumentCaptor.forClass(JsonObject.class);
         when(message.body()).thenReturn(new JsonObject("{\"operation\":\"getPerQueueConfiguration\",\"payload\":{\"configName\":\"test-pattern-3\"}}"));
-        QueueConfigurationProvider.provider(Vertx.vertx(), new ArrayList<>(), 1_000).get().onComplete(event -> {
+        QueueConfigurationProvider.provider(vertx, new ArrayList<>(), 1_000).get().onComplete(event -> {
             QueueConfigurationProvider queueConfigurationProvider = event.result();
             GetPerQueueConfigurationsAction action = new GetPerQueueConfigurationsAction(queueConfigurationProvider, Mockito.mock(Logger.class));
 

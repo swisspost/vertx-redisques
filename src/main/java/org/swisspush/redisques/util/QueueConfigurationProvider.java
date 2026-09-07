@@ -4,8 +4,12 @@ import com.google.common.annotations.VisibleForTesting;
 import io.netty.util.internal.StringUtil;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
+import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.Message;
+import io.vertx.core.eventbus.MessageConsumer;
+import io.vertx.core.impl.ContextInternal;
+import io.vertx.core.impl.VertxInternal;
 import io.vertx.core.json.JsonObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -71,63 +75,87 @@ public class QueueConfigurationProvider {
     }
 
 
-    private QueueConfigurationProvider(Vertx vertx, List<QueueConfiguration> defaultQueueConfigurations, long cleanupInterval) {
+    private QueueConfigurationProvider(Vertx vertx, List<QueueConfiguration> defaultQueueConfigurations) {
         this.vertx = vertx;
         this.defaultQueueConfigurations = defaultQueueConfigurations;
         loadStaticConfigs();
-        vertx.eventBus().consumer(QUEUE_CONFIG_EVENTBUS_SYNC_KEY, (Handler<Message<JsonObject>>) event -> {
+    }
 
-            // message structure
-            // {
-            //   "queue_config_sender_id": "uid",       #The sender's UID, to prevents sender consumer the message from itself
-            //   "operation": "DELETE",                 #The operation of the message
-            //   "configName": "name for config set",   #The name to identify the config
-            //   "payload": {                           #The config itself
-            //                "pattern": "queue.filter.regex",
-            //                "maxQueueEntries": 0,
-            //                "enqueueDelayFactorMillis": 0,
-            //                "enqueueMaxDelayMillis": 0,
-            //                "retryIntervals": [1, 2, 3]
-            //              }
-            // }
-            if (!event.body().containsKey(QUEUE_CONFIG_SENDER_ID)) {
-                return;
-            }
-            JsonObject body = event.body();
-            if (uid.equals(body.getString(QUEUE_CONFIG_SENDER_ID))) {
-                log.debug("publish msg from my self, drop it.");
-                return;
-            }
-            if (body.containsKey(RedisquesAPI.OPERATION)) {
-                String operation = body.getString(RedisquesAPI.OPERATION);
-                if (DELETE.equals(operation)) {
-                    final String configName = event.body().getString(RedisquesAPI.PER_QUEUE_CONFIG_NAME);
-                    QueueConfiguration removedConfig = queueConfigurations.remove(configName);
-                    if (removedConfig != null) {
-                        removeQueueConfigurationCategories(removedConfig);
-                    }
-                    log.debug("delete config {} from instance {}", configName, uid);
-                } else {
-                    log.warn("Unsupported operation: {}", operation);
+    private void handleQueueConfigurationSync(Message<JsonObject> event) {
+        // message structure
+        // {
+        //   "queue_config_sender_id": "uid",       #The sender's UID, to prevents sender consumer the message from itself
+        //   "operation": "DELETE",                 #The operation of the message
+        //   "configName": "name for config set",   #The name to identify the config
+        //   "payload": {                           #The config itself
+        //                "pattern": "queue.filter.regex",
+        //                "maxQueueEntries": 0,
+        //                "enqueueDelayFactorMillis": 0,
+        //                "enqueueMaxDelayMillis": 0,
+        //                "retryIntervals": [1, 2, 3]
+        //              }
+        // }
+        if (!event.body().containsKey(QUEUE_CONFIG_SENDER_ID)) {
+            return;
+        }
+        JsonObject body = event.body();
+        if (uid.equals(body.getString(QUEUE_CONFIG_SENDER_ID))) {
+            log.debug("publish msg from my self, drop it.");
+            return;
+        }
+        if (body.containsKey(RedisquesAPI.OPERATION)) {
+            String operation = body.getString(RedisquesAPI.OPERATION);
+            if (DELETE.equals(operation)) {
+                final String configName = event.body().getString(RedisquesAPI.PER_QUEUE_CONFIG_NAME);
+                QueueConfiguration removedConfig = queueConfigurations.remove(configName);
+                if (removedConfig != null) {
+                    removeQueueConfigurationCategories(removedConfig);
                 }
+                log.debug("delete config {} from instance {}", configName, uid);
             } else {
-                // we need a message have both name and config body for add or update
-                if (body.containsKey(RedisquesAPI.PAYLOAD) && body.containsKey(RedisquesAPI.PER_QUEUE_CONFIG_NAME)) {
-                    String name = body.getString(RedisquesAPI.PER_QUEUE_CONFIG_NAME);
-                    updateQueueConfigurationInternal(name, body.getJsonObject(RedisquesAPI.PAYLOAD));
-                }
+                log.warn("Unsupported operation: {}", operation);
+            }
+        } else {
+            // we need a message have both name and config body for add or update
+            if (body.containsKey(RedisquesAPI.PAYLOAD) && body.containsKey(RedisquesAPI.PER_QUEUE_CONFIG_NAME)) {
+                String name = body.getString(RedisquesAPI.PER_QUEUE_CONFIG_NAME);
+                updateQueueConfigurationInternal(name, body.getJsonObject(RedisquesAPI.PAYLOAD));
+            }
+        }
+    }
+
+    private Future<Void> registerNodeLocalEventBusConsumer(long cleanupInterval) {
+        Promise<Void> promise = Promise.promise();
+        ContextInternal context = ((VertxInternal) vertx).createEventLoopContext();
+        context.runOnContext(ignored -> {
+            try {
+                // A non-deployment context deliberately makes this consumer live for the Vert.x instance.
+                MessageConsumer<JsonObject> consumer = vertx.eventBus().<JsonObject>consumer(QUEUE_CONFIG_EVENTBUS_SYNC_KEY,
+                        QueueConfigurationProvider.this::handleQueueConfigurationSync);
+                consumer.completionHandler(registration -> {
+                    if (registration.succeeded()) {
+                        vertx.setPeriodic(Math.max(MIN_QUEUE_CONFIG_CLEANUP_INTERVAL, cleanupInterval),
+                                event -> queueConfigurationCleanUp());
+                        promise.complete();
+                    } else {
+                        promise.fail(registration.cause());
+                    }
+                });
+            } catch (RuntimeException ex) {
+                promise.fail(ex);
             }
         });
-
-        // QueueConfiguration cleanup
-        vertx.setPeriodic(Math.max(MIN_QUEUE_CONFIG_CLEANUP_INTERVAL, cleanupInterval), event -> queueConfigurationCleanUp());
+        return promise.future();
     }
 
     public static NodeLocalSingletonProvider<QueueConfigurationProvider> provider(Vertx vertx, List<QueueConfiguration> defaultQueueConfigurations, long cleanupInterval) {
         return new NodeLocalSingletonProvider<>(
                 vertx,
                 "per-queue-config",
-                () -> Future.succeededFuture(new QueueConfigurationProvider(vertx, defaultQueueConfigurations, cleanupInterval)));
+                () -> {
+                    QueueConfigurationProvider provider = new QueueConfigurationProvider(vertx, defaultQueueConfigurations);
+                    return provider.registerNodeLocalEventBusConsumer(cleanupInterval).map(provider);
+                });
     }
 
     /**
