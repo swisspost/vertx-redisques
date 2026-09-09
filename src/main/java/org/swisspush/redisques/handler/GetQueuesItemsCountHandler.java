@@ -111,7 +111,7 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
                 log.debug("Force reload queue size from Redis, so ignore queue size from statistics");
             }
 
-            List<String> queueKeys = HandlerUtil.filterByPattern(handleQueues.result(), filterPattern);
+            Set<String> queueKeys = new HashSet<>(HandlerUtil.filterByPattern(handleQueues.result(), filterPattern));
             Map<String, String> keyQueuePairs = new LinkedHashMap<>();
 
             // Remove queues from statistics that don't exist in filtered queueKeys
@@ -140,8 +140,8 @@ public class GetQueuesItemsCountHandler implements Handler<AsyncResult<Response>
                 return;
             }
 
-            if (!queueSizeFromStatistics.isEmpty()) {
-                // all from statistics
+            if (queueKeys.isEmpty()) {
+                // all from statistics, no missing queues
                 JsonArray result = new JsonArray();
                 queueSizeFromStatistics.forEach((queueName, queueSize) -> result.add(new JsonObject()
                         .put(MONITOR_QUEUE_NAME, queueName)

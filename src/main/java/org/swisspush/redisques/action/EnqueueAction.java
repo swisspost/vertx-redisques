@@ -54,8 +54,7 @@ public class EnqueueAction extends AbstractQueueAction {
         }
 
         isQueuePatrolLimited(queueName).onComplete(asyncLimitResult -> {
-            // isQueuePatrolLimited promise always success
-            if (asyncLimitResult.result()) {
+            if (asyncLimitResult.failed() || Boolean.TRUE.equals(asyncLimitResult.result())) {
                 incrEnqueueFailCount();
                 event.reply(createErrorReply().put(MESSAGE, QUEUE_PATROL_LIMITED));
             } else {
