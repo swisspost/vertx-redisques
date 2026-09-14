@@ -133,6 +133,9 @@ public class DefaultRedisquesConfigurationProvider implements RedisquesConfigura
                     Long processorTimeoutValue = configurationValues.getLong(PROCESSOR_TIMEOUT);
 
                     if(validateOnly) {
+                        // Apply locally as well so direct provider users do not depend on a
+                        // lifecycle-managed event-bus consumer to observe their own update.
+                        setConfigurationValues(configurationValues, false);
                         vertx.eventBus().publish(configuration().getConfigurationUpdatedAddress(), configurationValues);
                     } else {
                         changeProperty(processorDelayMaxValue, PROP_PROCESSOR_DELAY_MAX);

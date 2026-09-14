@@ -241,6 +241,18 @@ public class DefaultRedisquesConfigurationProviderTest {
     }
 
     @Test
+    public void testDirectProviderUpdateWithoutAcquire(TestContext context) {
+        DefaultRedisquesConfigurationProvider provider =
+                new DefaultRedisquesConfigurationProvider(vertx, new JsonObject());
+
+        Result<Void, String> updateResult = provider.updateConfiguration(
+                new JsonObject().put("processorDelayMax", 23), true);
+
+        context.assertTrue(updateResult.isOk());
+        context.assertEquals(23L, provider.configuration().getProcessorDelayMax());
+    }
+
+    @Test
     public void testUpdateProcessorTimeout(TestContext context) {
         JsonObject initialConfig = new JsonObject("{\n" +
                 "    \"address\": \"redisques\",\n" +
