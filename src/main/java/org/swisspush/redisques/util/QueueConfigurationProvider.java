@@ -24,7 +24,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
-public class QueueConfigurationProvider {
+public class QueueConfigurationProvider implements AutoCloseable {
     private static final Logger log = LoggerFactory.getLogger(QueueConfigurationProvider.class);
     private static final long MIN_QUEUE_CONFIG_CLEANUP_INTERVAL = 1_000;
     public static final String DELETE = "DELETE";
@@ -36,6 +36,11 @@ public class QueueConfigurationProvider {
     private final Vertx vertx;
     private final Map<String, QueueConfiguration> queueConfigurations = new ConcurrentHashMap<>();
     public final List<QueueConfiguration> defaultQueueConfigurations;
+    // Written on the Vert.x event-loop context that creates this provider, but read from close()/reset()
+    // which may be invoked from an arbitrary thread (e.g. JUnit @Before on the test thread) - volatile
+    // guarantees the writes are visible without relying on incidental happens-before edges.
+    private volatile MessageConsumer<JsonObject> nodeLocalConfigSyncConsumer;
+    private volatile Long queueConfigCleanupTimerId;
 
     // For max the performance, split all configs in to different categories, so not in use setting will
     // not into loop
@@ -132,9 +137,10 @@ public class QueueConfigurationProvider {
                 // A non-deployment context deliberately makes this consumer live for the Vert.x instance.
                 MessageConsumer<JsonObject> consumer = vertx.eventBus().<JsonObject>consumer(QUEUE_CONFIG_EVENTBUS_SYNC_KEY,
                         QueueConfigurationProvider.this::handleQueueConfigurationSync);
+                this.nodeLocalConfigSyncConsumer = consumer;
                 consumer.completionHandler(registration -> {
                     if (registration.succeeded()) {
-                        vertx.setPeriodic(Math.max(MIN_QUEUE_CONFIG_CLEANUP_INTERVAL, cleanupInterval),
+                        this.queueConfigCleanupTimerId = vertx.setPeriodic(Math.max(MIN_QUEUE_CONFIG_CLEANUP_INTERVAL, cleanupInterval),
                                 event -> queueConfigurationCleanUp());
                         promise.complete();
                     } else {
@@ -146,6 +152,22 @@ public class QueueConfigurationProvider {
             }
         });
         return promise.future();
+    }
+
+    @Override
+    public void close() {
+        if (nodeLocalConfigSyncConsumer != null) {
+            try {
+                nodeLocalConfigSyncConsumer.unregister();
+            } catch (RuntimeException ignored) {
+                // ignore unregister errors during reset/close
+            }
+            nodeLocalConfigSyncConsumer = null;
+        }
+        if (queueConfigCleanupTimerId != null) {
+            vertx.cancelTimer(queueConfigCleanupTimerId);
+            queueConfigCleanupTimerId = null;
+        }
     }
 
     public static NodeLocalSingletonProvider<QueueConfigurationProvider> provider(Vertx vertx, List<QueueConfiguration> defaultQueueConfigurations, long cleanupInterval) {

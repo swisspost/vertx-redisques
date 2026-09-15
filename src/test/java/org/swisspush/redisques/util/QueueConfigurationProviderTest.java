@@ -12,6 +12,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
+import java.lang.reflect.Field;
 import java.util.List;
 import java.util.Map;
 
@@ -70,6 +71,34 @@ public class QueueConfigurationProviderTest {
                         vertx.close().onComplete(context.asyncAssertSuccess(closed -> async.complete()));
                     });
                 }));
+    }
+
+    @Test
+    public void testResetClosesExistingProviderResources(TestContext context) throws Exception {
+        Async async = context.async();
+        Vertx vertx = Vertx.vertx();
+        Field consumerField = QueueConfigurationProvider.class.getDeclaredField("nodeLocalConfigSyncConsumer");
+        consumerField.setAccessible(true);
+        Field timerField = QueueConfigurationProvider.class.getDeclaredField("queueConfigCleanupTimerId");
+        timerField.setAccessible(true);
+
+        QueueConfigurationProvider.provider(vertx, List.of(), 1_000).get().onComplete(event -> {
+            try {
+                context.assertTrue(event.succeeded());
+                QueueConfigurationProvider provider = event.result();
+                context.assertNotNull(consumerField.get(provider));
+                context.assertNotNull(timerField.get(provider));
+
+                QueueConfigurationProvider.reset();
+
+                context.assertNull(consumerField.get(provider));
+                context.assertNull(timerField.get(provider));
+                context.assertNull(NodeLocalObjectRegistry.get("per-queue-config"));
+                vertx.close().onComplete(context.asyncAssertSuccess(closed -> async.complete()));
+            } catch (IllegalAccessException e) {
+                context.fail(e);
+            }
+        });
     }
 
     @Test
