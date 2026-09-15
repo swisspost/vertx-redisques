@@ -21,6 +21,19 @@ class NodeLocalObjectRegistry {
 
     @VisibleForTesting
     static <T> void reset(Class<T> clazz) {
-        INSTANCES.entrySet().removeIf(e -> clazz.isInstance(e.getValue()));
+        INSTANCES.entrySet().removeIf(e -> {
+            Object value = e.getValue();
+            if (!clazz.isInstance(value)) {
+                return false;
+            }
+            if (value instanceof AutoCloseable) {
+                try {
+                    ((AutoCloseable) value).close();
+                } catch (Exception ignored) {
+                    // ignore close failures while resetting test state
+                }
+            }
+            return true;
+        });
     }
 }

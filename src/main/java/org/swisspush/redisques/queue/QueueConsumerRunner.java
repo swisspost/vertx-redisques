@@ -20,6 +20,7 @@ import org.slf4j.LoggerFactory;
 import org.swisspush.redisques.QueueState;
 import org.swisspush.redisques.QueueStatsService;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
+import org.swisspush.redisques.util.MessageConsumerManager;
 import org.swisspush.redisques.util.QueueConfigurationProvider;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 import org.swisspush.redisques.util.RedisQuesTimer;
@@ -57,8 +58,10 @@ public class QueueConsumerRunner {
     private final RedisQuesTimer timer;
     private final int consumerLockTime;
     private final QueueConfigurationProvider queueConfigurationProvider;
+    private final MessageConsumerManager consumerManager;
     private MessageConsumer<String> trimRequestConsumer;
     private MessageConsumer<JsonObject> runningQueueStateConsumer;
+    private MessageConsumer<Void> metricsCollectorConsumer;
     private Handler<Void> noQueueMoreItemHandler = null;
 
     // The queues this verticle instance is registered as a consumer
@@ -67,7 +70,8 @@ public class QueueConsumerRunner {
     public QueueConsumerRunner(Vertx vertx, RedisService redisService, QueueMetrics metrics, QueueStatsService queueStatsService,
                                KeyspaceHelper keyspaceHelper,
                                RedisquesConfigurationProvider configurationProvider, RedisQuesExceptionFactory exceptionFactory,
-                               QueueStatisticsCollector queueStatisticsCollector, QueueConfigurationProvider queueConfigurationProvider) {
+                               QueueStatisticsCollector queueStatisticsCollector, QueueConfigurationProvider queueConfigurationProvider,
+                               MessageConsumerManager consumerManager) {
         this.vertx = vertx;
         this.redisService = redisService;
         this.exceptionFactory = exceptionFactory;
@@ -78,9 +82,10 @@ public class QueueConsumerRunner {
         this.queueStatisticsCollector = queueStatisticsCollector;
         consumerLockTime = configurationProvider.configuration().getConsumerLockMultiplier() * configurationProvider.configuration().getRefreshPeriod(); // lock is kept twice as long as its refresh interval -> never expires as long as the consumer ('we') are alive
         this.queueConfigurationProvider = queueConfigurationProvider;
+        this.consumerManager = consumerManager;
 
         // handles trim request
-        trimRequestConsumer = vertx.eventBus().consumer(keyspaceHelper.getTrimRequestKey() + keyspaceHelper.getVerticleUid(), event -> {
+        trimRequestConsumer = consumerManager.consumer(keyspaceHelper.getTrimRequestKey() + keyspaceHelper.getVerticleUid(), event -> {
             final String queueName = event.body();
             if (queueName == null) {
                 log.warn("Got event bus trim request msg with empty body! uid={}  address={}  replyAddress={}", keyspaceHelper.getVerticleUid(), event.address(), event.replyAddress());
@@ -103,7 +108,7 @@ public class QueueConsumerRunner {
         });
         int metricRefreshPeriod = configurationProvider.configuration().getMetricRefreshPeriod();
         if (metricRefreshPeriod > 0) {
-            vertx.eventBus().consumer(keyspaceHelper.getMetricsCollectorAddress(), (Handler<Message<Void>>) event -> {
+            metricsCollectorConsumer = consumerManager.consumer(keyspaceHelper.getMetricsCollectorAddress(), (Handler<Message<Void>>) event -> {
                 Map<QueueState, Long> stateCount = getQueueStateCount();
                 JsonObject jsonObject = new JsonObject();
                 stateCount.forEach((queueState, aLong) -> jsonObject.put(queueState.name(), aLong));
@@ -121,24 +126,25 @@ public class QueueConsumerRunner {
 
 
 
-    public void unregisterConsumers(Handler<AsyncResult<Void>> handler) {
+    public Future<Void> unregisterConsumers() {
+        List<Future<?>> unregisterFutures = new ArrayList<>();
         if (trimRequestConsumer != null && trimRequestConsumer.isRegistered()) {
-            trimRequestConsumer.unregister(unregisterTrimEvent -> {
-                if (unregisterTrimEvent.failed()) {
-                    handler.handle(unregisterTrimEvent);
-                    return;
-                }
-                if (runningQueueStateConsumer != null && runningQueueStateConsumer.isRegistered()) {
-                    runningQueueStateConsumer.unregister(handler);
-                } else {
-                    handler.handle(Future.succeededFuture());
-                }
-            });
-        } else if (runningQueueStateConsumer != null && runningQueueStateConsumer.isRegistered()) {
-            runningQueueStateConsumer.unregister(handler);
-        } else {
-            handler.handle(Future.succeededFuture());
+            unregisterFutures.add(trimRequestConsumer.unregister());
         }
+        if (runningQueueStateConsumer != null && runningQueueStateConsumer.isRegistered()) {
+            unregisterFutures.add(runningQueueStateConsumer.unregister());
+        }
+        if (metricsCollectorConsumer != null && metricsCollectorConsumer.isRegistered()) {
+            unregisterFutures.add(metricsCollectorConsumer.unregister());
+        }
+        if (unregisterFutures.isEmpty()) {
+            return Future.succeededFuture();
+        }
+        return Future.join(unregisterFutures).mapEmpty();
+    }
+
+    public void unregisterConsumers(Handler<AsyncResult<Void>> handler) {
+        unregisterConsumers().onComplete(handler);
     }
 
     public Future<Void> consume(final String queueName) {
@@ -730,7 +736,7 @@ public class QueueConsumerRunner {
      * A consumer send current queues states back to the given reply address
      */
     private void registerRunningQueueStateConsumer() {
-        runningQueueStateConsumer = vertx.eventBus().consumer(
+        runningQueueStateConsumer = consumerManager.consumer(
                 keyspaceHelper.getQueueRunningStateKey(),
                 msg -> {
                     JsonObject request = (JsonObject) msg.body();

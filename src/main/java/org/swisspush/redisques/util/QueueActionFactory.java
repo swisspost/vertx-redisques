@@ -61,6 +61,7 @@ public class QueueActionFactory {
     private final KeyspaceHelper keyspaceHelper;
     private final QueueRegistryService queueRegistryService;
     private final QueueConfigurationProvider queueConfigurationProvider;
+    private final MessageConsumerManager consumerManager;
 
     public QueueActionFactory(
         RedisService redisService,
@@ -75,7 +76,8 @@ public class QueueActionFactory {
         Semaphore getQueuesItemsCountRedisRequestQuota,
         MeterRegistry meterRegistry,
         QueueRegistryService queueRegistryService,
-        QueueConfigurationProvider queueConfigurationProvider
+        QueueConfigurationProvider queueConfigurationProvider,
+        MessageConsumerManager consumerManager
     ) {
         this.redisService = redisService;
         this.vertx = vertx;
@@ -90,6 +92,7 @@ public class QueueActionFactory {
         this.getQueuesItemsCountRedisRequestQuota = getQueuesItemsCountRedisRequestQuota;
         this.meterRegistry = meterRegistry;
         this.queueRegistryService = queueRegistryService;
+        this.consumerManager = consumerManager;
 
        // metricsIdentifier = configurationProvider.configuration().getMicrometerMetricsIdentifier();
     }
@@ -158,7 +161,7 @@ public class QueueActionFactory {
             case getQueuesSizeStatistics:
                 return new GetQueuesSizeStatisticsAction(vertx, redisService, keyspaceHelper, queueConfigurationProvider, redisquesConfigurationProvider, exceptionFactory, queueStatisticsCollector, log);
             case getQueueRunningStates:
-                return new GetQueueRunningStatesAction(vertx, keyspaceHelper, log);
+                return new GetQueueRunningStatesAction(vertx, keyspaceHelper, log, consumerManager);
             default:
                 return new UnsupportedAction(log);
         }

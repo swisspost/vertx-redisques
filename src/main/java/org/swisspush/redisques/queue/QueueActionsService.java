@@ -10,6 +10,7 @@ import org.slf4j.LoggerFactory;
 import org.swisspush.redisques.action.QueueAction;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.util.MemoryUsageProvider;
+import org.swisspush.redisques.util.MessageConsumerManager;
 import org.swisspush.redisques.util.QueueActionFactory;
 import org.swisspush.redisques.util.QueueConfigurationProvider;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
@@ -32,14 +33,15 @@ public class QueueActionsService {
                                RedisQuesExceptionFactory exceptionFactory, MemoryUsageProvider memoryUsageProvider,
                                QueueStatisticsCollector queueStatisticsCollector,
                                Semaphore getQueuesItemsCountRedisRequestQuota,
-                               MeterRegistry meterRegistry, QueueConfigurationProvider queueConfigurationProvider) {
+                               MeterRegistry meterRegistry, QueueConfigurationProvider queueConfigurationProvider,
+                               MessageConsumerManager consumerManager) {
         HttpClient client = vertx.createHttpClient();
 
         this.queueActionFactory = new QueueActionFactory(
                 redisService, vertx, client, log, keyspaceHelper,
                 memoryUsageProvider, queueStatisticsCollector, exceptionFactory,
                 configurationProvider, getQueuesItemsCountRedisRequestQuota, meterRegistry,
-                queueRegistryService, queueConfigurationProvider);
+                queueRegistryService, queueConfigurationProvider, consumerManager);
 
         queueActions.put(addQueueItem, queueActionFactory.buildQueueAction(addQueueItem));
         queueActions.put(deleteQueueItem, queueActionFactory.buildQueueAction(deleteQueueItem));

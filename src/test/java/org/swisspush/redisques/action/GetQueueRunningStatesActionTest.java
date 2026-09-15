@@ -22,6 +22,7 @@ import org.swisspush.redisques.RedisQues;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.queue.QueueProcessingState;
 import org.swisspush.redisques.util.DefaultRedisquesConfigurationProvider;
+import org.swisspush.redisques.util.MessageConsumerManager;
 import org.swisspush.redisques.util.RedisquesAPI;
 import org.swisspush.redisques.util.RedisquesConfiguration;
 import org.swisspush.redisques.util.TestMemoryUsageProvider;
@@ -135,7 +136,7 @@ public class GetQueueRunningStatesActionTest extends AbstractTestCase {
         redisQues.getQueueConsumerRunner().getMyQueues().put("queue_4", state4);
 
         JsonObject requestBody = RedisquesAPI.buildGetQueueRunningStates(0, 0, 0);
-        GetQueueRunningStatesAction action = new GetQueueRunningStatesAction(vertx, keyspaceHelper, log);
+        GetQueueRunningStatesAction action = new GetQueueRunningStatesAction(vertx, keyspaceHelper, log, new MessageConsumerManager(vertx));
 
         Message<JsonObject> message = new Message<>() {
             @Override
@@ -218,7 +219,7 @@ public class GetQueueRunningStatesActionTest extends AbstractTestCase {
         redisQues.getQueueConsumerRunner().getMyQueues().put("queue_4", state4);
 
         JsonObject requestBody = RedisquesAPI.buildGetQueueRunningStates(0, 0, 1_000);
-        GetQueueRunningStatesAction action = new GetQueueRunningStatesAction(vertx, keyspaceHelper, log);
+        GetQueueRunningStatesAction action = new GetQueueRunningStatesAction(vertx, keyspaceHelper, log, new MessageConsumerManager(vertx));
 
         Message<JsonObject> message = new Message<>() {
             @Override
@@ -301,7 +302,7 @@ public class GetQueueRunningStatesActionTest extends AbstractTestCase {
         redisQues.getQueueConsumerRunner().getMyQueues().put("queue_4", state4);
 
         JsonObject requestBody = RedisquesAPI.buildGetQueueRunningStates(0, 2, 10_000);
-        GetQueueRunningStatesAction action = new GetQueueRunningStatesAction(vertx, keyspaceHelper, log);
+        GetQueueRunningStatesAction action = new GetQueueRunningStatesAction(vertx, keyspaceHelper, log, new MessageConsumerManager(vertx));
 
         Message<JsonObject> message = new Message<>() {
             @Override
@@ -385,7 +386,7 @@ public class GetQueueRunningStatesActionTest extends AbstractTestCase {
         redisQues.getQueueConsumerRunner().getMyQueues().put("queue_4", state4);
 
         JsonObject requestBody = RedisquesAPI.buildGetQueueRunningStates(9_000L, 0, 1_000);
-        GetQueueRunningStatesAction action = new GetQueueRunningStatesAction(vertx, keyspaceHelper, log);
+        GetQueueRunningStatesAction action = new GetQueueRunningStatesAction(vertx, keyspaceHelper, log, new MessageConsumerManager(vertx));
 
         Message<JsonObject> message = new Message<>() {
             @Override
