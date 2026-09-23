@@ -89,11 +89,15 @@ public class RebalanceQueuesAction extends AbstractQueueAction {
         final int effectiveMaxMovesPerRun = maxMovesPerRun;
 
         boolean dryRun = payload.getBoolean(DRY_RUN, false);
+        String filterDescription = filterPatternResult.getOk().map(Pattern::pattern).orElse("<none>");
+        log.info("Starting rebalance request: filter={}, maxMovesPerRun={}, dryRun={}", filterDescription, effectiveMaxMovesPerRun, dryRun);
         fetchQueueScope(filterPatternResult.getOk())
                 .compose(queueScope -> fetchExpectedAliveConsumerCount()
                         .compose(expectedAliveConsumers -> fetchRunningStates(expectedAliveConsumers)
                                 .compose(runningStates -> {
                                     if (runningStates.size() < expectedAliveConsumers) {
+                                        log.warn("Incomplete running state replies during rebalance: expected {} but received {} (queueScope={})",
+                                                expectedAliveConsumers, runningStates.size(), queueScope.size());
                                         return Future.failedFuture("Incomplete running state replies. Expected "
                                                 + expectedAliveConsumers + " but received " + runningStates.size());
                                     }
@@ -103,12 +107,21 @@ public class RebalanceQueuesAction extends AbstractQueueAction {
                     PlannerInput plannerInput = buildPlannerInput(context.runningStates, context.queueScope);
                     QueueRebalancePlanner.Plan plan = new QueueRebalancePlanner()
                             .computePlan(plannerInput.loadByConsumer, plannerInput.readyQueuesByConsumer, effectiveMaxMovesPerRun);
+                    log.info("Rebalance plan computed: queueScope={}, activeConsumers={}, plannedMoves={}, dryRun={}",
+                            context.queueScope.size(), plannerInput.loadByConsumer.size(), plan.getMoves().size(), dryRun);
                     if (dryRun) {
                         return Future.succeededFuture(createSuccessReply(plan.getMoves().size(), 0, Collections.emptyMap()));
                     }
+                    log.info("Executing rebalance plan with {} moves", plan.getMoves().size());
                     return executePlan(plan, context.runningStates).map(result -> createSuccessReply(plan.getMoves().size(), result.executedMoves, result.reasonsByQueue));
                 })
-                .onSuccess(event::reply)
+                .onSuccess(reply -> {
+                    log.info("Rebalance request completed successfully: plannedMoves={}, executedMoves={}, skipped={}",
+                            reply.getJsonObject(VALUE, new JsonObject()).getInteger("plannedMoves", 0),
+                            reply.getJsonObject(VALUE, new JsonObject()).getInteger("executedMoves", 0),
+                            reply.getJsonObject(VALUE, new JsonObject()).getInteger("skipped", 0));
+                    event.reply(reply);
+                })
                 .onFailure(throwable -> handleFail(event, "Failed to rebalance queues", throwable));
     }
 
@@ -154,12 +167,18 @@ public class RebalanceQueuesAction extends AbstractQueueAction {
                 vertx.cancelTimer(currentTimerId);
             }
             consumer.unregister();
+            if (expectedReplies > 0 && results.size() < expectedReplies) {
+                log.warn("Rebalance running-state collection timed out: expected {} replies but received {} on {}",
+                        expectedReplies, results.size(), replyAddress);
+            }
             promise.tryComplete(new JsonArray(new ArrayList<>(results)));
         };
 
         consumer.handler(message -> {
             results.add(message.body());
             if (expectedReplies > 0 && results.size() >= expectedReplies) {
+                log.info("Rebalance running-state collection finished: expected {} replies and received {} on {}",
+                        expectedReplies, results.size(), replyAddress);
                 finish.run();
             }
         });
@@ -179,7 +198,7 @@ public class RebalanceQueuesAction extends AbstractQueueAction {
     }
 
     protected Future<Boolean> requestSourceRelease(String sourceConsumerId, String queueName, String expectedOwner) {
-        String address = keyspaceHelper.getAddress() + "-rebalance-control:" + sourceConsumerId;
+        String address = keyspaceHelper.queueRebalanceControlAddressFor(sourceConsumerId);
         JsonObject request = new JsonObject()
                 .put(REBALANCE_ACTION, REBALANCE_ACTION_RELEASE)
                 .put("queueName", queueName)
@@ -189,7 +208,7 @@ public class RebalanceQueuesAction extends AbstractQueueAction {
     }
 
     protected Future<Boolean> requestTargetClaim(String targetConsumerId, String queueName, String expectedOwner) {
-        String address = keyspaceHelper.getAddress() + "-rebalance-control:" + targetConsumerId;
+        String address = keyspaceHelper.queueRebalanceControlAddressFor(targetConsumerId);
         JsonObject request = new JsonObject()
                 .put(REBALANCE_ACTION, REBALANCE_ACTION_CLAIM)
                 .put("queueName", queueName)
@@ -208,14 +227,17 @@ public class RebalanceQueuesAction extends AbstractQueueAction {
 
     private Future<ExecutionResult> executeMove(QueueRebalancePlanner.Move move, JsonArray runningStates, ExecutionResult result) {
         String queueName = move.getQueueName();
+        log.info("Processing rebalance move for queue={} from={} to={}", queueName, move.getSourceConsumerId(), move.getTargetConsumerId());
         if (!isQueueReadyInSnapshot(runningStates, move.getSourceConsumerId(), queueName)) {
             result.reasonsByQueue.put(queueName, SKIP_NOT_READY);
+            log.warn("Skipping rebalance move for queue={} because source consumer {} was not READY in snapshot", queueName, move.getSourceConsumerId());
             return Future.succeededFuture(result);
         }
 
         String consumerKey = keyspaceHelper.getConsumersPrefix() + queueName;
         return redisService.get(consumerKey).recover(throwable -> {
             result.reasonsByQueue.put(queueName, SKIP_OWNER_LOOKUP_FAILED);
+            log.warn("Skipping rebalance move for queue={} because owner lookup failed from Redis key {}", queueName, consumerKey, throwable);
             return Future.succeededFuture();
         }).compose(currentOwnerResponse -> {
             if (result.reasonsByQueue.containsKey(queueName)) {
@@ -224,6 +246,8 @@ public class RebalanceQueuesAction extends AbstractQueueAction {
             String currentOwner = Objects.toString(currentOwnerResponse, null);
             if (!move.getSourceConsumerId().equals(currentOwner)) {
                 result.reasonsByQueue.put(queueName, SKIP_OWNER_CHANGED);
+                log.warn("Skipping rebalance move for queue={} because current owner {} no longer matches expected source {}",
+                        queueName, currentOwner, move.getSourceConsumerId());
                 return Future.succeededFuture(result);
             }
 
@@ -231,6 +255,8 @@ public class RebalanceQueuesAction extends AbstractQueueAction {
                     .compose(claimed -> {
                         if (!claimed) {
                             result.reasonsByQueue.put(queueName, SKIP_CLAIM_FAILED);
+                            log.warn("Skipping rebalance move for queue={} because target claim failed on consumer {} with expectedOwner={}",
+                                    queueName, move.getTargetConsumerId(), move.getSourceConsumerId());
                             return Future.succeededFuture(result);
                         }
                         return requestSourceRelease(move.getSourceConsumerId(), queueName, move.getTargetConsumerId())
@@ -239,6 +265,7 @@ public class RebalanceQueuesAction extends AbstractQueueAction {
                                         return recoverFailedHandoff(move, result, SKIP_RELEASE_FAILED);
                                     }
                                     result.executedMoves++;
+                                    log.warn("Executed rebalance move for queue={} from={} to={}", queueName, move.getSourceConsumerId(), move.getTargetConsumerId());
                                     return Future.succeededFuture(result);
                                 });
                     });
@@ -248,9 +275,12 @@ public class RebalanceQueuesAction extends AbstractQueueAction {
     private Future<ExecutionResult> recoverFailedHandoff(QueueRebalancePlanner.Move move, ExecutionResult result,
                                                          String skipReason) {
         String queueName = move.getQueueName();
+        log.warn("Rebalance handoff failed for queue={} from={} to={}; attempting rollback to source owner",
+                queueName, move.getSourceConsumerId(), move.getTargetConsumerId());
         return requestTargetClaim(move.getSourceConsumerId(), queueName, move.getTargetConsumerId())
                 .compose(reclaimed -> {
                     result.reasonsByQueue.put(queueName, skipReason);
+                    log.warn("Rebalance handoff for queue={} marked as {} after rollback attempt", queueName, skipReason);
                     return Future.succeededFuture(result);
                 });
     }

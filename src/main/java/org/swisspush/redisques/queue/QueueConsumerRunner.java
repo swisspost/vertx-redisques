@@ -982,19 +982,26 @@ public class QueueConsumerRunner {
                         return;
                     }
                     String action = request.getString(REBALANCE_ACTION, REBALANCE_ACTION_RELEASE);
+                    String queueName = request.getString("queueName");
+                    String expectedOwner = request.getString("expectedOwner");
+                    log.warn("Handling queue rebalance control action={} queue={} expectedOwner={} uid={}",
+                            action, queueName, expectedOwner, keyspaceHelper.getVerticleUid());
                     Future<Boolean> command;
                     if (REBALANCE_ACTION_CLAIM.equals(action)) {
-                        command = claimQueueForRebalance(request.getString("queueName"), request.getString("expectedOwner"));
+                        command = claimQueueForRebalance(queueName, expectedOwner);
                     } else {
-                        command = releaseQueueIfReadyAndOwned(request.getString("queueName"), request.getString("expectedOwner"));
+                        command = releaseQueueIfReadyAndOwned(queueName, expectedOwner);
                     }
                     command
                             .onComplete(asyncResult -> {
                                 if (asyncResult.failed()) {
-                                    log.warn("Failed to process queue rebalance control request {}", request.encode(), asyncResult.cause());
+                                    log.warn("Failed to process queue rebalance control request action={} queue={} expectedOwner={} uid={} request={}",
+                                            action, queueName, expectedOwner, keyspaceHelper.getVerticleUid(), request.encode(), asyncResult.cause());
                                     msg.fail(0, asyncResult.cause().getMessage());
                                     return;
                                 }
+                                log.warn("Completed queue rebalance control request action={} queue={} expectedOwner={} uid={} result={}",
+                                        action, queueName, expectedOwner, keyspaceHelper.getVerticleUid(), asyncResult.result());
                                 msg.reply(asyncResult.result());
                             });
                 }
