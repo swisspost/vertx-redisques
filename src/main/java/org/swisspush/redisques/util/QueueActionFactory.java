@@ -30,6 +30,7 @@ import org.swisspush.redisques.action.GetQueuesSpeedAction;
 import org.swisspush.redisques.action.GetQueuesStatisticsAction;
 import org.swisspush.redisques.action.LockedEnqueueAction;
 import org.swisspush.redisques.action.MonitorAction;
+import org.swisspush.redisques.action.RebalanceQueuesAction;
 import org.swisspush.redisques.action.PutLockAction;
 import org.swisspush.redisques.action.QueueAction;
 import org.swisspush.redisques.action.ReplaceQueueItemAction;
@@ -162,6 +163,8 @@ public class QueueActionFactory {
                 return new GetQueuesSizeStatisticsAction(vertx, redisService, keyspaceHelper, queueConfigurationProvider, redisquesConfigurationProvider, exceptionFactory, queueStatisticsCollector, log);
             case getQueueRunningStates:
                 return new GetQueueRunningStatesAction(vertx, keyspaceHelper, log, consumerManager);
+            case rebalanceQueues:
+                return new RebalanceQueuesAction(vertx, redisService, keyspaceHelper, queueConfigurationProvider, redisquesConfigurationProvider, exceptionFactory, queueStatisticsCollector, log);
             default:
                 return new UnsupportedAction(log);
         }

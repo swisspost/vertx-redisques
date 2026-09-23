@@ -42,6 +42,9 @@ public class RedisquesAPITest {
         context.assertEquals(QueueOperation.getQueueItems, QueueOperation.fromString("GETLISTRANGE")); // legacy
         context.assertEquals(QueueOperation.getQueueItems, QueueOperation.fromString("getQueueItems"));
 
+        context.assertEquals(QueueOperation.rebalanceQueues, QueueOperation.fromString("rebalanceQueues"));
+        context.assertEquals(QueueOperation.rebalanceQueues, QueueOperation.fromString("REBALANCEQUEUES"));
+
         context.assertEquals(QueueOperation.addQueueItem, QueueOperation.fromString("addItem")); // legacy
         context.assertEquals(QueueOperation.addQueueItem, QueueOperation.fromString("addITEM")); // legacy
         context.assertEquals(QueueOperation.addQueueItem, QueueOperation.fromString("addQueueItem"));
@@ -94,6 +97,7 @@ public class RedisquesAPITest {
         context.assertFalse(QueueOperation.getQueuesCount.hasLegacyName());
         context.assertFalse(QueueOperation.getQueueItemsCount.hasLegacyName());
         context.assertFalse(QueueOperation.getConfiguration.hasLegacyName());
+        context.assertFalse(QueueOperation.rebalanceQueues.hasLegacyName());
     }
 
     @Test
@@ -323,6 +327,16 @@ public class RedisquesAPITest {
         operation = RedisquesAPI.buildMonitorOperation(true, null);
         context.assertEquals(buildExpectedJsonObject("monitor",
                 new JsonObject().put(EMPTY_QUEUES, true)), operation);
+    }
+
+    @Test
+    public void testBuildRebalanceQueuesOperation(TestContext context) {
+        JsonObject operation = RedisquesAPI.buildRebalanceQueuesOperation("orders-.*", true, 25);
+        JsonObject expected = buildExpectedJsonObject("rebalanceQueues", new JsonObject()
+                .put(FILTER, "orders-.*")
+                .put(DRY_RUN, true)
+                .put(MAX_MOVES_PER_RUN, 25));
+        context.assertEquals(expected, operation);
     }
 
     @Test
