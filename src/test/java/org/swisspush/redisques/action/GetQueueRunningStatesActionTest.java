@@ -451,7 +451,7 @@ public class GetQueueRunningStatesActionTest extends AbstractTestCase {
         redisQues.getQueueConsumerRunner().getMyQueues().put("queue_1", state);
 
         JsonObject requestBody = RedisquesAPI.buildGetQueueRunningStates(0, 0, 1_000);
-        GetQueueRunningStatesAction action = new GetQueueRunningStatesAction(vertx, keyspaceHelper, log);
+        GetQueueRunningStatesAction action = new GetQueueRunningStatesAction(vertx, keyspaceHelper, log, new MessageConsumerManager(vertx));
 
         Message<JsonObject> message = new Message<>() {
             @Override

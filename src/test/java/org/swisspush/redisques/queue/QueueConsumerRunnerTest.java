@@ -25,13 +25,7 @@ import org.swisspush.redisques.QueueState;
 import org.swisspush.redisques.QueueStatsService;
 import org.swisspush.redisques.RedisQues;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
-import org.swisspush.redisques.util.DefaultRedisquesConfigurationProvider;
-import org.swisspush.redisques.util.QueueConfiguration;
-import org.swisspush.redisques.util.QueueConfigurationProvider;
-import org.swisspush.redisques.util.QueueStatisticsCollector;
-import org.swisspush.redisques.util.RedisquesConfigurationProvider;
-import org.swisspush.redisques.util.RedisquesConfiguration;
-import org.swisspush.redisques.util.TestMemoryUsageProvider;
+import org.swisspush.redisques.util.*;
 import redis.clients.jedis.Jedis;
 
 import java.util.List;
@@ -811,7 +805,7 @@ public class QueueConsumerRunnerTest extends AbstractTestCase {
 
         QueueConsumerRunner runner = new QueueConsumerRunner(vertx, redisService, metrics, queueStatsService, mockedKeyspaceHelper,
                 mockedConfigurationProvider, RedisQuesExceptionFactory.newWastefulExceptionFactory(), queueStatisticsCollector,
-                mockedQueueConfigurationProvider);
+                mockedQueueConfigurationProvider, new MessageConsumerManager(vertx));
 
         Async async = context.async();
         vertx.eventBus().request("rebalance-control",
@@ -851,7 +845,7 @@ public class QueueConsumerRunnerTest extends AbstractTestCase {
 
         QueueConsumerRunner runner = new QueueConsumerRunner(vertx, redisService, metrics, queueStatsService, mockedKeyspaceHelper,
                 mockedConfigurationProvider, RedisQuesExceptionFactory.newWastefulExceptionFactory(), queueStatisticsCollector,
-                mockedQueueConfigurationProvider);
+                mockedQueueConfigurationProvider, new MessageConsumerManager(vertx));
         runner.getMyQueues().put("q-race", new QueueProcessingState(QueueState.READY, System.currentTimeMillis()));
 
         Async async = context.async();
@@ -895,7 +889,7 @@ public class QueueConsumerRunnerTest extends AbstractTestCase {
 
         QueueConsumerRunner runner = new QueueConsumerRunner(vertx, redisService, metrics, queueStatsService, mockedKeyspaceHelper,
                 mockedConfigurationProvider, RedisQuesExceptionFactory.newWastefulExceptionFactory(), queueStatisticsCollector,
-                mockedQueueConfigurationProvider);
+                mockedQueueConfigurationProvider, new MessageConsumerManager(vertx));
 
         Async async = context.async();
         runner.claimQueueIfUnowned("q-race").onComplete(context.asyncAssertSuccess(claimed -> {
