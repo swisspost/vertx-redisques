@@ -1,5 +1,7 @@
 package org.swisspush.redisques.util;
 
+import io.vertx.core.AbstractVerticle;
+import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
@@ -10,6 +12,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
+import java.lang.reflect.Field;
 import java.util.List;
 import java.util.Map;
 
@@ -25,6 +28,7 @@ public class QueueConfigurationProviderTest {
     public void testQueueConfigurationProviderCreation(TestContext context) {
         Async async = context.async();
         Vertx vertx = Vertx.vertx();
+        MessageConsumerManager consumerManager = new MessageConsumerManager(vertx);
         QueueConfigurationProvider.provider(vertx, List.of(), 1_000).get().onComplete(event -> {
             QueueConfigurationProvider provider1 = event.result();
             vertx.executeBlocking(promise -> {
@@ -34,6 +38,66 @@ public class QueueConfigurationProviderTest {
                     async.complete();
                 });
             });
+        });
+    }
+
+    @Test
+    public void testSyncConsumerSurvivesCreatorVerticleUndeploy(TestContext context) {
+        Async async = context.async();
+        Vertx vertx = Vertx.vertx();
+        Promise<QueueConfigurationProvider> providerPromise = Promise.promise();
+
+        vertx.deployVerticle(new AbstractVerticle() {
+            @Override
+            public void start(Promise<Void> startPromise) {
+                QueueConfigurationProvider.provider(vertx, List.of(), 1_000).get()
+                        .onSuccess(provider -> {
+                            providerPromise.complete(provider);
+                            startPromise.complete();
+                        })
+                        .onFailure(startPromise::fail);
+            }
+        }).compose(deploymentId -> vertx.undeploy(deploymentId))
+                .onComplete(context.asyncAssertSuccess(ignored -> {
+                    QueueConfigurationProvider provider = providerPromise.future().result();
+                    JsonObject configuration = createQueueConfiguration("synced-queue").asJsonObject();
+                    vertx.eventBus().publish("redisques_queue_config_eventbus_sync", new JsonObject()
+                            .put("queue_config_sender_id", "another-node")
+                            .put(RedisquesAPI.PER_QUEUE_CONFIG_NAME, "synced")
+                            .put(RedisquesAPI.PAYLOAD, configuration));
+
+                    vertx.setTimer(100, timerId -> {
+                        context.assertNotNull(provider.getQueueConfiguration("synced"));
+                        vertx.close().onComplete(context.asyncAssertSuccess(closed -> async.complete()));
+                    });
+                }));
+    }
+
+    @Test
+    public void testResetClosesExistingProviderResources(TestContext context) throws Exception {
+        Async async = context.async();
+        Vertx vertx = Vertx.vertx();
+        Field consumerField = QueueConfigurationProvider.class.getDeclaredField("nodeLocalConfigSyncConsumer");
+        consumerField.setAccessible(true);
+        Field timerField = QueueConfigurationProvider.class.getDeclaredField("queueConfigCleanupTimerId");
+        timerField.setAccessible(true);
+
+        QueueConfigurationProvider.provider(vertx, List.of(), 1_000).get().onComplete(event -> {
+            try {
+                context.assertTrue(event.succeeded());
+                QueueConfigurationProvider provider = event.result();
+                context.assertNotNull(consumerField.get(provider));
+                context.assertNotNull(timerField.get(provider));
+
+                QueueConfigurationProvider.reset();
+
+                context.assertNull(consumerField.get(provider));
+                context.assertNull(timerField.get(provider));
+                context.assertNull(NodeLocalObjectRegistry.get("per-queue-config"));
+                vertx.close().onComplete(context.asyncAssertSuccess(closed -> async.complete()));
+            } catch (IllegalAccessException e) {
+                context.fail(e);
+            }
         });
     }
 

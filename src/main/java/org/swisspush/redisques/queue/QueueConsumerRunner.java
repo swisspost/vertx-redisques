@@ -20,6 +20,7 @@ import org.slf4j.LoggerFactory;
 import org.swisspush.redisques.QueueState;
 import org.swisspush.redisques.QueueStatsService;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
+import org.swisspush.redisques.util.MessageConsumerManager;
 import org.swisspush.redisques.util.QueueConfigurationProvider;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 import org.swisspush.redisques.util.RedisQuesTimer;
@@ -58,9 +59,11 @@ public class QueueConsumerRunner {
     private final RedisQuesTimer timer;
     private final int consumerLockTime;
     private final QueueConfigurationProvider queueConfigurationProvider;
+    private final MessageConsumerManager consumerManager;
     private MessageConsumer<String> trimRequestConsumer;
     private MessageConsumer<JsonObject> runningQueueStateConsumer;
     private MessageConsumer<JsonObject> queueRebalanceControlConsumer;
+    private MessageConsumer<Void> metricsCollectorConsumer;
     private Handler<Void> noQueueMoreItemHandler = null;
     private static final String REBALANCE_ACTION = "action";
     private static final String REBALANCE_ACTION_CLAIM = "claim";
@@ -72,7 +75,8 @@ public class QueueConsumerRunner {
     public QueueConsumerRunner(Vertx vertx, RedisService redisService, QueueMetrics metrics, QueueStatsService queueStatsService,
                                KeyspaceHelper keyspaceHelper,
                                RedisquesConfigurationProvider configurationProvider, RedisQuesExceptionFactory exceptionFactory,
-                               QueueStatisticsCollector queueStatisticsCollector, QueueConfigurationProvider queueConfigurationProvider) {
+                               QueueStatisticsCollector queueStatisticsCollector, QueueConfigurationProvider queueConfigurationProvider,
+                               MessageConsumerManager consumerManager) {
         this.vertx = vertx;
         this.redisService = redisService;
         this.exceptionFactory = exceptionFactory;
@@ -83,9 +87,10 @@ public class QueueConsumerRunner {
         this.queueStatisticsCollector = queueStatisticsCollector;
         consumerLockTime = configurationProvider.configuration().getConsumerLockMultiplier() * configurationProvider.configuration().getRefreshPeriod(); // lock is kept twice as long as its refresh interval -> never expires as long as the consumer ('we') are alive
         this.queueConfigurationProvider = queueConfigurationProvider;
+        this.consumerManager = consumerManager;
 
         // handles trim request
-        trimRequestConsumer = vertx.eventBus().consumer(keyspaceHelper.getTrimRequestKey() + keyspaceHelper.getVerticleUid(), event -> {
+        trimRequestConsumer = consumerManager.consumer(keyspaceHelper.getTrimRequestKey() + keyspaceHelper.getVerticleUid(), event -> {
             final String queueName = event.body();
             if (queueName == null) {
                 log.warn("Got event bus trim request msg with empty body! uid={}  address={}  replyAddress={}", keyspaceHelper.getVerticleUid(), event.address(), event.replyAddress());
@@ -108,7 +113,7 @@ public class QueueConsumerRunner {
         });
         int metricRefreshPeriod = configurationProvider.configuration().getMetricRefreshPeriod();
         if (metricRefreshPeriod > 0) {
-            vertx.eventBus().consumer(keyspaceHelper.getMetricsCollectorAddress(), (Handler<Message<Void>>) event -> {
+            metricsCollectorConsumer = consumerManager.consumer(keyspaceHelper.getMetricsCollectorAddress(), (Handler<Message<Void>>) event -> {
                 Map<QueueState, Long> stateCount = getQueueStateCount();
                 JsonObject jsonObject = new JsonObject();
                 stateCount.forEach((queueState, aLong) -> jsonObject.put(queueState.name(), aLong));
@@ -127,48 +132,28 @@ public class QueueConsumerRunner {
 
 
 
-    public void unregisterConsumers(Handler<AsyncResult<Void>> handler) {
+    public Future<Void> unregisterConsumers() {
+        List<Future<?>> unregisterFutures = new ArrayList<>();
         if (trimRequestConsumer != null && trimRequestConsumer.isRegistered()) {
-            trimRequestConsumer.unregister(unregisterTrimEvent -> {
-                if (unregisterTrimEvent.failed()) {
-                    handler.handle(unregisterTrimEvent);
-                    return;
-                }
-                if (runningQueueStateConsumer != null && runningQueueStateConsumer.isRegistered()) {
-                    runningQueueStateConsumer.unregister(unregisterRunningEvent -> {
-                        if (unregisterRunningEvent.failed()) {
-                            handler.handle(unregisterRunningEvent);
-                            return;
-                        }
-                        if (queueRebalanceControlConsumer != null && queueRebalanceControlConsumer.isRegistered()) {
-                            queueRebalanceControlConsumer.unregister(handler);
-                        } else {
-                            handler.handle(Future.succeededFuture());
-                        }
-                    });
-                } else if (queueRebalanceControlConsumer != null && queueRebalanceControlConsumer.isRegistered()) {
-                    queueRebalanceControlConsumer.unregister(handler);
-                } else {
-                    handler.handle(Future.succeededFuture());
-                }
-            });
-        } else if (runningQueueStateConsumer != null && runningQueueStateConsumer.isRegistered()) {
-            runningQueueStateConsumer.unregister(unregisterRunningEvent -> {
-                if (unregisterRunningEvent.failed()) {
-                    handler.handle(unregisterRunningEvent);
-                    return;
-                }
-                if (queueRebalanceControlConsumer != null && queueRebalanceControlConsumer.isRegistered()) {
-                    queueRebalanceControlConsumer.unregister(handler);
-                } else {
-                    handler.handle(Future.succeededFuture());
-                }
-            });
-        } else if (queueRebalanceControlConsumer != null && queueRebalanceControlConsumer.isRegistered()) {
-            queueRebalanceControlConsumer.unregister(handler);
-        } else {
-            handler.handle(Future.succeededFuture());
+            unregisterFutures.add(trimRequestConsumer.unregister());
         }
+        if (runningQueueStateConsumer != null && runningQueueStateConsumer.isRegistered()) {
+            unregisterFutures.add(runningQueueStateConsumer.unregister());
+        }
+        if (metricsCollectorConsumer != null && metricsCollectorConsumer.isRegistered()) {
+            unregisterFutures.add(metricsCollectorConsumer.unregister());
+        }
+        if (queueRebalanceControlConsumer != null && queueRebalanceControlConsumer.isRegistered()) {
+            unregisterFutures.add(queueRebalanceControlConsumer.unregister());
+        }
+        if (unregisterFutures.isEmpty()) {
+            return Future.succeededFuture();
+        }
+        return Future.join(unregisterFutures).mapEmpty();
+    }
+
+    public void unregisterConsumers(Handler<AsyncResult<Void>> handler) {
+        unregisterConsumers().onComplete(handler);
     }
 
     public Future<Void> consume(final String queueName) {
@@ -242,7 +227,7 @@ public class QueueConsumerRunner {
 
     /**
      * Releases ownership of a queue if it is in READY state and owned by the expected owner.
-     * 
+     *
      * This method is used during rebalancing to release queues that the current consumer
      * is no longer responsible for. The queue must be in READY state and owned by the
      * expectedOwner for the release to succeed.
@@ -279,7 +264,7 @@ public class QueueConsumerRunner {
 
     /**
      * Claims ownership of a queue for rebalancing purposes.
-     * 
+     *
      * This method atomically attempts to change ownership of a queue from the expectedOwner
      * to this consumer. If successful, it sets the queue to READY state and notifies the
      * consumer to begin processing. If notification fails, the claim is rolled back.
@@ -308,7 +293,7 @@ public class QueueConsumerRunner {
 
     /**
      * Rolls back a claimed queue by restoring the original owner.
-     * 
+     *
      * This is used when a queue claim operation partially succeeds (ownership change succeeds
      * but consumer notification fails). It attempts to atomically restore the original owner
      * and removes the queue from the local queue registry.
@@ -334,7 +319,7 @@ public class QueueConsumerRunner {
 
     /**
      * Atomically compares and sets the owner of a queue using a Lua script.
-     * 
+     *
      * This method uses Redis EVAL to ensure atomic compare-and-set semantics:
      * it only sets the new owner if the current owner matches the expectedOwner.
      * The owner value is stored with a TTL (time to live) to prevent stale ownership.
@@ -358,7 +343,7 @@ public class QueueConsumerRunner {
 
     /**
      * Atomically compares and deletes the owner of a queue using a Lua script.
-     * 
+     *
      * This method uses Redis EVAL to ensure atomic compare-and-delete semantics:
      * it only deletes the owner key if the current owner matches the expectedOwner.
      * This is used to clean up ownership when releasing a queue.
@@ -379,7 +364,7 @@ public class QueueConsumerRunner {
 
     /**
      * Claims ownership of an unowned queue.
-     * 
+     *
      * This method attempts to atomically claim ownership of a queue that has no owner
      * (or no valid owner registration). It uses SET NX (set if not exists) to ensure
      * only one consumer can claim an unowned queue. On success, the queue is set to READY
@@ -932,7 +917,7 @@ public class QueueConsumerRunner {
      * A consumer send current queues states back to the given reply address
      */
     private void registerRunningQueueStateConsumer() {
-        runningQueueStateConsumer = vertx.eventBus().consumer(
+        runningQueueStateConsumer = consumerManager.consumer(
                 keyspaceHelper.getQueueRunningStateKey(),
                 msg -> {
                     JsonObject request = (JsonObject) msg.body();
@@ -962,12 +947,12 @@ public class QueueConsumerRunner {
 
     /**
      * Registers an event bus consumer for queue rebalance control operations.
-     * 
+     *
      * This method sets up a message handler on the queue rebalance control address
      * that processes two types of actions:
      * - "claim": Attempts to claim a queue for rebalancing via claimQueueForRebalance()
      * - "release": Attempts to release a queue if ready and owned via releaseQueueIfReadyAndOwned()
-     * 
+     *
      * The handler expects JSON messages with "action" (optional, defaults to "release"),
      * "queueName", and "expectedOwner" fields. Results are replied back to the sender.
      */
