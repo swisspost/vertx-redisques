@@ -68,6 +68,8 @@ public class QueueConsumerRunner {
     private static final String REBALANCE_ACTION = "action";
     private static final String REBALANCE_ACTION_CLAIM = "claim";
     private static final String REBALANCE_ACTION_RELEASE = "release";
+    private static final String REBALANCE_ACTION_ACTIVATE = "activate";
+    private static final String REBALANCE_ACTION_ABANDON = "abandon";
 
     // The queues this verticle instance is registered as a consumer
     private final Map<String, QueueProcessingState> myQueues = new HashMap<>();
@@ -263,15 +265,20 @@ public class QueueConsumerRunner {
     }
 
     /**
-     * Claims ownership of a queue for rebalancing purposes.
+     * Claims ownership of a queue for rebalancing purposes, without starting consumption.
      *
      * This method atomically attempts to change ownership of a queue from the expectedOwner
-     * to this consumer. If successful, it sets the queue to READY state and notifies the
-     * consumer to begin processing. If notification fails, the claim is rolled back.
+     * to this consumer. If successful, it marks the queue READY locally, but does
+     * <strong>not</strong> notify the consumer to begin processing yet. The caller must only
+     * invoke {@link #activateClaimedQueue(String)} once the previous owner has confirmed it
+     * released the queue (e.g. was not mid-processing it), otherwise call
+     * {@link #abandonClaimedQueue(String, String)} to undo the claim. This two-step handoff
+     * avoids a window where both the previous and the new owner could process the queue
+     * concurrently.
      *
      * @param queueName the name of the queue to claim
      * @param expectedOwner the expected current owner of the queue
-     * @return a Future that completes with true if the queue was successfully claimed, false otherwise
+     * @return a Future that completes with true if ownership was claimed, false otherwise
      */
     public Future<Boolean> claimQueueForRebalance(String queueName, String expectedOwner) {
         if (Strings.isNullOrEmpty(queueName) || Strings.isNullOrEmpty(expectedOwner)) {
@@ -279,41 +286,48 @@ public class QueueConsumerRunner {
         }
         final String consumerKey = keyspaceHelper.getConsumersPrefix() + queueName;
         return compareAndSetOwner(consumerKey, expectedOwner, keyspaceHelper.getVerticleUid())
-                .compose(claimed -> {
-                    if (!claimed) {
-                        return Future.succeededFuture(false);
+                .map(claimed -> {
+                    if (claimed) {
+                        setMyQueuesState(queueName, QueueState.READY);
                     }
-                    setMyQueuesState(queueName, QueueState.READY);
-                    return notifyConsumer(queueName)
-                            .map(Boolean.TRUE)
-                            .recover(throwable -> rollbackClaimedQueue(consumerKey, queueName, expectedOwner, throwable,
-                                    "complete rebalance claim"));
+                    return claimed;
                 });
     }
 
     /**
-     * Rolls back a claimed queue by restoring the original owner.
+     * Starts consumption of a queue previously claimed via {@link #claimQueueForRebalance}.
      *
-     * This is used when a queue claim operation partially succeeds (ownership change succeeds
-     * but consumer notification fails). It attempts to atomically restore the original owner
-     * and removes the queue from the local queue registry.
+     * Must only be called after the previous owner has confirmed it released the queue, to
+     * guarantee that only one consumer is ever actively processing the queue at a time.
      *
-     * @param consumerKey the Redis key for the queue's consumer registration
-     * @param queueName the name of the queue to rollback
-     * @param rollbackOwner the original owner to restore
-     * @param cause the exception that triggered the rollback
-     * @param action a description of the action that failed (for logging)
-     * @return a Future that completes with a failed result if rollback is needed
+     * @param queueName the name of the queue to activate
+     * @return a Future that completes once the consumer has been notified
      */
-    private Future<Boolean> rollbackClaimedQueue(String consumerKey, String queueName, String rollbackOwner,
-                                                 Throwable cause, String action) {
+    public Future<Void> activateClaimedQueue(String queueName) {
+        return notifyConsumer(queueName);
+    }
+
+    /**
+     * Abandons a queue that was claimed via {@link #claimQueueForRebalance} but never
+     * activated, restoring ownership to the given previous owner.
+     *
+     * Because activation only happens after the previous owner confirmed release, a queue
+     * that still needs to be abandoned here was never actually consumed by this instance, so
+     * this is a safe no-op from the processing point of view - it only reverts the Redis
+     * ownership key and the local bookkeeping.
+     *
+     * @param queueName the name of the queue to abandon
+     * @param rollbackOwner the previous owner to restore
+     * @return a Future that completes with true if ownership was restored, false otherwise
+     */
+    public Future<Boolean> abandonClaimedQueue(String queueName, String rollbackOwner) {
+        final String consumerKey = keyspaceHelper.getConsumersPrefix() + queueName;
         return compareAndSetOwner(consumerKey, keyspaceHelper.getVerticleUid(), rollbackOwner)
-                .recover(rollbackThrowable -> Future.succeededFuture(false))
-                .compose(rollbackResult -> {
+                .recover(throwable -> Future.succeededFuture(false))
+                .map(restored -> {
                     myQueues.remove(queueName);
                     queueStatsService.dequeueStatisticRemoveFromLocal(queueName);
-                    return Future.failedFuture(exceptionFactory.newException(
-                            "Failed to " + action + " for '" + queueName + "'", cause));
+                    return restored;
                 });
     }
 
@@ -949,8 +963,13 @@ public class QueueConsumerRunner {
      * Registers an event bus consumer for queue rebalance control operations.
      *
      * This method sets up a message handler on the queue rebalance control address
-     * that processes two types of actions:
-     * - "claim": Attempts to claim a queue for rebalancing via claimQueueForRebalance()
+     * that processes four types of actions:
+     * - "claim": Atomically moves ownership to this consumer, without starting consumption,
+     *   via claimQueueForRebalance()
+     * - "activate": Starts consumption of a queue previously claimed on this consumer, via
+     *   activateClaimedQueue(). Must only be sent once the previous owner confirmed release.
+     * - "abandon": Reverts a claim that was never activated, restoring the previous owner,
+     *   via abandonClaimedQueue()
      * - "release": Attempts to release a queue if ready and owned via releaseQueueIfReadyAndOwned()
      *
      * The handler expects JSON messages with "action" (optional, defaults to "release"),
@@ -974,6 +993,10 @@ public class QueueConsumerRunner {
                     Future<Boolean> command;
                     if (REBALANCE_ACTION_CLAIM.equals(action)) {
                         command = claimQueueForRebalance(queueName, expectedOwner);
+                    } else if (REBALANCE_ACTION_ACTIVATE.equals(action)) {
+                        command = activateClaimedQueue(queueName).map(true);
+                    } else if (REBALANCE_ACTION_ABANDON.equals(action)) {
+                        command = abandonClaimedQueue(queueName, expectedOwner);
                     } else {
                         command = releaseQueueIfReadyAndOwned(queueName, expectedOwner);
                     }

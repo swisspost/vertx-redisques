@@ -30,6 +30,7 @@ import redis.clients.jedis.Jedis;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -752,21 +753,23 @@ public class QueueConsumerRunnerTest extends AbstractTestCase {
     }
 
     @Test
-    public void claimQueueForRebalanceControlPath_TriggersConsume(TestContext context) {
-        Async async = context.async(2);
+    public void claimQueueForRebalanceControlPath_DoesNotTriggerConsumeUntilActivated(TestContext context) {
+        Async async = context.async();
         String queueName = "claim-trigger-queue.test";
         String sourceOwner = "consumer-source";
         jedis.rpush(getQueuesRedisKeyPrefix() + queueName, "message-1");
         jedis.setex(getConsumersRedisKeyPrefix() + queueName, 30, sourceOwner);
 
+        AtomicBoolean consumed = new AtomicBoolean(false);
         vertx.eventBus().consumer(RedisquesConfiguration.PROP_PROCESSOR_ADDRESS, (Handler<Message<JsonObject>>) event -> {
             if (!queueName.equals(event.body().getString("queue"))) {
                 event.reply(new JsonObject().put(STATUS, OK));
                 return;
             }
             context.assertEquals("message-1", event.body().getString("payload"));
+            consumed.set(true);
             event.reply(new JsonObject().put(STATUS, OK));
-            async.countDown();
+            async.complete();
         });
 
         vertx.eventBus().request(keyspaceHelper.getQueueRebalanceControlAddress(),
@@ -774,10 +777,22 @@ public class QueueConsumerRunnerTest extends AbstractTestCase {
                         .put("action", "claim")
                         .put("queueName", queueName)
                         .put("expectedOwner", sourceOwner),
-                context.asyncAssertSuccess((Message<Object> reply) -> {
-                    context.assertTrue((Boolean) reply.body());
+                context.asyncAssertSuccess((Message<Object> claimReply) -> {
+                    context.assertTrue((Boolean) claimReply.body());
                     context.assertEquals(keyspaceHelper.getVerticleUid(), jedis.get(getConsumersRedisKeyPrefix() + queueName));
-                    async.countDown();
+
+                    // Give the consumer time to notice the claim on its own (it must not, since
+                    // claim alone must not notify the consumer - only activate may trigger consumption).
+                    vertx.setTimer(300, timerId -> {
+                        context.assertFalse(consumed.get());
+
+                        vertx.eventBus().request(keyspaceHelper.getQueueRebalanceControlAddress(),
+                                new JsonObject()
+                                        .put("action", "activate")
+                                        .put("queueName", queueName),
+                                context.asyncAssertSuccess((Message<Object> activateReply) ->
+                                        context.assertTrue((Boolean) activateReply.body())));
+                    });
                 }));
     }
 

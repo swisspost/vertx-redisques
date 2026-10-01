@@ -875,10 +875,12 @@ Request Data
     "payload": {
         "filter": <str regex pattern to restrict the queues to rebalance (optional)>,
         "dryRun": <boolean when true, only calculate the rebalance plan (optional, default false)>,
-        "maxMovesPerRun": <int maximum amount of queue moves to execute in one run; must be between 1 and 100 (optional, default 100)>
+        "maxMovesPerRun": <int maximum amount of queue moves to execute in one run; must be at least 1, values above 100 are capped to 100 (optional, default 100)>
     }
 }
 ```
+
+Note: a `maxMovesPerRun` of `0` or negative is rejected with `"status": "error"`, `"errorType": "bad input"`.
 
 Response Data
 ```
@@ -889,7 +891,7 @@ Response Data
         "executedMoves": <int amount of moves that were actually completed>,
         "skipped": <int amount of planned moves that were skipped during execution>,
         "reasonsByQueue": {
-            "<str QUEUENAME>": <str skip reason such as "owner-changed", "not-ready", "release-failed", "claim-failed">
+            "<str QUEUENAME>": <str skip reason such as "owner-changed", "not-ready", "release-failed", "claim-failed", "activate-failed", "owner-lookup-failed">
         }
     }
 }

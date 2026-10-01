@@ -169,7 +169,7 @@ public class RebalanceQueuesActionTest {
             context.assertEquals(1, value.getInteger("executedMoves").intValue());
             context.assertEquals(0, value.getInteger("skipped").intValue());
             context.assertTrue(value.getJsonObject("reasonsByQueue").isEmpty());
-            context.assertEquals(List.of("claim:B:q1:A", "release:A:q1:B"), action.protocolSteps);
+            context.assertEquals(List.of("claim:B:q1:A", "release:A:q1:B", "activate:B:q1"), action.protocolSteps);
             context.assertEquals("B", action.currentOwners.getString("q1"));
             context.assertFalse(action.localReadyQueues.contains("A:q1"));
             context.assertTrue(action.localReadyQueues.contains("B:q1"));
@@ -200,7 +200,7 @@ public class RebalanceQueuesActionTest {
             context.assertEquals(1, value.getInteger("executedMoves").intValue());
             context.assertEquals(0, value.getInteger("skipped").intValue());
             context.assertTrue(value.getJsonObject("reasonsByQueue").isEmpty());
-            context.assertEquals(List.of("claim:B:q3:A", "release:A:q3:B"), action.protocolSteps);
+            context.assertEquals(List.of("claim:B:q3:A", "release:A:q3:B", "activate:B:q3"), action.protocolSteps);
             verify(redisService, times(1)).get("consumer:q3");
             verify(redisService, never()).get("consumer:q1");
             verify(redisService, never()).get("consumer:q2");
@@ -260,9 +260,47 @@ public class RebalanceQueuesActionTest {
             context.assertEquals(0, value.getInteger("executedMoves").intValue());
             context.assertEquals(1, value.getInteger("skipped").intValue());
             context.assertEquals("release-failed", reasonsByQueue.getString("q1"));
-            context.assertEquals(List.of("claim:B:q1:A", "release:A:q1:B", "claim:A:q1:B"), action.protocolSteps);
+            context.assertEquals(List.of("claim:B:q1:A", "release:A:q1:B", "abandon:B:q1:A"), action.protocolSteps);
             context.assertEquals("C", action.currentOwners.getString("q1"));
             context.assertTrue(action.localReadyQueues.contains("A:q1"));
+        });
+    }
+
+    @Test
+    public void execute_ActivateFailureIsSkippedButDoesNotAbortRemainingMoves(TestContext context) {
+        Response queuesResponse = responseList("q1", "q2", "q3", "q6", "q4", "q5");
+        Response ownerResponse = stringResponse("A");
+        when(redisService.zrangebyscore(eq("queues-key"), anyString(), eq("+inf")))
+                .thenReturn(Future.succeededFuture(queuesResponse));
+        when(redisService.get("consumer:q1")).thenReturn(Future.succeededFuture(ownerResponse));
+        when(redisService.get("consumer:q2")).thenReturn(Future.succeededFuture(ownerResponse));
+        action.runningStates = new JsonArray()
+                .add(consumerState("A", queueState("q1", QueueState.READY), queueState("q2", QueueState.READY),
+                        queueState("q3", QueueState.READY), queueState("q6", QueueState.READY)))
+                .add(consumerState("B", queueState("q4", QueueState.READY)))
+                .add(consumerState("C", queueState("q5", QueueState.READY)));
+        action.currentOwners.put("q1", "A");
+        action.currentOwners.put("q2", "A");
+        action.localReadyQueues.add("A:q1");
+        action.localReadyQueues.add("A:q2");
+        action.activateFailures.put("B:q1", "activate infra failed");
+
+        executeAndAssert(context, RedisquesAPI.buildRebalanceQueuesOperation(".*", false, 5), reply -> {
+            JsonObject value = reply.getJsonObject("value");
+            JsonObject reasonsByQueue = value.getJsonObject("reasonsByQueue");
+            context.assertEquals("ok", reply.getString("status"));
+            context.assertEquals(2, value.getInteger("plannedMoves").intValue());
+            // The activate failure on q1 must not prevent the still-pending q2 move from executing.
+            context.assertEquals(1, value.getInteger("executedMoves").intValue());
+            context.assertEquals(1, value.getInteger("skipped").intValue());
+            context.assertEquals("activate-failed", reasonsByQueue.getString("q1"));
+            context.assertNull(reasonsByQueue.getString("q2"));
+            context.assertEquals(List.of("claim:B:q1:A", "release:A:q1:B", "activate:B:q1",
+                    "claim:C:q2:A", "release:A:q2:C", "activate:C:q2"), action.protocolSteps);
+            // Ownership already transferred to the target and must not be rolled back on activate failure.
+            context.assertEquals("B", action.currentOwners.getString("q1"));
+            context.assertTrue(action.localReadyQueues.contains("B:q1"));
+            context.assertFalse(action.localReadyQueues.contains("A:q1"));
         });
     }
 
@@ -315,7 +353,7 @@ public class RebalanceQueuesActionTest {
             context.assertEquals(1, value.getInteger("skipped").intValue());
             context.assertEquals("owner-changed", reasonsByQueue.getString("q1"));
             context.assertNull(reasonsByQueue.getString("q2"));
-            context.assertEquals(List.of("claim:C:q2:A", "release:A:q2:C"), action.protocolSteps);
+            context.assertEquals(List.of("claim:C:q2:A", "release:A:q2:C", "activate:C:q2"), action.protocolSteps);
             verify(redisService, never()).setNxPx(anyString(), anyString(), eq(false), anyLong());
         });
     }
@@ -391,6 +429,7 @@ public class RebalanceQueuesActionTest {
         private final JsonObject claimReplies = new JsonObject();
         private final Map<String, String> releaseFailures = new LinkedHashMap<>();
         private final Map<String, String> claimFailures = new LinkedHashMap<>();
+        private final Map<String, String> activateFailures = new LinkedHashMap<>();
         private final JsonObject concurrentOwnersAfterReleaseFailure = new JsonObject();
         private final List<String> localReadyQueues = new ArrayList<>();
         private final List<String> protocolSteps = new ArrayList<>();
@@ -455,6 +494,27 @@ public class RebalanceQueuesActionTest {
             }
             currentOwners.put(queueName, targetConsumerId);
             localReadyQueues.add(targetConsumerId + ":" + queueName);
+            return Future.succeededFuture(true);
+        }
+
+        @Override
+        protected Future<Boolean> requestTargetActivate(String targetConsumerId, String queueName) {
+            protocolSteps.add("activate:" + targetConsumerId + ":" + queueName);
+            String configuredKey = targetConsumerId + ":" + queueName;
+            if (activateFailures.containsKey(configuredKey)) {
+                return Future.failedFuture(activateFailures.get(configuredKey));
+            }
+            return Future.succeededFuture(true);
+        }
+
+        @Override
+        protected Future<Boolean> requestTargetAbandon(String targetConsumerId, String queueName, String rollbackOwner) {
+            protocolSteps.add("abandon:" + targetConsumerId + ":" + queueName + ":" + rollbackOwner);
+            if (!targetConsumerId.equals(currentOwners.getString(queueName))) {
+                return Future.succeededFuture(false);
+            }
+            currentOwners.put(queueName, rollbackOwner);
+            localReadyQueues.remove(targetConsumerId + ":" + queueName);
             return Future.succeededFuture(true);
         }
     }

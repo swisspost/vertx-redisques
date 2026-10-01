@@ -54,10 +54,13 @@ public class RebalanceQueuesAction extends AbstractQueueAction {
     private static final String SKIP_NOT_READY = "not-ready";
     private static final String SKIP_CLAIM_FAILED = "claim-failed";
     private static final String SKIP_RELEASE_FAILED = "release-failed";
+    private static final String SKIP_ACTIVATE_FAILED = "activate-failed";
     private static final long DEFAULT_RUNNING_STATE_TIMEOUT_MS = 2_000L;
     private static final String REBALANCE_ACTION = "action";
     private static final String REBALANCE_ACTION_RELEASE = "release";
     private static final String REBALANCE_ACTION_CLAIM = "claim";
+    private static final String REBALANCE_ACTION_ACTIVATE = "activate";
+    private static final String REBALANCE_ACTION_ABANDON = "abandon";
 
     public RebalanceQueuesAction(Vertx vertx, RedisService redisService, KeyspaceHelper keyspaceHelper,
                                  QueueConfigurationProvider queueConfigurationProvider,
@@ -217,6 +220,34 @@ public class RebalanceQueuesAction extends AbstractQueueAction {
                 .map(message -> message.body() != null && message.body());
     }
 
+    /**
+     * Tells the target consumer to start consuming a queue it previously claimed via
+     * {@link #requestTargetClaim}. Must only be called after the source confirmed release,
+     * so that at most one consumer is ever actively processing the queue.
+     */
+    protected Future<Boolean> requestTargetActivate(String targetConsumerId, String queueName) {
+        String address = keyspaceHelper.queueRebalanceControlAddressFor(targetConsumerId);
+        JsonObject request = new JsonObject()
+                .put(REBALANCE_ACTION, REBALANCE_ACTION_ACTIVATE)
+                .put("queueName", queueName);
+        return vertx.eventBus().<Boolean>request(address, request)
+                .map(message -> message.body() != null && message.body());
+    }
+
+    /**
+     * Tells the target consumer to undo a claim that was never activated, restoring the
+     * previous owner. Safe to call because the target never started consuming the queue.
+     */
+    protected Future<Boolean> requestTargetAbandon(String targetConsumerId, String queueName, String rollbackOwner) {
+        String address = keyspaceHelper.queueRebalanceControlAddressFor(targetConsumerId);
+        JsonObject request = new JsonObject()
+                .put(REBALANCE_ACTION, REBALANCE_ACTION_ABANDON)
+                .put("queueName", queueName)
+                .put("expectedOwner", rollbackOwner);
+        return vertx.eventBus().<Boolean>request(address, request)
+                .map(message -> message.body() != null && message.body());
+    }
+
     private Future<ExecutionResult> executePlan(QueueRebalancePlanner.Plan plan, JsonArray runningStates) {
         Future<ExecutionResult> chain = Future.succeededFuture(new ExecutionResult());
         for (QueueRebalancePlanner.Move move : plan.getMoves()) {
@@ -259,28 +290,69 @@ public class RebalanceQueuesAction extends AbstractQueueAction {
                                     queueName, move.getTargetConsumerId(), move.getSourceConsumerId());
                             return Future.succeededFuture(result);
                         }
+                        // Ownership in Redis now points to the target, but the target has not been
+                        // notified to start consuming yet. Only once the source confirms it released
+                        // the queue (i.e. was not concurrently processing it) do we let the target
+                        // start, guaranteeing at most one active consumer per queue at all times.
                         return requestSourceRelease(move.getSourceConsumerId(), queueName, move.getTargetConsumerId())
                                 .compose(released -> {
                                     if (!released) {
-                                        return recoverFailedHandoff(move, result, SKIP_RELEASE_FAILED);
+                                        return abandonUnactivatedClaim(move, result);
                                     }
-                                    result.executedMoves++;
-                                    log.warn("Executed rebalance move for queue={} from={} to={}", queueName, move.getSourceConsumerId(), move.getTargetConsumerId());
-                                    return Future.succeededFuture(result);
+                                    return activateMove(move, result);
                                 });
                     });
         });
     }
 
-    private Future<ExecutionResult> recoverFailedHandoff(QueueRebalancePlanner.Move move, ExecutionResult result,
-                                                         String skipReason) {
+    /**
+     * Activates a queue whose claim was confirmed released by the source, i.e. tells the
+     * target to start consuming it. Ownership has already moved to the target and the source
+     * has already dropped its own local bookkeeping, so there is nothing safe left to roll
+     * back if this fails (reverting Redis ownership here would just orphan the queue, since
+     * no instance would have local READY state for it anymore). Instead, a failure here is
+     * recorded via {@link #SKIP_ACTIVATE_FAILED} and processing continues with the remaining
+     * planned moves - the target still owns the queue with correct local state, so it will
+     * pick it up on its own as soon as it next evaluates the queue (e.g. on new queue activity).
+     */
+    private Future<ExecutionResult> activateMove(QueueRebalancePlanner.Move move, ExecutionResult result) {
         String queueName = move.getQueueName();
-        log.warn("Rebalance handoff failed for queue={} from={} to={}; attempting rollback to source owner",
+        return requestTargetActivate(move.getTargetConsumerId(), queueName)
+                .compose(activated -> {
+                    if (!activated) {
+                        result.reasonsByQueue.put(queueName, SKIP_ACTIVATE_FAILED);
+                        log.warn("Failed to activate rebalance move for queue={} from={} to={}; ownership already transferred, target will pick it up later",
+                                queueName, move.getSourceConsumerId(), move.getTargetConsumerId());
+                        return Future.succeededFuture(result);
+                    }
+                    result.executedMoves++;
+                    log.info("Executed rebalance move for queue={} from={} to={}",
+                            queueName, move.getSourceConsumerId(), move.getTargetConsumerId());
+                    return Future.succeededFuture(result);
+                })
+                .recover(throwable -> {
+                    result.reasonsByQueue.put(queueName, SKIP_ACTIVATE_FAILED);
+                    log.warn("Failed to activate rebalance move for queue={} from={} to={}; ownership already transferred, target will pick it up later",
+                            queueName, move.getSourceConsumerId(), move.getTargetConsumerId(), throwable);
+                    return Future.succeededFuture(result);
+                });
+    }
+
+    /**
+     * Undoes a claim that was never activated (the source did not confirm release, e.g.
+     * because it was still processing the queue). Since the target was never notified to
+     * start consuming, this only needs to revert the Redis ownership and local bookkeeping
+     * on the target - there is no risk of double consumption to recover from.
+     */
+    private Future<ExecutionResult> abandonUnactivatedClaim(QueueRebalancePlanner.Move move, ExecutionResult result) {
+        String queueName = move.getQueueName();
+        log.warn("Rebalance handoff for queue={} from={} to={} not released by source; abandoning unactivated claim",
                 queueName, move.getSourceConsumerId(), move.getTargetConsumerId());
-        return requestTargetClaim(move.getSourceConsumerId(), queueName, move.getTargetConsumerId())
-                .compose(reclaimed -> {
-                    result.reasonsByQueue.put(queueName, skipReason);
-                    log.warn("Rebalance handoff for queue={} marked as {} after rollback attempt", queueName, skipReason);
+        return requestTargetAbandon(move.getTargetConsumerId(), queueName, move.getSourceConsumerId())
+                .compose(restored -> {
+                    result.reasonsByQueue.put(queueName, SKIP_RELEASE_FAILED);
+                    log.warn("Rebalance handoff for queue={} marked as {} after abandoning unactivated claim (restored={})",
+                            queueName, SKIP_RELEASE_FAILED, restored);
                     return Future.succeededFuture(result);
                 });
     }

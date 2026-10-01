@@ -501,6 +501,23 @@ public class QueueStatisticsCollector {
     }
 
     /**
+     * Determines whether a per-instance running-state payload uses the newer envelope shape
+     * ({@code {"consumerId": ..., "queues": {...}}}) rather than the legacy shape, where the
+     * object directly maps queue names to their running state.
+     * <p>
+     * Checking for this shape explicitly (instead of merely testing for a {@code "queues"} key)
+     * avoids misinterpreting a legacy payload that happens to contain a queue literally named
+     * {@code "queues"}.
+     *
+     * @param instancePayload the per-instance payload to inspect
+     * @return true if the payload is the new consumerId/queues envelope
+     */
+    private static boolean isConsumerEnvelope(JsonObject instancePayload) {
+        return instancePayload.getValue("consumerId") instanceof String
+                && instancePayload.getValue("queues") instanceof JsonObject;
+    }
+
+    /**
      * Merges the queue sizes reported by each redisques instance's queue running state into a single
      * per-queue size map, keeping only the most recently refreshed entry for each queue name.
      * <p>
@@ -517,8 +534,7 @@ public class QueueStatisticsCollector {
      * @return a {@link Map} of queue name to its merged (most recently updated) queue size
      */
     public static Map<String, Long> mergeQueueSizeFromAllQueueRunningStates(JsonArray payload) {
-        Map<String, Long> merged = new HashMap<>();
-        Map<String, Long> latestTs = new HashMap<>();
+        Map<String, Long> merged = new HashMap<>();        Map<String, Long> latestTs = new HashMap<>();
         if (payload == null || payload.isEmpty()) {
             return merged;
         }
@@ -529,7 +545,9 @@ public class QueueStatisticsCollector {
                 return;
             }
             JsonObject instancePayload = (JsonObject) instanceObj;
-            JsonObject instanceQueues = instancePayload.getJsonObject("queues", instancePayload);
+            JsonObject instanceQueues = isConsumerEnvelope(instancePayload)
+                    ? instancePayload.getJsonObject("queues")
+                    : instancePayload;
             instanceQueues.forEach(entry -> {
                 if (!(entry.getValue() instanceof JsonObject)) {
                     log.warn("Ignoring malformed running-state queue entry for '{}': expected object but got '{}'",
