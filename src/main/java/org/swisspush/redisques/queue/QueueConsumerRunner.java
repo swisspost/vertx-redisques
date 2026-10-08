@@ -1,5 +1,6 @@
 package org.swisspush.redisques.queue;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Strings;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Future;
@@ -48,7 +49,7 @@ import static org.swisspush.redisques.util.RedisquesAPI.STATUS;
 public class QueueConsumerRunner {
     private static final Logger log = LoggerFactory.getLogger(QueueConsumerRunner.class);
     private final Vertx vertx;
-    private final RedisService redisService;
+    private RedisService redisService;
     private final RedisQuesExceptionFactory exceptionFactory;
     private final QueueMetrics metrics;
     private final QueueStatsService queueStatsService;
@@ -124,6 +125,16 @@ public class QueueConsumerRunner {
         return myQueues;
     }
 
+    @VisibleForTesting
+    void setRedisService(RedisService redisService) {
+        this.redisService = redisService;
+    }
+
+    @VisibleForTesting
+    RedisService getRedisService() {
+        return redisService;
+    }
+
 
 
     public Future<Void> unregisterConsumers() {
@@ -154,6 +165,7 @@ public class QueueConsumerRunner {
         refreshRegistrationAndGet(queueName).onComplete(event1 -> {
                 if (event1.failed()) {
                     log.error("Unable to get consumer for queue {}", queueName, event1.cause());
+                    promise.complete();
                     return;
                 }
                 metrics.perQueueMetricsRefresh(queueName);
@@ -183,8 +195,15 @@ public class QueueConsumerRunner {
                             log.trace("RedisQues Starting to consume queue {}", queueName);
                             readQueue(queueName).onComplete(readQueueEvent -> {
                                 if (readQueueEvent.failed()) {
-                                    log.warn("TODO error handling", exceptionFactory.newException(
+                                    log.warn("RedisQues failed to read queue {}, will retry later", queueName, exceptionFactory.newException(
                                             "readQueue(" + queueName + ") failed", readQueueEvent.cause()));
+                                    // reschedule; the state is reset to READY after the retry delay, otherwise the queue would stay CONSUMING forever
+                                    QueueProcessingState currentState = myQueues.get(queueName);
+                                    if (currentState != null && currentState.getState() != QueueState.READY) {
+                                        rescheduleSendMessageAfterFailure(queueName,
+                                                updateQueueFailureCountAndGetRetryInterval(queueName, false),
+                                                "readQueue failed: " + readQueueEvent.cause().getMessage());
+                                    }
                                 }
                                 promise.complete();
                             });
@@ -221,7 +240,8 @@ public class QueueConsumerRunner {
         log.trace("RedisQues read queue: {}", queueName);
         isQueueLocked(queueName).onComplete(lockAnswer -> {
             if (lockAnswer.failed()) {
-                throw exceptionFactory.newRuntimeException("failed to check lock for queue: " + queueName, lockAnswer.cause());
+                promise.fail(exceptionFactory.newRuntimeException("failed to check lock for queue: " + queueName, lockAnswer.cause()));
+                return;
             }
             boolean locked = lockAnswer.result();
             if (!locked) {
@@ -524,8 +544,8 @@ public class QueueConsumerRunner {
             }
             notifyConsumer(queueName).onComplete(event -> {
                 if (event.failed()) {
-                    log.warn("TODO error handling", exceptionFactory.newException(
-                            "notifyConsumer(" + queueName + ") failed", event.cause()));
+                    log.warn("RedisQues failed to re-notify the consumer of queue '{}' after failure, queue will be picked up by the next periodic check",
+                            queueName, exceptionFactory.newException("notifyConsumer(" + queueName + ") failed", event.cause()));
                 }
                 // reset the queue state to be consumed by {@link RedisQues#consume(String)}
                 setMyQueuesState(queueName, QueueState.READY);
@@ -597,9 +617,12 @@ public class QueueConsumerRunner {
         batch.add(Request.cmd(Command.GET).arg(consumerKey));
         redisService.batch(batch).onComplete(res -> {
             // we have 2 commands in a batch, expected response
-            if (res.failed() || res.result().size() != 2){
+            if (res.failed()) {
                 log.warn("refreshRegistrationAndGet failed with queue: {}", queueName, res.cause());
                 promise.fail(res.cause().getMessage());
+            } else if (res.result() == null || res.result().size() != 2) {
+                log.warn("refreshRegistrationAndGet failed with queue: {}, unexpected batch response: {}", queueName, res.result());
+                promise.fail("unexpected batch response for queue: " + queueName);
             } else {
                 List<Response> responses = res.result();
                 updateLastRefreshRegistrationTimeStamp(queueName);
