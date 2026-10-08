@@ -7,6 +7,7 @@ import io.vertx.ext.unit.junit.VertxUnitRunner;
 import io.vertx.redis.client.RedisReplicas;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.swisspush.redisques.queue.KeyspaceHelper;
 
 import java.util.Arrays;
 import java.util.Collections;
@@ -67,6 +68,19 @@ public class RedisquesConfigurationTest {
         testContext.assertFalse(config.getTcpKeepAlive());
         testContext.assertEquals(config.getRedisReplicasType(), RedisReplicas.NEVER);
         testContext.assertEquals(config.getQueueConfigCleanupInterval(), 60_000L);
+    }
+
+    @Test
+    public void testRunningStateAddressesContinueToUseConfiguredAddress(TestContext testContext) {
+        RedisquesConfiguration config = RedisquesConfiguration.with()
+                .address("custom-address")
+                .redisPrefix("custom-prefix:")
+                .build();
+
+        KeyspaceHelper keyspaceHelper = new KeyspaceHelper(config, "consumer-1");
+
+        testContext.assertEquals("custom-address-runningState", keyspaceHelper.getQueueRunningStateKey());
+        testContext.assertEquals("custom-address-runningState.reply", keyspaceHelper.getQueueRunningStateReplyKey());
     }
 
     @Test
