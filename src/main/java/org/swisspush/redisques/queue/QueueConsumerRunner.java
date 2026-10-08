@@ -10,6 +10,8 @@ import io.vertx.core.eventbus.DeliveryOptions;
 import io.vertx.core.eventbus.EventBus;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.eventbus.MessageConsumer;
+import io.vertx.core.eventbus.ReplyException;
+import io.vertx.core.eventbus.ReplyFailure;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.redis.client.Command;
@@ -70,6 +72,9 @@ public class QueueConsumerRunner {
     private static final String REBALANCE_ACTION_RELEASE = "release";
     private static final String REBALANCE_ACTION_ACTIVATE = "activate";
     private static final String REBALANCE_ACTION_ABANDON = "abandon";
+    // Longer than the rebalance request's own release attempts (2 x default event bus timeout of 30s).
+    private static final long DEFAULT_REBALANCE_PENDING_RECOVERY_MILLIS = 120_000L;
+    private volatile long rebalancePendingRecoveryMillis = DEFAULT_REBALANCE_PENDING_RECOVERY_MILLIS;
 
     // The queues this verticle instance is registered as a consumer
     private final Map<String, QueueProcessingState> myQueues = new HashMap<>();
@@ -177,6 +182,11 @@ public class QueueConsumerRunner {
                         promise.complete();
                         return;
                     }
+                    if (queueProcessingState.isRebalancePending()) {
+                        log.trace("RedisQues Queue {} is awaiting rebalance handoff confirmation", queueName);
+                        recoverStalePendingClaim(queueName, queueProcessingState).onComplete(recovered -> promise.complete());
+                        return;
+                    }
                     QueueState state = queueProcessingState.getState();
                     log.trace("RedisQues consumer: {} queue: {} state: {}", consumer, queueName, state);
                     // Get the next message only once the previous has
@@ -227,6 +237,60 @@ public class QueueConsumerRunner {
         noQueueMoreItemHandler = handler;
     }
 
+    void setRebalancePendingRecoveryMillis(long millis) {
+        rebalancePendingRecoveryMillis = millis;
+    }
+
+    /**
+     * Resolves a claim whose handoff was never confirmed (e.g. the rebalance request that created it
+     * failed), so that the queue is not stranded until someone triggers another rebalance. The
+     * previous owner is asked to (idempotently) release the queue: if it did, the claim is activated,
+     * otherwise it is rolled back. A failed attempt leaves the claim pending and is retried later.
+     * The returned future always succeeds.
+     */
+    private Future<Void> recoverStalePendingClaim(String queueName, QueueProcessingState queueProcessingState) {
+        String previousOwner = queueProcessingState.beginRebalanceRecovery(rebalancePendingRecoveryMillis);
+        if (previousOwner == null) {
+            return Future.succeededFuture();
+        }
+        log.warn("Rebalance claim for queue {} is still pending, asking previous owner {} to confirm the release",
+                queueName, previousOwner);
+        JsonObject request = new JsonObject()
+                .put(REBALANCE_ACTION, REBALANCE_ACTION_RELEASE)
+                .put("queueName", queueName)
+                .put("expectedOwner", keyspaceHelper.getVerticleUid());
+        return vertx.eventBus().<Boolean>request(keyspaceHelper.queueRebalanceControlAddressFor(previousOwner), request)
+                .map(reply -> Boolean.TRUE.equals(reply.body()))
+                .recover(throwable -> {
+                    if (!(throwable instanceof ReplyException) || ((ReplyException) throwable).failureType() != ReplyFailure.NO_HANDLERS) {
+                        return Future.failedFuture(throwable);
+                    }
+                    // Nobody answers for the previous owner; it can only be treated as released once it is known to be dead.
+                    return isConsumerGone(previousOwner).compose(gone -> gone
+                            ? Future.succeededFuture(true) : Future.<Boolean>failedFuture(throwable));
+                })
+                .compose(released -> {
+                    if (released) {
+                        return activateClaimedQueue(queueName).onSuccess(v -> metrics.rebalanceClaimRecoveryResult("activated"));
+                    }
+                    return abandonClaimedQueue(queueName, previousOwner).<Void>mapEmpty()
+                            .onSuccess(v -> metrics.rebalanceClaimRecoveryResult("abandoned"));
+                })
+                .recover(throwable -> {
+                    metrics.rebalanceClaimRecoveryResult("failed");
+                    log.warn("Failed to recover pending rebalance claim for queue {}; will retry later", queueName, throwable);
+                    return Future.succeededFuture();
+                })
+                .onComplete(result -> queueProcessingState.finishRebalanceRecovery());
+    }
+
+    /** A consumer is gone when it is missing from the alive consumers set or has not refreshed its entry in time. */
+    private Future<Boolean> isConsumerGone(String consumerId) {
+        long aliveConsumerTtlMs = configurationProvider.configuration().getRefreshPeriod() * 1000L * 2;
+        return redisService.zscore(keyspaceHelper.getAliveConsumersKey(), consumerId).map(score ->
+                score == null || currentTimeMillis() - Double.parseDouble(score.toString()) > aliveConsumerTtlMs);
+    }
+
     /**
      * Releases ownership of a queue if it is in READY state and owned by the expected owner.
      *
@@ -243,7 +307,8 @@ public class QueueConsumerRunner {
             return Future.succeededFuture(false);
         }
         QueueProcessingState queueProcessingState = myQueues.get(queueName);
-        if (queueProcessingState == null || queueProcessingState.getState() != QueueState.READY) {
+        if (queueProcessingState != null && (queueProcessingState.isRebalancePending()
+                || queueProcessingState.getState() != QueueState.READY)) {
             return Future.succeededFuture(false);
         }
         final String consumerKey = keyspaceHelper.getConsumersPrefix() + queueName;
@@ -253,11 +318,20 @@ public class QueueConsumerRunner {
                         return Future.succeededFuture(false);
                     }
                     QueueProcessingState refreshedQueueProcessingState = myQueues.get(queueName);
-                    if (refreshedQueueProcessingState == null || refreshedQueueProcessingState.getState() != QueueState.READY) {
+                    if (refreshedQueueProcessingState == null) {
+                        // A normal notification may already have observed the new Redis owner
+                        // and dropped this consumer's local bookkeeping.
+                        return Future.succeededFuture(true);
+                    }
+                    if (refreshedQueueProcessingState.isRebalancePending()
+                            || refreshedQueueProcessingState.getState() != QueueState.READY) {
                         return Future.succeededFuture(false);
                     }
-                    myQueues.remove(queueName);
+                    if (!myQueues.remove(queueName, refreshedQueueProcessingState)) {
+                        return Future.succeededFuture(false);
+                    }
                     queueStatsService.dequeueStatisticRemoveFromLocal(queueName);
+                    metrics.rebalanceQueueReleased();
                     return Future.succeededFuture(true);
                 })
                 .recover(throwable -> Future.failedFuture(
@@ -289,6 +363,10 @@ public class QueueConsumerRunner {
                 .map(claimed -> {
                     if (claimed) {
                         setMyQueuesState(queueName, QueueState.READY);
+                        myQueues.computeIfPresent(queueName, (name, state) -> {
+                            state.setRebalancePending(expectedOwner);
+                            return state;
+                        });
                     }
                     return claimed;
                 });
@@ -304,6 +382,11 @@ public class QueueConsumerRunner {
      * @return a Future that completes once the consumer has been notified
      */
     public Future<Void> activateClaimedQueue(String queueName) {
+        QueueProcessingState queueProcessingState = myQueues.get(queueName);
+        if (queueProcessingState == null || !queueProcessingState.activateRebalanceClaim()) {
+            return Future.failedFuture("Queue is not available for rebalance activation: " + queueName);
+        }
+        metrics.rebalanceQueueActivated();
         return notifyConsumer(queueName);
     }
 
@@ -321,12 +404,25 @@ public class QueueConsumerRunner {
      * @return a Future that completes with true if ownership was restored, false otherwise
      */
     public Future<Boolean> abandonClaimedQueue(String queueName, String rollbackOwner) {
+        QueueProcessingState queueProcessingState = myQueues.get(queueName);
+        if (queueProcessingState == null || !queueProcessingState.beginRebalanceAbandon()) {
+            return Future.succeededFuture(false);
+        }
         final String consumerKey = keyspaceHelper.getConsumersPrefix() + queueName;
         return compareAndSetOwner(consumerKey, keyspaceHelper.getVerticleUid(), rollbackOwner)
-                .recover(throwable -> Future.succeededFuture(false))
+                .recover(throwable -> {
+                    log.warn("Failed to restore queue ownership while abandoning rebalance claim for '{}'", queueName, throwable);
+                    queueProcessingState.finishRebalanceAbandon(false);
+                    return Future.failedFuture(throwable);
+                })
                 .map(restored -> {
-                    myQueues.remove(queueName);
-                    queueStatsService.dequeueStatisticRemoveFromLocal(queueName);
+                    queueProcessingState.finishRebalanceAbandon(restored);
+                    if (restored) {
+                        metrics.rebalanceQueueAbandoned();
+                    }
+                    if (myQueues.remove(queueName, queueProcessingState)) {
+                        queueStatsService.dequeueStatisticRemoveFromLocal(queueName);
+                    }
                     return restored;
                 });
     }
@@ -945,10 +1041,12 @@ public class QueueConsumerRunner {
                     getMyQueues().forEach((queueName, processingState) -> {
 
                         if (refreshesWithinMs == 0 || processingState.getLastRegisterRefreshedMillis() + refreshesWithinMs >= System.currentTimeMillis()) {
-                            response.put(
-                                    queueName,
-                                    JsonObject.mapFrom(processingState)
-                            );
+                            JsonObject state = JsonObject.mapFrom(processingState);
+                            if (processingState.isRebalancePending()) {
+                                state.put("rebalancePending", true);
+                                state.put("rebalancePreviousOwner", processingState.getRebalancePreviousOwner());
+                            }
+                            response.put(queueName, state);
                         }
 
                     });

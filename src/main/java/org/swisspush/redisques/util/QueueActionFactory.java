@@ -38,6 +38,7 @@ import org.swisspush.redisques.action.SetConfigurationAction;
 import org.swisspush.redisques.action.SetPerQueueConfigurationAction;
 import org.swisspush.redisques.action.UnsupportedAction;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
+import org.swisspush.redisques.metrics.RebalanceMetrics;
 import org.swisspush.redisques.queue.KeyspaceHelper;
 import org.swisspush.redisques.queue.QueueRegistryService;
 import org.swisspush.redisques.queue.RedisService;
@@ -164,8 +165,10 @@ public class QueueActionFactory {
             case getQueueRunningStates:
                 return new GetQueueRunningStatesAction(vertx, keyspaceHelper, log, consumerManager);
             case rebalanceQueues:
-                return new RebalanceQueuesAction(vertx, redisService, keyspaceHelper, queueConfigurationProvider, redisquesConfigurationProvider, exceptionFactory, queueStatisticsCollector, log);
-            default:
+                return new RebalanceQueuesAction(vertx, redisService, keyspaceHelper, queueConfigurationProvider, redisquesConfigurationProvider,                 exceptionFactory, queueStatisticsCollector, log,
+                                        new RebalanceMetrics(redisquesConfigurationProvider.configuration().getMicrometerMetricsEnabled() ? meterRegistry : null,
+                                                redisquesConfigurationProvider.configuration().getMicrometerMetricsIdentifier()));
+                            default:
                 return new UnsupportedAction(log);
         }
     }

@@ -13,6 +13,7 @@ import io.vertx.redis.client.Response;
 import org.slf4j.Logger;
 import org.swisspush.redisques.QueueState;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
+import org.swisspush.redisques.metrics.RebalanceMetrics;
 import org.swisspush.redisques.queue.KeyspaceHelper;
 import org.swisspush.redisques.queue.QueueRebalancePlanner;
 import org.swisspush.redisques.queue.RedisService;
@@ -62,13 +63,26 @@ public class RebalanceQueuesAction extends AbstractQueueAction {
     private static final String REBALANCE_ACTION_ACTIVATE = "activate";
     private static final String REBALANCE_ACTION_ABANDON = "abandon";
 
+    private final RebalanceMetrics rebalanceMetrics;
+
     public RebalanceQueuesAction(Vertx vertx, RedisService redisService, KeyspaceHelper keyspaceHelper,
                                  QueueConfigurationProvider queueConfigurationProvider,
                                  RedisquesConfigurationProvider redisquesConfigurationProvider,
                                  RedisQuesExceptionFactory exceptionFactory,
                                  QueueStatisticsCollector queueStatisticsCollector,
                                  Logger log) {
+        this(vertx, redisService, keyspaceHelper, queueConfigurationProvider, redisquesConfigurationProvider, exceptionFactory, queueStatisticsCollector, log,
+                new RebalanceMetrics(null, null));
+    }
+
+    public RebalanceQueuesAction(Vertx vertx, RedisService redisService, KeyspaceHelper keyspaceHelper,
+                                 QueueConfigurationProvider queueConfigurationProvider,
+                                 RedisquesConfigurationProvider redisquesConfigurationProvider,
+                                 RedisQuesExceptionFactory exceptionFactory,
+                                 QueueStatisticsCollector queueStatisticsCollector,
+                                 Logger log, RebalanceMetrics rebalanceMetrics) {
         super(vertx, redisService, keyspaceHelper, queueConfigurationProvider, redisquesConfigurationProvider, exceptionFactory, queueStatisticsCollector, log);
+        this.rebalanceMetrics = rebalanceMetrics;
     }
 
     @Override
@@ -107,16 +121,27 @@ public class RebalanceQueuesAction extends AbstractQueueAction {
                                     return Future.succeededFuture(new PlanningContext(queueScope, runningStates));
                                 })))
                 .compose(context -> {
-                    PlannerInput plannerInput = buildPlannerInput(context.runningStates, context.queueScope);
-                    QueueRebalancePlanner.Plan plan = new QueueRebalancePlanner()
-                            .computePlan(plannerInput.loadByConsumer, plannerInput.readyQueuesByConsumer, effectiveMaxMovesPerRun);
-                    log.info("Rebalance plan computed: queueScope={}, activeConsumers={}, plannedMoves={}, dryRun={}",
-                            context.queueScope.size(), plannerInput.loadByConsumer.size(), plan.getMoves().size(), dryRun);
-                    if (dryRun) {
-                        return Future.succeededFuture(createSuccessReply(plan.getMoves().size(), 0, Collections.emptyMap()));
-                    }
-                    log.info("Executing rebalance plan with {} moves", plan.getMoves().size());
-                    return executePlan(plan, context.runningStates).map(result -> createSuccessReply(plan.getMoves().size(), result.executedMoves, result.reasonsByQueue));
+                    Future<ExecutionResult> recovery = dryRun
+                            ? Future.succeededFuture(new ExecutionResult())
+                            : recoverPendingClaims(context.runningStates, context.queueScope, effectiveMaxMovesPerRun);
+                    return recovery.compose(recoveryResult -> {
+                        int remainingMoves = Math.max(0, effectiveMaxMovesPerRun - recoveryResult.plannedMoves);
+                        PlannerInput plannerInput = buildPlannerInput(context.runningStates, context.queueScope);
+                        QueueRebalancePlanner.Plan plan = new QueueRebalancePlanner()
+                                .computePlan(plannerInput.loadByConsumer, plannerInput.readyQueuesByConsumer, remainingMoves);
+                        log.info("Rebalance plan computed: queueScope={}, activeConsumers={}, plannedMoves={}, dryRun={}",
+                                context.queueScope.size(), plannerInput.loadByConsumer.size(), plan.getMoves().size(), dryRun);
+                        if (dryRun) {
+                            return Future.succeededFuture(createSuccessReply(plan.getMoves().size(), 0, Collections.emptyMap()));
+                        }
+                        log.info("Executing rebalance plan with {} moves", plan.getMoves().size());
+                        return executePlan(plan, context.runningStates, recoveryResult)
+                                .map(result -> {
+                                    recordMetrics(result);
+                                    return createSuccessReply(plan.getMoves().size() + recoveryResult.plannedMoves,
+                                            result.executedMoves, result.reasonsByQueue);
+                                });
+                    });
                 })
                 .onSuccess(reply -> {
                     log.info("Rebalance request completed successfully: plannedMoves={}, executedMoves={}, skipped={}",
@@ -126,6 +151,13 @@ public class RebalanceQueuesAction extends AbstractQueueAction {
                     event.reply(reply);
                 })
                 .onFailure(throwable -> handleFail(event, "Failed to rebalance queues", throwable));
+    }
+
+    private void recordMetrics(ExecutionResult result) {
+        for (int i = 0; i < result.executedMoves; i++) {
+            rebalanceMetrics.moveResult(RebalanceMetrics.RESULT_EXECUTED);
+        }
+        result.reasonsByQueue.values().forEach(rebalanceMetrics::moveResult);
     }
 
     protected Future<Set<String>> fetchQueueScope(Optional<Pattern> filterPattern) {
@@ -248,8 +280,8 @@ public class RebalanceQueuesAction extends AbstractQueueAction {
                 .map(message -> message.body() != null && message.body());
     }
 
-    private Future<ExecutionResult> executePlan(QueueRebalancePlanner.Plan plan, JsonArray runningStates) {
-        Future<ExecutionResult> chain = Future.succeededFuture(new ExecutionResult());
+    private Future<ExecutionResult> executePlan(QueueRebalancePlanner.Plan plan, JsonArray runningStates, ExecutionResult initialResult) {
+        Future<ExecutionResult> chain = Future.succeededFuture(initialResult);
         for (QueueRebalancePlanner.Move move : plan.getMoves()) {
             chain = chain.compose(result -> executeMove(move, runningStates, result));
         }
@@ -300,9 +332,83 @@ public class RebalanceQueuesAction extends AbstractQueueAction {
                                         return abandonUnactivatedClaim(move, result);
                                     }
                                     return activateMove(move, result);
+                                }, throwable -> {
+                                    log.warn("Source release outcome is unknown for queue={} from={}; retrying the idempotent release before deciding whether to roll back",
+                                            queueName, move.getSourceConsumerId(), throwable);
+                                    return retrySourceRelease(move, result);
                                 });
                     });
         });
+    }
+
+    private Future<ExecutionResult> retrySourceRelease(QueueRebalancePlanner.Move move, ExecutionResult result) {
+        String queueName = move.getQueueName();
+        return requestSourceRelease(move.getSourceConsumerId(), queueName, move.getTargetConsumerId())
+                .compose(released -> {
+                    if (released) {
+                        return activateMove(move, result);
+                    }
+                    return abandonUnactivatedClaim(move, result);
+                }, throwable -> {
+                    result.reasonsByQueue.put(queueName, SKIP_RELEASE_FAILED);
+                    log.warn("Source release outcome remains unknown for queue={}; leaving the target claim inactive rather than risk rolling back an already-released queue",
+                            queueName, throwable);
+                    return Future.succeededFuture(result);
+                });
+    }
+
+    private Future<ExecutionResult> recoverPendingClaims(JsonArray runningStates, Set<String> queueScope, int maxClaims) {
+        List<QueueRebalancePlanner.Move> pendingClaims = pendingClaims(runningStates, queueScope, maxClaims);
+        Future<ExecutionResult> chain = Future.succeededFuture(new ExecutionResult());
+        for (QueueRebalancePlanner.Move claim : pendingClaims) {
+            chain = chain.compose(result -> {
+                result.plannedMoves++;
+                return requestSourceRelease(claim.getSourceConsumerId(), claim.getQueueName(), claim.getTargetConsumerId())
+                        .compose(released -> released
+                                ? activateMove(claim, result)
+                                : abandonUnactivatedClaim(claim, result),
+                                throwable -> {
+                                    result.reasonsByQueue.put(claim.getQueueName(), SKIP_RELEASE_FAILED);
+                                    log.warn("Could not reconcile pending rebalance claim for queue={}; it will be retried by a later rebalance request",
+                                            claim.getQueueName(), throwable);
+                                    return Future.succeededFuture(result);
+                                });
+            });
+        }
+        return chain;
+    }
+
+    private List<QueueRebalancePlanner.Move> pendingClaims(JsonArray runningStates, Set<String> queueScope, int maxClaims) {
+        List<QueueRebalancePlanner.Move> pendingClaims = new ArrayList<>();
+        if (runningStates == null) {
+            return pendingClaims;
+        }
+        for (Object payloadEntry : runningStates) {
+            if (pendingClaims.size() >= maxClaims || !(payloadEntry instanceof JsonObject)) {
+                continue;
+            }
+            JsonObject instance = (JsonObject) payloadEntry;
+            String targetConsumerId = instance.getString("consumerId");
+            JsonObject queues = instance.getJsonObject("queues", new JsonObject());
+            if (targetConsumerId == null) {
+                continue;
+            }
+            queues.forEach(entry -> {
+                if (pendingClaims.size() >= maxClaims || !(entry.getValue() instanceof JsonObject)) {
+                    return;
+                }
+                if (!queueScope.contains(entry.getKey())) {
+                    return;
+                }
+                JsonObject state = (JsonObject) entry.getValue();
+                String sourceConsumerId = state.getString("rebalancePreviousOwner");
+                if (state.getBoolean("rebalancePending", false) && sourceConsumerId != null
+                        && !sourceConsumerId.equals(targetConsumerId)) {
+                    pendingClaims.add(new QueueRebalancePlanner.Move(entry.getKey(), sourceConsumerId, targetConsumerId));
+                }
+            });
+        }
+        return pendingClaims;
     }
 
     /**
@@ -349,6 +455,11 @@ public class RebalanceQueuesAction extends AbstractQueueAction {
         log.warn("Rebalance handoff for queue={} from={} to={} not released by source; abandoning unactivated claim",
                 queueName, move.getSourceConsumerId(), move.getTargetConsumerId());
         return requestTargetAbandon(move.getTargetConsumerId(), queueName, move.getSourceConsumerId())
+                .recover(throwable -> {
+                    // The claim stays pending on the target; it is reconciled later, so the remaining moves must not be aborted.
+                    log.warn("Failed to abandon unactivated claim for queue={} on target={}", queueName, move.getTargetConsumerId(), throwable);
+                    return Future.succeededFuture(false);
+                })
                 .compose(restored -> {
                     result.reasonsByQueue.put(queueName, SKIP_RELEASE_FAILED);
                     log.warn("Rebalance handoff for queue={} marked as {} after abandoning unactivated claim (restored={})",
@@ -382,7 +493,8 @@ public class RebalanceQueuesAction extends AbstractQueueAction {
                 }
                 ownedQueuesInScope.incrementAndGet();
                 JsonObject queueState = (JsonObject) entry.getValue();
-                if (QueueState.READY.name().equals(queueState.getString("state"))) {
+                if (QueueState.READY.name().equals(queueState.getString("state"))
+                        && !queueState.getBoolean("rebalancePending", false)) {
                     readyQueues.add(entry.getKey());
                 }
             });
@@ -405,7 +517,9 @@ public class RebalanceQueuesAction extends AbstractQueueAction {
                 continue;
             }
             JsonObject queueState = instancePayload.getJsonObject("queues", new JsonObject()).getJsonObject(queueName);
-            return queueState != null && QueueState.READY.name().equals(queueState.getString("state"));
+            return queueState != null
+                    && QueueState.READY.name().equals(queueState.getString("state"))
+                    && !queueState.getBoolean("rebalancePending", false);
         }
         return false;
     }
@@ -460,6 +574,7 @@ public class RebalanceQueuesAction extends AbstractQueueAction {
 
     private static class ExecutionResult {
         private final Map<String, String> reasonsByQueue = new LinkedHashMap<>();
+        private int plannedMoves;
         private int executedMoves;
     }
 }

@@ -45,8 +45,8 @@ public class KeyspaceHelper {
         consumersAddress = configuration.getAddress() + "-consumers";
         aliveConsumersKey = configuration.getRedisPrefix() + "-aliveConsumer";
         metricsCollectorAddress = configuration.getAddress() + "-" + verticleUid + "-" + QUEUE_STATE_COUNT_KEY;
-        queueRunningStateKey = configuration.getRedisPrefix() + "-runningState";
-        queueRunningStateReplyKey = configuration.getRedisPrefix() + "-runningState.reply";
+        queueRunningStateKey = configuration.getAddress() + "-runningState";
+        queueRunningStateReplyKey = configuration.getAddress() + "-runningState.reply";
         queueRebalanceControlAddress = queueRebalanceControlAddressFor(verticleUid);
 
     }
