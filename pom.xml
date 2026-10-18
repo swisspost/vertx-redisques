@@ -391,7 +391,7 @@
     </profiles>
     <properties>
         <vertx.version>4.5.23</vertx.version>
-        <micrometer.version>1.15.2</micrometer.version>
+        <micrometer.version>1.15.12</micrometer.version>
         <slf4j.version>2.0.10</slf4j.version>
         <log4j.version>2.20.0</log4j.version>
         <mockito.version>5.8.0</mockito.version>
