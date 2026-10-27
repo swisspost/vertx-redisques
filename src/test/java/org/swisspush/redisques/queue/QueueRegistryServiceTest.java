@@ -109,6 +109,20 @@ public class QueueRegistryServiceTest extends AbstractTestCase {
     }
 
 
+    /** Polls without blocking the event loop, so slow machines get time to recover the queue. */
+    private void completeWhenQueueRecovered(TestContext context, Async async, QueueRegistryService service, String queueName) {
+        final long deadline = System.currentTimeMillis() + 10_000L;
+        vertx.setPeriodic(100, timerId -> {
+            if (service.getQueueConsumerRunner().getMyQueues().containsKey(queueName)) {
+                vertx.cancelTimer(timerId);
+                async.complete();
+            } else if (System.currentTimeMillis() > deadline) {
+                vertx.cancelTimer(timerId);
+                context.fail("Queue " + queueName + " was not recovered by the real consumer");
+            }
+        });
+    }
+
     @Test
     public void testUpdateTimestamp(TestContext context) {
         Async async = context.async();
@@ -189,10 +203,7 @@ public class QueueRegistryServiceTest extends AbstractTestCase {
                                     if (event1.failed()) {
                                         context.fail();
                                     }
-                                    waitMillis(500);
-                                    // this queue should not in real consumer
-                                    Assert.assertTrue(queueRegistryService.getQueueConsumerRunner().getMyQueues().containsKey(queueNameForFakeConsumer));
-                                    async.complete();
+                                    completeWhenQueueRecovered(context, async, queueRegistryService, queueNameForFakeConsumer);
                                 });
                             });
                         });
@@ -246,10 +257,7 @@ public class QueueRegistryServiceTest extends AbstractTestCase {
                                     if (event1.failed()) {
                                         context.fail(event1.cause());
                                     }
-                                    waitMillis(500);
-                                    // this queue should not in real consumer
-                                    Assert.assertTrue(queueRegistryService.getQueueConsumerRunner().getMyQueues().containsKey(queueNameForFakeConsumer));
-                                    async.complete();
+                                    completeWhenQueueRecovered(context, async, queueRegistryService, queueNameForFakeConsumer);
                                 });
                             });
                         });
@@ -304,10 +312,7 @@ public class QueueRegistryServiceTest extends AbstractTestCase {
                                     if (event1.failed()) {
                                         context.fail();
                                     }
-                                    waitMillis(500);
-                                    // this queue should not in real consumer
-                                    Assert.assertTrue(queueRegistryService.getQueueConsumerRunner().getMyQueues().containsKey(queueNameForFakeConsumer));
-                                    async.complete();
+                                    completeWhenQueueRecovered(context, async, queueRegistryService, queueNameForFakeConsumer);
                                 });
                             });
                         });
