@@ -11,6 +11,7 @@ public class QueueProcessingState {
     private String rebalancePreviousOwner;
     private long rebalancePendingSinceMillis;
     private boolean rebalanceRecoveryInFlight;
+    private volatile boolean ownershipLost;
 
     public QueueProcessingState(QueueState state, long timestampMillis) {
         this.setState(state);
@@ -48,6 +49,15 @@ public class QueueProcessingState {
 
     public void setQueueItemSize(long value) {
         queueItemSize = value;
+    }
+
+    boolean isOwnershipLost() {
+        return ownershipLost;
+    }
+
+    /** Marks a still processing queue whose Redis owner changed, so its local state is dropped once processing ends. */
+    void setOwnershipLost(boolean ownershipLost) {
+        this.ownershipLost = ownershipLost;
     }
 
     synchronized boolean isRebalancePending() {

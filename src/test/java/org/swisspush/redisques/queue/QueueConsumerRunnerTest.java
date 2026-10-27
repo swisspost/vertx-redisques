@@ -9,6 +9,7 @@ import io.vertx.core.Handler;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.Message;
+import io.vertx.core.eventbus.MessageConsumer;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.redis.client.Response;
@@ -1000,6 +1001,90 @@ public class QueueConsumerRunnerTest extends AbstractTestCase {
 
         runner.getMyQueues().put("q-race", new QueueProcessingState(QueueState.CONSUMING, System.currentTimeMillis()));
         getPromise.complete(stringResponse("consumer-B"));
+    }
+
+    @Test
+    public void consume_KeepsConsumingStateWhenOwnershipChanges(TestContext context) {
+        RedisService redisService = mock(RedisService.class);
+        QueueStatsService queueStatsService = mock(QueueStatsService.class);
+        KeyspaceHelper mockedKeyspaceHelper = mock(KeyspaceHelper.class);
+        RedisquesConfigurationProvider mockedConfigurationProvider = mock(RedisquesConfigurationProvider.class);
+        QueueConfigurationProvider mockedQueueConfigurationProvider = mock(QueueConfigurationProvider.class);
+        QueueStatisticsCollector queueStatisticsCollector = mock(QueueStatisticsCollector.class);
+        QueueMetrics metrics = mock(QueueMetrics.class);
+        RedisquesConfiguration configuration = mock(RedisquesConfiguration.class);
+
+        when(configuration.getConsumerLockMultiplier()).thenReturn(2);
+        when(configuration.getRefreshPeriod()).thenReturn(3);
+        when(configuration.getMetricRefreshPeriod()).thenReturn(0);
+        when(mockedConfigurationProvider.configuration()).thenReturn(configuration);
+        when(mockedKeyspaceHelper.getVerticleUid()).thenReturn("consumer-A");
+        when(mockedKeyspaceHelper.getTrimRequestKey()).thenReturn("trim:");
+        when(mockedKeyspaceHelper.getQueueRunningStateKey()).thenReturn("running-state");
+        when(mockedKeyspaceHelper.getQueueRebalanceControlAddress()).thenReturn("rebalance-control");
+        when(mockedKeyspaceHelper.getConsumersPrefix()).thenReturn("consumer:");
+        when(mockedKeyspaceHelper.getVerticleNotifyConsumerKey()).thenReturn("notify-consumer");
+        List<Response> registrationResponses = List.of(integerResponse(1), stringResponse("consumer-B"));
+        when(redisService.batch(anyList())).thenReturn(Future.succeededFuture(registrationResponses));
+
+        QueueConsumerRunner runner = new QueueConsumerRunner(vertx, redisService, metrics, queueStatsService, mockedKeyspaceHelper,
+                mockedConfigurationProvider, RedisQuesExceptionFactory.newWastefulExceptionFactory(), queueStatisticsCollector,
+                mockedQueueConfigurationProvider, new MessageConsumerManager(vertx));
+        QueueProcessingState processingState = new QueueProcessingState(QueueState.CONSUMING, System.currentTimeMillis());
+        runner.getMyQueues().put("q-handoff", processingState);
+        MessageConsumer<String> notifyConsumer = vertx.eventBus().consumer("notify-consumer", message -> message.reply("ok"));
+
+        Async async = context.async();
+        runner.consume("q-handoff").onComplete(context.asyncAssertSuccess(v -> {
+            context.assertTrue(processingState == runner.getMyQueues().get("q-handoff"));
+            verify(queueStatsService, never()).dequeueStatisticRemoveFromLocal("q-handoff");
+            runner.releaseQueueIfReadyAndOwned("q-handoff", "consumer-B").onComplete(context.asyncAssertSuccess(released -> {
+                context.assertFalse(released);
+                runner.setMyQueuesState("q-handoff", QueueState.READY);
+                context.assertFalse(runner.getMyQueues().containsKey("q-handoff"));
+                verify(queueStatsService, times(1)).dequeueStatisticRemoveFromLocal("q-handoff");
+                notifyConsumer.unregister(context.asyncAssertSuccess(unregistered ->
+                        runner.unregisterConsumers(context.asyncAssertSuccess(unregisteredRunner -> async.complete()))));
+            }));
+        }));
+    }
+
+    @Test
+    public void activateClaimedQueue_DoesNotCountFailedNotification(TestContext context) {
+        RedisService redisService = mock(RedisService.class);
+        QueueStatsService queueStatsService = mock(QueueStatsService.class);
+        KeyspaceHelper mockedKeyspaceHelper = mock(KeyspaceHelper.class);
+        RedisquesConfigurationProvider mockedConfigurationProvider = mock(RedisquesConfigurationProvider.class);
+        QueueConfigurationProvider mockedQueueConfigurationProvider = mock(QueueConfigurationProvider.class);
+        QueueStatisticsCollector queueStatisticsCollector = mock(QueueStatisticsCollector.class);
+        QueueMetrics metrics = mock(QueueMetrics.class);
+        RedisquesConfiguration configuration = mock(RedisquesConfiguration.class);
+
+        when(configuration.getConsumerLockMultiplier()).thenReturn(2);
+        when(configuration.getRefreshPeriod()).thenReturn(3);
+        when(configuration.getMetricRefreshPeriod()).thenReturn(0);
+        when(mockedConfigurationProvider.configuration()).thenReturn(configuration);
+        when(mockedKeyspaceHelper.getVerticleUid()).thenReturn("consumer-A");
+        when(mockedKeyspaceHelper.getTrimRequestKey()).thenReturn("trim:");
+        when(mockedKeyspaceHelper.getQueueRunningStateKey()).thenReturn("running-state");
+        when(mockedKeyspaceHelper.getQueueRebalanceControlAddress()).thenReturn("rebalance-control");
+        when(mockedKeyspaceHelper.getVerticleNotifyConsumerKey()).thenReturn("notify-consumer");
+
+        QueueConsumerRunner runner = new QueueConsumerRunner(vertx, redisService, metrics, queueStatsService, mockedKeyspaceHelper,
+                mockedConfigurationProvider, RedisQuesExceptionFactory.newWastefulExceptionFactory(), queueStatisticsCollector,
+                mockedQueueConfigurationProvider, new MessageConsumerManager(vertx));
+        QueueProcessingState processingState = new QueueProcessingState(QueueState.READY, System.currentTimeMillis());
+        processingState.setRebalancePending("consumer-B");
+        runner.getMyQueues().put("q-activation", processingState);
+        MessageConsumer<String> notifyConsumer = vertx.eventBus().consumer("notify-consumer",
+                message -> message.fail(0, "simulated notification failure"));
+
+        Async async = context.async();
+        runner.activateClaimedQueue("q-activation").onComplete(context.asyncAssertFailure(throwable -> {
+            verify(metrics, never()).rebalanceQueueActivated();
+            notifyConsumer.unregister(context.asyncAssertSuccess(unregistered ->
+                    runner.unregisterConsumers(context.asyncAssertSuccess(unregisteredRunner -> async.complete()))));
+        }));
     }
 
     @Test

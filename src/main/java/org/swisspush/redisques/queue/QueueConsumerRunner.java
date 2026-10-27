@@ -182,6 +182,7 @@ public class QueueConsumerRunner {
                         promise.complete();
                         return;
                     }
+                    queueProcessingState.setOwnershipLost(false);
                     if (queueProcessingState.isRebalancePending()) {
                         log.trace("RedisQues Queue {} is awaiting rebalance handoff confirmation", queueName);
                         recoverStalePendingClaim(queueName, queueProcessingState).onComplete(recovered -> promise.complete());
@@ -218,9 +219,15 @@ public class QueueConsumerRunner {
                 } else {
                     // Somehow registration changed. Let's renotify.
                     log.trace("Registration for queue {} has changed to {}", queueName, consumer);
-                    myQueues.remove(queueName);
-                    // This queue is not owned by this instance; removing it from the local dequeue statistics cache.
-                    queueStatsService.dequeueStatisticRemoveFromLocal(queueName);
+                    QueueProcessingState localState = myQueues.get(queueName);
+                    if (localState == null || localState.getState() != QueueState.CONSUMING) {
+                        myQueues.remove(queueName, localState);
+                        // This queue is not owned by this instance; removing it from the local dequeue statistics cache.
+                        queueStatsService.dequeueStatisticRemoveFromLocal(queueName);
+                    } else {
+                        log.debug("Keeping queue {} locally until its current message is processed", queueName);
+                        localState.setOwnershipLost(true);
+                    }
                     notifyConsumer(queueName).onComplete(notifyConsumerEvent -> {
                         if (notifyConsumerEvent.failed()) {
                             log.warn("TODO error handling", exceptionFactory.newException(
@@ -319,8 +326,7 @@ public class QueueConsumerRunner {
                     }
                     QueueProcessingState refreshedQueueProcessingState = myQueues.get(queueName);
                     if (refreshedQueueProcessingState == null) {
-                        // A normal notification may already have observed the new Redis owner
-                        // and dropped this consumer's local bookkeeping.
+                        // Local state is only dropped on an ownership change after it is no longer CONSUMING.
                         return Future.succeededFuture(true);
                     }
                     if (refreshedQueueProcessingState.isRebalancePending()
@@ -362,6 +368,10 @@ public class QueueConsumerRunner {
         return compareAndSetOwner(consumerKey, expectedOwner, keyspaceHelper.getVerticleUid())
                 .map(claimed -> {
                     if (claimed) {
+                        QueueProcessingState existing = myQueues.get(queueName);
+                        if (existing != null) {
+                            existing.setOwnershipLost(false);
+                        }
                         setMyQueuesState(queueName, QueueState.READY);
                         myQueues.computeIfPresent(queueName, (name, state) -> {
                             state.setRebalancePending(expectedOwner);
@@ -386,8 +396,7 @@ public class QueueConsumerRunner {
         if (queueProcessingState == null || !queueProcessingState.activateRebalanceClaim()) {
             return Future.failedFuture("Queue is not available for rebalance activation: " + queueName);
         }
-        metrics.rebalanceQueueActivated();
-        return notifyConsumer(queueName);
+        return notifyConsumer(queueName).onSuccess(v -> metrics.rebalanceQueueActivated());
     }
 
     /**
@@ -493,6 +502,10 @@ public class QueueConsumerRunner {
                 .compose(claimed -> {
                     if (!claimed) {
                         return Future.succeededFuture(false);
+                    }
+                    QueueProcessingState existing = myQueues.get(queueName);
+                    if (existing != null) {
+                        existing.setOwnershipLost(false);
                     }
                     setMyQueuesState(queueName, QueueState.READY);
                     return notifyConsumer(queueName)
@@ -956,6 +969,10 @@ public class QueueConsumerRunner {
             if (null == queueProcessingState) {
                 // not in our list yet
                 return new QueueProcessingState(state, 0);
+            } else if (queueProcessingState.isOwnershipLost() && state == QueueState.READY) {
+                // processing finished for a queue that another consumer owns now
+                queueStatsService.dequeueStatisticRemoveFromLocal(queueName);
+                return null;
             } else if (queueProcessingState.getState() == QueueState.CONSUMING && state == QueueState.READY) {
                 // update the state and the timestamp when we change from CONSUMING to READY
                 return new QueueProcessingState(QueueState.READY, currentTimeMillis());
