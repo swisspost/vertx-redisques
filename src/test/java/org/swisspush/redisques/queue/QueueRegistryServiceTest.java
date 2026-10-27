@@ -38,6 +38,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
@@ -146,6 +147,25 @@ public class QueueRegistryServiceTest extends AbstractTestCase {
         context.assertEquals(expected, actual, stepName + ": " + describeState(service, queue, fakeConsumerId));
     }
 
+    /** The service purges unknown ids from aliveConsumers every second, so keep re-adding the fake one until told to stop. */
+    private AtomicBoolean keepFakeConsumerAlive(QueueRegistryService service, String fakeConsumerId) {
+        AtomicBoolean keepAlive = new AtomicBoolean(true);
+        service.aliveConsumers.add(fakeConsumerId);
+        vertx.setPeriodic(20, timerId -> {
+            if (keepAlive.get()) {
+                service.aliveConsumers.add(fakeConsumerId);
+            } else {
+                vertx.cancelTimer(timerId);
+            }
+        });
+        return keepAlive;
+    }
+
+    private void killFakeConsumer(QueueRegistryService service, String fakeConsumerId, AtomicBoolean keepAlive) {
+        keepAlive.set(false);
+        service.aliveConsumers.remove(fakeConsumerId);
+    }
+
     private void waitMillis(long millis) {
         try {
             Thread.sleep(millis);
@@ -203,7 +223,7 @@ public class QueueRegistryServiceTest extends AbstractTestCase {
         final String queueNameForFakeConsumer = "queue-another-consumer-1-test";
         startWatchdog(context, async, queueRegistryService, queueNameForFakeConsumer, fakeConsumerId);
 
-        queueRegistryService.aliveConsumers.add(fakeConsumerId);
+        AtomicBoolean keepFakeAlive = keepFakeConsumerAlive(queueRegistryService, fakeConsumerId);
         Promise<Void> fakeConsumerPromise = Promise.promise();
 
         vertx.eventBus().consumer(fakeConsumerId).handler(event -> fakeConsumerPromise.complete());
@@ -234,7 +254,7 @@ public class QueueRegistryServiceTest extends AbstractTestCase {
                                 // this queue should not in real consumer
                                 assertInMyQueues(context, queueRegistryService, queueNameForFakeConsumer, fakeConsumerId, false, "fake consumer notified: queue not mine");
                                 // remove the fake consumer from alive list
-                                queueRegistryService.aliveConsumers.remove(fakeConsumerId);
+                                killFakeConsumer(queueRegistryService, fakeConsumerId, keepFakeAlive);
 
                                 // notify once more
                                 step("notifyConsumer (fake consumer dead)");
@@ -269,7 +289,7 @@ public class QueueRegistryServiceTest extends AbstractTestCase {
         final String fakeConsumerId = UUID.randomUUID().toString();
         final String queueNameForFakeConsumer = "queue-another-consumer-2-test";
         startWatchdog(context, async, queueRegistryService, queueNameForFakeConsumer, fakeConsumerId);
-        queueRegistryService.aliveConsumers.add(fakeConsumerId);
+        AtomicBoolean keepFakeAlive = keepFakeConsumerAlive(queueRegistryService, fakeConsumerId);
 
         Promise<Void> fakeConsumerPromise = Promise.promise();
         vertx.eventBus().consumer(fakeConsumerId).handler(event -> fakeConsumerPromise.complete());
@@ -300,7 +320,7 @@ public class QueueRegistryServiceTest extends AbstractTestCase {
                                 // this queue should not in real consumer
                                 assertInMyQueues(context, queueRegistryService, queueNameForFakeConsumer, fakeConsumerId, false, "fake consumer notified: queue not mine");
                                 // remove the fake consumer from alive list
-                                queueRegistryService.aliveConsumers.remove(fakeConsumerId);
+                                killFakeConsumer(queueRegistryService, fakeConsumerId, keepFakeAlive);
                                 step("enqueue (fake consumer dead)");
                                 eventBusSend(buildEnqueueOperation(queueNameForFakeConsumer, "message_2-2"), event1 -> {
                                     if (event1.failed()) {
@@ -332,7 +352,7 @@ public class QueueRegistryServiceTest extends AbstractTestCase {
         final String fakeConsumerId = UUID.randomUUID().toString();
         final String queueNameForFakeConsumer = "queue-another-consumer-3-test";
         startWatchdog(context, async, queueRegistryService, queueNameForFakeConsumer, fakeConsumerId);
-        queueRegistryService.aliveConsumers.add(fakeConsumerId);
+        AtomicBoolean keepFakeAlive = keepFakeConsumerAlive(queueRegistryService, fakeConsumerId);
 
         Promise<Void> fakeConsumerPromise = Promise.promise();
         vertx.eventBus().consumer(fakeConsumerId).handler(event -> fakeConsumerPromise.complete());
@@ -365,7 +385,7 @@ public class QueueRegistryServiceTest extends AbstractTestCase {
                                 assertInMyQueues(context, queueRegistryService, queueNameForFakeConsumer, fakeConsumerId, false, "fake consumer notified: queue not mine");
 
                                 // remove the fake consumer from alive list
-                                queueRegistryService.aliveConsumers.remove(fakeConsumerId);
+                                killFakeConsumer(queueRegistryService, fakeConsumerId, keepFakeAlive);
                                 step("checkQueues (fake consumer dead)");
                                 queueRegistryService.checkQueues().onComplete(event1 -> {
                                     if (event1.failed()) {
