@@ -202,6 +202,10 @@ public class QueueConsumerRunnerTest extends AbstractTestCase {
         flushAll();
         vertx.eventBus().consumer(RedisquesConfiguration.PROP_PROCESSOR_ADDRESS, (Handler<Message<JsonObject>>) event -> {
             log.info("Received '{}'", event.body());
+            if (!Boolean.parseBoolean(event.body().getString("batchQueue"))) {
+                // regular dispatch from the background consumer is not part of this test
+                return;
+            }
             if (index.get() == 0) {
                 context.assertEquals("batch-queue-1.test", event.body().getString("queue"));
                 context.assertTrue(event.body().getBoolean(BATCH_QUEUE));
