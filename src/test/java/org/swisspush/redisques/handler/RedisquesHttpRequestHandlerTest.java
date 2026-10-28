@@ -2117,14 +2117,32 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         Async async = context.async();
         flushAll();
         // Test increasing slowDown Time within 5 seconds
-        eventBusSend(buildEnqueueOperation("slowdown_stat", "item_b_1"), handler -> {
-
-            assertQueueState(context, null, 1, 0,
-                    "slowdown_stat", 1, 1, 8,
-                    null);
-            async.complete();
-        });
+        eventBusSend(buildEnqueueOperation("slowdown_stat", "item_b_1"), handler -> async.complete());
         async.awaitSuccess(10000);
+        // blocking polling must not run on the event loop thread
+        // retry intervals are 8,9,10,11 so slowdownTime must always be 7 + failures
+        long maxWait = System.currentTimeMillis() + 5000;
+        String state;
+        do {
+            ArrayList<HashMap<String, Object>> queues = when().get("/queuing/statistics")
+                    .then().assertThat().statusCode(200)
+                    .extract().path("queues");
+            Integer failures = null;
+            Integer slowdown = null;
+            if (queues.size() == 1) {
+                failures = (Integer) queues.get(0).get("failures");
+                slowdown = (Integer) queues.get(0).get("slowdownTime");
+            }
+            state = "failures:" + failures + "/slowdownTime:" + slowdown;
+            if (failures != null && failures >= 1 && slowdown != null && slowdown == 7 + failures) {
+                return;
+            }
+            try {
+                Thread.sleep(10);
+            } catch (InterruptedException ignored) {
+            }
+        } while (System.currentTimeMillis() < maxWait);
+        context.fail("Unexpected statistics " + state);
     }
 
     @Test(timeout = 15000L)
@@ -2134,37 +2152,22 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
         // Test increasing backPressure Time
         // see the QueueConfiguration for stat_* queues in the @Before section
         Async async1 = context.async();
-        eventBusSend(buildEnqueueOperation("stat_c", "item_c_1"), handler -> {
-            testVertx.setTimer(1000, event -> {
-                assertQueueState(context, null, 1, 0,
-                        "stat_c", 1, null, null,
-                        0);
-                async1.complete();
-            });
-        });
-        async1.awaitSuccess();
+        eventBusSend(buildEnqueueOperation("stat_c", "item_c_1"), handler -> async1.complete());
+        async1.awaitSuccess(5000);
+        delay(1000);
+        assertQueueState(context, null, 1, 0, "stat_c", 1, null, null, 0);
 
         Async async2 = context.async();
-        eventBusSend(buildEnqueueOperation("stat_c", "item_c_2"), h1 -> {
-            testVertx.setTimer(1000, event -> {
-                assertQueueState(context, null, 1, 0,
-                        "stat_c", 2, null, null,
-                        5);
-                async2.complete();
-            });
-        });
-        async2.awaitSuccess();
+        eventBusSend(buildEnqueueOperation("stat_c", "item_c_2"), h1 -> async2.complete());
+        async2.awaitSuccess(5000);
+        delay(1000);
+        assertQueueState(context, null, 1, 0, "stat_c", 2, null, null, 5);
 
         Async async3 = context.async();
-        eventBusSend(buildEnqueueOperation("stat_c", "item_c_3"), h1 -> {
-            testVertx.setTimer(1000, event -> {
-                assertQueueState(context, null, 1, 0,
-                        "stat_c", 3, null, null,
-                        10);
-                async3.complete();
-            });
-        });
-        async3.awaitSuccess(8000);
+        eventBusSend(buildEnqueueOperation("stat_c", "item_c_3"), h1 -> async3.complete());
+        async3.awaitSuccess(5000);
+        delay(1000);
+        assertQueueState(context, null, 1, 0, "stat_c", 3, null, null, 10);
     }
 
     @Test
@@ -2286,7 +2289,7 @@ public class RedisquesHttpRequestHandlerTest extends AbstractTestCase {
                 success = false;
                 failureState.append("/queuesSize:" + response.size());
             }
-            if (element != null) {
+            if (element != null && element < response.size()) {
                 // check the queue statistic element at the given position
                 //
                 // check if the queue name at the position is correct

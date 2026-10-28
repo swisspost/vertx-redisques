@@ -61,7 +61,10 @@ public class MessageConsumerManager {
     public Future<Void> unregister(MessageConsumer<?> consumer) {
         Objects.requireNonNull(consumer);
         Future<Void> unregisterFuture = consumer.isRegistered() ? consumer.unregister() : Future.succeededFuture();
-        return unregisterFuture.onSuccess(event -> remove(consumer));
+        return unregisterFuture.map(event -> {
+            remove(consumer);
+            return null;
+        });
     }
 
     /**
@@ -79,9 +82,10 @@ public class MessageConsumerManager {
         List<Future<Void>> unregisterFutures = registeredConsumers.stream()
                 .map(MessageConsumer::unregister)
                 .collect(Collectors.toList());
-        Future<Void> unregisterFuture = Future.join(unregisterFutures).mapEmpty();
-        unregisterFuture.onSuccess(event -> removeAll(managedConsumers));
-        return unregisterFuture;
+        return Future.join(unregisterFutures).<Void>mapEmpty().map(event -> {
+            removeAll(managedConsumers);
+            return null;
+        });
     }
 
     public void unregisterAll(Handler<AsyncResult<Void>> handler) {

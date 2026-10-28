@@ -87,7 +87,7 @@ public class RedisQuesProcessorDelayedExecutionTest extends AbstractTestCase {
 
         queueProcessor.handler(event -> {
             long duration = System.currentTimeMillis() - start;
-            context.assertTrue(duration < 1600, "QueueProcessor should have been called at the latest after 1600ms");
+            context.assertTrue(duration < 1600, "QueueProcessor should have been called at the latest after 1600ms, but " + duration);
             processorCalled.set(true);
         });
 

@@ -6,6 +6,7 @@ import io.vertx.core.json.JsonObject;
 import io.vertx.ext.unit.Async;
 import io.vertx.ext.unit.TestContext;
 import io.vertx.ext.unit.junit.VertxUnitRunner;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -17,7 +18,10 @@ import org.swisspush.redisques.util.QueueConfigurationProvider;
 import org.swisspush.redisques.util.RedisquesAPI;
 
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.TimeUnit;
 
 import static org.mockito.Mockito.when;
 
@@ -26,15 +30,31 @@ import static org.mockito.Mockito.when;
  */
 @RunWith(VertxUnitRunner.class)
 public class DeletePerQueueConfigurationsActionTest {
+    private final List<Vertx> vertxInstances = new CopyOnWriteArrayList<>();
+
+    private Vertx newVertx() {
+        Vertx vertx = Vertx.vertx();
+        vertxInstances.add(vertx);
+        return vertx;
+    }
+
     @Before
     public void setUp() {
         QueueConfigurationProvider.reset();
     }
 
+    @After
+    public void tearDown() throws Exception {
+        for (Vertx vertx : vertxInstances) {
+            vertx.close().toCompletionStage().toCompletableFuture().get(10, TimeUnit.SECONDS);
+        }
+        vertxInstances.clear();
+    }
+
     @Test
     public void testQueueConfigurationAction_deleteOneConfig(TestContext context) {
         final Async async = context.async();
-        Vertx vertx = Vertx.vertx();
+            Vertx vertx = newVertx();
         Message<JsonObject> message = Mockito.mock(Message.class);
         QueueConfigurationProvider.provider(vertx, new ArrayList<>(), 1_000).get().onComplete(event -> {
             QueueConfigurationProvider queueConfigurationProvider = event.result();
@@ -60,7 +80,7 @@ public class DeletePerQueueConfigurationsActionTest {
     @Test
     public void testQueueConfigurationAction_deleteNothing(TestContext context) {
         final Async async = context.async();
-        Vertx vertx = Vertx.vertx();
+            Vertx vertx = newVertx();
         Message<JsonObject> message = Mockito.mock(Message.class);
         QueueConfigurationProvider.provider(vertx, new ArrayList<>(), 1_000).get().onComplete(event -> {
             QueueConfigurationProvider queueConfigurationProvider = event.result();

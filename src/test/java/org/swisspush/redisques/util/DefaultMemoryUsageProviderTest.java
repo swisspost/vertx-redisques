@@ -8,6 +8,7 @@ import io.vertx.ext.unit.junit.VertxUnitRunner;
 import io.vertx.redis.client.RedisAPI;
 import io.vertx.redis.client.impl.types.BulkType;
 import org.awaitility.Awaitility;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -126,6 +127,11 @@ public class DefaultMemoryUsageProviderTest {
         when(redisProvider.redis()).thenReturn(Future.succeededFuture(redisAPI));
         redisService = new RedisService(vertx, redisProvider, Mockito.mock(RedisquesConfigurationProvider.class));
         vertx = Vertx.vertx();
+    }
+
+    @After
+    public void tearDown() throws Exception {
+        vertx.close().toCompletionStage().toCompletableFuture().get(10, java.util.concurrent.TimeUnit.SECONDS);
     }
 
     @Test

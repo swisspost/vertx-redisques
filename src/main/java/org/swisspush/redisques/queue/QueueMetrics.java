@@ -14,6 +14,7 @@ import org.swisspush.redisques.lock.impl.RedisBasedLock;
 import org.swisspush.redisques.metrics.LongTaskTimerSamplePair;
 import org.swisspush.redisques.metrics.MetricsCollector;
 import org.swisspush.redisques.metrics.MetricsCollectorScheduler;
+import org.swisspush.redisques.metrics.RebalanceMetrics;
 import org.swisspush.redisques.util.MetricMeter;
 import org.swisspush.redisques.util.MetricTags;
 import org.swisspush.redisques.util.RedisquesConfigurationProvider;
@@ -33,8 +34,25 @@ public class QueueMetrics {
     private Counter dequeueCounter;
     private Gauge consumerCounter;
     private AtomicInteger consumerCounterValue = new AtomicInteger(0);
+    private volatile RebalanceMetrics rebalanceMetrics = new RebalanceMetrics(null, null);
     MetricsCollector metricsCollector;
     private Lock lock;
+
+    void rebalanceClaimRecoveryResult(String result) {
+        rebalanceMetrics.claimRecoveryResult(result);
+    }
+
+    void rebalanceQueueReleased() {
+        rebalanceMetrics.queueReleased();
+    }
+
+    void rebalanceQueueActivated() {
+        rebalanceMetrics.queueActivated();
+    }
+
+    void rebalanceQueueAbandoned() {
+        rebalanceMetrics.queueAbandoned();
+    }
 
     void dequeueCounterIncrement() {
         if (dequeueCounter == null) {
@@ -137,6 +155,7 @@ public class QueueMetrics {
             }
 
             String metricsIdentifier = cfg.getMicrometerMetricsIdentifier();
+            rebalanceMetrics = new RebalanceMetrics(meterRegistry, metricsIdentifier);
             dequeueCounter = Counter.builder(MetricMeter.DEQUEUE.getId())
                     .description(MetricMeter.DEQUEUE.getDescription()).tag(MetricTags.IDENTIFIER.getId(), metricsIdentifier).register(meterRegistry);
 

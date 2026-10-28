@@ -5,6 +5,7 @@ import io.vertx.core.impl.NoStackTraceThrowable;
 import io.vertx.ext.unit.Async;
 import io.vertx.ext.unit.TestContext;
 import io.vertx.ext.unit.junit.VertxUnitRunner;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -31,6 +32,11 @@ public class UpperBoundParallelTest {
         vertx = Vertx.vertx();
         target = new UpperBoundParallel(vertx, newWastefulExceptionFactory());
         limit = new Semaphore(1);
+    }
+
+    @After
+    public void after() throws Exception {
+        vertx.close().toCompletionStage().toCompletableFuture().get(10, java.util.concurrent.TimeUnit.SECONDS);
     }
 
     @Test

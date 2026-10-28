@@ -501,14 +501,32 @@ public class QueueStatisticsCollector {
     }
 
     /**
+     * Determines whether a per-instance running-state payload uses the newer envelope shape
+     * ({@code {"consumerId": ..., "queues": {...}}}) rather than the legacy shape, where the
+     * object directly maps queue names to their running state.
+     * <p>
+     * Checking for this shape explicitly (instead of merely testing for a {@code "queues"} key)
+     * avoids misinterpreting a legacy payload that happens to contain a queue literally named
+     * {@code "queues"}.
+     *
+     * @param instancePayload the per-instance payload to inspect
+     * @return true if the payload is the new consumerId/queues envelope
+     */
+    private static boolean isConsumerEnvelope(JsonObject instancePayload) {
+        return instancePayload.getValue("consumerId") instanceof String
+                && instancePayload.getValue("queues") instanceof JsonObject;
+    }
+
+    /**
      * Merges the queue sizes reported by each redisques instance's queue running state into a single
      * per-queue size map, keeping only the most recently refreshed entry for each queue name.
      * <p>
-     * The payload is expected to be a {@link JsonArray} of {@link JsonObject}s, one per instance, where
-     * each entry maps a queue name to its running state (a {@link JsonObject} containing at least
-     * {@code queueItemSizeCounter} and {@code lastRegisterRefreshedMillis}). For a given queue name that
-     * appears in multiple instances, only the state with the highest {@code lastRegisterRefreshedMillis}
-     * value is kept, and its {@code queueItemSizeCounter} is used as the merged size.
+     * The payload is expected to be a {@link JsonArray} of {@link JsonObject}s, one per instance. Each
+     * entry may either be a direct queue-name-to-running-state map (legacy shape) or an object containing
+     * {@code consumerId} plus a nested {@code queues} object with that same queue-state map. For a given
+     * queue name that appears in multiple instances, only the state with the highest
+     * {@code lastRegisterRefreshedMillis} value is kept, and its {@code queueItemSizeCounter} is used as
+     * the merged size.
      *
      * Entries with malformed shape are ignored to stay robust during mixed-version cluster states.
      *
@@ -516,8 +534,7 @@ public class QueueStatisticsCollector {
      * @return a {@link Map} of queue name to its merged (most recently updated) queue size
      */
     public static Map<String, Long> mergeQueueSizeFromAllQueueRunningStates(JsonArray payload) {
-        Map<String, Long> merged = new HashMap<>();
-        Map<String, Long> latestTs = new HashMap<>();
+        Map<String, Long> merged = new HashMap<>();        Map<String, Long> latestTs = new HashMap<>();
         if (payload == null || payload.isEmpty()) {
             return merged;
         }
@@ -527,7 +544,10 @@ public class QueueStatisticsCollector {
                         instanceObj == null ? "null" : instanceObj.getClass().getName());
                 return;
             }
-            JsonObject instanceQueues = (JsonObject) instanceObj;
+            JsonObject instancePayload = (JsonObject) instanceObj;
+            JsonObject instanceQueues = isConsumerEnvelope(instancePayload)
+                    ? instancePayload.getJsonObject("queues")
+                    : instancePayload;
             instanceQueues.forEach(entry -> {
                 if (!(entry.getValue() instanceof JsonObject)) {
                     log.warn("Ignoring malformed running-state queue entry for '{}': expected object but got '{}'",
