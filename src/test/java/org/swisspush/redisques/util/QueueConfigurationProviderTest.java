@@ -63,7 +63,7 @@ public class QueueConfigurationProviderTest {
     @Test
     public void testSyncConsumerSurvivesCreatorVerticleUndeploy(TestContext context) {
         Async async = context.async();
-            Vertx vertx = newVertx();
+        Vertx vertx = newVertx();
         Promise<QueueConfigurationProvider> providerPromise = Promise.promise();
 
         vertx.deployVerticle(new AbstractVerticle() {
