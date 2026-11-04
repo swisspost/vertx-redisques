@@ -45,7 +45,8 @@ public class KeyspaceHelper {
         consumersAddress = configuration.getAddress() + "-consumers";
         aliveConsumersKey = configuration.getRedisPrefix() + "-aliveConsumer";
         metricsCollectorAddress = configuration.getAddress() + "-" + verticleUid + "-" + QUEUE_STATE_COUNT_KEY;
-        queueRunningStateKey = configuration.getAddress() + "-runningState";
+        // Must not depend on the per-instance address, so the publish reaches every instance in the cluster
+        queueRunningStateKey = configuration.getRedisPrefix() + "-runningState";
         queueRunningStateReplyKey = configuration.getAddress() + "-runningState.reply";
         queueRebalanceControlAddress = queueRebalanceControlAddressFor(verticleUid);
 

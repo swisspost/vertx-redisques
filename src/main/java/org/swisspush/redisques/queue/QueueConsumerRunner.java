@@ -260,7 +260,7 @@ public class QueueConsumerRunner {
         if (previousOwner == null) {
             return Future.succeededFuture();
         }
-        log.warn("Rebalance claim for queue {} is still pending, asking previous owner {} to confirm the release",
+        log.info("Rebalance claim for queue {} is still pending, asking previous owner {} to confirm the release",
                 queueName, previousOwner);
         JsonObject request = new JsonObject()
                 .put(REBALANCE_ACTION, REBALANCE_ACTION_RELEASE)
@@ -1096,14 +1096,14 @@ public class QueueConsumerRunner {
                 msg -> {
                     JsonObject request = msg.body();
                     if (request == null) {
-                        log.warn("Got queue rebalance control request with empty body. uid={}", keyspaceHelper.getVerticleUid());
+                        log.info("Got queue rebalance control request with empty body. uid={}", keyspaceHelper.getVerticleUid());
                         msg.reply(false);
                         return;
                     }
                     String action = request.getString(REBALANCE_ACTION, REBALANCE_ACTION_RELEASE);
                     String queueName = request.getString("queueName");
                     String expectedOwner = request.getString("expectedOwner");
-                    log.warn("Handling queue rebalance control action={} queue={} expectedOwner={} uid={}",
+                    log.info("Handling queue rebalance control action={} queue={} expectedOwner={} uid={}",
                             action, queueName, expectedOwner, keyspaceHelper.getVerticleUid());
                     Future<Boolean> command;
                     if (REBALANCE_ACTION_CLAIM.equals(action)) {
@@ -1123,7 +1123,7 @@ public class QueueConsumerRunner {
                                     msg.fail(0, asyncResult.cause().getMessage());
                                     return;
                                 }
-                                log.warn("Completed queue rebalance control request action={} queue={} expectedOwner={} uid={} result={}",
+                                log.info("Completed queue rebalance control request action={} queue={} expectedOwner={} uid={} result={}",
                                         action, queueName, expectedOwner, keyspaceHelper.getVerticleUid(), asyncResult.result());
                                 msg.reply(asyncResult.result());
                             });

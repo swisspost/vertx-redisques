@@ -115,8 +115,9 @@ public class RebalanceQueuesAction extends AbstractQueueAction {
                                     if (runningStates.size() < expectedAliveConsumers) {
                                         log.warn("Incomplete running state replies during rebalance: expected {} but received {} (queueScope={})",
                                                 expectedAliveConsumers, runningStates.size(), queueScope.size());
-                                        return Future.failedFuture("Incomplete running state replies. Expected "
-                                                + expectedAliveConsumers + " but received " + runningStates.size());
+                                        return Future.failedFuture(new IllegalStateException("Incomplete running state replies. Expected "
+                                                + expectedAliveConsumers + " but received " + runningStates.size()
+                                                + ". Check that all instances use the same redisques 'address'."));
                                     }
                                     return Future.succeededFuture(new PlanningContext(queueScope, runningStates));
                                 })))

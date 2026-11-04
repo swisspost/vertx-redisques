@@ -71,7 +71,7 @@ public class RedisquesConfigurationTest {
     }
 
     @Test
-    public void testRunningStateAddressesContinueToUseConfiguredAddress(TestContext testContext) {
+    public void testRunningStateKeyIsIndependentOfAddress(TestContext testContext) {
         RedisquesConfiguration config = RedisquesConfiguration.with()
                 .address("custom-address")
                 .redisPrefix("custom-prefix:")
@@ -79,7 +79,7 @@ public class RedisquesConfigurationTest {
 
         KeyspaceHelper keyspaceHelper = new KeyspaceHelper(config, "consumer-1");
 
-        testContext.assertEquals("custom-address-runningState", keyspaceHelper.getQueueRunningStateKey());
+        testContext.assertEquals("custom-prefix:-runningState", keyspaceHelper.getQueueRunningStateKey());
         testContext.assertEquals("custom-address-runningState.reply", keyspaceHelper.getQueueRunningStateReplyKey());
     }
 
