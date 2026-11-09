@@ -18,6 +18,7 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
+import org.mockito.Mockito;
 import org.swisspush.redisques.AbstractTestCase;
 import org.swisspush.redisques.QueueState;
 import org.swisspush.redisques.RedisQues;
@@ -38,6 +39,7 @@ import static org.swisspush.redisques.util.RedisquesAPI.ERROR;
 import static org.swisspush.redisques.util.RedisquesAPI.OK;
 import static org.swisspush.redisques.util.RedisquesAPI.STATUS;
 import static org.swisspush.redisques.util.RedisquesAPI.buildAddQueueItemOperation;
+import static org.swisspush.redisques.util.RedisquesAPI.buildEnqueueOperation;
 
 public class QueueConsumerRunnerTest extends AbstractTestCase {
     private RedisQues redisQues;
@@ -651,6 +653,51 @@ public class QueueConsumerRunnerTest extends AbstractTestCase {
                     }
                 });
             });
+        });
+    }
+
+    /**
+     * Reproducer: a transient Redis failure (e.g. "Redis waiting queue is full") while reading
+     * a queue item must not leave the queue stuck in state CONSUMING forever.
+     */
+    @Test
+    public void testQueueRecoversAfterRedisFailureWhileReadingQueue(TestContext context) {
+        Async async = context.async();
+        flushAll();
+        final String queueName = "read-failure-queue";
+        final String queueKey = keyspaceHelper.getQueuesPrefix() + queueName;
+
+        QueueConsumerRunner runner = redisQues.getQueueConsumerRunner();
+        RedisService redisServiceSpy = Mockito.spy(runner.getRedisService());
+        Mockito.doReturn(Future.failedFuture(new IllegalStateException("Redis waiting queue is full")))
+                .doCallRealMethod()
+                .when(redisServiceSpy).lindex(queueKey, "0");
+        runner.setRedisService(redisServiceSpy);
+
+        vertx.eventBus().consumer(PROCESSOR_ADDRESS, (Handler<Message<JsonObject>>) event -> {
+            context.assertEquals(queueName, event.body().getString("queue"));
+            context.assertEquals("hello", event.body().getString("payload"));
+            event.reply(new JsonObject().put(STATUS, OK));
+            // item removal and state reset happen asynchronously after the reply
+            vertx.setPeriodic(100, timerId -> {
+                QueueProcessingState state = runner.getMyQueues().get(queueName);
+                if (jedis.llen(queueKey) == 0 && state != null && state.getState() == QueueState.READY) {
+                    vertx.cancelTimer(timerId);
+                    if (!async.isCompleted()) {
+                        async.complete();
+                    }
+                }
+            });
+        });
+
+        eventBusSend(buildEnqueueOperation(queueName, "hello"), context.asyncAssertSuccess());
+
+        vertx.setTimer(15_000, t -> {
+            if (!async.isCompleted()) {
+                QueueProcessingState state = runner.getMyQueues().get(queueName);
+                context.fail("Queue item was not processed and removed after a Redis failure. Queue state: "
+                        + (state == null ? null : state.getState()) + ", items left: " + jedis.llen(queueKey));
+            }
         });
     }
 
