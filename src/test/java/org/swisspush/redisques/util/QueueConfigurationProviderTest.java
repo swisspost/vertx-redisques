@@ -95,7 +95,7 @@ public class QueueConfigurationProviderTest {
     @Test
     public void testResetClosesExistingProviderResources(TestContext context) throws Exception {
         Async async = context.async();
-            Vertx vertx = newVertx();
+        Vertx vertx = newVertx();
         Field consumerField = QueueConfigurationProvider.class.getDeclaredField("nodeLocalConfigSyncConsumer");
         consumerField.setAccessible(true);
         Field timerField = QueueConfigurationProvider.class.getDeclaredField("queueConfigCleanupTimerId");
@@ -123,7 +123,7 @@ public class QueueConfigurationProviderTest {
     @Test
     public void testQueueConfigUpdate(TestContext context) {
         Async async = context.async();
-            Vertx vertx = newVertx();
+        Vertx vertx = newVertx();
         QueueConfigurationProvider.provider(vertx, List.of(), 1_000).get().onComplete(event -> {
             QueueConfigurationProvider provider = event.result();
             context.assertNull(provider.findQueueConfiguration("mytestqueue"));
@@ -170,7 +170,7 @@ public class QueueConfigurationProviderTest {
     @Test
     public void testQueueConfigGetAll(TestContext context) {
         Async async = context.async();
-            Vertx vertx = newVertx();
+        Vertx vertx = newVertx();
         QueueConfigurationProvider.provider(vertx, List.of(), 1_000).get().onComplete(event -> {
             QueueConfigurationProvider provider = event.result();
 
@@ -186,7 +186,7 @@ public class QueueConfigurationProviderTest {
     @Test
     public void testQueueConfigGetOne(TestContext context) {
         Async async = context.async();
-            Vertx vertx = newVertx();
+        Vertx vertx = newVertx();
         QueueConfigurationProvider.provider(vertx, List.of(), 1_000).get().onComplete(event -> {
             QueueConfigurationProvider provider = event.result();
 
@@ -202,7 +202,7 @@ public class QueueConfigurationProviderTest {
     @Test
     public void testQueueConfigRemove(TestContext context) {
         Async async = context.async();
-            Vertx vertx = newVertx();
+        Vertx vertx = newVertx();
         QueueConfigurationProvider.provider(vertx, List.of(), 1_000).get().onComplete(event -> {
             QueueConfigurationProvider provider = event.result();
 
@@ -227,7 +227,7 @@ public class QueueConfigurationProviderTest {
     @Test
     public void testQueueConfigCategoryRead(TestContext context) {
         Async async = context.async();
-            Vertx vertx = newVertx();
+        Vertx vertx = newVertx();
         QueueConfigurationProvider.provider(vertx, List.of(), 1_000).get().onComplete(event -> {
             QueueConfigurationProvider provider = event.result();
             context.assertNull(provider.findQueueConfiguration("mytestqueue"));
@@ -293,7 +293,7 @@ public class QueueConfigurationProviderTest {
     @Test
     public void testQueueConfigExpiring(TestContext context) {
         Async async = context.async();
-            Vertx vertx = newVertx();
+        Vertx vertx = newVertx();
         QueueConfigurationProvider.provider(vertx, List.of(), 1_000).get().onComplete(event -> {
             QueueConfigurationProvider provider = event.result();
 
