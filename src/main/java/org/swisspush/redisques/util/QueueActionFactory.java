@@ -30,6 +30,7 @@ import org.swisspush.redisques.action.GetQueuesSpeedAction;
 import org.swisspush.redisques.action.GetQueuesStatisticsAction;
 import org.swisspush.redisques.action.LockedEnqueueAction;
 import org.swisspush.redisques.action.MonitorAction;
+import org.swisspush.redisques.action.RebalanceQueuesAction;
 import org.swisspush.redisques.action.PutLockAction;
 import org.swisspush.redisques.action.QueueAction;
 import org.swisspush.redisques.action.ReplaceQueueItemAction;
@@ -37,6 +38,7 @@ import org.swisspush.redisques.action.SetConfigurationAction;
 import org.swisspush.redisques.action.SetPerQueueConfigurationAction;
 import org.swisspush.redisques.action.UnsupportedAction;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
+import org.swisspush.redisques.metrics.RebalanceMetrics;
 import org.swisspush.redisques.queue.KeyspaceHelper;
 import org.swisspush.redisques.queue.QueueRegistryService;
 import org.swisspush.redisques.queue.RedisService;
@@ -162,7 +164,11 @@ public class QueueActionFactory {
                 return new GetQueuesSizeStatisticsAction(vertx, redisService, keyspaceHelper, queueConfigurationProvider, redisquesConfigurationProvider, exceptionFactory, queueStatisticsCollector, log);
             case getQueueRunningStates:
                 return new GetQueueRunningStatesAction(vertx, keyspaceHelper, log, consumerManager);
-            default:
+            case rebalanceQueues:
+                return new RebalanceQueuesAction(vertx, redisService, keyspaceHelper, queueConfigurationProvider, redisquesConfigurationProvider,                 exceptionFactory, queueStatisticsCollector, log,
+                                        new RebalanceMetrics(redisquesConfigurationProvider.configuration().getMicrometerMetricsEnabled() ? meterRegistry : null,
+                                                redisquesConfigurationProvider.configuration().getMicrometerMetricsIdentifier()));
+                            default:
                 return new UnsupportedAction(log);
         }
     }

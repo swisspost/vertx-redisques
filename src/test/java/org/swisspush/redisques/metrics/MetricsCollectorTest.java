@@ -139,22 +139,26 @@ public class MetricsCollectorTest extends AbstractTestCase {
 
                     eventBusSend(buildEnqueueOperation("queueEnqueue2", "testItem3"), messageEnqueue3 -> {
                         context.assertEquals(OK, messageEnqueue3.result().body().getString(STATUS));
-                        try {
-                            Thread.sleep(2000);
-                        } catch (InterruptedException e) {
-                            throw new RuntimeException(e);
-                        }
                         when(lock.acquireLock(Mockito.anyString(), Mockito.anyString(), Mockito.anyLong())).thenReturn(Future.succeededFuture(true));
                         metricsCollector.updateActiveQueuesCount().onComplete(event -> {
                             context.assertEquals(2.0, getActiveQueuesCountGauge().value());
-                            metricsCollector.updateMaxQueueSize().onComplete(maxQueueSizeEvent -> {
-                                context.assertEquals(3.0, getMaxQueueSizeGauge().value());
-                                async.complete();
-                            });
+                            awaitMaxQueueSize(context, async, 3.0, 20);
                         });
                     });
                 });
             });
+        });
+    }
+
+    private void awaitMaxQueueSize(TestContext context, Async async, double expected, int retries) {
+        metricsCollector.updateMaxQueueSize().onComplete(event -> {
+            double actual = getMaxQueueSizeGauge().value();
+            if (actual == expected || retries <= 0) {
+                context.assertEquals(expected, actual);
+                async.complete();
+            } else {
+                vertx.setTimer(250, id -> awaitMaxQueueSize(context, async, expected, retries - 1));
+            }
         });
     }
 

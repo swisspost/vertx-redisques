@@ -9,6 +9,7 @@ import io.vertx.ext.unit.TestContext;
 import io.vertx.ext.unit.junit.VertxUnitRunner;
 import io.vertx.redis.client.RedisAPI;
 import io.vertx.redis.client.impl.types.BulkType;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -36,6 +37,11 @@ public class DefaultRedisReadyProviderTest {
         this.vertx = Vertx.vertx();
         redisAPI = Mockito.mock(RedisAPI.class);
         readyProvider = new DefaultRedisReadyProvider(vertx, 1000);
+    }
+
+    @After
+    public void tearDown() throws Exception {
+        vertx.close().toCompletionStage().toCompletableFuture().get(10, java.util.concurrent.TimeUnit.SECONDS);
     }
 
     private void assertReadiness(TestContext testContext, AsyncResult<Boolean> event, Boolean expectedReadiness) {

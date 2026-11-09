@@ -38,6 +38,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
 import static org.swisspush.redisques.exception.RedisQuesExceptionFactory.newWastefulExceptionFactory;
@@ -100,6 +101,30 @@ public class QueueRegistryServiceTest extends AbstractTestCase {
         vertx.close(context.asyncAssertSuccess());
     }
 
+    /** Asserts inside event-bus callbacks via the TestContext, so a failure ends the test instead of being swallowed. */
+    private void assertInMyQueues(TestContext context, QueueRegistryService service, String queue, boolean expected) {
+        context.assertEquals(expected, service.getQueueConsumerRunner().getMyQueues().containsKey(queue));
+    }
+
+    /** The service purges unknown ids from aliveConsumers every second, so keep re-adding the fake one until told to stop. */
+    private AtomicBoolean keepFakeConsumerAlive(QueueRegistryService service, String fakeConsumerId) {
+        AtomicBoolean keepAlive = new AtomicBoolean(true);
+        service.aliveConsumers.add(fakeConsumerId);
+        vertx.setPeriodic(20, timerId -> {
+            if (keepAlive.get()) {
+                service.aliveConsumers.add(fakeConsumerId);
+            } else {
+                vertx.cancelTimer(timerId);
+            }
+        });
+        return keepAlive;
+    }
+
+    private void killFakeConsumer(QueueRegistryService service, String fakeConsumerId, AtomicBoolean keepAlive) {
+        keepAlive.set(false);
+        service.aliveConsumers.remove(fakeConsumerId);
+    }
+
     private void waitMillis(long millis) {
         try {
             Thread.sleep(millis);
@@ -156,7 +181,7 @@ public class QueueRegistryServiceTest extends AbstractTestCase {
         final String fakeConsumerId = UUID.randomUUID().toString();
         final String queueNameForFakeConsumer = "queue-another-consumer-1-test";
 
-        queueRegistryService.aliveConsumers.add(fakeConsumerId);
+        AtomicBoolean keepFakeAlive = keepFakeConsumerAlive(queueRegistryService, fakeConsumerId);
         Promise<Void> fakeConsumerPromise = Promise.promise();
 
         vertx.eventBus().consumer(fakeConsumerId).handler(event -> fakeConsumerPromise.complete());
@@ -164,7 +189,7 @@ public class QueueRegistryServiceTest extends AbstractTestCase {
         jedis.set(redisQues.getKeyspaceHelper().getConsumersPrefix() + queueNameForFakeConsumer, fakeConsumerId);
         waitMillis(500);
         // this queue should not in real consumer
-        Assert.assertFalse(queueRegistryService.getQueueConsumerRunner().getMyQueues().containsKey(queueNameForFakeConsumer));
+        assertInMyQueues(context, queueRegistryService, queueNameForFakeConsumer, false);
         jedis.zadd(redisQues.getKeyspaceHelper().getQueuesKey(), 1, queueNameForFakeConsumer);
         eventBusSend(buildAddQueueItemOperation("queue1-test", "message_1-1"), e1 -> {
             eventBusSend(buildAddQueueItemOperation("queue1-test", "message_1-2"), e2 -> {
@@ -172,26 +197,28 @@ public class QueueRegistryServiceTest extends AbstractTestCase {
                     eventBusSend(buildAddQueueItemOperation(queueNameForFakeConsumer, "message_2-2"), e4 -> {
                         queueRegistryService.notifyConsumer(queueNameForFakeConsumer).onComplete(event -> {
                             if (event.failed()) {
-                                context.fail();
+                                context.fail(event.cause());
+                                return;
                             }
                             fakeConsumerPromise.future().onComplete(event2 -> {
                                 if (event2.failed()) {
-                                    context.fail();
+                                    context.fail(event2.cause());
+                                    return;
                                 }
                                 waitMillis(500);
                                 // this queue should not in real consumer
-                                Assert.assertFalse(queueRegistryService.getQueueConsumerRunner().getMyQueues().containsKey(queueNameForFakeConsumer));
+                                assertInMyQueues(context, queueRegistryService, queueNameForFakeConsumer, false);
                                 // remove the fake consumer from alive list
-                                queueRegistryService.aliveConsumers.remove(fakeConsumerId);
+                                killFakeConsumer(queueRegistryService, fakeConsumerId, keepFakeAlive);
 
                                 // notify once more
                                 queueRegistryService.notifyConsumer(queueNameForFakeConsumer).onComplete(event1 -> {
                                     if (event1.failed()) {
-                                        context.fail();
+                                        context.fail(event1.cause());
+                                        return;
                                     }
                                     waitMillis(500);
-                                    // this queue should not in real consumer
-                                    Assert.assertTrue(queueRegistryService.getQueueConsumerRunner().getMyQueues().containsKey(queueNameForFakeConsumer));
+                                    assertInMyQueues(context, queueRegistryService, queueNameForFakeConsumer, true);
                                     async.complete();
                                 });
                             });
@@ -215,7 +242,7 @@ public class QueueRegistryServiceTest extends AbstractTestCase {
         QueueRegistryService queueRegistryService = redisQues.getQueueRegistryService();
         final String fakeConsumerId = UUID.randomUUID().toString();
         final String queueNameForFakeConsumer = "queue-another-consumer-2-test";
-        queueRegistryService.aliveConsumers.add(fakeConsumerId);
+        AtomicBoolean keepFakeAlive = keepFakeConsumerAlive(queueRegistryService, fakeConsumerId);
 
         Promise<Void> fakeConsumerPromise = Promise.promise();
         vertx.eventBus().consumer(fakeConsumerId).handler(event -> fakeConsumerPromise.complete());
@@ -223,7 +250,7 @@ public class QueueRegistryServiceTest extends AbstractTestCase {
         jedis.set(redisQues.getKeyspaceHelper().getConsumersPrefix() + queueNameForFakeConsumer, fakeConsumerId);
         waitMillis(500);
         // this queue should not in real consumer
-        Assert.assertFalse(queueRegistryService.getQueueConsumerRunner().getMyQueues().containsKey(queueNameForFakeConsumer));
+        assertInMyQueues(context, queueRegistryService, queueNameForFakeConsumer, false);
         jedis.zadd(redisQues.getKeyspaceHelper().getQueuesKey(), 1, queueNameForFakeConsumer);
         eventBusSend(buildAddQueueItemOperation("queue1-test", "message_1-1"), e1 -> {
             eventBusSend(buildAddQueueItemOperation("queue1-test", "message_1-2"), e2 -> {
@@ -231,24 +258,26 @@ public class QueueRegistryServiceTest extends AbstractTestCase {
                     eventBusSend(buildAddQueueItemOperation(queueNameForFakeConsumer, "message_2-2"), e4 -> {
                         queueRegistryService.notifyConsumer(queueNameForFakeConsumer).onComplete(event -> {
                             if (event.failed()) {
-                                context.fail();
+                                context.fail(event.cause());
+                                return;
                             }
                             fakeConsumerPromise.future().onComplete(event2 -> {
                                 if (event2.failed()) {
-                                    context.fail();
+                                    context.fail(event2.cause());
+                                    return;
                                 }
                                 waitMillis(500);
                                 // this queue should not in real consumer
-                                Assert.assertFalse(queueRegistryService.getQueueConsumerRunner().getMyQueues().containsKey(queueNameForFakeConsumer));
+                                assertInMyQueues(context, queueRegistryService, queueNameForFakeConsumer, false);
                                 // remove the fake consumer from alive list
-                                queueRegistryService.aliveConsumers.remove(fakeConsumerId);
+                                killFakeConsumer(queueRegistryService, fakeConsumerId, keepFakeAlive);
                                 eventBusSend(buildEnqueueOperation(queueNameForFakeConsumer, "message_2-2"), event1 -> {
                                     if (event1.failed()) {
                                         context.fail(event1.cause());
+                                        return;
                                     }
                                     waitMillis(500);
-                                    // this queue should not in real consumer
-                                    Assert.assertTrue(queueRegistryService.getQueueConsumerRunner().getMyQueues().containsKey(queueNameForFakeConsumer));
+                                    assertInMyQueues(context, queueRegistryService, queueNameForFakeConsumer, true);
                                     async.complete();
                                 });
                             });
@@ -271,7 +300,7 @@ public class QueueRegistryServiceTest extends AbstractTestCase {
         QueueRegistryService queueRegistryService = redisQues.getQueueRegistryService();
         final String fakeConsumerId = UUID.randomUUID().toString();
         final String queueNameForFakeConsumer = "queue-another-consumer-3-test";
-        queueRegistryService.aliveConsumers.add(fakeConsumerId);
+        AtomicBoolean keepFakeAlive = keepFakeConsumerAlive(queueRegistryService, fakeConsumerId);
 
         Promise<Void> fakeConsumerPromise = Promise.promise();
         vertx.eventBus().consumer(fakeConsumerId).handler(event -> fakeConsumerPromise.complete());
@@ -280,7 +309,7 @@ public class QueueRegistryServiceTest extends AbstractTestCase {
         jedis.set(redisQues.getKeyspaceHelper().getConsumersPrefix() + queueNameForFakeConsumer, fakeConsumerId);
 
         // this queue should not in real consumer
-        Assert.assertFalse(queueRegistryService.getQueueConsumerRunner().getMyQueues().containsKey(queueNameForFakeConsumer));
+        assertInMyQueues(context, queueRegistryService, queueNameForFakeConsumer, false);
         jedis.zadd(redisQues.getKeyspaceHelper().getQueuesKey(), 1, queueNameForFakeConsumer);
         eventBusSend(buildAddQueueItemOperation("queue1-test", "message_1-1"), e1 -> {
             eventBusSend(buildAddQueueItemOperation("queue1-test", "message_1-2"), e2 -> {
@@ -288,25 +317,27 @@ public class QueueRegistryServiceTest extends AbstractTestCase {
                     eventBusSend(buildAddQueueItemOperation(queueNameForFakeConsumer, "message_2-2"), e4 -> {
                         queueRegistryService.notifyConsumer(queueNameForFakeConsumer).onComplete(event -> {
                             if (event.failed()) {
-                                context.fail();
+                                context.fail(event.cause());
+                                return;
                             }
                             fakeConsumerPromise.future().onComplete(event2 -> {
                                 if (event2.failed()) {
-                                    context.fail();
+                                    context.fail(event2.cause());
+                                    return;
                                 }
                                 waitMillis(500);
                                 // this queue should not in real consumer
-                                Assert.assertFalse(queueRegistryService.getQueueConsumerRunner().getMyQueues().containsKey(queueNameForFakeConsumer));
+                                assertInMyQueues(context, queueRegistryService, queueNameForFakeConsumer, false);
 
                                 // remove the fake consumer from alive list
-                                queueRegistryService.aliveConsumers.remove(fakeConsumerId);
+                                killFakeConsumer(queueRegistryService, fakeConsumerId, keepFakeAlive);
                                 queueRegistryService.checkQueues().onComplete(event1 -> {
                                     if (event1.failed()) {
-                                        context.fail();
+                                        context.fail(event1.cause());
+                                        return;
                                     }
                                     waitMillis(500);
-                                    // this queue should not in real consumer
-                                    Assert.assertTrue(queueRegistryService.getQueueConsumerRunner().getMyQueues().containsKey(queueNameForFakeConsumer));
+                                    assertInMyQueues(context, queueRegistryService, queueNameForFakeConsumer, true);
                                     async.complete();
                                 });
                             });

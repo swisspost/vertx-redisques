@@ -12,6 +12,7 @@ import io.vertx.redis.client.RedisClientType;
 import io.vertx.redis.client.RedisConnection;
 import io.vertx.redis.client.Request;
 import io.vertx.redis.client.Response;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -37,6 +38,11 @@ public class RedisServiceTest {
     private RedisService redisService;
 
     private int mockSendIndex;
+
+    @After
+    public void tearDown() throws Exception {
+        vertx.close().toCompletionStage().toCompletableFuture().get(10, java.util.concurrent.TimeUnit.SECONDS);
+    }
 
     @Before
     public void setUp() {
