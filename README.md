@@ -1362,6 +1362,7 @@ The collected metrics include:
 | redisques_rebalance_queues_released_total | Queues this node gave up to another node through rebalancing (the "removed" side) |
 | redisques_rebalance_queues_activated_total | Queues this node started consuming after receiving them through rebalancing (the "added" side) |
 | redisques_rebalance_queues_abandoned_total | Rebalance claims this node rolled back to the previous owner |
+| redisques_rebalance_claims_pending   | Gauge of rebalance claims this node holds that were not yet activated or rolled back (back to 0 shortly after a rebalance) |
 
 The `released`/`activated`/`abandoned` counters are incremented on the node that performs the step, so group them by the scrape instance label to see which node loses and which gains queues, e.g. `sum by (instance) (increase(redisques_rebalance_queues_released_total[1h]))`. They intentionally carry no node-id or queue tags, to avoid creating new series on every restart or per queue.
 

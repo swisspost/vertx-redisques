@@ -31,7 +31,6 @@ import org.swisspush.redisques.util.RedisquesConfigurationProvider;
 
 import java.util.AbstractMap;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Date;
 import java.util.EnumMap;
 import java.util.HashMap;
