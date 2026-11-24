@@ -24,6 +24,7 @@ public class KeyspaceHelper {
     private final String queueRunningStateKey;
     private final String queueRunningStateReplyKey;
     private final String queueRebalanceControlAddress;
+    private final String rebalanceLockKey;
     public static final String QUEUE_STATE_COUNT_KEY = "queueStateCount";
     public static final String QUEUE_STATE_QUEUE_ITEM_COUNTER = "queueStateQueueItemCounter";
 
@@ -49,6 +50,8 @@ public class KeyspaceHelper {
         queueRunningStateKey = configuration.getRedisPrefix() + "-runningState";
         queueRunningStateReplyKey = configuration.getAddress() + "-runningState.reply";
         queueRebalanceControlAddress = queueRebalanceControlAddressFor(verticleUid);
+        // Single key, so it is valid in Redis Cluster mode too; the prefix keeps separate deployments apart.
+        rebalanceLockKey = configuration.getRedisPrefix() + "rebalance:lock";
 
     }
 
@@ -125,6 +128,10 @@ public class KeyspaceHelper {
 
     public String getQueueRebalanceControlAddress() {
         return queueRebalanceControlAddress;
+    }
+
+    public String getRebalanceLockKey() {
+        return rebalanceLockKey;
     }
 
     public String queueRebalanceControlAddressFor(String consumerId) {

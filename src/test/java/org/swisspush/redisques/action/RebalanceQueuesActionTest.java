@@ -597,6 +597,86 @@ public class RebalanceQueuesActionTest {
     }
 
     @Test
+    public void execute_HoldsTheLockForTheRunAndReleasesIt(TestContext context) {
+        prepareSingleMove();
+
+        executeAndAssert(context, RedisquesAPI.buildRebalanceQueuesOperation(".*", false, 5), reply -> {
+            context.assertEquals("ok", reply.getString("status"));
+            context.assertEquals(1, reply.getJsonObject("value").getInteger("executedMoves").intValue());
+            // The lock is extended before each move and only released once the whole run is done.
+            context.assertEquals(List.of("acquire", "extend", "release"), action.lockEvents);
+        });
+    }
+
+    @Test
+    public void execute_ReleasesTheLockWhenTheRunFails(TestContext context) {
+        Response queuesResponse = responseList("q1");
+        when(redisService.zrangebyscore(eq("queues-key"), anyString(), eq("+inf")))
+                .thenReturn(Future.succeededFuture(queuesResponse));
+        action.runningStates = new JsonArray().add(consumerState("A", queueState("q1", QueueState.READY)));
+        action.aliveConsumerCount = 2;
+
+        executeAndAssertRaw(context, RedisquesAPI.buildRebalanceQueuesOperation(".*", false, 5), reply -> {
+            context.assertTrue(reply instanceof ReplyException);
+            context.assertEquals(List.of("acquire", "release"), action.lockEvents);
+        });
+    }
+
+    @Test
+    public void execute_RejectsTheRunWhileAnotherRunHoldsTheLock(TestContext context) {
+        prepareSingleMove();
+        action.lockAvailable = false;
+
+        executeAndAssert(context, RedisquesAPI.buildRebalanceQueuesOperation(".*", false, 5), reply -> {
+            context.assertEquals("error", reply.getString("status"));
+            context.assertEquals(RedisquesAPI.REBALANCE_IN_PROGRESS, reply.getString(RedisquesAPI.ERROR_TYPE));
+            context.assertEquals(List.of("acquire"), action.lockEvents);
+            context.assertTrue(action.protocolSteps.isEmpty());
+        });
+    }
+
+    @Test
+    public void execute_DryRunDoesNotTakeTheLock(TestContext context) {
+        prepareSingleMove();
+        action.lockAvailable = false;
+
+        executeAndAssert(context, RedisquesAPI.buildRebalanceQueuesOperation(".*", true, 5), reply -> {
+            context.assertEquals("ok", reply.getString("status"));
+            context.assertTrue(action.lockEvents.isEmpty());
+        });
+    }
+
+    @Test
+    public void execute_SkipsMovesOnceTheLockIsLost(TestContext context) {
+        prepareSingleMove();
+        action.lockStillHeld = false;
+
+        executeAndAssert(context, RedisquesAPI.buildRebalanceQueuesOperation(".*", false, 5), reply -> {
+            JsonObject value = reply.getJsonObject("value");
+            context.assertEquals("ok", reply.getString("status"));
+            context.assertEquals(0, value.getInteger("executedMoves").intValue());
+            context.assertEquals("lock-lost", value.getJsonObject("reasonsByQueue").getString("q1"));
+            context.assertTrue(action.protocolSteps.isEmpty());
+            context.assertEquals("A", action.currentOwners.getString("q1"));
+            context.assertEquals(List.of("acquire", "extend", "release"), action.lockEvents);
+        });
+    }
+
+    private void prepareSingleMove() {
+        Response queuesResponse = responseList("q1", "q2", "q3", "q4", "q5");
+        when(redisService.zrangebyscore(eq("queues-key"), anyString(), eq("+inf")))
+                .thenReturn(Future.succeededFuture(queuesResponse));
+        Response ownerResponse = stringResponse("A");
+        when(redisService.get("consumer:q1")).thenReturn(Future.succeededFuture(ownerResponse));
+        action.runningStates = new JsonArray()
+                .add(consumerState("A", queueState("q1", QueueState.READY), queueState("q2", QueueState.READY), queueState("q3", QueueState.READY)))
+                .add(consumerState("B", queueState("q4", QueueState.READY)))
+                .add(consumerState("C", queueState("q5", QueueState.READY)));
+        action.currentOwners.put("q1", "A");
+        action.localReadyQueues.add("A:q1");
+    }
+
+    @Test
     public void execute_SkipsChangedOwnerButContinuesWithRemainingReadyMove(TestContext context) {
         Response queuesResponse = responseList("q1", "q2", "q3", "q4", "q5", "q6");
         Response ownerResponse = stringResponse("other-owner");
@@ -710,13 +790,33 @@ public class RebalanceQueuesActionTest {
         private final JsonObject concurrentOwnersAfterReleaseFailure = new JsonObject();
         private final List<String> localReadyQueues = new ArrayList<>();
         private final List<String> protocolSteps = new ArrayList<>();
-
+        private final List<String> lockEvents = new ArrayList<>();
+        private boolean lockAvailable = true;
+        private boolean lockStillHeld = true;
         private TestableRebalanceQueuesAction(Vertx vertx, RedisService redisService, KeyspaceHelper keyspaceHelper,
                                               RedisquesConfigurationProvider redisquesConfigurationProvider,
                                               RebalanceMetrics rebalanceMetrics) {
             super(vertx, redisService, keyspaceHelper, mock(QueueConfigurationProvider.class),
                     redisquesConfigurationProvider, RedisQuesExceptionFactory.newWastefulExceptionFactory(),
                     mock(QueueStatisticsCollector.class), mock(Logger.class), rebalanceMetrics);
+        }
+
+        @Override
+        protected Future<Boolean> acquireRebalanceLock(String token, long ttlMs) {
+            lockEvents.add("acquire");
+            return Future.succeededFuture(lockAvailable);
+        }
+
+        @Override
+        protected Future<Boolean> extendRebalanceLock(String token, long ttlMs) {
+            lockEvents.add("extend");
+            return Future.succeededFuture(lockStillHeld);
+        }
+
+        @Override
+        protected Future<Boolean> releaseRebalanceLock(String token) {
+            lockEvents.add("release");
+            return Future.succeededFuture(true);
         }
 
         @Override

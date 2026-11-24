@@ -7,6 +7,8 @@ import io.vertx.core.eventbus.MessageConsumer;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonObject;
+import io.vertx.redis.client.Command;
+import io.vertx.redis.client.Request;
 import io.vertx.redis.client.Response;
 import org.slf4j.Logger;
 import org.swisspush.redisques.QueueState;
@@ -35,6 +37,7 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Supplier;
 import java.util.regex.Pattern;
 
 import static org.swisspush.redisques.util.RedisquesAPI.BAD_INPUT;
@@ -43,6 +46,7 @@ import static org.swisspush.redisques.util.RedisquesAPI.ERROR_TYPE;
 import static org.swisspush.redisques.util.RedisquesAPI.MESSAGE;
 import static org.swisspush.redisques.util.RedisquesAPI.MAX_MOVES_PER_RUN;
 import static org.swisspush.redisques.util.RedisquesAPI.PAYLOAD;
+import static org.swisspush.redisques.util.RedisquesAPI.REBALANCE_IN_PROGRESS;
 import static org.swisspush.redisques.util.RedisquesAPI.RUNNING_STATE_TIMEOUT_MS;
 import static org.swisspush.redisques.util.RedisquesAPI.VALUE;
 
@@ -55,6 +59,9 @@ public class RebalanceQueuesAction extends AbstractQueueAction {
     private static final String SKIP_CLAIM_FAILED = "claim-failed";
     private static final String SKIP_RELEASE_FAILED = "release-failed";
     private static final String SKIP_ACTIVATE_FAILED = "activate-failed";
+    private static final String SKIP_LOCK_LOST = "lock-lost";
+    // Added to the running state timeout to bound how long a crashed run blocks others; extended before every move.
+    private static final long LOCK_TTL_MS = 30_000L;
     private static final long DEFAULT_RUNNING_STATE_TIMEOUT_MS = 2_000L;
     private static final long MAX_RUNNING_STATE_TIMEOUT_MS = 60_000L;
     private static final String REBALANCE_ACTION = "action";
@@ -116,7 +123,39 @@ public class RebalanceQueuesAction extends AbstractQueueAction {
         boolean dryRun = payload.getBoolean(DRY_RUN, false);
         String filterDescription = filterPatternResult.getOk().map(Pattern::pattern).orElse("<none>");
         log.debug("Starting rebalance request: filter={}, maxMovesPerRun={}, dryRun={}", filterDescription, effectiveMaxMovesPerRun, dryRun);
-        fetchQueueScope(filterPatternResult.getOk())
+        // A dry run changes nothing, so only runs that move queues need to be exclusive across the whole cluster.
+        Future<RebalanceLock> lockFuture = dryRun ? Future.succeededFuture() : acquireLock(runningStateTimeoutMs);
+        lockFuture.onComplete(lockResult -> {
+            if (lockResult.failed()) {
+                handleFail(event, "Failed to acquire the rebalance lock", lockResult.cause());
+                return;
+            }
+            RebalanceLock lock = lockResult.result();
+            if (!dryRun && lock == null) {
+                log.debug("Rejecting rebalance request because another rebalance is already running");
+                event.reply(createErrorReply().put(ERROR_TYPE, REBALANCE_IN_PROGRESS)
+                        .put(MESSAGE, "Another rebalance is already running"));
+                return;
+            }
+            runRebalance(filterPatternResult.getOk(), effectiveMaxMovesPerRun, runningStateTimeoutMs, dryRun, lock)
+                    .onComplete(runResult -> releaseLock(lock).onComplete(released -> {
+                        if (runResult.failed()) {
+                            handleFail(event, "Failed to rebalance queues", runResult.cause());
+                            return;
+                        }
+                        JsonObject reply = runResult.result();
+                        log.debug("Rebalance request completed successfully: plannedMoves={}, executedMoves={}, skipped={}",
+                                reply.getJsonObject(VALUE, new JsonObject()).getInteger("plannedMoves", 0),
+                                reply.getJsonObject(VALUE, new JsonObject()).getInteger("executedMoves", 0),
+                                reply.getJsonObject(VALUE, new JsonObject()).getInteger("skipped", 0));
+                        event.reply(reply);
+                    }));
+        });
+    }
+
+    private Future<JsonObject> runRebalance(Optional<Pattern> filterPattern, int effectiveMaxMovesPerRun,
+                                            long runningStateTimeoutMs, boolean dryRun, RebalanceLock lock) {
+        return fetchQueueScope(filterPattern)
                 .compose(queueScope -> fetchExpectedAliveConsumerCount()
                         .compose(expectedAliveConsumers -> fetchRunningStates(expectedAliveConsumers, runningStateTimeoutMs)
                                 .compose(runningStates -> {
@@ -132,7 +171,7 @@ public class RebalanceQueuesAction extends AbstractQueueAction {
                 .compose(context -> {
                     Future<ExecutionResult> recovery = dryRun
                             ? Future.succeededFuture(new ExecutionResult())
-                            : recoverPendingClaims(context.runningStates, context.queueScope, effectiveMaxMovesPerRun);
+                            : recoverPendingClaims(context.runningStates, context.queueScope, effectiveMaxMovesPerRun, lock);
                     return recovery.compose(recoveryResult -> {
                         int remainingMoves = Math.max(0, effectiveMaxMovesPerRun - recoveryResult.plannedMoves);
                         PlannerInput plannerInput = buildPlannerInput(context.runningStates, context.queueScope);
@@ -144,22 +183,14 @@ public class RebalanceQueuesAction extends AbstractQueueAction {
                             return Future.succeededFuture(createSuccessReply(plan.getMoves().size(), 0, Collections.emptyMap()));
                         }
                         log.debug("Executing rebalance plan with {} moves", plan.getMoves().size());
-                        return executePlan(plan, context.runningStates, recoveryResult)
+                        return executePlan(plan, context.runningStates, recoveryResult, lock)
                                 .map(result -> {
                                     recordMetrics(result);
                                     return createSuccessReply(plan.getMoves().size() + recoveryResult.plannedMoves,
                                             result.executedMoves, result.reasonsByQueue);
                                 });
                     });
-                })
-                .onSuccess(reply -> {
-                    log.debug("Rebalance request completed successfully: plannedMoves={}, executedMoves={}, skipped={}",
-                            reply.getJsonObject(VALUE, new JsonObject()).getInteger("plannedMoves", 0),
-                            reply.getJsonObject(VALUE, new JsonObject()).getInteger("executedMoves", 0),
-                            reply.getJsonObject(VALUE, new JsonObject()).getInteger("skipped", 0));
-                    event.reply(reply);
-                })
-                .onFailure(throwable -> handleFail(event, "Failed to rebalance queues", throwable));
+                });
     }
 
     private void recordMetrics(ExecutionResult result) {
@@ -280,12 +311,81 @@ public class RebalanceQueuesAction extends AbstractQueueAction {
                 .map(message -> message.body() != null && message.body());
     }
 
-    private Future<ExecutionResult> executePlan(QueueRebalancePlanner.Plan plan, JsonArray runningStates, ExecutionResult initialResult) {
+    private Future<ExecutionResult> executePlan(QueueRebalancePlanner.Plan plan, JsonArray runningStates, ExecutionResult initialResult,
+                                                RebalanceLock lock) {
         Future<ExecutionResult> chain = Future.succeededFuture(initialResult);
         for (QueueRebalancePlanner.Move move : plan.getMoves()) {
-            chain = chain.compose(result -> executeMove(move, runningStates, result));
+            chain = chain.compose(result -> whileLockHeld(lock, move.getQueueName(), result,
+                    () -> executeMove(move, runningStates, result)));
         }
         return chain;
+    }
+
+    /**
+     * Extends the lock before an action is started and skips the action once the lock can no longer be confirmed
+     * as held (expired or taken over). The protocol of a single move is safe on its own; the lock only keeps
+     * concurrent runs from planning against each other, so a lost lock simply ends the work of this run.
+     */
+    private Future<ExecutionResult> whileLockHeld(RebalanceLock lock, String queueName, ExecutionResult result,
+                                                  Supplier<Future<ExecutionResult>> action) {
+        if (lock == null) {
+            return action.get();
+        }
+        return extendRebalanceLock(lock.token, lock.ttlMs)
+                .recover(throwable -> {
+                    log.warn("Could not extend the rebalance lock", throwable);
+                    return Future.succeededFuture(false);
+                })
+                .compose(held -> {
+                    if (!held) {
+                        result.reasonsByQueue.put(queueName, SKIP_LOCK_LOST);
+                        log.warn("Skipping rebalance move for queue={} because the rebalance lock is no longer held", queueName);
+                        return Future.succeededFuture(result);
+                    }
+                    return action.get();
+                });
+    }
+
+    private Future<RebalanceLock> acquireLock(long runningStateTimeoutMs) {
+        RebalanceLock lock = new RebalanceLock(keyspaceHelper.getVerticleUid() + ":" + UUID.randomUUID(),
+                runningStateTimeoutMs + LOCK_TTL_MS);
+        return acquireRebalanceLock(lock.token, lock.ttlMs).map(acquired -> acquired ? lock : null);
+    }
+
+    private Future<Void> releaseLock(RebalanceLock lock) {
+        if (lock == null) {
+            return Future.succeededFuture();
+        }
+        return releaseRebalanceLock(lock.token)
+                .<Void>mapEmpty()
+                .recover(throwable -> {
+                    log.warn("Could not release the rebalance lock; it expires on its own after {} ms", lock.ttlMs, throwable);
+                    return Future.succeededFuture();
+                });
+    }
+
+    /** Takes the cluster-wide rebalance lock; the token identifies the holder so that only it can extend or release the lock. */
+    protected Future<Boolean> acquireRebalanceLock(String token, long ttlMs) {
+        return redisService.setNxPx(keyspaceHelper.getRebalanceLockKey(), token, true, ttlMs);
+    }
+
+    protected Future<Boolean> extendRebalanceLock(String token, long ttlMs) {
+        return redisService.send(Request.cmd(Command.EVAL)
+                        .arg("if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('PEXPIRE', KEYS[1], ARGV[2]) else return 0 end")
+                        .arg("1")
+                        .arg(keyspaceHelper.getRebalanceLockKey())
+                        .arg(token)
+                        .arg(String.valueOf(ttlMs)))
+                .map(response -> response != null && response.toInteger() == 1);
+    }
+
+    protected Future<Boolean> releaseRebalanceLock(String token) {
+        return redisService.send(Request.cmd(Command.EVAL)
+                        .arg("if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) else return 0 end")
+                        .arg("1")
+                        .arg(keyspaceHelper.getRebalanceLockKey())
+                        .arg(token))
+                .map(response -> response != null && response.toInteger() == 1);
     }
 
     private Future<ExecutionResult> executeMove(QueueRebalancePlanner.Move move, JsonArray runningStates, ExecutionResult result) {
@@ -368,13 +468,14 @@ public class RebalanceQueuesAction extends AbstractQueueAction {
                 });
     }
 
-    private Future<ExecutionResult> recoverPendingClaims(JsonArray runningStates, Set<String> queueScope, int maxClaims) {
+    private Future<ExecutionResult> recoverPendingClaims(JsonArray runningStates, Set<String> queueScope, int maxClaims, RebalanceLock lock) {
         List<QueueRebalancePlanner.Move> pendingClaims = pendingClaims(runningStates, queueScope, maxClaims);
         Future<ExecutionResult> chain = Future.succeededFuture(new ExecutionResult());
         for (QueueRebalancePlanner.Move claim : pendingClaims) {
             chain = chain.compose(result -> {
                 result.plannedMoves++;
-                return requestSourceRelease(claim.getSourceConsumerId(), claim.getQueueName(), claim.getTargetConsumerId())
+                return whileLockHeld(lock, claim.getQueueName(), result, () ->
+                        requestSourceRelease(claim.getSourceConsumerId(), claim.getQueueName(), claim.getTargetConsumerId())
                         .compose(released -> released
                                 ? activateMove(claim, result)
                                 : abandonUnactivatedClaim(claim, result),
@@ -383,7 +484,7 @@ public class RebalanceQueuesAction extends AbstractQueueAction {
                                     log.warn("Could not reconcile pending rebalance claim for queue={}; it will be retried by a later rebalance request",
                                             claim.getQueueName(), throwable);
                                     return Future.succeededFuture(result);
-                                });
+                                }));
             });
         }
         return chain;
@@ -587,5 +688,15 @@ public class RebalanceQueuesAction extends AbstractQueueAction {
         private final Map<String, String> reasonsByQueue = new LinkedHashMap<>();
         private int plannedMoves;
         private int executedMoves;
+    }
+
+    private static class RebalanceLock {
+        private final String token;
+        private final long ttlMs;
+
+        private RebalanceLock(String token, long ttlMs) {
+            this.token = token;
+            this.ttlMs = ttlMs;
+        }
     }
 }

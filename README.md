@@ -899,6 +899,13 @@ reconciled by later `rebalanceQueues` requests and, otherwise, automatically by 
 has been pending for 2 minutes. If the previous owner does not respond, the target only takes the queue
 over once that owner has also stopped refreshing its alive-consumer entry.
 
+Only one rebalance that moves queues runs at a time across the whole cluster, no matter which instance receives the
+request. It is guarded by the Redis key `<redisPrefix>rebalance:lock`, which is owned by a random token, extended before
+every move and released when the run ends. If the instance running it dies, the lock expires on its own after about 30
+seconds (plus `runningStateTimeoutMs`). A request that arrives meanwhile is rejected with `"status": "error"` and
+`"errorType": "rebalance in progress"`; callers can simply retry later. A `dryRun` does not need the lock. The per-queue
+handoff stays safe even if the lock is lost, in which case the run skips its remaining moves with the reason `lock-lost`.
+
 Request Data
 ```
 {
@@ -912,7 +919,7 @@ Request Data
 }
 ```
 
-Note: a `maxMovesPerRun` of `0` or negative, or a `runningStateTimeoutMs` outside its range, is rejected with `"status": "error"`, `"errorType": "bad input"`.
+Note: a `maxMovesPerRun` of `0` or negative, or a `runningStateTimeoutMs` outside its range, is rejected with `"status": "error"`, `"errorType": "bad input"`. A run that cannot take the cluster-wide lock is rejected with `"status": "error"`, `"errorType": "rebalance in progress"`.
 
 Response Data
 ```
@@ -923,7 +930,7 @@ Response Data
         "executedMoves": <int amount of moves that were actually completed>,
         "skipped": <int amount of planned moves that were skipped during execution>,
         "reasonsByQueue": {
-            "<str QUEUENAME>": <str skip reason such as "owner-changed", "not-ready", "release-failed", "claim-failed", "activate-failed", "owner-lookup-failed">
+            "<str QUEUENAME>": <str skip reason such as "owner-changed", "not-ready", "release-failed", "claim-failed", "activate-failed", "owner-lookup-failed", "lock-lost">
         }
     }
 }

@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [4.1.57-SNAPSHOT] - 2026-11-24
 ### New features
 - Added new action:
-    - rebalanceQueues: redistributes queue ownership across the active RedisQues verticle instances (see README). Supports `filter`, `dryRun`, `maxMovesPerRun` and `runningStateTimeoutMs`.
+    - rebalanceQueues: redistributes queue ownership across the active RedisQues verticle instances (see README). Supports `filter`, `dryRun`, `maxMovesPerRun` and `runningStateTimeoutMs`. Runs that move queues are exclusive across the whole cluster (Redis lock `<redisPrefix>rebalance:lock`); a concurrent request is answered with `"errorType": "rebalance in progress"`.
 - Added `redisques.rebalance.*` metrics (e.g. released, activated and abandoned queues, and a `redisques.rebalance.claims.pending` gauge).
 
 ### Important notes

@@ -12,15 +12,21 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
+import org.mockito.Mockito;
+import org.slf4j.LoggerFactory;
 import org.swisspush.redisques.AbstractTestCase;
 import org.swisspush.redisques.QueueState;
 import org.swisspush.redisques.RedisQues;
+import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.queue.QueueProcessingState;
 import org.swisspush.redisques.util.DefaultRedisquesConfigurationProvider;
+import org.swisspush.redisques.util.QueueConfigurationProvider;
+import org.swisspush.redisques.util.QueueStatisticsCollector;
 import org.swisspush.redisques.util.RedisquesAPI;
 import org.swisspush.redisques.util.RedisquesConfiguration;
 import org.swisspush.redisques.util.TestMemoryUsageProvider;
 import redis.clients.jedis.Jedis;
+import redis.clients.jedis.params.SetParams;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -115,6 +121,87 @@ public class RebalanceQueuesActionExtTest extends AbstractTestCase {
             context.assertEquals(0, value.getInteger("skipped").intValue());
             context.assertTrue(value.getJsonObject("reasonsByQueue").isEmpty());
             assertEventuallyBalanced(context, async, queueNames, 10);
+        }));
+    }
+
+    @Test
+    public void rebalanceQueues_RejectsRunWhileAnotherRunHoldsTheLock(TestContext context) {
+        flushAll();
+        String lockKey = keyspaceHelper.getRebalanceLockKey();
+        jedis.set(lockKey, "other-run", SetParams.setParams().px(30_000));
+
+        Async async = context.async();
+        vertx.eventBus().<JsonObject>request(keyspaceHelper.getAddress(),
+                RedisquesAPI.buildRebalanceQueuesOperation(".*", false, 10)
+        ).onComplete(context.asyncAssertSuccess(message -> {
+            context.assertEquals("error", message.body().getString("status"));
+            context.assertEquals(RedisquesAPI.REBALANCE_IN_PROGRESS, message.body().getString(RedisquesAPI.ERROR_TYPE));
+            // The lock of the other run must stay untouched.
+            context.assertEquals("other-run", jedis.get(lockKey));
+
+            vertx.eventBus().<JsonObject>request(keyspaceHelper.getAddress(),
+                    RedisquesAPI.buildRebalanceQueuesOperation(".*", true, 10)
+            ).onComplete(context.asyncAssertSuccess(dryRunReply -> {
+                context.assertEquals("ok", dryRunReply.body().getString("status"));
+                context.assertEquals("other-run", jedis.get(lockKey));
+                async.complete();
+            }));
+        }));
+    }
+
+    @Test
+    public void rebalanceQueues_ReleasesLockAfterRunSoNextRunCanStart(TestContext context) {
+        flushAll();
+        String lockKey = keyspaceHelper.getRebalanceLockKey();
+
+        Async async = context.async();
+        vertx.eventBus().<JsonObject>request(keyspaceHelper.getAddress(),
+                RedisquesAPI.buildRebalanceQueuesOperation(".*", false, 10)
+        ).onComplete(context.asyncAssertSuccess(first -> {
+            context.assertEquals("ok", first.body().getString("status"));
+            context.assertNull(jedis.get(lockKey));
+            vertx.eventBus().<JsonObject>request(keyspaceHelper.getAddress(),
+                    RedisquesAPI.buildRebalanceQueuesOperation(".*", false, 10)
+            ).onComplete(context.asyncAssertSuccess(second -> {
+                context.assertEquals("ok", second.body().getString("status"));
+                context.assertNull(jedis.get(lockKey));
+                async.complete();
+            }));
+        }));
+    }
+
+    @Test
+    public void rebalanceLock_OnlyTheHolderCanExtendOrRelease(TestContext context) {
+        flushAll();
+        RedisQues redisQues = redisQuesVerticles.get(0);
+        RebalanceQueuesAction action = new RebalanceQueuesAction(vertx, redisQues.getRedisService(), keyspaceHelper,
+                Mockito.mock(QueueConfigurationProvider.class), redisQues.getConfigurationProvider(),
+                RedisQuesExceptionFactory.newWastefulExceptionFactory(), Mockito.mock(QueueStatisticsCollector.class),
+                LoggerFactory.getLogger(RebalanceQueuesActionExtTest.class));
+        String lockKey = keyspaceHelper.getRebalanceLockKey();
+
+        Async async = context.async();
+        action.acquireRebalanceLock("holder", 30_000L).onComplete(context.asyncAssertSuccess(first -> {
+            context.assertTrue(first);
+            action.acquireRebalanceLock("intruder", 30_000L).onComplete(context.asyncAssertSuccess(second -> {
+                context.assertFalse(second);
+                action.extendRebalanceLock("intruder", 60_000L).onComplete(context.asyncAssertSuccess(extendedByIntruder -> {
+                    context.assertFalse(extendedByIntruder);
+                    action.releaseRebalanceLock("intruder").onComplete(context.asyncAssertSuccess(releasedByIntruder -> {
+                        context.assertFalse(releasedByIntruder);
+                        context.assertEquals("holder", jedis.get(lockKey));
+                        action.extendRebalanceLock("holder", 60_000L).onComplete(context.asyncAssertSuccess(extended -> {
+                            context.assertTrue(extended);
+                            context.assertTrue(jedis.pttl(lockKey) > 30_000L);
+                            action.releaseRebalanceLock("holder").onComplete(context.asyncAssertSuccess(released -> {
+                                context.assertTrue(released);
+                                context.assertNull(jedis.get(lockKey));
+                                async.complete();
+                            }));
+                        }));
+                    }));
+                }));
+            }));
         }));
     }
 
