@@ -220,9 +220,12 @@ public class RebalanceQueuesAction extends AbstractQueueAction {
                 return;
             }
             timerId.set(vertx.setTimer(timeoutMs, id -> finish.run()));
+            // Queues whose registration was not refreshed within the lock time may no longer be registered in Redis, so keep them out of the plan.
+            long registrationFreshnessMs = redisquesConfigurationProvider.configuration().getConsumerLockMultiplier()
+                    * redisquesConfigurationProvider.configuration().getRefreshPeriod() * 1000L;
             vertx.eventBus().publish(keyspaceHelper.getQueueRunningStateKey(), new JsonObject()
                     .put("reply", replyAddress)
-                    .put(RedisquesAPI.GET_QUEUE_RUNNING_STATES_LAST_UPDATE_WITHIN_MS, 0L)
+                    .put(RedisquesAPI.GET_QUEUE_RUNNING_STATES_LAST_UPDATE_WITHIN_MS, registrationFreshnessMs)
                     .put(RedisquesAPI.GET_QUEUE_RUNNING_STATES_EXPECTED_REPLIES, expectedReplies));
         });
 
@@ -312,7 +315,18 @@ public class RebalanceQueuesAction extends AbstractQueueAction {
             }
 
             return requestTargetClaim(move.getTargetConsumerId(), queueName, move.getSourceConsumerId())
+                    .recover(throwable -> {
+                        // The claim may or may not have been applied on the target. Rolling back or releasing
+                        // blindly is unsafe, so leave it to the pending claim recovery and continue with the other moves.
+                        result.reasonsByQueue.put(queueName, SKIP_CLAIM_FAILED);
+                        log.warn("Skipping rebalance move for queue={} because the claim request to consumer {} failed; a claim that was applied will be reconciled later",
+                                queueName, move.getTargetConsumerId(), throwable);
+                        return Future.succeededFuture(null);
+                    })
                     .compose(claimed -> {
+                        if (claimed == null) {
+                            return Future.succeededFuture(result);
+                        }
                         if (!claimed) {
                             result.reasonsByQueue.put(queueName, SKIP_CLAIM_FAILED);
                             log.warn("Skipping rebalance move for queue={} because target claim failed on consumer {} with expectedOwner={}",

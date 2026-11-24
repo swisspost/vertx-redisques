@@ -31,6 +31,7 @@ import redis.clients.jedis.Jedis;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -830,6 +831,28 @@ public class QueueConsumerRunnerTest extends AbstractTestCase {
                     context.assertTrue((Boolean) claimReply.body());
                     redisQues.getQueueConsumerRunner().consume(queueName);
                 }));
+    }
+
+    @Test
+    public void claimQueueForRebalance_IsVisibleInFreshnessFilteredRunningStates(TestContext context) {
+        Async async = context.async();
+        String queueName = "claim-fresh-queue.test";
+        String sourceOwner = "consumer-source";
+        jedis.setex(getConsumersRedisKeyPrefix() + queueName, 30, sourceOwner);
+        String replyAddress = "running-state-reply-" + UUID.randomUUID();
+        vertx.eventBus().<JsonObject>consumer(replyAddress, message -> {
+            JsonObject state = message.body().getJsonObject("queues").getJsonObject(queueName);
+            context.assertNotNull(state, "freshly claimed queue must not be filtered out as stale");
+            context.assertTrue(state.getBoolean("rebalancePending", false));
+            async.complete();
+        }).completionHandler(context.asyncAssertSuccess(registered ->
+                redisQues.getQueueConsumerRunner().claimQueueForRebalance(queueName, sourceOwner)
+                        .onComplete(context.asyncAssertSuccess(claimed -> {
+                            context.assertTrue(claimed);
+                            vertx.eventBus().publish(keyspaceHelper.getQueueRunningStateKey(), new JsonObject()
+                                    .put("reply", replyAddress)
+                                    .put(RedisquesAPI.GET_QUEUE_RUNNING_STATES_LAST_UPDATE_WITHIN_MS, 60_000L));
+                        }))));
     }
 
     @Test

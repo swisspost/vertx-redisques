@@ -128,6 +128,26 @@ public class RebalanceQueuesActionTest {
     }
 
     @Test
+    public void fetchRunningStates_OnlyAsksForQueuesRefreshedWithinTheConsumerLockTime(TestContext context) {
+        when(keyspaceHelper.getQueueRunningStateKey()).thenReturn("running-state");
+        when(keyspaceHelper.getQueueRunningStateReplyKey()).thenReturn("running-state-reply:");
+        RebalanceQueuesAction realAction = new RebalanceQueuesAction(vertx, redisService, keyspaceHelper,
+                mock(QueueConfigurationProvider.class), redisquesConfigurationProvider,
+                RedisQuesExceptionFactory.newWastefulExceptionFactory(), mock(QueueStatisticsCollector.class),
+                mock(Logger.class), new RebalanceMetrics(meterRegistry, "foo"));
+        Async async = context.async();
+        vertx.eventBus().<JsonObject>consumer("running-state", message -> {
+            // consumerLockMultiplier (2) * refreshPeriod (3) seconds
+            context.assertEquals(6000L, message.body().getLong(RedisquesAPI.GET_QUEUE_RUNNING_STATES_LAST_UPDATE_WITHIN_MS));
+            vertx.eventBus().send(message.body().getString("reply"), consumerState("A"));
+        }).completionHandler(context.asyncAssertSuccess(v ->
+                realAction.fetchRunningStates(1, 1000).onComplete(context.asyncAssertSuccess(states -> {
+                    context.assertEquals(1, states.size());
+                    async.complete();
+                }))));
+    }
+
+    @Test
     public void execute_DryRunReturnsPlanWithoutExecuting(TestContext context) {
         Response queuesResponse = responseList("q1", "q2", "q3", "q4", "q5");
         when(redisService.zrangebyscore(eq("queues-key"), anyString(), eq("+inf")))
@@ -543,25 +563,36 @@ public class RebalanceQueuesActionTest {
     }
 
     @Test
-    public void execute_ClaimInfrastructureFailureReturnsError(TestContext context) {
-        Response queuesResponse = responseList("q1", "q2", "q3", "q4", "q5");
+    public void execute_ClaimInfrastructureFailureIsSkippedButDoesNotAbortRemainingMoves(TestContext context) {
+        Response queuesResponse = responseList("q1", "q2", "q3", "q6", "q4", "q5");
         Response ownerResponse = stringResponse("A");
         when(redisService.zrangebyscore(eq("queues-key"), anyString(), eq("+inf")))
                 .thenReturn(Future.succeededFuture(queuesResponse));
         when(redisService.get("consumer:q1")).thenReturn(Future.succeededFuture(ownerResponse));
+        when(redisService.get("consumer:q2")).thenReturn(Future.succeededFuture(ownerResponse));
         action.runningStates = new JsonArray()
-                .add(consumerState("A", queueState("q1", QueueState.READY), queueState("q2", QueueState.READY), queueState("q3", QueueState.READY)))
+                .add(consumerState("A", queueState("q1", QueueState.READY), queueState("q2", QueueState.READY),
+                        queueState("q3", QueueState.READY), queueState("q6", QueueState.READY)))
                 .add(consumerState("B", queueState("q4", QueueState.READY)))
                 .add(consumerState("C", queueState("q5", QueueState.READY)));
         action.currentOwners.put("q1", "A");
+        action.currentOwners.put("q2", "A");
         action.localReadyQueues.add("A:q1");
+        action.localReadyQueues.add("A:q2");
         action.claimFailures.put("B:q1:A", "claim infra failed");
 
-        executeAndAssertRaw(context, RedisquesAPI.buildRebalanceQueuesOperation(".*", false, 5), reply -> {
-            context.assertTrue(reply instanceof ReplyException);
-            context.assertEquals(List.of("claim:B:q1:A"), action.protocolSteps);
+        executeAndAssert(context, RedisquesAPI.buildRebalanceQueuesOperation(".*", false, 5), reply -> {
+            JsonObject value = reply.getJsonObject("value");
+            context.assertEquals("ok", reply.getString("status"));
+            context.assertEquals(2, value.getInteger("plannedMoves").intValue());
+            // The failed claim on q1 must neither abort the run nor lose the result of the q2 move.
+            context.assertEquals(1, value.getInteger("executedMoves").intValue());
+            context.assertEquals(1, value.getInteger("skipped").intValue());
+            context.assertEquals("claim-failed", value.getJsonObject("reasonsByQueue").getString("q1"));
+            context.assertNull(value.getJsonObject("reasonsByQueue").getString("q2"));
+            context.assertEquals(List.of("claim:B:q1:A", "claim:C:q2:A", "release:A:q2:C", "activate:C:q2"), action.protocolSteps);
             context.assertEquals("A", action.currentOwners.getString("q1"));
-            context.assertTrue(action.localReadyQueues.contains("A:q1"));
+            context.assertEquals("C", action.currentOwners.getString("q2"));
         });
     }
 

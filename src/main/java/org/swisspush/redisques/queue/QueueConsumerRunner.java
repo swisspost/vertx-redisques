@@ -183,6 +183,7 @@ public class QueueConsumerRunner {
                         // had finished in the meantime. Adopt the queue again, otherwise it would never be consumed.
                         log.debug("RedisQues Adopting queue {} which is registered to this consumer but unknown locally", queueName);
                         setMyQueuesState(queueName, QueueState.READY);
+                        updateLastRefreshRegistrationTimeStamp(queueName);
                         queueProcessingState = myQueues.get(queueName);
                     }
                     queueProcessingState.setOwnershipLost(false);
@@ -377,6 +378,8 @@ public class QueueConsumerRunner {
                             existing.setOwnershipLost(false);
                         }
                         setMyQueuesState(queueName, QueueState.READY);
+                        // A claim sets the ownership key's TTL, so it counts as a fresh registration for the rebalance snapshot.
+                        updateLastRefreshRegistrationTimeStamp(queueName);
                         myQueues.computeIfPresent(queueName, (name, state) -> {
                             state.setRebalancePending(expectedOwner);
                             return state;
