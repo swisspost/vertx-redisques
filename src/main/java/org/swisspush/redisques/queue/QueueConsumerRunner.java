@@ -178,9 +178,12 @@ public class QueueConsumerRunner {
                 if (keyspaceHelper.getVerticleUid().equals(consumer)) {
                     QueueProcessingState queueProcessingState = myQueues.get(queueName);
                     if (queueProcessingState == null) {
-                        log.trace("RedisQues Queue {} is already being consumed or handed by other consumer", queueName);
-                        promise.complete();
-                        return;
+                        // Redis names this instance the owner but the local state is gone. This happens when ownership was
+                        // handed back by an abandoned rebalance claim after the local state was dropped because processing
+                        // had finished in the meantime. Adopt the queue again, otherwise it would never be consumed.
+                        log.debug("RedisQues Adopting queue {} which is registered to this consumer but unknown locally", queueName);
+                        setMyQueuesState(queueName, QueueState.READY);
+                        queueProcessingState = myQueues.get(queueName);
                     }
                     queueProcessingState.setOwnershipLost(false);
                     if (queueProcessingState.isRebalancePending()) {

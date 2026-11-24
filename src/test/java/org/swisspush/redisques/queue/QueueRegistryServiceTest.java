@@ -478,6 +478,24 @@ public class QueueRegistryServiceTest extends AbstractTestCase {
     }
 
     @Test
+    public void testPeriodicRefreshKeepsConsumingQueueTakenOverByAnotherOwner(TestContext context) {
+        Async async = context.async();
+        flushAll();
+        String queueName = "queue-consuming-taken-over";
+        jedis.set(redisQues.getKeyspaceHelper().getConsumersPrefix() + queueName, "another-owner");
+        QueueRegistryService queueRegistryService = redisQues.getQueueRegistryService();
+        QueueProcessingState consuming = new QueueProcessingState(QueueState.CONSUMING, System.currentTimeMillis());
+        queueRegistryService.getQueueConsumerRunner().getMyQueues().put(queueName, consuming);
+
+        // The periodic registration refresh runs every refreshPeriod (2s)
+        vertx.setTimer(3500, timerId -> {
+            assertInMyQueues(context, queueRegistryService, queueName, true);
+            context.assertTrue(consuming.isOwnershipLost());
+            async.complete();
+        });
+    }
+
+    @Test
     public void testBatchCheckQueuesSize(TestContext context) {
         Async async = context.async();
         flushAll();

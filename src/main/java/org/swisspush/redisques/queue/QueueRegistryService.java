@@ -511,6 +511,13 @@ public class QueueRegistryService {
                                     } else {
                                         List<Future<?>> futures = new ArrayList<>(notMyQueueNames.size());
                                         notMyQueueNames.forEach(queue -> {
+                                            QueueProcessingState localState = queueConsumerRunner.getMyQueues().get(queue);
+                                            if (localState != null && localState.getState() == QueueState.CONSUMING) {
+                                                // Dropping it now would make the new owner believe the queue was released while a message is still in flight.
+                                                log.debug("Keeping queue {} locally until its current message is processed", queue);
+                                                localState.setOwnershipLost(true);
+                                                return;
+                                            }
                                             log.debug("RedisQues Removing queue {} from the list", queue);
                                             queueConsumerRunner.getMyQueues().remove(queue);
                                             // This queue is not owned by this instance; removing it from the local dequeue statistics cache.

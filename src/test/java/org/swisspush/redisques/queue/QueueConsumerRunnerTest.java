@@ -833,6 +833,25 @@ public class QueueConsumerRunnerTest extends AbstractTestCase {
     }
 
     @Test
+    public void consume_AdoptsQueueRestoredToThisConsumerAfterLocalStateWasDropped(TestContext context) {
+        Async async = context.async();
+        String queueName = "adopt-restored-queue.test";
+        jedis.rpush(getQueuesRedisKeyPrefix() + queueName, "message-1");
+        registerQueueOwnership(queueName);
+        context.assertFalse(redisQues.getQueueConsumerRunner().getMyQueues().containsKey(queueName));
+
+        vertx.eventBus().consumer(RedisquesConfiguration.PROP_PROCESSOR_ADDRESS, (Handler<Message<JsonObject>>) event -> {
+            if (queueName.equals(event.body().getString("queue"))) {
+                context.assertEquals("message-1", event.body().getString("payload"));
+                async.complete();
+            }
+            event.reply(new JsonObject().put(STATUS, OK));
+        });
+
+        redisQues.getQueueConsumerRunner().consume(queueName);
+    }
+
+    @Test
     public void consume_AbandonsStalePendingClaimWhenPreviousOwnerDeniesRelease(TestContext context) {
         Async async = context.async();
         String queueName = "stale-pending-abandon.test";
