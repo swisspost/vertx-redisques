@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 
+## [4.1.57-SNAPSHOT] - 2026-11-24
+### New features
+- Added new action:
+    - rebalanceQueues: redistributes queue ownership across the active RedisQues verticle instances (see README). Supports `filter`, `dryRun`, `maxMovesPerRun` and `runningStateTimeoutMs`.
+- Added `redisques.rebalance.*` metrics (e.g. released, activated and abandoned queues).
+
+### Important notes
+- Breaking change: the `getQueueRunningStates` reply of each instance changed its shape to `{"consumerId": <str>, "queues": {<queueName>: <state>}}` (previously the queue states were the top level object).
+- Breaking change: the event bus address used to collect running states is now `<redisPrefix>-runningState` instead of `<address>-runningState`, so that the request reaches every instance in the cluster. Rolling upgrades from versions before 4.1.57 are therefore not compatible: during mixed-version operation `getQueueRunningStates` and `rebalanceQueues` only see the already upgraded nodes, and queue-size statistics may temporarily fall back to Redis `LLEN`. Upgrade all nodes before triggering `rebalanceQueues`.
+- `rebalanceQueues` is never triggered automatically; it only runs when the operation is sent to the event bus.
+
 ## [4.1.54-SNAPSHOT] - 2026-07-20
 ### New features
 - Added new action:

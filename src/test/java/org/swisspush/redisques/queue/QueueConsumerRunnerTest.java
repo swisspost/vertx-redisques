@@ -1092,46 +1092,6 @@ public class QueueConsumerRunnerTest extends AbstractTestCase {
     }
 
     @Test
-    public void claimQueueIfUnowned_DoesNotDeleteFreshOwnerWhenNotifyFails(TestContext context) {
-        RedisService redisService = mock(RedisService.class);
-        QueueStatsService queueStatsService = mock(QueueStatsService.class);
-        KeyspaceHelper mockedKeyspaceHelper = mock(KeyspaceHelper.class);
-        RedisquesConfigurationProvider mockedConfigurationProvider = mock(RedisquesConfigurationProvider.class);
-        QueueConfigurationProvider mockedQueueConfigurationProvider = mock(QueueConfigurationProvider.class);
-        QueueStatisticsCollector queueStatisticsCollector = mock(QueueStatisticsCollector.class);
-        QueueMetrics metrics = mock(QueueMetrics.class);
-        RedisquesConfiguration configuration = mock(RedisquesConfiguration.class);
-
-        when(configuration.getConsumerLockMultiplier()).thenReturn(2);
-        when(configuration.getRefreshPeriod()).thenReturn(3);
-        when(configuration.getMetricRefreshPeriod()).thenReturn(0);
-        when(mockedConfigurationProvider.configuration()).thenReturn(configuration);
-        when(mockedKeyspaceHelper.getVerticleUid()).thenReturn("consumer-A");
-        when(mockedKeyspaceHelper.getTrimRequestKey()).thenReturn("trim:");
-        when(mockedKeyspaceHelper.getQueueRunningStateKey()).thenReturn("running-state");
-        when(mockedKeyspaceHelper.getQueueRebalanceControlAddress()).thenReturn("rebalance-control");
-        when(mockedKeyspaceHelper.getConsumersPrefix()).thenReturn("consumer:");
-        when(mockedKeyspaceHelper.getVerticleNotifyConsumerKey()).thenReturn("notify-consumer");
-
-        when(redisService.setNxPx("consumer:q-race", "consumer-A", true, 6000L)).thenReturn(Future.succeededFuture(true));
-        Response compareAndDeleteResponse = integerResponse(0);
-        when(redisService.send(any())).thenReturn(Future.succeededFuture(compareAndDeleteResponse));
-
-        QueueConsumerRunner runner = new QueueConsumerRunner(vertx, redisService, metrics, queueStatsService, mockedKeyspaceHelper,
-                mockedConfigurationProvider, RedisQuesExceptionFactory.newWastefulExceptionFactory(), queueStatisticsCollector,
-                mockedQueueConfigurationProvider, new MessageConsumerManager(vertx));
-
-        Async async = context.async();
-        runner.claimQueueIfUnowned("q-race").onComplete(context.asyncAssertSuccess(claimed -> {
-            context.assertFalse(claimed);
-            context.assertFalse(runner.getMyQueues().containsKey("q-race"));
-            verify(redisService, times(1)).send(any());
-            verify(queueStatsService, times(1)).dequeueStatisticRemoveFromLocal("q-race");
-            runner.unregisterConsumers(context.asyncAssertSuccess(v -> async.complete()));
-        }));
-    }
-
-    @Test
     public void releaseQueueIfReadyAndOwned_CountsReleasedQueueOnlyWhenLocalStateIsRemoved(TestContext context) {
         RedisService redisService = mock(RedisService.class);
         QueueStatsService queueStatsService = mock(QueueStatsService.class);

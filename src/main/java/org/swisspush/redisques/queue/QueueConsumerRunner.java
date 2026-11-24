@@ -424,7 +424,7 @@ public class QueueConsumerRunner {
                     queueProcessingState.finishRebalanceAbandon(false);
                     return Future.failedFuture(throwable);
                 })
-                .map(restored -> {
+                .compose(restored -> {
                     queueProcessingState.finishRebalanceAbandon(restored);
                     if (restored) {
                         metrics.rebalanceQueueAbandoned();
@@ -432,7 +432,17 @@ public class QueueConsumerRunner {
                     if (myQueues.remove(queueName, queueProcessingState)) {
                         queueStatsService.dequeueStatisticRemoveFromLocal(queueName);
                     }
-                    return restored;
+                    if (!restored) {
+                        return Future.succeededFuture(false);
+                    }
+                    // Notifications that arrived while this instance held the claim were dropped here,
+                    // so tell the restored owner to look at the queue again instead of waiting for the periodic check.
+                    return notifyConsumer(queueName)
+                            .recover(throwable -> {
+                                log.warn("Failed to re-notify restored owner of queue '{}' after abandoning rebalance claim", queueName, throwable);
+                                return Future.succeededFuture();
+                            })
+                            .map(true);
                 });
     }
 
@@ -458,66 +468,6 @@ public class QueueConsumerRunner {
                         .arg(newOwner)
                         .arg(String.valueOf(1000L * consumerLockTime)))
                 .map(response -> response != null && response.toInteger() == 1);
-    }
-
-    /**
-     * Atomically compares and deletes the owner of a queue using a Lua script.
-     *
-     * This method uses Redis EVAL to ensure atomic compare-and-delete semantics:
-     * it only deletes the owner key if the current owner matches the expectedOwner.
-     * This is used to clean up ownership when releasing a queue.
-     *
-     * @param consumerKey the Redis key for the queue's consumer registration
-     * @param expectedOwner the expected current owner
-     * @return a Future that completes with true if the owner was deleted, false if it did not match
-     */
-    private Future<Boolean> compareAndDeleteOwner(String consumerKey, String expectedOwner) {
-        String script = "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) else return 0 end";
-        return redisService.send(Request.cmd(Command.EVAL)
-                        .arg(script)
-                        .arg("1")
-                        .arg(consumerKey)
-                        .arg(expectedOwner))
-                .map(response -> response != null && response.toInteger() == 1);
-    }
-
-    /**
-     * Claims ownership of an unowned queue.
-     *
-     * This method attempts to atomically claim ownership of a queue that has no owner
-     * (or no valid owner registration). It uses SET NX (set if not exists) to ensure
-     * only one consumer can claim an unowned queue. On success, the queue is set to READY
-     * state and the consumer is notified. If notification fails, the claim is rolled back.
-     *
-     * @param queueName the name of the queue to claim
-     * @return a Future that completes with true if the queue was successfully claimed, false otherwise
-     */
-    public Future<Boolean> claimQueueIfUnowned(String queueName) {
-        if (Strings.isNullOrEmpty(queueName)) {
-            return Future.succeededFuture(false);
-        }
-        final String consumerKey = keyspaceHelper.getConsumersPrefix() + queueName;
-        return redisService.setNxPx(consumerKey, keyspaceHelper.getVerticleUid(), true, 1000L * consumerLockTime)
-                .recover(throwable -> Future.succeededFuture(false))
-                .compose(claimed -> {
-                    if (!claimed) {
-                        return Future.succeededFuture(false);
-                    }
-                    QueueProcessingState existing = myQueues.get(queueName);
-                    if (existing != null) {
-                        existing.setOwnershipLost(false);
-                    }
-                    setMyQueuesState(queueName, QueueState.READY);
-                    return notifyConsumer(queueName)
-                            .map(true)
-                            .recover(throwable -> compareAndDeleteOwner(consumerKey, keyspaceHelper.getVerticleUid())
-                                    .recover(delThrowable -> Future.succeededFuture(false))
-                                    .map(response -> {
-                                        myQueues.remove(queueName);
-                                        queueStatsService.dequeueStatisticRemoveFromLocal(queueName);
-                                        return false;
-                                    }));
-                });
     }
 
     private Future<Void> readQueue(final String queueName) {
@@ -1103,7 +1053,7 @@ public class QueueConsumerRunner {
                     String action = request.getString(REBALANCE_ACTION, REBALANCE_ACTION_RELEASE);
                     String queueName = request.getString("queueName");
                     String expectedOwner = request.getString("expectedOwner");
-                    log.info("Handling queue rebalance control action={} queue={} expectedOwner={} uid={}",
+                    log.debug("Handling queue rebalance control action={} queue={} expectedOwner={} uid={}",
                             action, queueName, expectedOwner, keyspaceHelper.getVerticleUid());
                     Future<Boolean> command;
                     if (REBALANCE_ACTION_CLAIM.equals(action)) {
@@ -1123,7 +1073,7 @@ public class QueueConsumerRunner {
                                     msg.fail(0, asyncResult.cause().getMessage());
                                     return;
                                 }
-                                log.info("Completed queue rebalance control request action={} queue={} expectedOwner={} uid={} result={}",
+                                log.debug("Completed queue rebalance control request action={} queue={} expectedOwner={} uid={} result={}",
                                         action, queueName, expectedOwner, keyspaceHelper.getVerticleUid(), asyncResult.result());
                                 msg.reply(asyncResult.result());
                             });

@@ -45,6 +45,7 @@ public class RedisquesAPI {
     public static final String FORCE_RELOAD = "forceReload";
     public static final String DRY_RUN = "dryRun";
     public static final String MAX_MOVES_PER_RUN = "maxMovesPerRun";
+    public static final String RUNNING_STATE_TIMEOUT_MS = "runningStateTimeoutMs";
 
     public static final String MONITOR_QUEUE_NAME = "name";
     public static final String MONITOR_QUEUE_SIZE = "size";
@@ -435,12 +436,22 @@ public class RedisquesAPI {
     }
 
     public static JsonObject buildRebalanceQueuesOperation(String filter, boolean dryRun, Integer maxMovesPerRun) {
+        return buildRebalanceQueuesOperation(filter, dryRun, maxMovesPerRun, null);
+    }
+
+    /**
+     * @param runningStateTimeoutMs maximum time in milliseconds to wait for the running state replies of all instances, null means use the default of the action
+     */
+    public static JsonObject buildRebalanceQueuesOperation(String filter, boolean dryRun, Integer maxMovesPerRun, Long runningStateTimeoutMs) {
         JsonObject payload = new JsonObject().put(DRY_RUN, dryRun);
         if (filter != null) {
             payload.put(FILTER, filter);
         }
         if (maxMovesPerRun != null) {
             payload.put(MAX_MOVES_PER_RUN, maxMovesPerRun);
+        }
+        if (runningStateTimeoutMs != null) {
+            payload.put(RUNNING_STATE_TIMEOUT_MS, runningStateTimeoutMs);
         }
         return buildOperation(QueueOperation.rebalanceQueues, payload);
     }

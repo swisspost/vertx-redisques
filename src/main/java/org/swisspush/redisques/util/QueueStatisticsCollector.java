@@ -534,7 +534,8 @@ public class QueueStatisticsCollector {
      * @return a {@link Map} of queue name to its merged (most recently updated) queue size
      */
     public static Map<String, Long> mergeQueueSizeFromAllQueueRunningStates(JsonArray payload) {
-        Map<String, Long> merged = new HashMap<>();        Map<String, Long> latestTs = new HashMap<>();
+        Map<String, Long> merged = new HashMap<>();
+        Map<String, Long> latestTs = new HashMap<>();
         if (payload == null || payload.isEmpty()) {
             return merged;
         }

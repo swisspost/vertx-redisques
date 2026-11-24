@@ -889,6 +889,10 @@ match the optional `filter` count toward the scoped ownership load, but only que
 `READY` state are eligible to move. Set `dryRun` to `true` to preview how many moves would be
 planned without changing ownership.
 
+Balancing is based on the number of queues owned by each instance, not on the actual workload of those
+queues, and queues that are currently being processed are never moved. A run therefore evens out the queue
+count, but does not guarantee an even processing load. Nothing triggers a rebalance automatically; it only
+happens when this operation is sent, so the caller decides how often it runs.
 If a handoff cannot be confirmed (for example the source's release reply is lost), the target keeps the
 claim pending (`rebalancePending` in the running state) and does not consume the queue. Such a claim is
 reconciled by later `rebalanceQueues` requests and, otherwise, automatically by the target itself once it
@@ -902,12 +906,13 @@ Request Data
     "payload": {
         "filter": <str regex pattern to restrict the queues to rebalance (optional)>,
         "dryRun": <boolean when true, only calculate the rebalance plan (optional, default false)>,
-        "maxMovesPerRun": <int maximum amount of queue moves to execute in one run; must be at least 1, values above 100 are capped to 100 (optional, default 100)>
+        "maxMovesPerRun": <int maximum amount of queue moves to execute in one run; must be at least 1, values above 100 are capped to 100 (optional, default 100)>,
+        "runningStateTimeoutMs": <long maximum time in milliseconds to wait for the running state replies of all instances; between 1 and 60000 (optional, default 2000)>
     }
 }
 ```
 
-Note: a `maxMovesPerRun` of `0` or negative is rejected with `"status": "error"`, `"errorType": "bad input"`.
+Note: a `maxMovesPerRun` of `0` or negative, or a `runningStateTimeoutMs` outside its range, is rejected with `"status": "error"`, `"errorType": "bad input"`.
 
 Response Data
 ```

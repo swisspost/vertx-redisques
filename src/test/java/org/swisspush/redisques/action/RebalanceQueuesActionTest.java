@@ -160,6 +160,42 @@ public class RebalanceQueuesActionTest {
     }
 
     @Test
+    public void execute_InvalidRunningStateTimeoutReturnsBadInput(TestContext context) {
+        executeAndAssert(context, RedisquesAPI.buildRebalanceQueuesOperation(".*", false, 5, 0L), reply -> {
+            context.assertEquals("error", reply.getString("status"));
+            context.assertEquals("bad input", reply.getString("errorType"));
+            context.assertEquals("runningStateTimeoutMs must be between 1 and 60000", reply.getString("message"));
+            verify(redisService, never()).zrangebyscore(anyString(), anyString(), anyString());
+        });
+    }
+
+    @Test
+    public void execute_UsesRequestedRunningStateTimeout(TestContext context) {
+        Response queuesResponse = responseList("q1");
+        when(redisService.zrangebyscore(eq("queues-key"), anyString(), eq("+inf")))
+                .thenReturn(Future.succeededFuture(queuesResponse));
+        action.runningStates = new JsonArray().add(consumerState("A", queueState("q1", QueueState.READY)));
+
+        executeAndAssert(context, RedisquesAPI.buildRebalanceQueuesOperation(".*", true, 5, 7_500L), reply -> {
+            context.assertEquals("ok", reply.getString("status"));
+            context.assertEquals(7_500L, action.lastRequestedTimeoutMs);
+        });
+    }
+
+    @Test
+    public void execute_UsesDefaultRunningStateTimeoutWhenNotRequested(TestContext context) {
+        Response queuesResponse = responseList("q1");
+        when(redisService.zrangebyscore(eq("queues-key"), anyString(), eq("+inf")))
+                .thenReturn(Future.succeededFuture(queuesResponse));
+        action.runningStates = new JsonArray().add(consumerState("A", queueState("q1", QueueState.READY)));
+
+        executeAndAssert(context, RedisquesAPI.buildRebalanceQueuesOperation(".*", true, 5), reply -> {
+            context.assertEquals("ok", reply.getString("status"));
+            context.assertEquals(2_000L, action.lastRequestedTimeoutMs);
+        });
+    }
+
+    @Test
     public void execute_ReturnsErrorWhenRunningStatesAreIncomplete(TestContext context) {
         Response queuesResponse = responseList("q1", "q2", "q3");
         when(redisService.zrangebyscore(eq("queues-key"), anyString(), eq("+inf")))
@@ -632,6 +668,7 @@ public class RebalanceQueuesActionTest {
         private JsonArray runningStates = new JsonArray();
         private Integer aliveConsumerCount;
         private int lastRequestedExpectedReplies = -1;
+        private long lastRequestedTimeoutMs = -1;
         private final JsonObject currentOwners = new JsonObject();
         private final JsonObject releaseReplies = new JsonObject();
         private final JsonObject claimReplies = new JsonObject();
@@ -657,8 +694,9 @@ public class RebalanceQueuesActionTest {
         }
 
         @Override
-        protected Future<JsonArray> fetchRunningStates(int expectedReplies) {
+        protected Future<JsonArray> fetchRunningStates(int expectedReplies, long timeoutMs) {
             lastRequestedExpectedReplies = expectedReplies;
+            lastRequestedTimeoutMs = timeoutMs;
             return Future.succeededFuture(runningStates);
         }
 

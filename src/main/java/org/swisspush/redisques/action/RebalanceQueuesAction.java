@@ -45,6 +45,7 @@ import static org.swisspush.redisques.util.RedisquesAPI.ERROR_TYPE;
 import static org.swisspush.redisques.util.RedisquesAPI.MESSAGE;
 import static org.swisspush.redisques.util.RedisquesAPI.MAX_MOVES_PER_RUN;
 import static org.swisspush.redisques.util.RedisquesAPI.PAYLOAD;
+import static org.swisspush.redisques.util.RedisquesAPI.RUNNING_STATE_TIMEOUT_MS;
 import static org.swisspush.redisques.util.RedisquesAPI.VALUE;
 
 public class RebalanceQueuesAction extends AbstractQueueAction {
@@ -57,6 +58,7 @@ public class RebalanceQueuesAction extends AbstractQueueAction {
     private static final String SKIP_RELEASE_FAILED = "release-failed";
     private static final String SKIP_ACTIVATE_FAILED = "activate-failed";
     private static final long DEFAULT_RUNNING_STATE_TIMEOUT_MS = 2_000L;
+    private static final long MAX_RUNNING_STATE_TIMEOUT_MS = 60_000L;
     private static final String REBALANCE_ACTION = "action";
     private static final String REBALANCE_ACTION_RELEASE = "release";
     private static final String REBALANCE_ACTION_CLAIM = "claim";
@@ -105,12 +107,20 @@ public class RebalanceQueuesAction extends AbstractQueueAction {
         }
         final int effectiveMaxMovesPerRun = maxMovesPerRun;
 
+        Long requestedTimeoutMs = payload.getLong(RUNNING_STATE_TIMEOUT_MS);
+        long runningStateTimeoutMs = requestedTimeoutMs == null ? DEFAULT_RUNNING_STATE_TIMEOUT_MS : requestedTimeoutMs;
+        if (runningStateTimeoutMs <= 0 || runningStateTimeoutMs > MAX_RUNNING_STATE_TIMEOUT_MS) {
+            event.reply(createErrorReply().put(ERROR_TYPE, BAD_INPUT)
+                    .put(MESSAGE, "runningStateTimeoutMs must be between 1 and " + MAX_RUNNING_STATE_TIMEOUT_MS));
+            return;
+        }
+
         boolean dryRun = payload.getBoolean(DRY_RUN, false);
         String filterDescription = filterPatternResult.getOk().map(Pattern::pattern).orElse("<none>");
         log.info("Starting rebalance request: filter={}, maxMovesPerRun={}, dryRun={}", filterDescription, effectiveMaxMovesPerRun, dryRun);
         fetchQueueScope(filterPatternResult.getOk())
                 .compose(queueScope -> fetchExpectedAliveConsumerCount()
-                        .compose(expectedAliveConsumers -> fetchRunningStates(expectedAliveConsumers)
+                        .compose(expectedAliveConsumers -> fetchRunningStates(expectedAliveConsumers, runningStateTimeoutMs)
                                 .compose(runningStates -> {
                                     if (runningStates.size() < expectedAliveConsumers) {
                                         log.warn("Incomplete running state replies during rebalance: expected {} but received {} (queueScope={})",
@@ -186,7 +196,7 @@ public class RebalanceQueuesAction extends AbstractQueueAction {
         });
     }
 
-    protected Future<JsonArray> fetchRunningStates(int expectedReplies) {
+    protected Future<JsonArray> fetchRunningStates(int expectedReplies, long timeoutMs) {
         Promise<JsonArray> promise = Promise.promise();
         List<JsonObject> results = Collections.synchronizedList(new ArrayList<>());
         String replyAddress = keyspaceHelper.getQueueRunningStateReplyKey() + UUID.randomUUID();
@@ -223,7 +233,7 @@ public class RebalanceQueuesAction extends AbstractQueueAction {
                 promise.fail(ar.cause());
                 return;
             }
-            timerId.set(vertx.setTimer(DEFAULT_RUNNING_STATE_TIMEOUT_MS, id -> finish.run()));
+            timerId.set(vertx.setTimer(timeoutMs, id -> finish.run()));
             vertx.eventBus().publish(keyspaceHelper.getQueueRunningStateKey(), new JsonObject()
                     .put("reply", replyAddress)
                     .put(RedisquesAPI.GET_QUEUE_RUNNING_STATES_LAST_UPDATE_WITHIN_MS, 0L)
@@ -291,7 +301,7 @@ public class RebalanceQueuesAction extends AbstractQueueAction {
 
     private Future<ExecutionResult> executeMove(QueueRebalancePlanner.Move move, JsonArray runningStates, ExecutionResult result) {
         String queueName = move.getQueueName();
-        log.info("Processing rebalance move for queue={} from={} to={}", queueName, move.getSourceConsumerId(), move.getTargetConsumerId());
+        log.debug("Processing rebalance move for queue={} from={} to={}", queueName, move.getSourceConsumerId(), move.getTargetConsumerId());
         if (!isQueueReadyInSnapshot(runningStates, move.getSourceConsumerId(), queueName)) {
             result.reasonsByQueue.put(queueName, SKIP_NOT_READY);
             log.warn("Skipping rebalance move for queue={} because source consumer {} was not READY in snapshot", queueName, move.getSourceConsumerId());
@@ -433,7 +443,7 @@ public class RebalanceQueuesAction extends AbstractQueueAction {
                         return Future.succeededFuture(result);
                     }
                     result.executedMoves++;
-                    log.info("Executed rebalance move for queue={} from={} to={}",
+                    log.debug("Executed rebalance move for queue={} from={} to={}",
                             queueName, move.getSourceConsumerId(), move.getTargetConsumerId());
                     return Future.succeededFuture(result);
                 })

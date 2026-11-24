@@ -165,10 +165,11 @@ public class QueueActionFactory {
             case getQueueRunningStates:
                 return new GetQueueRunningStatesAction(vertx, keyspaceHelper, log, consumerManager);
             case rebalanceQueues:
-                return new RebalanceQueuesAction(vertx, redisService, keyspaceHelper, queueConfigurationProvider, redisquesConfigurationProvider,                 exceptionFactory, queueStatisticsCollector, log,
-                                        new RebalanceMetrics(redisquesConfigurationProvider.configuration().getMicrometerMetricsEnabled() ? meterRegistry : null,
-                                                redisquesConfigurationProvider.configuration().getMicrometerMetricsIdentifier()));
-                            default:
+                return new RebalanceQueuesAction(vertx, redisService, keyspaceHelper, queueConfigurationProvider, redisquesConfigurationProvider,
+                        exceptionFactory, queueStatisticsCollector, log,
+                        new RebalanceMetrics(redisquesConfigurationProvider.configuration().getMicrometerMetricsEnabled() ? meterRegistry : null,
+                                redisquesConfigurationProvider.configuration().getMicrometerMetricsIdentifier()));
+            default:
                 return new UnsupportedAction(log);
         }
     }
