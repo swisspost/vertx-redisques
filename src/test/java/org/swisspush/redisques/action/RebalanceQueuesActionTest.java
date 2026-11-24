@@ -3,6 +3,8 @@ package org.swisspush.redisques.action;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
+import io.vertx.core.eventbus.DeliveryOptions;
+import io.vertx.core.eventbus.EventBus;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.eventbus.ReplyException;
 import io.vertx.core.eventbus.ReplyFailure;
@@ -16,6 +18,7 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import org.slf4j.Logger;
 import org.swisspush.redisques.QueueState;
@@ -36,6 +39,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
@@ -124,7 +128,7 @@ public class RebalanceQueuesActionTest {
 
     @After
     public void tearDown(TestContext context) {
-        vertx.close(context.asyncAssertSuccess());
+        vertx.close().onComplete(context.asyncAssertSuccess());
     }
 
     @Test
@@ -136,15 +140,16 @@ public class RebalanceQueuesActionTest {
                 RedisQuesExceptionFactory.newWastefulExceptionFactory(), mock(QueueStatisticsCollector.class),
                 mock(Logger.class), new RebalanceMetrics(meterRegistry, "foo"));
         Async async = context.async();
+        // The local event bus registers the consumer synchronously, so there is no registration to wait for.
         vertx.eventBus().<JsonObject>consumer("running-state", message -> {
             // consumerLockMultiplier (2) * refreshPeriod (3) seconds
             context.assertEquals(6000L, message.body().getLong(RedisquesAPI.GET_QUEUE_RUNNING_STATES_LAST_UPDATE_WITHIN_MS));
             vertx.eventBus().send(message.body().getString("reply"), consumerState("A"));
-        }).completionHandler(context.asyncAssertSuccess(v ->
-                realAction.fetchRunningStates(1, 1000).onComplete(context.asyncAssertSuccess(states -> {
-                    context.assertEquals(1, states.size());
-                    async.complete();
-                }))));
+        });
+        realAction.fetchRunningStates(1, 1000).onComplete(context.asyncAssertSuccess(states -> {
+            context.assertEquals(1, states.size());
+            async.complete();
+        }));
     }
 
     @Test
@@ -620,6 +625,43 @@ public class RebalanceQueuesActionTest {
             context.assertTrue(reply instanceof ReplyException);
             context.assertEquals(List.of("acquire", "release"), action.lockEvents);
         });
+    }
+
+    @Test
+    public void execute_ReleasesTheLockWhenTheRunThrowsBeforeReturningAFuture(TestContext context) {
+        when(redisService.zrangebyscore(eq("queues-key"), anyString(), eq("+inf")))
+                .thenThrow(new IllegalStateException("simulated redis client failure"));
+
+        executeAndAssertRaw(context, RedisquesAPI.buildRebalanceQueuesOperation(".*", false, 5), reply -> {
+            context.assertTrue(reply instanceof ReplyException);
+            context.assertEquals(List.of("acquire", "release"), action.lockEvents);
+        });
+    }
+
+    @Test
+    public void controlRequests_AreSentWithASendTimeoutShorterThanTheDefault(TestContext context) {
+        Vertx mockedVertx = mock(Vertx.class);
+        EventBus eventBus = mock(EventBus.class);
+        when(mockedVertx.eventBus()).thenReturn(eventBus);
+        when(keyspaceHelper.queueRebalanceControlAddressFor(anyString())).thenReturn("control");
+        when(eventBus.request(anyString(), any(), any(DeliveryOptions.class))).thenReturn(Future.failedFuture("unreachable"));
+        RebalanceQueuesAction realAction = new RebalanceQueuesAction(mockedVertx, redisService, keyspaceHelper,
+                mock(QueueConfigurationProvider.class), redisquesConfigurationProvider,
+                RedisQuesExceptionFactory.newWastefulExceptionFactory(), mock(QueueStatisticsCollector.class),
+                mock(Logger.class), new RebalanceMetrics(meterRegistry, "foo"));
+
+        realAction.requestSourceRelease("A", "q1", "A");
+        realAction.requestTargetClaim("B", "q1", "A");
+        realAction.requestTargetActivate("B", "q1");
+        realAction.requestTargetAbandon("B", "q1", "A");
+
+        // A move sends up to four of them in a row while holding the lock, so each one must not wait the default timeout.
+        ArgumentCaptor<DeliveryOptions> options = ArgumentCaptor.forClass(DeliveryOptions.class);
+        verify(eventBus, times(4)).request(anyString(), any(), options.capture());
+        for (DeliveryOptions deliveryOptions : options.getAllValues()) {
+            context.assertTrue(deliveryOptions.getSendTimeout() > 0);
+            context.assertTrue(deliveryOptions.getSendTimeout() < DeliveryOptions.DEFAULT_TIMEOUT);
+        }
     }
 
     @Test

@@ -71,7 +71,7 @@ public class RebalanceQueuesActionExtTest extends AbstractTestCase {
                     .build();
             redisQues.disableMigrationTool();
             redisQuesVerticles.add(redisQues);
-            vertx.deployVerticle(redisQues, new DeploymentOptions().setConfig(config), context.asyncAssertSuccess(id -> {
+            vertx.deployVerticle(redisQues, new DeploymentOptions().setConfig(config)).onComplete(context.asyncAssertSuccess(id -> {
                 if (jedis == null) {
                     jedis = new Jedis("localhost", 6379, 5000);
                     keyspaceHelper = redisQues.getKeyspaceHelper();
@@ -83,7 +83,7 @@ public class RebalanceQueuesActionExtTest extends AbstractTestCase {
 
     @After
     public void tearDown(TestContext context) {
-        vertx.close(context.asyncAssertSuccess());
+        vertx.close().onComplete(context.asyncAssertSuccess());
     }
 
     @Test

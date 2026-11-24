@@ -32,6 +32,7 @@ import redis.clients.jedis.Jedis;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -708,8 +709,8 @@ public class QueueConsumerRunnerTest extends AbstractTestCase {
         vertx.eventBus().request(keyspaceHelper.getQueueRebalanceControlAddress(),
                 new JsonObject()
                         .put("queueName", queueName)
-                        .put("expectedOwner", targetOwner),
-                context.asyncAssertSuccess((Message<Object> reply) -> {
+                        .put("expectedOwner", targetOwner))
+                .onComplete(context.asyncAssertSuccess((Message<Object> reply) -> {
                     context.assertTrue((Boolean) reply.body());
                     context.assertFalse(redisQues.getQueueConsumerRunner().getMyQueues().containsKey(queueName));
                     context.assertEquals(targetOwner, jedis.get(getConsumersRedisKeyPrefix() + queueName));
@@ -728,8 +729,8 @@ public class QueueConsumerRunnerTest extends AbstractTestCase {
         vertx.eventBus().request(keyspaceHelper.getQueueRebalanceControlAddress(),
                 new JsonObject()
                         .put("queueName", queueName)
-                        .put("expectedOwner", targetOwner),
-                context.asyncAssertSuccess((Message<Object> reply) -> {
+                        .put("expectedOwner", targetOwner))
+                .onComplete(context.asyncAssertSuccess((Message<Object> reply) -> {
                     context.assertFalse((Boolean) reply.body());
                     context.assertTrue(redisQues.getQueueConsumerRunner().getMyQueues().containsKey(queueName));
                     context.assertEquals(targetOwner, jedis.get(getConsumersRedisKeyPrefix() + queueName));
@@ -782,8 +783,8 @@ public class QueueConsumerRunnerTest extends AbstractTestCase {
                 new JsonObject()
                         .put("action", "claim")
                         .put("queueName", queueName)
-                        .put("expectedOwner", sourceOwner),
-                context.asyncAssertSuccess((Message<Object> claimReply) -> {
+                        .put("expectedOwner", sourceOwner))
+                .onComplete(context.asyncAssertSuccess((Message<Object> claimReply) -> {
                     context.assertTrue((Boolean) claimReply.body());
                     context.assertEquals(keyspaceHelper.getVerticleUid(), jedis.get(getConsumersRedisKeyPrefix() + queueName));
                     context.assertTrue(redisQues.getQueueConsumerRunner().getMyQueues().get(queueName).isRebalancePending());
@@ -795,8 +796,8 @@ public class QueueConsumerRunnerTest extends AbstractTestCase {
                                 vertx.eventBus().request(keyspaceHelper.getQueueRebalanceControlAddress(),
                                         new JsonObject()
                                                 .put("action", "activate")
-                                                .put("queueName", queueName),
-                                        context.asyncAssertSuccess((Message<Object> activateReply) ->
+                                                .put("queueName", queueName))
+                                        .onComplete(context.asyncAssertSuccess((Message<Object> activateReply) ->
                                                 context.assertTrue((Boolean) activateReply.body())));
                             })));
                 }));
@@ -826,8 +827,8 @@ public class QueueConsumerRunnerTest extends AbstractTestCase {
         });
 
         vertx.eventBus().request(keyspaceHelper.getQueueRebalanceControlAddress(),
-                new JsonObject().put("action", "claim").put("queueName", queueName).put("expectedOwner", sourceOwner),
-                context.asyncAssertSuccess((Message<Object> claimReply) -> {
+                new JsonObject().put("action", "claim").put("queueName", queueName).put("expectedOwner", sourceOwner))
+                .onComplete(context.asyncAssertSuccess((Message<Object> claimReply) -> {
                     context.assertTrue((Boolean) claimReply.body());
                     redisQues.getQueueConsumerRunner().consume(queueName);
                 }));
@@ -840,19 +841,20 @@ public class QueueConsumerRunnerTest extends AbstractTestCase {
         String sourceOwner = "consumer-source";
         jedis.setex(getConsumersRedisKeyPrefix() + queueName, 30, sourceOwner);
         String replyAddress = "running-state-reply-" + UUID.randomUUID();
+        // The local event bus registers the consumer synchronously, so there is no registration to wait for.
         vertx.eventBus().<JsonObject>consumer(replyAddress, message -> {
             JsonObject state = message.body().getJsonObject("queues").getJsonObject(queueName);
             context.assertNotNull(state, "freshly claimed queue must not be filtered out as stale");
             context.assertTrue(state.getBoolean("rebalancePending", false));
             async.complete();
-        }).completionHandler(context.asyncAssertSuccess(registered ->
-                redisQues.getQueueConsumerRunner().claimQueueForRebalance(queueName, sourceOwner)
-                        .onComplete(context.asyncAssertSuccess(claimed -> {
-                            context.assertTrue(claimed);
-                            vertx.eventBus().publish(keyspaceHelper.getQueueRunningStateKey(), new JsonObject()
-                                    .put("reply", replyAddress)
-                                    .put(RedisquesAPI.GET_QUEUE_RUNNING_STATES_LAST_UPDATE_WITHIN_MS, 60_000L));
-                        }))));
+        });
+        redisQues.getQueueConsumerRunner().claimQueueForRebalance(queueName, sourceOwner)
+                .onComplete(context.asyncAssertSuccess(claimed -> {
+                    context.assertTrue(claimed);
+                    vertx.eventBus().publish(keyspaceHelper.getQueueRunningStateKey(), new JsonObject()
+                            .put("reply", replyAddress)
+                            .put(RedisquesAPI.GET_QUEUE_RUNNING_STATES_LAST_UPDATE_WITHIN_MS, 60_000L));
+                }));
     }
 
     @Test
@@ -891,8 +893,8 @@ public class QueueConsumerRunnerTest extends AbstractTestCase {
                 (Handler<Message<JsonObject>>) msg -> msg.reply(false));
 
         vertx.eventBus().request(keyspaceHelper.getQueueRebalanceControlAddress(),
-                new JsonObject().put("action", "claim").put("queueName", queueName).put("expectedOwner", sourceOwner),
-                context.asyncAssertSuccess((Message<Object> claimReply) -> {
+                new JsonObject().put("action", "claim").put("queueName", queueName).put("expectedOwner", sourceOwner))
+                .onComplete(context.asyncAssertSuccess((Message<Object> claimReply) -> {
                     context.assertTrue((Boolean) claimReply.body());
                     redisQues.getQueueConsumerRunner().consume(queueName).onComplete(context.asyncAssertSuccess(v -> {
                         context.assertEquals(sourceOwner, jedis.get(getConsumersRedisKeyPrefix() + queueName));
@@ -912,8 +914,8 @@ public class QueueConsumerRunnerTest extends AbstractTestCase {
         redisQues.getQueueConsumerRunner().setRebalancePendingRecoveryMillis(0);
 
         vertx.eventBus().request(keyspaceHelper.getQueueRebalanceControlAddress(),
-                new JsonObject().put("action", "claim").put("queueName", queueName).put("expectedOwner", sourceOwner),
-                context.asyncAssertSuccess((Message<Object> claimReply) -> {
+                new JsonObject().put("action", "claim").put("queueName", queueName).put("expectedOwner", sourceOwner))
+                .onComplete(context.asyncAssertSuccess((Message<Object> claimReply) -> {
                     context.assertTrue((Boolean) claimReply.body());
                     redisQues.getQueueConsumerRunner().consume(queueName).onComplete(context.asyncAssertSuccess(v -> {
                         context.assertEquals(keyspaceHelper.getVerticleUid(), jedis.get(getConsumersRedisKeyPrefix() + queueName));
@@ -940,8 +942,8 @@ public class QueueConsumerRunnerTest extends AbstractTestCase {
         });
 
         vertx.eventBus().request(keyspaceHelper.getQueueRebalanceControlAddress(),
-                new JsonObject().put("action", "claim").put("queueName", queueName).put("expectedOwner", sourceOwner),
-                context.asyncAssertSuccess((Message<Object> claimReply) -> {
+                new JsonObject().put("action", "claim").put("queueName", queueName).put("expectedOwner", sourceOwner))
+                .onComplete(context.asyncAssertSuccess((Message<Object> claimReply) -> {
                     context.assertTrue((Boolean) claimReply.body());
                     redisQues.getQueueConsumerRunner().consume(queueName);
                 }));
@@ -956,15 +958,15 @@ public class QueueConsumerRunnerTest extends AbstractTestCase {
         jedis.setex(getConsumersRedisKeyPrefix() + queueName, 30, sourceOwner);
 
         vertx.eventBus().request(keyspaceHelper.getQueueRebalanceControlAddress(),
-                new JsonObject().put("action", "claim").put("queueName", queueName).put("expectedOwner", sourceOwner),
-                context.asyncAssertSuccess((Message<Object> claimReply) -> {
+                new JsonObject().put("action", "claim").put("queueName", queueName).put("expectedOwner", sourceOwner))
+                .onComplete(context.asyncAssertSuccess((Message<Object> claimReply) -> {
                     context.assertTrue((Boolean) claimReply.body());
                     context.assertTrue(redisQues.getQueueConsumerRunner().getMyQueues().get(queueName).isRebalancePending());
                     jedis.setex(getConsumersRedisKeyPrefix() + queueName, 30, anotherOwner);
 
                     vertx.eventBus().request(keyspaceHelper.getQueueRebalanceControlAddress(),
-                            new JsonObject().put("action", "abandon").put("queueName", queueName).put("expectedOwner", sourceOwner),
-                            context.asyncAssertSuccess((Message<Object> abandonReply) -> {
+                            new JsonObject().put("action", "abandon").put("queueName", queueName).put("expectedOwner", sourceOwner))
+                            .onComplete(context.asyncAssertSuccess((Message<Object> abandonReply) -> {
                                 context.assertFalse((Boolean) abandonReply.body());
                                 context.assertEquals(anotherOwner, jedis.get(getConsumersRedisKeyPrefix() + queueName));
                                 context.assertFalse(redisQues.getQueueConsumerRunner().getMyQueues().containsKey(queueName));
@@ -1093,7 +1095,7 @@ public class QueueConsumerRunnerTest extends AbstractTestCase {
                 runner.setMyQueuesState("q-handoff", QueueState.READY);
                 context.assertFalse(runner.getMyQueues().containsKey("q-handoff"));
                 verify(queueStatsService, times(1)).dequeueStatisticRemoveFromLocal("q-handoff");
-                notifyConsumer.unregister(context.asyncAssertSuccess(unregistered ->
+                notifyConsumer.unregister().onComplete(context.asyncAssertSuccess(unregistered ->
                         runner.unregisterConsumers(context.asyncAssertSuccess(unregisteredRunner -> async.complete()))));
             }));
         }));
@@ -1132,7 +1134,7 @@ public class QueueConsumerRunnerTest extends AbstractTestCase {
         Async async = context.async();
         runner.activateClaimedQueue("q-activation").onComplete(context.asyncAssertFailure(throwable -> {
             verify(metrics, never()).rebalanceQueueActivated();
-            notifyConsumer.unregister(context.asyncAssertSuccess(unregistered ->
+            notifyConsumer.unregister().onComplete(context.asyncAssertSuccess(unregistered ->
                     runner.unregisterConsumers(context.asyncAssertSuccess(unregisteredRunner -> async.complete()))));
         }));
     }
@@ -1176,6 +1178,111 @@ public class QueueConsumerRunnerTest extends AbstractTestCase {
                 runner.unregisterConsumers(context.asyncAssertSuccess(v -> async.complete()));
             }));
         }));
+    }
+
+    @Test
+    public void claimQueueForRebalance_RefusesQueueThatIsStillConsumed(TestContext context) {
+        RedisService redisService = mock(RedisService.class);
+        Response compareAndSetSucceeded = integerResponse(1);
+        when(redisService.send(any())).thenReturn(Future.succeededFuture(compareAndSetSucceeded));
+        QueueConsumerRunner runner = newMockedRunner(redisService, mock(QueueStatsService.class), mock(QueueMetrics.class));
+        QueueProcessingState consuming = new QueueProcessingState(QueueState.CONSUMING, System.currentTimeMillis());
+        runner.getMyQueues().put("q-busy", consuming);
+
+        Async async = context.async();
+        runner.claimQueueForRebalance("q-busy", "consumer-B").onComplete(context.asyncAssertSuccess(claimed -> {
+            context.assertFalse(claimed);
+            context.assertTrue(consuming == runner.getMyQueues().get("q-busy"));
+            context.assertEquals(QueueState.CONSUMING, consuming.getState());
+            verify(redisService, never()).send(any());
+            runner.unregisterConsumers(context.asyncAssertSuccess(v -> async.complete()));
+        }));
+    }
+
+    @Test
+    public void consume_SkipsQueueWhileItsRebalanceClaimIsInFlight(TestContext context) {
+        RedisService redisService = mock(RedisService.class);
+        Promise<Response> compareAndSet = Promise.promise();
+        when(redisService.send(any())).thenReturn(compareAndSet.future());
+        // Redis already names this instance the owner while the answer of the compare-and-set is still on its way.
+        List<Response> registrationResponses = List.of(integerResponse(1), stringResponse("consumer-A"));
+        when(redisService.batch(anyList())).thenReturn(Future.succeededFuture(registrationResponses));
+        QueueConsumerRunner runner = newMockedRunner(redisService, mock(QueueStatsService.class), mock(QueueMetrics.class));
+
+        Async async = context.async();
+        runner.claimQueueForRebalance("q-claim", "consumer-B").onComplete(context.asyncAssertSuccess(claimed -> {
+            context.assertTrue(claimed);
+            QueueProcessingState claimedState = runner.getMyQueues().get("q-claim");
+            context.assertEquals(QueueState.READY, claimedState.getState());
+            context.assertTrue(claimedState.isRebalancePending());
+            runner.unregisterConsumers(context.asyncAssertSuccess(v -> async.complete()));
+        }));
+        runner.consume("q-claim").onComplete(context.asyncAssertSuccess(v -> {
+            // The queue was neither adopted nor consumed, the previous owner has not released it yet.
+            context.assertFalse(runner.getMyQueues().containsKey("q-claim"));
+            compareAndSet.complete(integerResponse(1));
+        }));
+    }
+
+    @Test
+    public void claimQueueForRebalance_RenotifiesWhenASkippedConsumeIsNotFollowedByAnActivation(TestContext context) {
+        assertNotificationsAfterRejectedClaim(context, true, List.of("q-rejected", "marker"));
+    }
+
+    @Test
+    public void claimQueueForRebalance_DoesNotRenotifyWhenNoConsumeWasSkipped(TestContext context) {
+        assertNotificationsAfterRejectedClaim(context, false, List.of("marker"));
+    }
+
+    private void assertNotificationsAfterRejectedClaim(TestContext context, boolean consumeWhileClaiming, List<String> expectedNotifications) {
+        RedisService redisService = mock(RedisService.class);
+        Promise<Response> compareAndSet = Promise.promise();
+        when(redisService.send(any())).thenReturn(compareAndSet.future());
+        List<Response> registrationResponses = List.of(integerResponse(1), stringResponse("consumer-A"));
+        when(redisService.batch(anyList())).thenReturn(Future.succeededFuture(registrationResponses));
+        QueueConsumerRunner runner = newMockedRunner(redisService, mock(QueueStatsService.class), mock(QueueMetrics.class));
+        List<String> notifications = new CopyOnWriteArrayList<>();
+        MessageConsumer<String> notifyConsumer = vertx.eventBus().consumer("notify-consumer", message -> {
+            notifications.add(message.body());
+            message.reply("ok");
+        });
+
+        Async async = context.async();
+        runner.claimQueueForRebalance("q-rejected", "consumer-B").onComplete(context.asyncAssertSuccess(claimed -> {
+            context.assertFalse(claimed);
+            // A notification is sent before the claim completes, so the marker reaches the consumer behind it.
+            vertx.eventBus().request("notify-consumer", "marker").onComplete(context.asyncAssertSuccess(reply -> {
+                context.assertEquals(expectedNotifications, notifications);
+                notifyConsumer.unregister().onComplete(context.asyncAssertSuccess(unregistered ->
+                        runner.unregisterConsumers(context.asyncAssertSuccess(v -> async.complete()))));
+            }));
+        }));
+        if (consumeWhileClaiming) {
+            runner.consume("q-rejected").onComplete(context.asyncAssertSuccess(v -> compareAndSet.complete(integerResponse(0))));
+        } else {
+            compareAndSet.complete(integerResponse(0));
+        }
+    }
+
+    private QueueConsumerRunner newMockedRunner(RedisService redisService, QueueStatsService queueStatsService, QueueMetrics metrics) {
+        KeyspaceHelper mockedKeyspaceHelper = mock(KeyspaceHelper.class);
+        RedisquesConfigurationProvider mockedConfigurationProvider = mock(RedisquesConfigurationProvider.class);
+        RedisquesConfiguration configuration = mock(RedisquesConfiguration.class);
+
+        when(configuration.getConsumerLockMultiplier()).thenReturn(2);
+        when(configuration.getRefreshPeriod()).thenReturn(3);
+        when(configuration.getMetricRefreshPeriod()).thenReturn(0);
+        when(mockedConfigurationProvider.configuration()).thenReturn(configuration);
+        when(mockedKeyspaceHelper.getVerticleUid()).thenReturn("consumer-A");
+        when(mockedKeyspaceHelper.getTrimRequestKey()).thenReturn("trim:");
+        when(mockedKeyspaceHelper.getQueueRunningStateKey()).thenReturn("running-state");
+        when(mockedKeyspaceHelper.getQueueRebalanceControlAddress()).thenReturn("rebalance-control");
+        when(mockedKeyspaceHelper.getConsumersPrefix()).thenReturn("consumer:");
+        when(mockedKeyspaceHelper.getVerticleNotifyConsumerKey()).thenReturn("notify-consumer");
+
+        return new QueueConsumerRunner(vertx, redisService, metrics, queueStatsService, mockedKeyspaceHelper,
+                mockedConfigurationProvider, RedisQuesExceptionFactory.newWastefulExceptionFactory(),
+                mock(QueueStatisticsCollector.class), mock(QueueConfigurationProvider.class), new MessageConsumerManager(vertx));
     }
 
     private static Response integerResponse(int value) {

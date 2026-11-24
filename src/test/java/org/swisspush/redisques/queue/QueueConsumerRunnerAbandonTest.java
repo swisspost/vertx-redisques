@@ -42,7 +42,7 @@ public class QueueConsumerRunnerAbandonTest {
 
     @After
     public void tearDown(TestContext context) {
-        vertx.close(context.asyncAssertSuccess());
+        vertx.close().onComplete(context.asyncAssertSuccess());
     }
 
     @Test

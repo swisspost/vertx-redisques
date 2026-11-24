@@ -3,6 +3,7 @@ package org.swisspush.redisques.action;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
+import io.vertx.core.eventbus.DeliveryOptions;
 import io.vertx.core.eventbus.MessageConsumer;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.eventbus.Message;
@@ -62,6 +63,10 @@ public class RebalanceQueuesAction extends AbstractQueueAction {
     private static final String SKIP_LOCK_LOST = "lock-lost";
     // Added to the running state timeout to bound how long a crashed run blocks others; extended before every move.
     private static final long LOCK_TTL_MS = 30_000L;
+    // A control request only needs a few Redis round trips on the receiving instance. A move sends up to four of them in
+    // a row (claim, release, release retry, activate or abandon), which must stay well below LOCK_TTL_MS so that the
+    // lock extended before the move cannot expire while the move is still running.
+    private static final long CONTROL_REQUEST_TIMEOUT_MS = 5_000L;
     private static final long DEFAULT_RUNNING_STATE_TIMEOUT_MS = 2_000L;
     private static final long MAX_RUNNING_STATE_TIMEOUT_MS = 60_000L;
     private static final String REBALANCE_ACTION = "action";
@@ -137,8 +142,8 @@ public class RebalanceQueuesAction extends AbstractQueueAction {
                         .put(MESSAGE, "Another rebalance is already running"));
                 return;
             }
-            runRebalance(filterPatternResult.getOk(), effectiveMaxMovesPerRun, runningStateTimeoutMs, dryRun, lock)
-                    .onComplete(runResult -> releaseLock(lock).onComplete(released -> {
+            runRebalanceAndReleaseLock(filterPatternResult.getOk(), effectiveMaxMovesPerRun, runningStateTimeoutMs, dryRun, lock)
+                    .onComplete(runResult -> {
                         if (runResult.failed()) {
                             handleFail(event, "Failed to rebalance queues", runResult.cause());
                             return;
@@ -149,8 +154,24 @@ public class RebalanceQueuesAction extends AbstractQueueAction {
                                 reply.getJsonObject(VALUE, new JsonObject()).getInteger("executedMoves", 0),
                                 reply.getJsonObject(VALUE, new JsonObject()).getInteger("skipped", 0));
                         event.reply(reply);
-                    }));
+                    });
         });
+    }
+
+    /**
+     * Runs the rebalance and releases the lock afterwards, no matter whether the run succeeded, failed or threw
+     * before it returned a future. Otherwise the lock would block every other rebalance until it expires.
+     */
+    private Future<JsonObject> runRebalanceAndReleaseLock(Optional<Pattern> filterPattern, int effectiveMaxMovesPerRun,
+                                                          long runningStateTimeoutMs, boolean dryRun, RebalanceLock lock) {
+        Future<JsonObject> run;
+        try {
+            run = runRebalance(filterPattern, effectiveMaxMovesPerRun, runningStateTimeoutMs, dryRun, lock);
+        } catch (RuntimeException e) {
+            run = Future.failedFuture(e);
+        }
+        final Future<JsonObject> finishedRun = run;
+        return finishedRun.transform(runResult -> releaseLock(lock).transform(released -> finishedRun));
     }
 
     private Future<JsonObject> runRebalance(Optional<Pattern> filterPattern, int effectiveMaxMovesPerRun,
@@ -164,7 +185,8 @@ public class RebalanceQueuesAction extends AbstractQueueAction {
                                                 expectedAliveConsumers, runningStates.size(), queueScope.size());
                                         return Future.failedFuture(new IllegalStateException("Incomplete running state replies. Expected "
                                                 + expectedAliveConsumers + " but received " + runningStates.size()
-                                                + ". Check that all instances use the same redisques 'address'."));
+                                                + ". Check that all instances are reachable and use the same redisPrefix,"
+                                                + " or increase " + RUNNING_STATE_TIMEOUT_MS + "."));
                                     }
                                     return Future.succeededFuture(new PlanningContext(queueScope, runningStates));
                                 })))
@@ -245,7 +267,7 @@ public class RebalanceQueuesAction extends AbstractQueueAction {
                 finish.run();
             }
         });
-        consumer.completionHandler(ar -> {
+        registrationCompleted(consumer).onComplete(ar -> {
             if (ar.failed()) {
                 promise.fail(ar.cause());
                 return;
@@ -263,13 +285,26 @@ public class RebalanceQueuesAction extends AbstractQueueAction {
         return promise.future();
     }
 
+    // The only Vert.x 4 specific call of this class: with Vert.x 5 simply return consumer.completion().
+    private static Future<Void> registrationCompleted(MessageConsumer<?> consumer) {
+        Promise<Void> registered = Promise.promise();
+        consumer.completionHandler(ar -> {
+            if (ar.succeeded()) {
+                registered.complete();
+            } else {
+                registered.fail(ar.cause());
+            }
+        });
+        return registered.future();
+    }
+
     protected Future<Boolean> requestSourceRelease(String sourceConsumerId, String queueName, String expectedOwner) {
         String address = keyspaceHelper.queueRebalanceControlAddressFor(sourceConsumerId);
         JsonObject request = new JsonObject()
                 .put(REBALANCE_ACTION, REBALANCE_ACTION_RELEASE)
                 .put("queueName", queueName)
                 .put("expectedOwner", expectedOwner);
-        return vertx.eventBus().<Boolean>request(address, request)
+        return vertx.eventBus().<Boolean>request(address, request, controlRequestOptions())
                 .map(message -> message.body() != null && message.body());
     }
 
@@ -279,7 +314,7 @@ public class RebalanceQueuesAction extends AbstractQueueAction {
                 .put(REBALANCE_ACTION, REBALANCE_ACTION_CLAIM)
                 .put("queueName", queueName)
                 .put("expectedOwner", expectedOwner);
-        return vertx.eventBus().<Boolean>request(address, request)
+        return vertx.eventBus().<Boolean>request(address, request, controlRequestOptions())
                 .map(message -> message.body() != null && message.body());
     }
 
@@ -293,7 +328,7 @@ public class RebalanceQueuesAction extends AbstractQueueAction {
         JsonObject request = new JsonObject()
                 .put(REBALANCE_ACTION, REBALANCE_ACTION_ACTIVATE)
                 .put("queueName", queueName);
-        return vertx.eventBus().<Boolean>request(address, request)
+        return vertx.eventBus().<Boolean>request(address, request, controlRequestOptions())
                 .map(message -> message.body() != null && message.body());
     }
 
@@ -307,8 +342,12 @@ public class RebalanceQueuesAction extends AbstractQueueAction {
                 .put(REBALANCE_ACTION, REBALANCE_ACTION_ABANDON)
                 .put("queueName", queueName)
                 .put("expectedOwner", rollbackOwner);
-        return vertx.eventBus().<Boolean>request(address, request)
+        return vertx.eventBus().<Boolean>request(address, request, controlRequestOptions())
                 .map(message -> message.body() != null && message.body());
+    }
+
+    private static DeliveryOptions controlRequestOptions() {
+        return new DeliveryOptions().setSendTimeout(CONTROL_REQUEST_TIMEOUT_MS);
     }
 
     private Future<ExecutionResult> executePlan(QueueRebalancePlanner.Plan plan, JsonArray runningStates, ExecutionResult initialResult,
