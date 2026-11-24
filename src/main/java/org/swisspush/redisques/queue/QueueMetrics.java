@@ -14,6 +14,7 @@ import org.swisspush.redisques.lock.impl.RedisBasedLock;
 import org.swisspush.redisques.metrics.LongTaskTimerSamplePair;
 import org.swisspush.redisques.metrics.MetricsCollector;
 import org.swisspush.redisques.metrics.MetricsCollectorScheduler;
+import org.swisspush.redisques.metrics.RebalanceMetrics;
 import org.swisspush.redisques.util.MetricMeter;
 import org.swisspush.redisques.util.MetricTags;
 import org.swisspush.redisques.util.RedisquesConfigurationProvider;
@@ -33,8 +34,31 @@ public class QueueMetrics {
     private Counter dequeueCounter;
     private Gauge consumerCounter;
     private AtomicInteger consumerCounterValue = new AtomicInteger(0);
+    private final AtomicInteger pendingRebalanceClaims = new AtomicInteger(0);
+    private volatile RebalanceMetrics rebalanceMetrics = new RebalanceMetrics(null, null);
     MetricsCollector metricsCollector;
     private Lock lock;
+
+    void rebalanceClaimRecoveryResult(String result) {
+        rebalanceMetrics.claimRecoveryResult(result);
+    }
+
+    void rebalanceQueueReleased() {
+        rebalanceMetrics.queueReleased();
+    }
+
+    void rebalanceQueueActivated() {
+        rebalanceMetrics.queueActivated();
+    }
+
+    void rebalanceQueueAbandoned() {
+        rebalanceMetrics.queueAbandoned();
+    }
+
+    /** Updates the gauge of claims this node holds that are neither activated nor rolled back yet. */
+    void setPendingRebalanceClaims(int num) {
+        pendingRebalanceClaims.set(num);
+    }
 
     void dequeueCounterIncrement() {
         if (dequeueCounter == null) {
@@ -137,11 +161,15 @@ public class QueueMetrics {
             }
 
             String metricsIdentifier = cfg.getMicrometerMetricsIdentifier();
+            rebalanceMetrics = new RebalanceMetrics(meterRegistry, metricsIdentifier);
             dequeueCounter = Counter.builder(MetricMeter.DEQUEUE.getId())
                     .description(MetricMeter.DEQUEUE.getDescription()).tag(MetricTags.IDENTIFIER.getId(), metricsIdentifier).register(meterRegistry);
 
             consumerCounter = Gauge.builder(MetricMeter.QUEUE_CONSUMER_COUNT.getId(), consumerCounterValue, AtomicInteger::get)
                     .description(MetricMeter.QUEUE_CONSUMER_COUNT.getDescription()).tag(MetricTags.IDENTIFIER.getId(), metricsIdentifier).register(meterRegistry);
+
+            Gauge.builder(MetricMeter.REBALANCE_CLAIMS_PENDING.getId(), pendingRebalanceClaims, AtomicInteger::get)
+                    .description(MetricMeter.REBALANCE_CLAIMS_PENDING.getDescription()).tag(MetricTags.IDENTIFIER.getId(), metricsIdentifier).register(meterRegistry);
 
             int metricRefreshPeriod = cfg.getMetricRefreshPeriod();
             if (metricRefreshPeriod > 0) {

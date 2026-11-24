@@ -257,6 +257,22 @@ public class QueueConsumerRunnerFailureTest {
     }
 
     @Test
+    public void retryDropsQueueWhoseOwnershipWasLostWhileWaiting() {
+        when(redisService.lindex(QUEUE_KEY, "0")).thenReturn(Future.failedFuture(FAILURE_MESSAGE));
+
+        assertCompletedSuccessfully(runner.consume(QUEUE));
+        assertRetryScheduled(2000L);
+        // a rebalance handed the queue to another consumer while the failed message was waiting for its retry
+        state().setOwnershipLost(true);
+
+        retryHandler.handle(1L);
+
+        verify(eventBus).request(NOTIFY_ADDRESS, QUEUE);
+        assertFalse(runner.getMyQueues().containsKey(QUEUE));
+        verify(queueStatsService).dequeueStatisticRemoveFromLocal(QUEUE);
+    }
+
+    @Test
     public void readFailureDoesNotScheduleRetryWhenQueueIsAlreadyReady() {
         Promise<Response> read = Promise.promise();
         when(redisService.lindex(QUEUE_KEY, "0")).thenReturn(read.future());

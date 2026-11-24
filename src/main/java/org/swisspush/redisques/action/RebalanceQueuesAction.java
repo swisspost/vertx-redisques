@@ -1,0 +1,741 @@
+package org.swisspush.redisques.action;
+
+import io.vertx.core.Future;
+import io.vertx.core.Promise;
+import io.vertx.core.Vertx;
+import io.vertx.core.eventbus.DeliveryOptions;
+import io.vertx.core.eventbus.MessageConsumer;
+import io.vertx.core.json.JsonArray;
+import io.vertx.core.eventbus.Message;
+import io.vertx.core.json.JsonObject;
+import io.vertx.redis.client.Command;
+import io.vertx.redis.client.Request;
+import io.vertx.redis.client.Response;
+import org.slf4j.Logger;
+import org.swisspush.redisques.QueueState;
+import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
+import org.swisspush.redisques.metrics.RebalanceMetrics;
+import org.swisspush.redisques.queue.KeyspaceHelper;
+import org.swisspush.redisques.queue.QueueRebalancePlanner;
+import org.swisspush.redisques.queue.RedisService;
+import org.swisspush.redisques.util.MessageUtil;
+import org.swisspush.redisques.util.QueueConfigurationProvider;
+import org.swisspush.redisques.util.QueueStatisticsCollector;
+import org.swisspush.redisques.util.Result;
+import org.swisspush.redisques.util.RedisquesAPI;
+import org.swisspush.redisques.util.RedisquesConfigurationProvider;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Supplier;
+import java.util.regex.Pattern;
+
+import static org.swisspush.redisques.util.RedisquesAPI.BAD_INPUT;
+import static org.swisspush.redisques.util.RedisquesAPI.DRY_RUN;
+import static org.swisspush.redisques.util.RedisquesAPI.ERROR_TYPE;
+import static org.swisspush.redisques.util.RedisquesAPI.MESSAGE;
+import static org.swisspush.redisques.util.RedisquesAPI.MAX_MOVES_PER_RUN;
+import static org.swisspush.redisques.util.RedisquesAPI.PAYLOAD;
+import static org.swisspush.redisques.util.RedisquesAPI.REBALANCE_IN_PROGRESS;
+import static org.swisspush.redisques.util.RedisquesAPI.RUNNING_STATE_TIMEOUT_MS;
+import static org.swisspush.redisques.util.RedisquesAPI.VALUE;
+
+public class RebalanceQueuesAction extends AbstractQueueAction {
+    private static final int DEFAULT_MAX_MOVES_PER_RUN = 100;
+    private static final int HARD_MAX_MOVES_PER_RUN = 100;
+    private static final String SKIP_OWNER_CHANGED = "owner-changed";
+    private static final String SKIP_OWNER_LOOKUP_FAILED = "owner-lookup-failed";
+    private static final String SKIP_NOT_READY = "not-ready";
+    private static final String SKIP_CLAIM_FAILED = "claim-failed";
+    private static final String SKIP_RELEASE_FAILED = "release-failed";
+    private static final String SKIP_ACTIVATE_FAILED = "activate-failed";
+    private static final String SKIP_LOCK_LOST = "lock-lost";
+    // Added to the running state timeout to bound how long a crashed run blocks others; extended before every move.
+    private static final long LOCK_TTL_MS = 30_000L;
+    // A control request only needs a few Redis round trips on the receiving instance. A move sends up to four of them in
+    // a row (claim, release, release retry, activate or abandon), which must stay well below LOCK_TTL_MS so that the
+    // lock extended before the move cannot expire while the move is still running.
+    private static final long CONTROL_REQUEST_TIMEOUT_MS = 5_000L;
+    private static final long DEFAULT_RUNNING_STATE_TIMEOUT_MS = 2_000L;
+    private static final long MAX_RUNNING_STATE_TIMEOUT_MS = 60_000L;
+    private static final String REBALANCE_ACTION = "action";
+    private static final String REBALANCE_ACTION_RELEASE = "release";
+    private static final String REBALANCE_ACTION_CLAIM = "claim";
+    private static final String REBALANCE_ACTION_ACTIVATE = "activate";
+    private static final String REBALANCE_ACTION_ABANDON = "abandon";
+
+    private final RebalanceMetrics rebalanceMetrics;
+
+    public RebalanceQueuesAction(Vertx vertx, RedisService redisService, KeyspaceHelper keyspaceHelper,
+                                 QueueConfigurationProvider queueConfigurationProvider,
+                                 RedisquesConfigurationProvider redisquesConfigurationProvider,
+                                 RedisQuesExceptionFactory exceptionFactory,
+                                 QueueStatisticsCollector queueStatisticsCollector,
+                                 Logger log) {
+        this(vertx, redisService, keyspaceHelper, queueConfigurationProvider, redisquesConfigurationProvider, exceptionFactory, queueStatisticsCollector, log,
+                new RebalanceMetrics(null, null));
+    }
+
+    public RebalanceQueuesAction(Vertx vertx, RedisService redisService, KeyspaceHelper keyspaceHelper,
+                                 QueueConfigurationProvider queueConfigurationProvider,
+                                 RedisquesConfigurationProvider redisquesConfigurationProvider,
+                                 RedisQuesExceptionFactory exceptionFactory,
+                                 QueueStatisticsCollector queueStatisticsCollector,
+                                 Logger log, RebalanceMetrics rebalanceMetrics) {
+        super(vertx, redisService, keyspaceHelper, queueConfigurationProvider, redisquesConfigurationProvider, exceptionFactory, queueStatisticsCollector, log);
+        this.rebalanceMetrics = rebalanceMetrics;
+    }
+
+    @Override
+    public void execute(Message<JsonObject> event) {
+        Result<Optional<Pattern>, String> filterPatternResult = MessageUtil.extractFilterPattern(event);
+        if (filterPatternResult.isErr()) {
+            event.reply(createErrorReply().put(ERROR_TYPE, BAD_INPUT).put(MESSAGE, filterPatternResult.getErr()));
+            return;
+        }
+
+        JsonObject payload = event.body().getJsonObject(PAYLOAD, new JsonObject());
+        Integer requestedMaxMoves = payload.getInteger(MAX_MOVES_PER_RUN);
+        int maxMovesPerRun = requestedMaxMoves == null ? DEFAULT_MAX_MOVES_PER_RUN : requestedMaxMoves;
+        if (maxMovesPerRun <= 0) {
+            event.reply(createErrorReply().put(ERROR_TYPE, BAD_INPUT).put(MESSAGE, "maxMovesPerRun must be between 1 and 100"));
+            return;
+        }
+        if (maxMovesPerRun > HARD_MAX_MOVES_PER_RUN) {
+            maxMovesPerRun = HARD_MAX_MOVES_PER_RUN;
+        }
+        final int effectiveMaxMovesPerRun = maxMovesPerRun;
+
+        Long requestedTimeoutMs = payload.getLong(RUNNING_STATE_TIMEOUT_MS);
+        long runningStateTimeoutMs = requestedTimeoutMs == null ? DEFAULT_RUNNING_STATE_TIMEOUT_MS : requestedTimeoutMs;
+        if (runningStateTimeoutMs <= 0 || runningStateTimeoutMs > MAX_RUNNING_STATE_TIMEOUT_MS) {
+            event.reply(createErrorReply().put(ERROR_TYPE, BAD_INPUT)
+                    .put(MESSAGE, "runningStateTimeoutMs must be between 1 and " + MAX_RUNNING_STATE_TIMEOUT_MS));
+            return;
+        }
+
+        boolean dryRun = payload.getBoolean(DRY_RUN, false);
+        String filterDescription = filterPatternResult.getOk().map(Pattern::pattern).orElse("<none>");
+        log.debug("Starting rebalance request: filter={}, maxMovesPerRun={}, dryRun={}", filterDescription, effectiveMaxMovesPerRun, dryRun);
+        // A dry run changes nothing, so only runs that move queues need to be exclusive across the whole cluster.
+        Future<RebalanceLock> lockFuture = dryRun ? Future.succeededFuture() : acquireLock(runningStateTimeoutMs);
+        lockFuture.onComplete(lockResult -> {
+            if (lockResult.failed()) {
+                handleFail(event, "Failed to acquire the rebalance lock", lockResult.cause());
+                return;
+            }
+            RebalanceLock lock = lockResult.result();
+            if (!dryRun && lock == null) {
+                log.debug("Rejecting rebalance request because another rebalance is already running");
+                event.reply(createErrorReply().put(ERROR_TYPE, REBALANCE_IN_PROGRESS)
+                        .put(MESSAGE, "Another rebalance is already running"));
+                return;
+            }
+            runRebalanceAndReleaseLock(filterPatternResult.getOk(), effectiveMaxMovesPerRun, runningStateTimeoutMs, dryRun, lock)
+                    .onComplete(runResult -> {
+                        if (runResult.failed()) {
+                            handleFail(event, "Failed to rebalance queues", runResult.cause());
+                            return;
+                        }
+                        JsonObject reply = runResult.result();
+                        log.debug("Rebalance request completed successfully: plannedMoves={}, executedMoves={}, skipped={}",
+                                reply.getJsonObject(VALUE, new JsonObject()).getInteger("plannedMoves", 0),
+                                reply.getJsonObject(VALUE, new JsonObject()).getInteger("executedMoves", 0),
+                                reply.getJsonObject(VALUE, new JsonObject()).getInteger("skipped", 0));
+                        event.reply(reply);
+                    });
+        });
+    }
+
+    /**
+     * Runs the rebalance and releases the lock afterwards, no matter whether the run succeeded, failed or threw
+     * before it returned a future. Otherwise the lock would block every other rebalance until it expires.
+     */
+    private Future<JsonObject> runRebalanceAndReleaseLock(Optional<Pattern> filterPattern, int effectiveMaxMovesPerRun,
+                                                          long runningStateTimeoutMs, boolean dryRun, RebalanceLock lock) {
+        Future<JsonObject> run;
+        try {
+            run = runRebalance(filterPattern, effectiveMaxMovesPerRun, runningStateTimeoutMs, dryRun, lock);
+        } catch (RuntimeException e) {
+            run = Future.failedFuture(e);
+        }
+        final Future<JsonObject> finishedRun = run;
+        return finishedRun.transform(runResult -> releaseLock(lock).transform(released -> finishedRun));
+    }
+
+    private Future<JsonObject> runRebalance(Optional<Pattern> filterPattern, int effectiveMaxMovesPerRun,
+                                            long runningStateTimeoutMs, boolean dryRun, RebalanceLock lock) {
+        return fetchQueueScope(filterPattern)
+                .compose(queueScope -> fetchExpectedAliveConsumerCount()
+                        .compose(expectedAliveConsumers -> fetchRunningStates(expectedAliveConsumers, runningStateTimeoutMs)
+                                .compose(runningStates -> {
+                                    if (runningStates.size() < expectedAliveConsumers) {
+                                        log.warn("Incomplete running state replies during rebalance: expected {} but received {} (queueScope={})",
+                                                expectedAliveConsumers, runningStates.size(), queueScope.size());
+                                        return Future.failedFuture(new IllegalStateException("Incomplete running state replies. Expected "
+                                                + expectedAliveConsumers + " but received " + runningStates.size()
+                                                + ". Check that all instances are reachable and use the same redisPrefix,"
+                                                + " or increase " + RUNNING_STATE_TIMEOUT_MS + "."));
+                                    }
+                                    return Future.succeededFuture(new PlanningContext(queueScope, runningStates));
+                                })))
+                .compose(context -> {
+                    Future<ExecutionResult> recovery = dryRun
+                            ? Future.succeededFuture(new ExecutionResult())
+                            : recoverPendingClaims(context.runningStates, context.queueScope, effectiveMaxMovesPerRun, lock);
+                    return recovery.compose(recoveryResult -> {
+                        int remainingMoves = Math.max(0, effectiveMaxMovesPerRun - recoveryResult.plannedMoves);
+                        PlannerInput plannerInput = buildPlannerInput(context.runningStates, context.queueScope);
+                        QueueRebalancePlanner.Plan plan = new QueueRebalancePlanner()
+                                .computePlan(plannerInput.loadByConsumer, plannerInput.readyQueuesByConsumer, remainingMoves);
+                        log.debug("Rebalance plan computed: queueScope={}, activeConsumers={}, plannedMoves={}, dryRun={}",
+                                context.queueScope.size(), plannerInput.loadByConsumer.size(), plan.getMoves().size(), dryRun);
+                        if (dryRun) {
+                            return Future.succeededFuture(createSuccessReply(plan.getMoves().size(), 0, Collections.emptyMap()));
+                        }
+                        log.debug("Executing rebalance plan with {} moves", plan.getMoves().size());
+                        return executePlan(plan, context.runningStates, recoveryResult, lock)
+                                .map(result -> {
+                                    recordMetrics(result);
+                                    return createSuccessReply(plan.getMoves().size() + recoveryResult.plannedMoves,
+                                            result.executedMoves, result.reasonsByQueue);
+                                });
+                    });
+                });
+    }
+
+    private void recordMetrics(ExecutionResult result) {
+        for (int i = 0; i < result.executedMoves; i++) {
+            rebalanceMetrics.moveResult(RebalanceMetrics.RESULT_EXECUTED);
+        }
+        result.reasonsByQueue.values().forEach(rebalanceMetrics::moveResult);
+    }
+
+    protected Future<Set<String>> fetchQueueScope(Optional<Pattern> filterPattern) {
+        return redisService.zrangebyscore(keyspaceHelper.getQueuesKey(), String.valueOf(getMaxAgeTimestamp()), "+inf")
+                .map(response -> toQueueScope(response, filterPattern));
+    }
+
+    protected Future<Integer> fetchExpectedAliveConsumerCount() {
+        long aliveConsumerTtlMs = redisquesConfigurationProvider.configuration().getRefreshPeriod() * 1000L * 2;
+        long expireScore = System.currentTimeMillis() - aliveConsumerTtlMs;
+        // Read-only: expired entries are purged by the consumers' own heartbeat, so they are only excluded here.
+        return redisService.zrangebyscore(keyspaceHelper.getAliveConsumersKey(), "(" + expireScore, "+inf")
+                .map(response -> response == null ? 0 : response.size());
+    }
+
+    protected Future<JsonArray> fetchRunningStates(int expectedReplies, long timeoutMs) {
+        Promise<JsonArray> promise = Promise.promise();
+        List<JsonObject> results = Collections.synchronizedList(new ArrayList<>());
+        String replyAddress = keyspaceHelper.getQueueRunningStateReplyKey() + UUID.randomUUID();
+        MessageConsumer<JsonObject> consumer = vertx.eventBus().consumer(replyAddress);
+        AtomicBoolean finished = new AtomicBoolean(false);
+        AtomicLong timerId = new AtomicLong(-1L);
+
+        Runnable finish = () -> {
+            if (!finished.compareAndSet(false, true)) {
+                return;
+            }
+            long currentTimerId = timerId.get();
+            if (currentTimerId >= 0L) {
+                vertx.cancelTimer(currentTimerId);
+            }
+            consumer.unregister();
+            if (expectedReplies > 0 && results.size() < expectedReplies) {
+                log.warn("Rebalance running-state collection timed out: expected {} replies but received {} on {}",
+                        expectedReplies, results.size(), replyAddress);
+            }
+            promise.tryComplete(new JsonArray(new ArrayList<>(results)));
+        };
+
+        consumer.handler(message -> {
+            results.add(message.body());
+            if (expectedReplies > 0 && results.size() >= expectedReplies) {
+                log.debug("Rebalance running-state collection finished: expected {} replies and received {} on {}",
+                        expectedReplies, results.size(), replyAddress);
+                finish.run();
+            }
+        });
+        registrationCompleted(consumer).onComplete(ar -> {
+            if (ar.failed()) {
+                promise.fail(ar.cause());
+                return;
+            }
+            timerId.set(vertx.setTimer(timeoutMs, id -> finish.run()));
+            // Queues whose registration was not refreshed within the lock time may no longer be registered in Redis, so keep them out of the plan.
+            long registrationFreshnessMs = redisquesConfigurationProvider.configuration().getConsumerLockMultiplier()
+                    * redisquesConfigurationProvider.configuration().getRefreshPeriod() * 1000L;
+            vertx.eventBus().publish(keyspaceHelper.getQueueRunningStateKey(), new JsonObject()
+                    .put("reply", replyAddress)
+                    .put(RedisquesAPI.GET_QUEUE_RUNNING_STATES_LAST_UPDATE_WITHIN_MS, registrationFreshnessMs)
+                    .put(RedisquesAPI.GET_QUEUE_RUNNING_STATES_EXPECTED_REPLIES, expectedReplies));
+        });
+
+        return promise.future();
+    }
+
+    // The only Vert.x 4 specific call of this class: with Vert.x 5 simply return consumer.completion().
+    private static Future<Void> registrationCompleted(MessageConsumer<?> consumer) {
+        Promise<Void> registered = Promise.promise();
+        consumer.completionHandler(ar -> {
+            if (ar.succeeded()) {
+                registered.complete();
+            } else {
+                registered.fail(ar.cause());
+            }
+        });
+        return registered.future();
+    }
+
+    protected Future<Boolean> requestSourceRelease(String sourceConsumerId, String queueName, String expectedOwner) {
+        String address = keyspaceHelper.queueRebalanceControlAddressFor(sourceConsumerId);
+        JsonObject request = new JsonObject()
+                .put(REBALANCE_ACTION, REBALANCE_ACTION_RELEASE)
+                .put("queueName", queueName)
+                .put("expectedOwner", expectedOwner);
+        return vertx.eventBus().<Boolean>request(address, request, controlRequestOptions())
+                .map(message -> message.body() != null && message.body());
+    }
+
+    protected Future<Boolean> requestTargetClaim(String targetConsumerId, String queueName, String expectedOwner) {
+        String address = keyspaceHelper.queueRebalanceControlAddressFor(targetConsumerId);
+        JsonObject request = new JsonObject()
+                .put(REBALANCE_ACTION, REBALANCE_ACTION_CLAIM)
+                .put("queueName", queueName)
+                .put("expectedOwner", expectedOwner);
+        return vertx.eventBus().<Boolean>request(address, request, controlRequestOptions())
+                .map(message -> message.body() != null && message.body());
+    }
+
+    /**
+     * Tells the target consumer to start consuming a queue it previously claimed via
+     * {@link #requestTargetClaim}. Must only be called after the source confirmed release,
+     * so that at most one consumer is ever actively processing the queue.
+     */
+    protected Future<Boolean> requestTargetActivate(String targetConsumerId, String queueName) {
+        String address = keyspaceHelper.queueRebalanceControlAddressFor(targetConsumerId);
+        JsonObject request = new JsonObject()
+                .put(REBALANCE_ACTION, REBALANCE_ACTION_ACTIVATE)
+                .put("queueName", queueName);
+        return vertx.eventBus().<Boolean>request(address, request, controlRequestOptions())
+                .map(message -> message.body() != null && message.body());
+    }
+
+    /**
+     * Tells the target consumer to undo a claim that was never activated, restoring the
+     * previous owner. Safe to call because the target never started consuming the queue.
+     */
+    protected Future<Boolean> requestTargetAbandon(String targetConsumerId, String queueName, String rollbackOwner) {
+        String address = keyspaceHelper.queueRebalanceControlAddressFor(targetConsumerId);
+        JsonObject request = new JsonObject()
+                .put(REBALANCE_ACTION, REBALANCE_ACTION_ABANDON)
+                .put("queueName", queueName)
+                .put("expectedOwner", rollbackOwner);
+        return vertx.eventBus().<Boolean>request(address, request, controlRequestOptions())
+                .map(message -> message.body() != null && message.body());
+    }
+
+    private static DeliveryOptions controlRequestOptions() {
+        return new DeliveryOptions().setSendTimeout(CONTROL_REQUEST_TIMEOUT_MS);
+    }
+
+    private Future<ExecutionResult> executePlan(QueueRebalancePlanner.Plan plan, JsonArray runningStates, ExecutionResult initialResult,
+                                                RebalanceLock lock) {
+        Future<ExecutionResult> chain = Future.succeededFuture(initialResult);
+        for (QueueRebalancePlanner.Move move : plan.getMoves()) {
+            chain = chain.compose(result -> whileLockHeld(lock, move.getQueueName(), result,
+                    () -> executeMove(move, runningStates, result)));
+        }
+        return chain;
+    }
+
+    /**
+     * Extends the lock before an action is started and skips the action once the lock can no longer be confirmed
+     * as held (expired or taken over). The protocol of a single move is safe on its own; the lock only keeps
+     * concurrent runs from planning against each other, so a lost lock simply ends the work of this run.
+     */
+    private Future<ExecutionResult> whileLockHeld(RebalanceLock lock, String queueName, ExecutionResult result,
+                                                  Supplier<Future<ExecutionResult>> action) {
+        if (lock == null) {
+            return action.get();
+        }
+        return extendRebalanceLock(lock.token, lock.ttlMs)
+                .recover(throwable -> {
+                    log.warn("Could not extend the rebalance lock", throwable);
+                    return Future.succeededFuture(false);
+                })
+                .compose(held -> {
+                    if (!held) {
+                        result.reasonsByQueue.put(queueName, SKIP_LOCK_LOST);
+                        log.warn("Skipping rebalance move for queue={} because the rebalance lock is no longer held", queueName);
+                        return Future.succeededFuture(result);
+                    }
+                    return action.get();
+                });
+    }
+
+    private Future<RebalanceLock> acquireLock(long runningStateTimeoutMs) {
+        RebalanceLock lock = new RebalanceLock(keyspaceHelper.getVerticleUid() + ":" + UUID.randomUUID(),
+                runningStateTimeoutMs + LOCK_TTL_MS);
+        return acquireRebalanceLock(lock.token, lock.ttlMs).map(acquired -> acquired ? lock : null);
+    }
+
+    private Future<Void> releaseLock(RebalanceLock lock) {
+        if (lock == null) {
+            return Future.succeededFuture();
+        }
+        return releaseRebalanceLock(lock.token)
+                .<Void>mapEmpty()
+                .recover(throwable -> {
+                    log.warn("Could not release the rebalance lock; it expires on its own after {} ms", lock.ttlMs, throwable);
+                    return Future.succeededFuture();
+                });
+    }
+
+    /** Takes the cluster-wide rebalance lock; the token identifies the holder so that only it can extend or release the lock. */
+    protected Future<Boolean> acquireRebalanceLock(String token, long ttlMs) {
+        return redisService.setNxPx(keyspaceHelper.getRebalanceLockKey(), token, true, ttlMs);
+    }
+
+    protected Future<Boolean> extendRebalanceLock(String token, long ttlMs) {
+        return redisService.send(Request.cmd(Command.EVAL)
+                        .arg("if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('PEXPIRE', KEYS[1], ARGV[2]) else return 0 end")
+                        .arg("1")
+                        .arg(keyspaceHelper.getRebalanceLockKey())
+                        .arg(token)
+                        .arg(String.valueOf(ttlMs)))
+                .map(response -> response != null && response.toInteger() == 1);
+    }
+
+    protected Future<Boolean> releaseRebalanceLock(String token) {
+        return redisService.send(Request.cmd(Command.EVAL)
+                        .arg("if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) else return 0 end")
+                        .arg("1")
+                        .arg(keyspaceHelper.getRebalanceLockKey())
+                        .arg(token))
+                .map(response -> response != null && response.toInteger() == 1);
+    }
+
+    private Future<ExecutionResult> executeMove(QueueRebalancePlanner.Move move, JsonArray runningStates, ExecutionResult result) {
+        String queueName = move.getQueueName();
+        log.debug("Processing rebalance move for queue={} from={} to={}", queueName, move.getSourceConsumerId(), move.getTargetConsumerId());
+        if (!isQueueReadyInSnapshot(runningStates, move.getSourceConsumerId(), queueName)) {
+            result.reasonsByQueue.put(queueName, SKIP_NOT_READY);
+            log.warn("Skipping rebalance move for queue={} because source consumer {} was not READY in snapshot", queueName, move.getSourceConsumerId());
+            return Future.succeededFuture(result);
+        }
+
+        String consumerKey = keyspaceHelper.getConsumersPrefix() + queueName;
+        return redisService.get(consumerKey).recover(throwable -> {
+            result.reasonsByQueue.put(queueName, SKIP_OWNER_LOOKUP_FAILED);
+            log.warn("Skipping rebalance move for queue={} because owner lookup failed from Redis key {}", queueName, consumerKey, throwable);
+            return Future.succeededFuture();
+        }).compose(currentOwnerResponse -> {
+            if (result.reasonsByQueue.containsKey(queueName)) {
+                return Future.succeededFuture(result);
+            }
+            String currentOwner = Objects.toString(currentOwnerResponse, null);
+            if (!move.getSourceConsumerId().equals(currentOwner)) {
+                result.reasonsByQueue.put(queueName, SKIP_OWNER_CHANGED);
+                log.warn("Skipping rebalance move for queue={} because current owner {} no longer matches expected source {}",
+                        queueName, currentOwner, move.getSourceConsumerId());
+                return Future.succeededFuture(result);
+            }
+
+            return requestTargetClaim(move.getTargetConsumerId(), queueName, move.getSourceConsumerId())
+                    .recover(throwable -> {
+                        // The claim may or may not have been applied on the target. Rolling back or releasing
+                        // blindly is unsafe, so leave it to the pending claim recovery and continue with the other moves.
+                        result.reasonsByQueue.put(queueName, SKIP_CLAIM_FAILED);
+                        log.warn("Skipping rebalance move for queue={} because the claim request to consumer {} failed; a claim that was applied will be reconciled later",
+                                queueName, move.getTargetConsumerId(), throwable);
+                        return Future.succeededFuture(null);
+                    })
+                    .compose(claimed -> {
+                        if (claimed == null) {
+                            return Future.succeededFuture(result);
+                        }
+                        if (!claimed) {
+                            result.reasonsByQueue.put(queueName, SKIP_CLAIM_FAILED);
+                            log.warn("Skipping rebalance move for queue={} because target claim failed on consumer {} with expectedOwner={}",
+                                    queueName, move.getTargetConsumerId(), move.getSourceConsumerId());
+                            return Future.succeededFuture(result);
+                        }
+                        // Ownership in Redis now points to the target, but the target has not been
+                        // notified to start consuming yet. Only once the source confirms it released
+                        // the queue (i.e. was not concurrently processing it) do we let the target
+                        // start, guaranteeing at most one active consumer per queue at all times.
+                        return requestSourceRelease(move.getSourceConsumerId(), queueName, move.getTargetConsumerId())
+                                .compose(released -> {
+                                    if (!released) {
+                                        return abandonUnactivatedClaim(move, result);
+                                    }
+                                    return activateMove(move, result);
+                                }, throwable -> {
+                                    log.warn("Source release outcome is unknown for queue={} from={}; retrying the idempotent release before deciding whether to roll back",
+                                            queueName, move.getSourceConsumerId(), throwable);
+                                    return retrySourceRelease(move, result);
+                                });
+                    });
+        });
+    }
+
+    private Future<ExecutionResult> retrySourceRelease(QueueRebalancePlanner.Move move, ExecutionResult result) {
+        String queueName = move.getQueueName();
+        return requestSourceRelease(move.getSourceConsumerId(), queueName, move.getTargetConsumerId())
+                .compose(released -> {
+                    if (released) {
+                        return activateMove(move, result);
+                    }
+                    return abandonUnactivatedClaim(move, result);
+                }, throwable -> {
+                    result.reasonsByQueue.put(queueName, SKIP_RELEASE_FAILED);
+                    log.warn("Source release outcome remains unknown for queue={}; leaving the target claim inactive rather than risk rolling back an already-released queue",
+                            queueName, throwable);
+                    return Future.succeededFuture(result);
+                });
+    }
+
+    private Future<ExecutionResult> recoverPendingClaims(JsonArray runningStates, Set<String> queueScope, int maxClaims, RebalanceLock lock) {
+        List<QueueRebalancePlanner.Move> pendingClaims = pendingClaims(runningStates, queueScope, maxClaims);
+        Future<ExecutionResult> chain = Future.succeededFuture(new ExecutionResult());
+        for (QueueRebalancePlanner.Move claim : pendingClaims) {
+            chain = chain.compose(result -> {
+                result.plannedMoves++;
+                return whileLockHeld(lock, claim.getQueueName(), result, () ->
+                        requestSourceRelease(claim.getSourceConsumerId(), claim.getQueueName(), claim.getTargetConsumerId())
+                        .compose(released -> released
+                                ? activateMove(claim, result)
+                                : abandonUnactivatedClaim(claim, result),
+                                throwable -> {
+                                    result.reasonsByQueue.put(claim.getQueueName(), SKIP_RELEASE_FAILED);
+                                    log.warn("Could not reconcile pending rebalance claim for queue={}; it will be retried by a later rebalance request",
+                                            claim.getQueueName(), throwable);
+                                    return Future.succeededFuture(result);
+                                }));
+            });
+        }
+        return chain;
+    }
+
+    private List<QueueRebalancePlanner.Move> pendingClaims(JsonArray runningStates, Set<String> queueScope, int maxClaims) {
+        List<QueueRebalancePlanner.Move> pendingClaims = new ArrayList<>();
+        if (runningStates == null) {
+            return pendingClaims;
+        }
+        for (Object payloadEntry : runningStates) {
+            if (pendingClaims.size() >= maxClaims || !(payloadEntry instanceof JsonObject)) {
+                continue;
+            }
+            JsonObject instance = (JsonObject) payloadEntry;
+            String targetConsumerId = instance.getString("consumerId");
+            JsonObject queues = instance.getJsonObject("queues", new JsonObject());
+            if (targetConsumerId == null) {
+                continue;
+            }
+            queues.forEach(entry -> {
+                if (pendingClaims.size() >= maxClaims || !(entry.getValue() instanceof JsonObject)) {
+                    return;
+                }
+                if (!queueScope.contains(entry.getKey())) {
+                    return;
+                }
+                JsonObject state = (JsonObject) entry.getValue();
+                String sourceConsumerId = state.getString("rebalancePreviousOwner");
+                if (state.getBoolean("rebalancePending", false) && sourceConsumerId != null
+                        && !sourceConsumerId.equals(targetConsumerId)) {
+                    pendingClaims.add(new QueueRebalancePlanner.Move(entry.getKey(), sourceConsumerId, targetConsumerId));
+                }
+            });
+        }
+        return pendingClaims;
+    }
+
+    /**
+     * Activates a queue whose claim was confirmed released by the source, i.e. tells the
+     * target to start consuming it. Ownership has already moved to the target and the source
+     * has already dropped its own local bookkeeping, so there is nothing safe left to roll
+     * back if this fails (reverting Redis ownership here would just orphan the queue, since
+     * no instance would have local READY state for it anymore). Instead, a failure here is
+     * recorded via {@link #SKIP_ACTIVATE_FAILED} and processing continues with the remaining
+     * planned moves - the target still owns the queue with correct local state, so it will
+     * pick it up on its own as soon as it next evaluates the queue (e.g. on new queue activity).
+     */
+    private Future<ExecutionResult> activateMove(QueueRebalancePlanner.Move move, ExecutionResult result) {
+        String queueName = move.getQueueName();
+        return requestTargetActivate(move.getTargetConsumerId(), queueName)
+                .compose(activated -> {
+                    if (!activated) {
+                        result.reasonsByQueue.put(queueName, SKIP_ACTIVATE_FAILED);
+                        log.warn("Failed to activate rebalance move for queue={} from={} to={}; ownership already transferred, target will pick it up later",
+                                queueName, move.getSourceConsumerId(), move.getTargetConsumerId());
+                        return Future.succeededFuture(result);
+                    }
+                    result.executedMoves++;
+                    log.debug("Executed rebalance move for queue={} from={} to={}",
+                            queueName, move.getSourceConsumerId(), move.getTargetConsumerId());
+                    return Future.succeededFuture(result);
+                })
+                .recover(throwable -> {
+                    result.reasonsByQueue.put(queueName, SKIP_ACTIVATE_FAILED);
+                    log.warn("Failed to activate rebalance move for queue={} from={} to={}; ownership already transferred, target will pick it up later",
+                            queueName, move.getSourceConsumerId(), move.getTargetConsumerId(), throwable);
+                    return Future.succeededFuture(result);
+                });
+    }
+
+    /**
+     * Undoes a claim that was never activated (the source did not confirm release, e.g.
+     * because it was still processing the queue). Since the target was never notified to
+     * start consuming, this only needs to revert the Redis ownership and local bookkeeping
+     * on the target - there is no risk of double consumption to recover from.
+     */
+    private Future<ExecutionResult> abandonUnactivatedClaim(QueueRebalancePlanner.Move move, ExecutionResult result) {
+        String queueName = move.getQueueName();
+        log.warn("Rebalance handoff for queue={} from={} to={} not released by source; abandoning unactivated claim",
+                queueName, move.getSourceConsumerId(), move.getTargetConsumerId());
+        return requestTargetAbandon(move.getTargetConsumerId(), queueName, move.getSourceConsumerId())
+                .recover(throwable -> {
+                    // The claim stays pending on the target; it is reconciled later, so the remaining moves must not be aborted.
+                    log.warn("Failed to abandon unactivated claim for queue={} on target={}", queueName, move.getTargetConsumerId(), throwable);
+                    return Future.succeededFuture(false);
+                })
+                .compose(restored -> {
+                    result.reasonsByQueue.put(queueName, SKIP_RELEASE_FAILED);
+                    log.warn("Rebalance handoff for queue={} marked as {} after abandoning unactivated claim (restored={})",
+                            queueName, SKIP_RELEASE_FAILED, restored);
+                    return Future.succeededFuture(result);
+                });
+    }
+
+    private PlannerInput buildPlannerInput(JsonArray runningStates, Set<String> queueScope) {
+        Map<String, Integer> loadByConsumer = new LinkedHashMap<>();
+        Map<String, List<String>> readyQueuesByConsumer = new LinkedHashMap<>();
+        if (runningStates == null || runningStates.isEmpty() || queueScope.isEmpty()) {
+            return new PlannerInput(loadByConsumer, readyQueuesByConsumer);
+        }
+
+        for (Object payloadEntry : runningStates) {
+            if (!(payloadEntry instanceof JsonObject)) {
+                continue;
+            }
+            JsonObject instancePayload = (JsonObject) payloadEntry;
+            String consumerId = instancePayload.getString("consumerId");
+            if (consumerId == null) {
+                continue;
+            }
+            JsonObject queues = instancePayload.getJsonObject("queues", instancePayload);
+            AtomicInteger ownedQueuesInScope = new AtomicInteger();
+            List<String> readyQueues = new ArrayList<>();
+            queues.forEach(entry -> {
+                if (!(entry.getValue() instanceof JsonObject) || !queueScope.contains(entry.getKey())) {
+                    return;
+                }
+                ownedQueuesInScope.incrementAndGet();
+                JsonObject queueState = (JsonObject) entry.getValue();
+                if (QueueState.READY.name().equals(queueState.getString("state"))
+                        && !queueState.getBoolean("rebalancePending", false)) {
+                    readyQueues.add(entry.getKey());
+                }
+            });
+            loadByConsumer.put(consumerId, ownedQueuesInScope.get());
+            readyQueuesByConsumer.put(consumerId, readyQueues);
+        }
+        return new PlannerInput(loadByConsumer, readyQueuesByConsumer);
+    }
+
+    private boolean isQueueReadyInSnapshot(JsonArray runningStates, String consumerId, String queueName) {
+        if (runningStates == null) {
+            return false;
+        }
+        for (Object payloadEntry : runningStates) {
+            if (!(payloadEntry instanceof JsonObject)) {
+                continue;
+            }
+            JsonObject instancePayload = (JsonObject) payloadEntry;
+            if (!consumerId.equals(instancePayload.getString("consumerId"))) {
+                continue;
+            }
+            JsonObject queueState = instancePayload.getJsonObject("queues", new JsonObject()).getJsonObject(queueName);
+            return queueState != null
+                    && QueueState.READY.name().equals(queueState.getString("state"))
+                    && !queueState.getBoolean("rebalancePending", false);
+        }
+        return false;
+    }
+
+    private Set<String> toQueueScope(Response response, Optional<Pattern> filterPattern) {
+        Set<String> queueScope = new LinkedHashSet<>();
+        if (response == null) {
+            return queueScope;
+        }
+        for (Response entry : response) {
+            String queueName = Objects.toString(entry, null);
+            if (queueName == null) {
+                continue;
+            }
+            if (filterPattern.isPresent() && !filterPattern.get().matcher(queueName).matches()) {
+                continue;
+            }
+            queueScope.add(queueName);
+        }
+        return queueScope;
+    }
+
+    private JsonObject createSuccessReply(int plannedMoves, int executedMoves, Map<String, String> reasonsByQueue) {
+        JsonObject reasons = new JsonObject();
+        reasonsByQueue.forEach(reasons::put);
+        return createOkReply().put(VALUE, new JsonObject()
+                .put("plannedMoves", plannedMoves)
+                .put("executedMoves", executedMoves)
+                .put("skipped", reasonsByQueue.size())
+                .put("reasonsByQueue", reasons));
+    }
+
+    private static class PlanningContext {
+        private final Set<String> queueScope;
+        private final JsonArray runningStates;
+
+        private PlanningContext(Set<String> queueScope, JsonArray runningStates) {
+            this.queueScope = queueScope;
+            this.runningStates = runningStates;
+        }
+    }
+
+    private static class PlannerInput {
+        private final Map<String, Integer> loadByConsumer;
+        private final Map<String, List<String>> readyQueuesByConsumer;
+
+        private PlannerInput(Map<String, Integer> loadByConsumer, Map<String, List<String>> readyQueuesByConsumer) {
+            this.loadByConsumer = loadByConsumer;
+            this.readyQueuesByConsumer = readyQueuesByConsumer;
+        }
+    }
+
+    private static class ExecutionResult {
+        private final Map<String, String> reasonsByQueue = new LinkedHashMap<>();
+        private int plannedMoves;
+        private int executedMoves;
+    }
+
+    private static class RebalanceLock {
+        private final String token;
+        private final long ttlMs;
+
+        private RebalanceLock(String token, long ttlMs) {
+            this.token = token;
+            this.ttlMs = ttlMs;
+        }
+    }
+}

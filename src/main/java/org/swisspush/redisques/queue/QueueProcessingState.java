@@ -7,6 +7,11 @@ public class QueueProcessingState {
     private long lastConsumedTimestampMillis;
     private long lastRegisterRefreshedMillis;
     private volatile long queueItemSize;
+    private RebalanceClaimState rebalanceClaimState = RebalanceClaimState.NONE;
+    private String rebalancePreviousOwner;
+    private long rebalancePendingSinceMillis;
+    private boolean rebalanceRecoveryInFlight;
+    private volatile boolean ownershipLost;
 
     public QueueProcessingState(QueueState state, long timestampMillis) {
         this.setState(state);
@@ -44,5 +49,79 @@ public class QueueProcessingState {
 
     public void setQueueItemSize(long value) {
         queueItemSize = value;
+    }
+
+    boolean isOwnershipLost() {
+        return ownershipLost;
+    }
+
+    /** Marks a still processing queue whose Redis owner changed, so its local state is dropped once processing ends. */
+    void setOwnershipLost(boolean ownershipLost) {
+        this.ownershipLost = ownershipLost;
+    }
+
+    synchronized boolean isRebalancePending() {
+        return rebalanceClaimState != RebalanceClaimState.NONE;
+    }
+
+    synchronized void setRebalancePending(String previousOwner) {
+        rebalancePreviousOwner = previousOwner;
+        rebalanceClaimState = RebalanceClaimState.PENDING;
+        rebalancePendingSinceMillis = System.currentTimeMillis();
+        rebalanceRecoveryInFlight = false;
+    }
+
+    /**
+     * Reserves the right to reconcile a claim that has been pending for at least the given time.
+     *
+     * @return the previous owner to ask for confirmation, or null if there is nothing to recover (yet)
+     */
+    synchronized String beginRebalanceRecovery(long minPendingMillis) {
+        if (rebalanceClaimState != RebalanceClaimState.PENDING || rebalanceRecoveryInFlight
+                || System.currentTimeMillis() - rebalancePendingSinceMillis < minPendingMillis) {
+            return null;
+        }
+        rebalanceRecoveryInFlight = true;
+        return rebalancePreviousOwner;
+    }
+
+    /** Ends a recovery attempt; a still pending claim waits a full period before the next attempt. */
+    synchronized void finishRebalanceRecovery() {
+        rebalanceRecoveryInFlight = false;
+        rebalancePendingSinceMillis = System.currentTimeMillis();
+    }
+
+    synchronized String getRebalancePreviousOwner() {
+        return rebalanceClaimState == RebalanceClaimState.PENDING ? rebalancePreviousOwner : null;
+    }
+
+    synchronized boolean activateRebalanceClaim() {
+        if (rebalanceClaimState != RebalanceClaimState.PENDING) {
+            return false;
+        }
+        rebalanceClaimState = RebalanceClaimState.NONE;
+        rebalancePreviousOwner = null;
+        return true;
+    }
+
+    synchronized boolean beginRebalanceAbandon() {
+        if (rebalanceClaimState != RebalanceClaimState.PENDING) {
+            return false;
+        }
+        rebalanceClaimState = RebalanceClaimState.ABANDONING;
+        return true;
+    }
+
+    synchronized void finishRebalanceAbandon(boolean restored) {
+        rebalanceClaimState = restored ? RebalanceClaimState.NONE : RebalanceClaimState.PENDING;
+        if (restored) {
+            rebalancePreviousOwner = null;
+        }
+    }
+
+    private enum RebalanceClaimState {
+        NONE,
+        PENDING,
+        ABANDONING
     }
 }

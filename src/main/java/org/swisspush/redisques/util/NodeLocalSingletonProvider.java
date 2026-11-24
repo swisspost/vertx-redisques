@@ -11,7 +11,8 @@ import java.util.function.Supplier;
  */
 public class NodeLocalSingletonProvider<T> {
     private final static String LOCAL_SINGLETON_PROVIDER_MAP_KEY = "redisques-singletons:";
-    private static final long LOCK_TIMEOUT_MS = 60_000;
+    // the factory may be slow (e.g. clustered event bus registration), the default 10s lock timeout is too short
+    private final static long LOCK_TIMEOUT_MS = 120_000;
     private final Vertx vertx;
     private final String key;
     private final Supplier<Future<T>> factory;
@@ -36,7 +37,15 @@ public class NodeLocalSingletonProvider<T> {
                 return Future.succeededFuture(again);
             }
 
-            return factory.get()
+            Future<T> created;
+            try {
+                created = factory.get();
+            } catch (RuntimeException ex) {
+                // never keep the lock when the factory fails synchronously, otherwise all other verticles time out
+                lock.release();
+                return Future.failedFuture(ex);
+            }
+            return created
                     .onSuccess(obj -> NodeLocalObjectRegistry.put(key, obj))
                     .onComplete(v -> lock.release());
         });

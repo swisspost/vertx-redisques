@@ -9,6 +9,7 @@ import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonObject;
 import io.vertx.redis.client.RedisAPI;
 import io.vertx.redis.client.Response;
+import org.junit.After;
 import org.junit.Before;
 import org.mockito.Mockito;
 import org.mockito.invocation.InvocationOnMock;
@@ -45,6 +46,13 @@ public abstract class AbstractQueueActionTest {
 
     protected static final JsonObject STATUS_OK = new JsonObject(Buffer.buffer("{\"status\":\"ok\"}"));
     protected static final JsonObject STATUS_ERROR = new JsonObject(Buffer.buffer("{\"status\":\"error\"}"));
+    @After
+    public void closeVertx() throws Exception {
+        if (vertx != null) {
+            vertx.close().toCompletionStage().toCompletableFuture().get(10, java.util.concurrent.TimeUnit.SECONDS);
+        }
+    }
+
     @Before
     public void setup() {
         redisAPI = Mockito.mock(RedisAPI.class);

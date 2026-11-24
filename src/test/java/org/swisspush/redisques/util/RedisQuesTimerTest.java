@@ -4,6 +4,7 @@ import io.vertx.core.Vertx;
 import io.vertx.ext.unit.Async;
 import io.vertx.ext.unit.TestContext;
 import io.vertx.ext.unit.junit.VertxUnitRunner;
+import org.junit.After;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
@@ -16,7 +17,13 @@ import org.junit.runner.RunWith;
 public class RedisQuesTimerTest {
 
     private static final double TEST_BUFFER_MS = 2.5;
-    RedisQuesTimer timer = new RedisQuesTimer(Vertx.vertx());
+    private final Vertx vertx = Vertx.vertx();
+    RedisQuesTimer timer = new RedisQuesTimer(vertx);
+
+    @After
+    public void tearDown() throws Exception {
+        vertx.close().toCompletionStage().toCompletableFuture().get(10, java.util.concurrent.TimeUnit.SECONDS);
+    }
 
     @Test
     public void testExecuteDelayedLong(TestContext context){

@@ -4,7 +4,8 @@ public enum MetricTags {
 
     IDENTIFIER("identifier"),
     QUEUE_NAME("queue_name"),
-    CONSUMER_UID("consumer_uid");
+    CONSUMER_UID("consumer_uid"),
+    RESULT("result");
 
     private final String id;
 

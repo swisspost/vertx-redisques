@@ -863,19 +863,78 @@ Response Data
 {
     "payload": [   <JsonArray with one JsonObject per verticle instance that replied>
         {
-            "<str QUEUENAME>": {
-                "state": <str current queue state, e.g. "CONSUMING" / "IDLE">,
-                "lastConsumedTimestampMillis": <long timestamp of the last consumed queue item>,
-                "lastRegisterRefreshedMillis": <long timestamp when this queue's registration was last refreshed>,
-                "queueItemSizeCounter": <long current queue item size counter>
-            },
-            "<str ANOTHERQUEUENAME>": { ... }
+            "consumerId": <str consumer/verticle identifier>,
+            "queues": {
+                "<str QUEUENAME>": {
+                    "state": <str current queue state, e.g. "CONSUMING" / "IDLE">,
+                    "lastConsumedTimestampMillis": <long timestamp of the last consumed queue item>,
+                    "lastRegisterRefreshedMillis": <long timestamp when this queue's registration was last refreshed>,
+                    "queueItemSizeCounter": <long current queue item size counter>,
+                    "rebalancePending": <boolean true only while a claimed queue awaits handoff confirmation (optional)>,
+                    "rebalancePreviousOwner": <str previous consumer ID for a pending rebalance claim (optional)>
+                },
+                "<str ANOTHERQUEUENAME>": { ... }
+            }
         }
     ]
 }
 ```
 
 Note: on failure, the response only contains `"status": "error"` (no `payload`).
+
+#### rebalanceQueues
+
+Triggers queue ownership rebalancing across active RedisQues verticle instances. All queues that
+match the optional `filter` count toward the scoped ownership load, but only queues currently in
+`READY` state are eligible to move. Set `dryRun` to `true` to preview how many moves would be
+planned without changing ownership.
+
+Balancing is based on the number of queues owned by each instance, not on the actual workload of those
+queues, and queues that are currently being processed are never moved. A run therefore evens out the queue
+count, but does not guarantee an even processing load. Nothing triggers a rebalance automatically; it only
+happens when this operation is sent, so the caller decides how often it runs.
+If a handoff cannot be confirmed (for example the source's release reply is lost), the target keeps the
+claim pending (`rebalancePending` in the running state) and does not consume the queue. Such a claim is
+reconciled by later `rebalanceQueues` requests and, otherwise, automatically by the target itself once it
+has been pending for 2 minutes. If the previous owner does not respond, the target only takes the queue
+over once that owner has also stopped refreshing its alive-consumer entry.
+
+Only one rebalance that moves queues runs at a time across the whole cluster, no matter which instance receives the
+request. It is guarded by the Redis key `<redisPrefix>rebalance:lock`, which is owned by a random token, extended before
+every move and released when the run ends. If the instance running it dies, the lock expires on its own after about 30
+seconds (plus `runningStateTimeoutMs`). A request that arrives meanwhile is rejected with `"status": "error"` and
+`"errorType": "rebalance in progress"`; callers can simply retry later. A `dryRun` does not need the lock. The per-queue
+handoff stays safe even if the lock is lost, in which case the run skips its remaining moves with the reason `lock-lost`.
+
+Request Data
+```
+{
+    "operation": "rebalanceQueues",
+    "payload": {
+        "filter": <str regex pattern to restrict the queues to rebalance (optional)>,
+        "dryRun": <boolean when true, only calculate the rebalance plan (optional, default false)>,
+        "maxMovesPerRun": <int maximum amount of queue moves to execute in one run; must be at least 1, values above 100 are capped to 100 (optional, default 100)>,
+        "runningStateTimeoutMs": <long maximum time in milliseconds to wait for the running state replies of all instances; between 1 and 60000 (optional, default 2000)>
+    }
+}
+```
+
+Note: a `maxMovesPerRun` of `0` or negative, or a `runningStateTimeoutMs` outside its range, is rejected with `"status": "error"`, `"errorType": "bad input"`. A run that cannot take the cluster-wide lock is rejected with `"status": "error"`, `"errorType": "rebalance in progress"`.
+
+Response Data
+```
+{
+    "status": "ok" / "error",
+    "value": {
+        "plannedMoves": <int amount of moves selected by the planner>,
+        "executedMoves": <int amount of moves that were actually completed>,
+        "skipped": <int amount of planned moves that were skipped during execution>,
+        "reasonsByQueue": {
+            "<str QUEUENAME>": <str skip reason such as "owner-changed", "not-ready", "release-failed", "claim-failed", "activate-failed", "owner-lookup-failed", "lock-lost">
+        }
+    }
+}
+```
 
 
 ## RedisQues HTTP API
@@ -1298,7 +1357,16 @@ The collected metrics include:
 | redisques_queue_consumers            | Amount of consumer registered                               |
 | redisques_queue_consumers            | Amount of consumer registered                               |
 | redisques_queue_consumer_life_cycle  | A time line trace for each consumer                         |
+| redisques_rebalance_moves_total      | Moves handled by `rebalanceQueues` requests, tagged `result` (`executed` or the skip reason, e.g. `release-failed`) |
+| redisques_rebalance_claim_recovery_total | Stale pending rebalance claims recovered by the claiming consumer, tagged `result` (`activated`, `abandoned`, `failed`) |
+| redisques_rebalance_queues_released_total | Queues this node gave up to another node through rebalancing (the "removed" side) |
+| redisques_rebalance_queues_activated_total | Queues this node started consuming after receiving them through rebalancing (the "added" side) |
+| redisques_rebalance_queues_abandoned_total | Rebalance claims this node rolled back to the previous owner |
+| redisques_rebalance_claims_pending   | Gauge of rebalance claims this node holds that were not yet activated or rolled back (back to 0 shortly after a rebalance) |
 
+The `released`/`activated`/`abandoned` counters are incremented on the node that performs the step, so group them by the scrape instance label to see which node loses and which gains queues, e.g. `sum by (instance) (increase(redisques_rebalance_queues_released_total[1h]))`. They intentionally carry no node-id or queue tags, to avoid creating new series on every restart or per queue.
+
+The rebalance counters are only incremented on the instance that handles the request (or, for claim recovery, on the claiming instance), so aggregate them across instances.
 ## Special features
 ### Queue items batch dispatch
 The queue runner supports configurable queue item batching to improve
