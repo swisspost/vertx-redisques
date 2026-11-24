@@ -224,6 +224,7 @@ public class QueueConsumerRunner {
                         myQueues.remove(queueName, localState);
                         // This queue is not owned by this instance; removing it from the local dequeue statistics cache.
                         queueStatsService.dequeueStatisticRemoveFromLocal(queueName);
+                        refreshPendingClaimsGauge();
                     } else {
                         log.debug("Keeping queue {} locally until its current message is processed", queueName);
                         localState.setOwnershipLost(true);
@@ -260,7 +261,7 @@ public class QueueConsumerRunner {
         if (previousOwner == null) {
             return Future.succeededFuture();
         }
-        log.info("Rebalance claim for queue {} is still pending, asking previous owner {} to confirm the release",
+        log.debug("Rebalance claim for queue {} is still pending, asking previous owner {} to confirm the release",
                 queueName, previousOwner);
         JsonObject request = new JsonObject()
                 .put(REBALANCE_ACTION, REBALANCE_ACTION_RELEASE)
@@ -377,9 +378,17 @@ public class QueueConsumerRunner {
                             state.setRebalancePending(expectedOwner);
                             return state;
                         });
+                        refreshPendingClaimsGauge();
                     }
                     return claimed;
                 });
+    }
+
+    /** Publishes how many claims are pending; must run where {@code myQueues} is accessed. */
+    void refreshPendingClaimsGauge() {
+        metrics.setPendingRebalanceClaims((int) myQueues.values().stream()
+                .filter(QueueProcessingState::isRebalancePending)
+                .count());
     }
 
     /**
@@ -396,6 +405,7 @@ public class QueueConsumerRunner {
         if (queueProcessingState == null || !queueProcessingState.activateRebalanceClaim()) {
             return Future.failedFuture("Queue is not available for rebalance activation: " + queueName);
         }
+        refreshPendingClaimsGauge();
         return notifyConsumer(queueName).onSuccess(v -> metrics.rebalanceQueueActivated());
     }
 
@@ -432,6 +442,7 @@ public class QueueConsumerRunner {
                     if (myQueues.remove(queueName, queueProcessingState)) {
                         queueStatsService.dequeueStatisticRemoveFromLocal(queueName);
                     }
+                    refreshPendingClaimsGauge();
                     if (!restored) {
                         return Future.succeededFuture(false);
                     }
@@ -1046,7 +1057,7 @@ public class QueueConsumerRunner {
                 msg -> {
                     JsonObject request = msg.body();
                     if (request == null) {
-                        log.info("Got queue rebalance control request with empty body. uid={}", keyspaceHelper.getVerticleUid());
+                        log.debug("Got queue rebalance control request with empty body. uid={}", keyspaceHelper.getVerticleUid());
                         msg.reply(false);
                         return;
                     }

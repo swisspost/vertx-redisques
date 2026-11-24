@@ -24,6 +24,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -65,7 +66,8 @@ public class QueueConsumerRunnerAbandonTest {
         when(restoredResponse.toInteger()).thenReturn(1);
         when(redisService.send(any())).thenReturn(Future.succeededFuture(restoredResponse));
 
-        QueueConsumerRunner runner = new QueueConsumerRunner(vertx, redisService, mock(QueueMetrics.class), mock(QueueStatsService.class),
+        QueueMetrics metrics = mock(QueueMetrics.class);
+        QueueConsumerRunner runner = new QueueConsumerRunner(vertx, redisService, metrics, mock(QueueStatsService.class),
                 keyspaceHelper, configurationProvider, RedisQuesExceptionFactory.newWastefulExceptionFactory(),
                 mock(QueueStatisticsCollector.class), mock(QueueConfigurationProvider.class), new MessageConsumerManager(vertx));
         QueueProcessingState claimed = new QueueProcessingState(QueueState.READY, System.currentTimeMillis());
@@ -84,6 +86,7 @@ public class QueueConsumerRunnerAbandonTest {
             context.assertTrue(restored);
             context.assertFalse(runner.getMyQueues().containsKey("q-abandon"));
             context.assertTrue(notified.get());
+            verify(metrics).setPendingRebalanceClaims(0);
             runner.unregisterConsumers(context.asyncAssertSuccess(v -> async.complete()));
         }));
     }

@@ -7,8 +7,6 @@ import io.vertx.core.eventbus.MessageConsumer;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonObject;
-import io.vertx.redis.client.Command;
-import io.vertx.redis.client.Request;
 import io.vertx.redis.client.Response;
 import org.slf4j.Logger;
 import org.swisspush.redisques.QueueState;
@@ -117,7 +115,7 @@ public class RebalanceQueuesAction extends AbstractQueueAction {
 
         boolean dryRun = payload.getBoolean(DRY_RUN, false);
         String filterDescription = filterPatternResult.getOk().map(Pattern::pattern).orElse("<none>");
-        log.info("Starting rebalance request: filter={}, maxMovesPerRun={}, dryRun={}", filterDescription, effectiveMaxMovesPerRun, dryRun);
+        log.debug("Starting rebalance request: filter={}, maxMovesPerRun={}, dryRun={}", filterDescription, effectiveMaxMovesPerRun, dryRun);
         fetchQueueScope(filterPatternResult.getOk())
                 .compose(queueScope -> fetchExpectedAliveConsumerCount()
                         .compose(expectedAliveConsumers -> fetchRunningStates(expectedAliveConsumers, runningStateTimeoutMs)
@@ -140,12 +138,12 @@ public class RebalanceQueuesAction extends AbstractQueueAction {
                         PlannerInput plannerInput = buildPlannerInput(context.runningStates, context.queueScope);
                         QueueRebalancePlanner.Plan plan = new QueueRebalancePlanner()
                                 .computePlan(plannerInput.loadByConsumer, plannerInput.readyQueuesByConsumer, remainingMoves);
-                        log.info("Rebalance plan computed: queueScope={}, activeConsumers={}, plannedMoves={}, dryRun={}",
+                        log.debug("Rebalance plan computed: queueScope={}, activeConsumers={}, plannedMoves={}, dryRun={}",
                                 context.queueScope.size(), plannerInput.loadByConsumer.size(), plan.getMoves().size(), dryRun);
                         if (dryRun) {
                             return Future.succeededFuture(createSuccessReply(plan.getMoves().size(), 0, Collections.emptyMap()));
                         }
-                        log.info("Executing rebalance plan with {} moves", plan.getMoves().size());
+                        log.debug("Executing rebalance plan with {} moves", plan.getMoves().size());
                         return executePlan(plan, context.runningStates, recoveryResult)
                                 .map(result -> {
                                     recordMetrics(result);
@@ -155,7 +153,7 @@ public class RebalanceQueuesAction extends AbstractQueueAction {
                     });
                 })
                 .onSuccess(reply -> {
-                    log.info("Rebalance request completed successfully: plannedMoves={}, executedMoves={}, skipped={}",
+                    log.debug("Rebalance request completed successfully: plannedMoves={}, executedMoves={}, skipped={}",
                             reply.getJsonObject(VALUE, new JsonObject()).getInteger("plannedMoves", 0),
                             reply.getJsonObject(VALUE, new JsonObject()).getInteger("executedMoves", 0),
                             reply.getJsonObject(VALUE, new JsonObject()).getInteger("skipped", 0));
@@ -179,21 +177,9 @@ public class RebalanceQueuesAction extends AbstractQueueAction {
     protected Future<Integer> fetchExpectedAliveConsumerCount() {
         long aliveConsumerTtlMs = redisquesConfigurationProvider.configuration().getRefreshPeriod() * 1000L * 2;
         long expireScore = System.currentTimeMillis() - aliveConsumerTtlMs;
-        List<Request> requests = new ArrayList<>(2);
-        requests.add(Request.cmd(Command.ZREMRANGEBYSCORE)
-                .arg(keyspaceHelper.getAliveConsumersKey())
-                .arg("0")
-                .arg(String.valueOf(expireScore)));
-        requests.add(Request.cmd(Command.ZRANGE)
-                .arg(keyspaceHelper.getAliveConsumersKey())
-                .arg("0")
-                .arg("-1"));
-        return redisService.batch(requests).map(responses -> {
-            if (responses == null || responses.size() < 2 || responses.get(1) == null) {
-                return 0;
-            }
-            return responses.get(1).size();
-        });
+        // Read-only: expired entries are purged by the consumers' own heartbeat, so they are only excluded here.
+        return redisService.zrangebyscore(keyspaceHelper.getAliveConsumersKey(), "(" + expireScore, "+inf")
+                .map(response -> response == null ? 0 : response.size());
     }
 
     protected Future<JsonArray> fetchRunningStates(int expectedReplies, long timeoutMs) {
@@ -223,7 +209,7 @@ public class RebalanceQueuesAction extends AbstractQueueAction {
         consumer.handler(message -> {
             results.add(message.body());
             if (expectedReplies > 0 && results.size() >= expectedReplies) {
-                log.info("Rebalance running-state collection finished: expected {} replies and received {} on {}",
+                log.debug("Rebalance running-state collection finished: expected {} replies and received {} on {}",
                         expectedReplies, results.size(), replyAddress);
                 finish.run();
             }

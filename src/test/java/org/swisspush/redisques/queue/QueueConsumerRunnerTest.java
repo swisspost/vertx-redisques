@@ -840,6 +840,10 @@ public class QueueConsumerRunnerTest extends AbstractTestCase {
         jedis.rpush(getQueuesRedisKeyPrefix() + queueName, "message-1");
         jedis.setex(getConsumersRedisKeyPrefix() + queueName, 30, sourceOwner);
         redisQues.getQueueConsumerRunner().setRebalancePendingRecoveryMillis(0);
+        // Keep the source owner alive, otherwise the re-notification after the rollback deletes the restored owner key
+        // and lets this instance register itself again.
+        jedis.zadd(keyspaceHelper.getAliveConsumersKey(), System.currentTimeMillis(), sourceOwner);
+        redisQues.getQueueRegistryService().aliveConsumers.add(sourceOwner);
 
         vertx.eventBus().consumer(keyspaceHelper.queueRebalanceControlAddressFor(sourceOwner),
                 (Handler<Message<JsonObject>>) msg -> msg.reply(false));

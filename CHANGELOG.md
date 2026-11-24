@@ -9,7 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### New features
 - Added new action:
     - rebalanceQueues: redistributes queue ownership across the active RedisQues verticle instances (see README). Supports `filter`, `dryRun`, `maxMovesPerRun` and `runningStateTimeoutMs`.
-- Added `redisques.rebalance.*` metrics (e.g. released, activated and abandoned queues).
+- Added `redisques.rebalance.*` metrics (e.g. released, activated and abandoned queues, and a `redisques.rebalance.claims.pending` gauge).
 
 ### Important notes
 - Breaking change: the `getQueueRunningStates` reply of each instance changed its shape to `{"consumerId": <str>, "queues": {<queueName>: <state>}}` (previously the queue states were the top level object).

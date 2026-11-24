@@ -206,8 +206,8 @@ public class QueueRegistryService {
     }
 
     /**
-     * get all not expired consumer Ids
-     * @param expireMs all values older than X ms will be removed
+     * get all not expired consumer Ids (read-only, expired entries are only excluded)
+     * @param expireMs all values older than X ms are ignored
      * @return
      */
     Future<List<String>> getAllValidConsumerIds(long expireMs) {
@@ -215,28 +215,15 @@ public class QueueRegistryService {
 
         final long expireScore = System.currentTimeMillis() - expireMs;
 
-        List<Request> requests = new ArrayList<>();
-
-        // Remove expired
-        requests.add(Request.cmd(Command.ZREMRANGEBYSCORE)
-                .arg(keyspaceHelper.getAliveConsumersKey())
-                .arg("0")
-                .arg(String.valueOf(expireScore)));
-
-        // Get all remaining values
-        requests.add(Request.cmd(Command.ZRANGE)
-                .arg(keyspaceHelper.getAliveConsumersKey())
-                .arg("0")
-                .arg("-1"));
-
-        redisService.batch(requests).onComplete(res -> {
+        // Read-only: expired entries are removed by updateConsumerIdAndRemoveExpired, here they are only excluded.
+        redisService.zrangebyscore(keyspaceHelper.getAliveConsumersKey(), "(" + expireScore, "+inf").onComplete(res -> {
             if (res.failed()) {
                 log.error("failed to fetch alive consumer list", res.cause());
                 promise.fail(res.cause());
                 return;
             }
 
-            Response zrangeResponse = res.result().get(1);
+            Response zrangeResponse = res.result();
             List<String> values = new ArrayList<>();
 
             for (int i = 0; i < zrangeResponse.size(); i++) {
@@ -530,6 +517,7 @@ public class QueueRegistryService {
                                             queueStatsService.dequeueStatisticRemoveFromLocal(queue);
                                             futures.add(queueStatisticsCollector.resetQueueFailureStatistics(queue));
                                         });
+                                        queueConsumerRunner.refreshPendingClaimsGauge();
                                         Future.all(futures).onComplete(event3 -> {
                                             if (event3.failed()) {
                                                 log.warn("failed to remove queue stats not owen by this consumer", event3.cause());
@@ -631,6 +619,7 @@ public class QueueRegistryService {
                 if (keyspaceHelper.getVerticleUid().equals(consumer)) {
                     log.debug("RedisQues remove consumer: {}", keyspaceHelper.getVerticleUid());
                     queueConsumerRunner.getMyQueues().remove(queueName);
+                    queueConsumerRunner.refreshPendingClaimsGauge();
                     // This queue is not owned by this instance; removing it from the local dequeue statistics cache.
                     queueStatsService.dequeueStatisticRemoveFromLocal(queueName);
                     redisService.del(Collections.singletonList(consumerKey)).onComplete(delResult -> {

@@ -15,7 +15,8 @@ public enum MetricMeter {
     REBALANCE_CLAIM_RECOVERY("redisques.rebalance.claim.recovery", "Count of stale pending rebalance claims recovered by the claiming consumer, by result"),
     REBALANCE_QUEUE_RELEASED("redisques.rebalance.queues.released", "Count of queues this node gave up to another node through rebalancing"),
     REBALANCE_QUEUE_ACTIVATED("redisques.rebalance.queues.activated", "Count of queues this node started consuming after receiving them through rebalancing"),
-    REBALANCE_QUEUE_ABANDONED("redisques.rebalance.queues.abandoned", "Count of rebalance claims this node rolled back to the previous owner");
+    REBALANCE_QUEUE_ABANDONED("redisques.rebalance.queues.abandoned", "Count of rebalance claims this node rolled back to the previous owner"),
+    REBALANCE_CLAIMS_PENDING("redisques.rebalance.claims.pending", "Count of rebalance claims this node holds that were not yet activated or rolled back");
     private final String id;
     private final String description;
 
