@@ -4,9 +4,11 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Strings;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.vertx.core.AbstractVerticle;
+import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.Promise;
 import io.vertx.core.eventbus.Message;
+import io.vertx.core.eventbus.MessageConsumer;
 import io.vertx.core.json.JsonObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -38,6 +40,8 @@ public class RedisQues extends AbstractVerticle {
     private RedisService redisService;
     private KeyspaceHelper keyspaceHelper;
     private RedisquesConfigurationProvider configurationProvider;
+    private boolean configurationProviderAcquired;
+    private MessageConsumerManager consumerManager;
 
     private DequeueStatisticCollector dequeueStatisticCollector;
     private QueueStatisticsCollector queueStatisticsCollector;
@@ -50,6 +54,7 @@ public class RedisQues extends AbstractVerticle {
     private QueueActionsService queueActionsService;
     private QueueStatsService queueStatsService;
     private QueueConfigurationProvider queueConfigurationProvider;
+    private MessageConsumer<JsonObject> operationsMessageConsumer;
 
     private final RedisQuesExceptionFactory exceptionFactory;
     private PeriodicSkipScheduler periodicSkipScheduler;
@@ -117,10 +122,27 @@ public class RedisQues extends AbstractVerticle {
     public void start(Promise<Void> promise) {
         log.info("Started with UID {}", uid);
 
+        consumerManager = new MessageConsumerManager(vertx);
         if (this.configurationProvider == null) {
             this.configurationProvider = new DefaultRedisquesConfigurationProvider(vertx, config());
         }
+        if (this.configurationProvider instanceof DefaultRedisquesConfigurationProvider) {
+            ((DefaultRedisquesConfigurationProvider) this.configurationProvider).acquire().onComplete(acquired -> {
+                context.runOnContext(ignored -> {
+                    if (acquired.failed()) {
+                        promise.fail(acquired.cause());
+                    } else {
+                        configurationProviderAcquired = true;
+                        startWithConfigurationProvider(promise);
+                    }
+                });
+            });
+            return;
+        }
+        startWithConfigurationProvider(promise);
+    }
 
+    private void startWithConfigurationProvider(Promise<Void> promise) {
         if (this.periodicSkipScheduler == null) {
             this.periodicSkipScheduler = new PeriodicSkipScheduler(vertx);
         }
@@ -194,12 +216,12 @@ public class RedisQues extends AbstractVerticle {
         assert getQueuesItemsCountRedisRequestQuota != null;
 
         this.queueRegistryService = new QueueRegistryService(vertx, redisService, configurationProvider, exceptionFactory,
-                keyspaceHelper, queueMetrics, queueStatsService, queueStatisticsCollector, checkQueueRequestsQuota, activeQueueRegRefreshReqQuota, queueConfigurationProvider);
+                keyspaceHelper, queueMetrics, queueStatsService, queueStatisticsCollector, checkQueueRequestsQuota, activeQueueRegRefreshReqQuota, queueConfigurationProvider, consumerManager);
         this.queueActionsService = new QueueActionsService(vertx, queueRegistryService, redisService, keyspaceHelper, configurationProvider,
-                exceptionFactory, memoryUsageProvider, queueStatisticsCollector, getQueuesItemsCountRedisRequestQuota, resolvedRegistry, queueConfigurationProvider);
+                exceptionFactory, memoryUsageProvider, queueStatisticsCollector, getQueuesItemsCountRedisRequestQuota, resolvedRegistry, queueConfigurationProvider, consumerManager);
 
         // Handles operations
-        vertx.eventBus().consumer(keyspaceHelper.getAddress(), operationsHandler());
+        operationsMessageConsumer = consumerManager.consumer(keyspaceHelper.getAddress(), operationsHandler());
         registerMetricsGathering(configuration);
     }
 
@@ -295,12 +317,25 @@ public class RedisQues extends AbstractVerticle {
     }
 
     @Override
-    public void stop() {
-        queueRegistryService.stop();
+    public void stop(Promise<Void> stopPromise) {
         if (redisMonitor != null) {
             redisMonitor.stop();
             redisMonitor = null;
         }
+
+        Future<Void> registryStop = queueRegistryService == null
+                ? Future.succeededFuture()
+                : queueRegistryService.stop();
+        Future<Void> consumerStop = consumerManager == null || consumerManager.isClosed()
+                ? Future.succeededFuture()
+                : consumerManager.unregisterAll();
+        Future<Void> configurationStop = Future.succeededFuture();
+        if (configurationProviderAcquired) {
+            configurationProviderAcquired = false;
+            configurationStop = ((DefaultRedisquesConfigurationProvider) configurationProvider).release();
+        }
+
+        Future.join(registryStop, consumerStop, configurationStop).<Void>mapEmpty().onComplete(stopPromise);
     }
 
     public QueueStatisticsCollector getQueueStatisticsCollector() {

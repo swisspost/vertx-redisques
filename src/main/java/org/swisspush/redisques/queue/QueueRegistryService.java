@@ -20,6 +20,7 @@ import org.swisspush.redisques.QueueStatsService;
 import org.swisspush.redisques.exception.RedisQuesExceptionFactory;
 import org.swisspush.redisques.performance.UpperBoundParallel;
 import org.swisspush.redisques.scheduling.PeriodicSkipScheduler;
+import org.swisspush.redisques.util.MessageConsumerManager;
 import org.swisspush.redisques.util.QueueConfigurationProvider;
 import org.swisspush.redisques.util.QueueStatisticsCollector;
 import org.swisspush.redisques.util.RedisClusterUtil;
@@ -70,16 +71,16 @@ public class QueueRegistryService {
     protected Set<String> aliveConsumers = ConcurrentHashMap.newKeySet();
 
 
-    public void stop() {
+    public Future<Void> stop() {
         queueStatisticsCollector.stop();
-        unregisterConsumers(UnregisterConsumerType.FORCE);
+        return unregisterRedisQueueConsumers(UnregisterConsumerType.FORCE);
     }
 
     public QueueRegistryService(Vertx vertx, RedisService redisService, RedisquesConfigurationProvider configurationProvider,
                                 RedisQuesExceptionFactory exceptionFactory, KeyspaceHelper keyspaceHelper, QueueMetrics metrics,
                                 QueueStatsService queueStatsService, QueueStatisticsCollector queueStatisticsCollector,
                                 Semaphore checkQueueRequestsQuota, Semaphore activeQueueRegRefreshReqQuota,
-                                QueueConfigurationProvider queueConfigurationProvider) {
+                                QueueConfigurationProvider queueConfigurationProvider, MessageConsumerManager consumerManager) {
         this.vertx = vertx;
         this.redisService = redisService;
         this.configurationProvider = configurationProvider;
@@ -93,17 +94,17 @@ public class QueueRegistryService {
         this.activeQueueRegRefreshReqQuota = activeQueueRegRefreshReqQuota;
 
         // Handles registration requests
-        consumersMessageConsumer = vertx.eventBus().consumer(keyspaceHelper.getConsumersAddress(), this::handleRegistrationRequest);
-        notifyConsumer = vertx.eventBus().consumer(keyspaceHelper.getVerticleNotifyConsumerKey(), this::handleNotifyConsumer);
+        consumersMessageConsumer = consumerManager.consumer(keyspaceHelper.getConsumersAddress(), this::handleRegistrationRequest);
+        notifyConsumer = consumerManager.consumer(keyspaceHelper.getVerticleNotifyConsumerKey(), this::handleNotifyConsumer);
 
         consumerLockTime = getConfiguration().getConsumerLockMultiplier() * getConfiguration().getRefreshPeriod(); // lock is kept twice as long as its refresh interval -> never expires as long as the consumer ('we') are alive
-        queueConsumerRunner = new QueueConsumerRunner(vertx, redisService, metrics, queueStatsService, keyspaceHelper, configurationProvider, exceptionFactory, queueStatisticsCollector, queueConfigurationProvider);
+        queueConsumerRunner = new QueueConsumerRunner(vertx, redisService, metrics, queueStatsService, keyspaceHelper, configurationProvider, exceptionFactory, queueStatisticsCollector, queueConfigurationProvider, consumerManager);
         upperBoundParallel = new UpperBoundParallel(vertx, exceptionFactory);
 
         // the time we let an empty queue live before we deregister ourselves
         emptyQueueLiveTimeMillis = configurationProvider.configuration().getEmptyQueueLiveTimeMillis();
         // Handles notifications
-        uidMessageConsumer = vertx.eventBus().consumer(keyspaceHelper.getVerticleUid(), event -> {
+        uidMessageConsumer = consumerManager.consumer(keyspaceHelper.getVerticleUid(), event -> {
             final String queue = event.body();
             if (queue == null) {
                 log.warn("Got event bus msg with empty body! uid={}  address={}  replyAddress={}", keyspaceHelper.getVerticleUid(), event.address(), event.replyAddress());
@@ -115,10 +116,10 @@ public class QueueRegistryService {
 
         queueConsumerRunner.setNoMoreItemHandler(handlder -> {
             if (stoppedHandler != null) {
-                unregisterConsumers(UnregisterConsumerType.GRACEFUL).onComplete(event -> {
+                unregisterRedisQueueConsumers(UnregisterConsumerType.GRACEFUL).onComplete(event -> {
                     if (event.failed()) {
                         log.warn("TODO error handling", exceptionFactory.newException(
-                                "unregisterConsumers() failed", event.cause()));
+                                "unregisterRedisQueueConsumers() failed", event.cause()));
                     }
                     if (queueConsumerRunner.getMyQueues().isEmpty()) {
                         stoppedHandler.handle(null);
@@ -568,9 +569,9 @@ public class QueueRegistryService {
         });
     }
 
-    private Future<Void> unregisterConsumers(UnregisterConsumerType type) {
+    private Future<Void> unregisterRedisQueueConsumers(UnregisterConsumerType type) {
         final Promise<Void> result = Promise.promise();
-        log.debug("RedisQues unregister consumers. type={}", type);
+        log.debug("RedisQues unregister Redis queue consumers. type={}", type);
         final List<Future> futureList = new ArrayList<>(queueConsumerRunner.getMyQueues().size());
         for (final Map.Entry<String, QueueProcessingState> entry : queueConsumerRunner.getMyQueues().entrySet()) {
             final String queueName = entry.getKey();
@@ -982,7 +983,7 @@ public class QueueRegistryService {
         }
         final long periodMs = configurationProvider.configuration().getRefreshPeriod() * 1000L;
         vertx.setPeriodic(10000, periodMs, event -> {
-            unregisterConsumers(UnregisterConsumerType.QUIET_FOR_SOMETIME);
+            unregisterRedisQueueConsumers(UnregisterConsumerType.QUIET_FOR_SOMETIME);
         });
     }
 
@@ -992,12 +993,12 @@ public class QueueRegistryService {
                 .onComplete(event -> {
             if (event.failed()) {
                 log.warn("TODO error handling", exceptionFactory.newException(
-                        "unregisterConsumers() failed", event.cause()));
+                        "unregister QueueRegistryService eventbus consumers failed", event.cause()));
             }
-            unregisterConsumers(UnregisterConsumerType.GRACEFUL).onComplete(unregisterConsumersEvent -> {
+            unregisterRedisQueueConsumers(UnregisterConsumerType.GRACEFUL).onComplete(unregisterConsumersEvent -> {
                 if (unregisterConsumersEvent.failed()) {
                     log.warn("TODO error handling", exceptionFactory.newException(
-                            "unregisterConsumers(false) failed", unregisterConsumersEvent.cause()));
+                            "unregisterRedisQueueConsumers(false) failed", unregisterConsumersEvent.cause()));
                 }
 
                 queueConsumerRunner.unregisterConsumers(unregisterRunnerConsumersEvent -> {

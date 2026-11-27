@@ -64,7 +64,7 @@ The following configuration values are available:
 | memoryUsageLimitPercent                                | 100                             | Percentage of the available system memory to be used by vertx-redisques. Only values between 0 and 100 are allowed. When the used memory ratio is higher than this limit, enqueues are rejected                  |
 | memoryUsageCheckIntervalSec                            | 60                              | The interval [s] to check the current memory usage. _memoryUsageCheckIntervalSec_ value must be greater 0, otherwise the default is used.                                                                        |
 | redisReconnectAttempts                                 | 0                               | The amount of attempts to reconnect when redis connection is lost. Use **0** to not reconnect at all or **-1** to reconnect indefinitely.                                                                        |
-| redisReconnectDelaySec                                 | 30                              | The interval [s] to attempt to reconnect when redis connection is lost.                                                                                                                                          |
+| redisReconnectDelaySec                                 | 30                              | The initial delay [s] before reconnecting when redis connection is lost. Failed attempts use exponential backoff, capped at 1024 times this delay.                                                              |
 | redisPoolRecycleTimeoutMs                              | 180000                          | The timeout [ms] when the connection pool is recycled. Use **-1** when having reconnect feature enabled.                                                                                                         |
 | redisMonitoringEnabled                                 | true                            | Enable / disable monitoring of redis metrics                                                                                                                                                                     |
 | micrometerMetricsEnabled                               | false                           | Enable / disable collection of metrics using micrometer                                                                                                                                                          |
@@ -88,6 +88,25 @@ The following configuration values are available:
 | queueStatsRequestQuotaAcquireRetryTimeMs               | -1                              | Queue stats requests quota acquire retry delay time [ms]. Use **-1** to reject immediately                                                                                                                       |
 | getQueuesItemsCountRedisRequestQuotaAcquireRetryTimeMs | -1                              | Get queues items count action  requests quota acquire retry delay time [ms]. Use **-1** to reject immediately                                                                                                    |
 | activeQueueRegRefreshReqQuotaAcquireRetryTimeMs        | -1                              | Active queue register refresh requests quota acquire retry delay time [ms]. Use **-1** to reject immediately                                                                                                     |
+
+### Startup singleton lock timeout
+
+Concurrent RedisQues instances wait up to **60 seconds** to acquire the local singleton
+initialization lock for the shared queue-configuration provider. This timeout applies
+to lock acquisition, not the duration of initialization, and is not configurable.
+
+### Redis reconnection
+
+Automatic reconnection is disabled by default. To recover after a Redis restart, set
+`redisReconnectAttempts` to **-1** (unlimited retries) or a positive attempt limit,
+and set `redisPoolRecycleTimeoutMs` to **-1**. With reconnection enabled, the default
+Redis provider invalidates a disconnected connection and shares a single connection
+attempt between callers. A subsequent provider call can also initiate a connection
+attempt, including after the automatic retry limit has been reached.
+
+Commands already in flight can fail during a restart and are not replayed automatically.
+Obtain the current API or connection from the provider for each operation rather than
+caching it across reconnects.
 
 ### Warning about Quota Timeout Configuration
 

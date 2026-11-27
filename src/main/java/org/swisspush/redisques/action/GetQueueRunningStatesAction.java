@@ -9,6 +9,7 @@ import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import org.slf4j.Logger;
 import org.swisspush.redisques.queue.KeyspaceHelper;
+import org.swisspush.redisques.util.MessageConsumerManager;
 import org.swisspush.redisques.util.RedisquesAPI;
 
 import java.util.ArrayList;
@@ -28,11 +29,13 @@ public class GetQueueRunningStatesAction implements QueueAction {
     private static final long DEFAULT_WAIT_TIMEOUT = 2_000L;
     private final KeyspaceHelper keyspaceHelper;
     private final Vertx vertx;
+    private final MessageConsumerManager consumerManager;
 
-    public GetQueueRunningStatesAction(Vertx vertx, KeyspaceHelper keyspaceHelper, Logger log) {
+    public GetQueueRunningStatesAction(Vertx vertx, KeyspaceHelper keyspaceHelper, Logger log, MessageConsumerManager consumerManager) {
         this.vertx = vertx;
         this.keyspaceHelper =  keyspaceHelper;
         this.log = log;
+        this.consumerManager = consumerManager;
     }
 
     @Override
@@ -91,8 +94,7 @@ public class GetQueueRunningStatesAction implements QueueAction {
         final String replyAddress = keyspaceHelper.getQueueRunningStateReplyKey() + UUID.randomUUID();
         final AtomicLong timerId = new AtomicLong(-1L);
         final AtomicBoolean finished = new AtomicBoolean(false);
-        MessageConsumer<JsonObject> consumer =
-                vertx.eventBus().consumer(replyAddress);
+        MessageConsumer<JsonObject> consumer = consumerManager.consumer(replyAddress);
         Runnable finish = () -> {
             if (!finished.compareAndSet(false, true)) {
                 return;
@@ -101,7 +103,7 @@ public class GetQueueRunningStatesAction implements QueueAction {
             if (timerIdValue >= 0) {
                 vertx.cancelTimer(timerIdValue);
             }
-            consumer.unregister();
+            consumerManager.unregister(consumer);
             promise.tryComplete(new JsonObject()
                     .put(RedisquesAPI.PAYLOAD, new JsonArray(new ArrayList<>(results))));
         };
