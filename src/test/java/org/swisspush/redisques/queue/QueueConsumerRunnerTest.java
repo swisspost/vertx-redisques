@@ -193,30 +193,46 @@ public class QueueConsumerRunnerTest extends AbstractTestCase {
         Async async = context.async();
         final AtomicInteger index = new AtomicInteger(0);
         flushAll();
+        // Keep the normal consumer from dispatching the three items left after the capped batch.
+        // processMultipleItems is called directly below and deliberately bypasses this queue lock.
+        lockQueue("batch-queue-4.test");
+        assertLockExists(context, "batch-queue-4.test");
         vertx.eventBus().consumer(RedisquesConfiguration.PROP_PROCESSOR_ADDRESS, (Handler<Message<JsonObject>>) event -> {
-            log.info("Received '{}'", event.body());
-            if (index.get() == 0) {
-                context.assertEquals("batch-queue-1.test", event.body().getString("queue"));
-                context.assertTrue(event.body().getBoolean(BATCH_QUEUE));
-                JsonArray batchItemsJsonObject = new JsonArray(event.body().getString("payload"));
-                context.assertEquals(3, batchItemsJsonObject.size());
-                // the order is important
-                context.assertEquals("message_1-1", batchItemsJsonObject.getString(0));
-                context.assertEquals("message_1-2", batchItemsJsonObject.getString(1));
-                context.assertEquals("message_1-3", batchItemsJsonObject.getString(2));
-            } else if (index.get() == 1) {
-                context.assertEquals("batch-queue-4.test", event.body().getString("queue"));
-                context.assertTrue(event.body().getBoolean(BATCH_QUEUE));
-                JsonArray batchItemsJsonObject = new JsonArray(event.body().getString("payload"));
-                context.assertEquals(5, batchItemsJsonObject.size());
-                // the order is important
-                context.assertEquals("message_4-1", batchItemsJsonObject.getString(0));
-                context.assertEquals("message_4-2", batchItemsJsonObject.getString(1));
-                context.assertEquals("message_4-3", batchItemsJsonObject.getString(2));
-                context.assertEquals("message_4-4", batchItemsJsonObject.getString(3));
-                context.assertEquals("message_4-5", batchItemsJsonObject.getString(4));
+            JsonObject body = event.body();
+            int dispatchIndex = index.get();
+            log.info("Received '{}'", body);
+            if (body == null) {
+                context.fail("processor received an empty message at dispatch " + dispatchIndex);
+            } else if (dispatchIndex == 0) {
+                context.assertEquals("batch-queue-1.test", body.getString("queue"), "unexpected queue at dispatch 0");
+                context.assertEquals(Boolean.TRUE, body.getBoolean(BATCH_QUEUE), "expected a batch dispatch at index 0");
+                String payload = body.getString("payload");
+                context.assertNotNull(payload, "missing batch payload at dispatch 0");
+                if (payload != null) {
+                    JsonArray batchItemsJsonObject = new JsonArray(payload);
+                    context.assertEquals(3, batchItemsJsonObject.size());
+                    // the order is important
+                    context.assertEquals("message_1-1", batchItemsJsonObject.getString(0));
+                    context.assertEquals("message_1-2", batchItemsJsonObject.getString(1));
+                    context.assertEquals("message_1-3", batchItemsJsonObject.getString(2));
+                }
+            } else if (dispatchIndex == 1) {
+                context.assertEquals("batch-queue-4.test", body.getString("queue"), "unexpected queue at dispatch 1");
+                context.assertEquals(Boolean.TRUE, body.getBoolean(BATCH_QUEUE), "expected a batch dispatch at index 1");
+                String payload = body.getString("payload");
+                context.assertNotNull(payload, "missing batch payload at dispatch 1");
+                if (payload != null) {
+                    JsonArray batchItemsJsonObject = new JsonArray(payload);
+                    context.assertEquals(5, batchItemsJsonObject.size());
+                    // the order is important
+                    context.assertEquals("message_4-1", batchItemsJsonObject.getString(0));
+                    context.assertEquals("message_4-2", batchItemsJsonObject.getString(1));
+                    context.assertEquals("message_4-3", batchItemsJsonObject.getString(2));
+                    context.assertEquals("message_4-4", batchItemsJsonObject.getString(3));
+                    context.assertEquals("message_4-5", batchItemsJsonObject.getString(4));
+                }
             } else {
-                context.fail("unexpected index " + index);
+                context.fail("unexpected processor dispatch at index " + dispatchIndex + ": " + body);
             }
             event.reply(new JsonObject().put(STATUS, OK));
         });
@@ -235,28 +251,23 @@ public class QueueConsumerRunnerTest extends AbstractTestCase {
                 new String[]{"batch-queue-4.test", "message_4-8"}
         );
 
-        addQueueItemsSequentially(items).onComplete(e11 -> {
+        addQueueItemsSequentially(items).onComplete(context.asyncAssertSuccess(e11 -> {
             assertQueuesCount(context, 2);
             assertQueueItemsCount(context, "batch-queue-1.test", 3);
             assertQueueItemsCount(context, "batch-queue-4.test", 8);
-            String queueName = "batch-queue-1.test";
-            redisQues.getQueueConsumerRunner().processMultipleItems(queueName, 5, 0, 0).onComplete(new Handler<AsyncResult<Void>>() {
-                @Override
-                public void handle(AsyncResult<Void> event) {
-                    index.incrementAndGet();
-                    String queueName = "batch-queue-4.test";
-                    redisQues.getQueueConsumerRunner().processMultipleItems(queueName, 5, 0, 0).onComplete(new Handler<AsyncResult<Void>>() {
-                        @Override
-                        public void handle(AsyncResult<Void> event) {
-                            assertQueuesCount(context, 1);
-                            assertQueueItemsCount(context, "batch-queue-1.test", 0);
-                            assertQueueItemsCount(context, "batch-queue-4.test", 3);
-                            async.complete();
-                        }
-                    });
-                }
-            });
-        });
+            redisQues.getQueueConsumerRunner().processMultipleItems("batch-queue-1.test", 5, 0, 0)
+                    .onComplete(context.asyncAssertSuccess(event -> {
+                        index.incrementAndGet();
+                        redisQues.getQueueConsumerRunner().processMultipleItems("batch-queue-4.test", 5, 0, 0)
+                                .onComplete(context.asyncAssertSuccess(event2 -> {
+                                    assertQueuesCount(context, 1);
+                                    assertQueueItemsCount(context, "batch-queue-1.test", 0);
+                                    // Preserve the cap assertion: five items are dispatched and three remain.
+                                    assertQueueItemsCount(context, "batch-queue-4.test", 3);
+                                    async.complete();
+                                }));
+                    }));
+        }));
     }
 
     @Test
